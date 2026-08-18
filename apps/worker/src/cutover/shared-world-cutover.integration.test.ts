@@ -70,6 +70,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     input: {
       enqueueCapability: "per_run_queue_v1" | "unscoped";
       hostPort: number;
+      dispatchProtocol?: number | null;
     },
   ) {
     const project = await store.createProject({
@@ -98,6 +99,9 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       workflowWorld: {
         ...sharedWorkflowWorldAttestation,
         enqueueCapability: input.enqueueCapability,
+        ...(input.dispatchProtocol !== undefined
+          ? { dispatchProtocol: input.dispatchProtocol }
+          : {}),
       },
     });
   }
@@ -191,7 +195,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     const result = await prepareSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_1",
+      operationId: `cut_it_1_${suffix}`,
     });
 
     // The incapable owner is terminated and quarantined, never re-activated.
@@ -205,6 +209,11 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
         expiresAt: new Date(Date.now() + 60_000),
       }),
     ).rejects.toThrow(/workflow_unavailable/);
+    // Managed termination is terminal topology too: archive permits only
+    // external|terminated, so the retired owner must not stay unclassified.
+    await expect(store.getDeployment(earlyDeployment.id)).resolves.toMatchObject({
+      workflowTopology: { conversionState: "terminated" },
+    });
 
     // The capable owner's old job moved onto the exact per-run queue in place.
     const migrated = await pool.query<{ queue_name: string | null; payload: unknown }>(
@@ -226,7 +235,11 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     // and the durable staged set only grows: the idle deployment is now
     // `converting`, invisible to both inventory and run assessment, yet must
     // survive in the checkpoint or finalize would complete without it.
-    const rerun = await prepareSharedWorldCutover({ pool, store, operationId: "cut_it_1" });
+    const rerun = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: `cut_it_1_${suffix}`,
+    });
     expect(rerun.migration.scoped).toBe(0);
     expect(rerun.holds).toEqual([]);
     expect(rerun.staged).toContain(idleDeployment.id);
@@ -238,17 +251,17 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     const premature = await finalizeSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_1",
+      operationId: `cut_it_1_${suffix}`,
       deploymentIds: result.staged,
     });
     expect(premature.completed).toBe(false);
-    await expect(store.getWorkflowCutoverOperation("cut_it_1")).resolves.toMatchObject({
+    await expect(store.getWorkflowCutoverOperation(`cut_it_1_${suffix}`)).resolves.toMatchObject({
       phase: "control_plane_converged",
     });
     const finalizeResult = await finalizeSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_1",
+      operationId: `cut_it_1_${suffix}`,
       deploymentIds: result.staged,
       continuityVerified: true,
     });
@@ -258,7 +271,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     const bogus = await finalizeSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_1",
+      operationId: `cut_it_1_${suffix}`,
       deploymentIds: [earlyDeployment.id],
     });
     expect(bogus.finalized).toEqual([]);
@@ -266,7 +279,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     await expect(store.getDeployment(capableDeployment.id)).resolves.toMatchObject({
       workflowTopology: { conversionState: "external", runnerMode: "external" },
     });
-    await expect(store.getWorkflowCutoverOperation("cut_it_1")).resolves.toMatchObject({
+    await expect(store.getWorkflowCutoverOperation(`cut_it_1_${suffix}`)).resolves.toMatchObject({
       phase: "completed",
     });
     // Leave no active run behind: later tests share this World database.
@@ -363,24 +376,46 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     const held = await prepareSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_3",
+      operationId: `cut_it_3_${suffix}`,
       corruptedRuns: [{ tenantId: TENANT, runId: corruptRun }],
     });
     expect(held.holds[0]).toMatch(/no proven Eve family/);
     expect(held.unmappedTerminatedRuns).toContainEqual({ tenantId: TENANT, runId: corruptRun });
     expect(held.staged).not.toContain(deployment.id);
-    await expect(store.getWorkflowCutoverOperation("cut_it_3")).resolves.toMatchObject({
+    await expect(store.getWorkflowCutoverOperation(`cut_it_3_${suffix}`)).resolves.toMatchObject({
       phase: "workflow_safe",
     });
 
+    // The retry supplies the mapping. The run was already CANCELLED by the
+    // first pass, so it no longer appears in the live assessment — the
+    // mapping must land against the durable quarantine identity, produce the
+    // session-family tombstone, and clear the hold.
     const result = await prepareSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_3",
-      corruptedRuns: [{ tenantId: TENANT, runId: corruptRun }],
-      runsWithoutFamilies: [{ tenantId: TENANT, runId: corruptRun }],
+      operationId: `cut_it_3_${suffix}`,
+      runSessionFamilies: [
+        { tenantId: TENANT, runId: corruptRun, eveSessionId: "eve_corrupt_family" },
+      ],
     });
     expect(result.holds).toEqual([]);
+    expect(result.unmappedTerminatedRuns).toEqual([]);
+    expect(
+      await store.getActiveWorkflowFence("session_family", `${TENANT}:eve_corrupt_family`),
+    ).toMatchObject({ operationId: `cut_it_3_${suffix}` });
+    await expect(store.getWorkflowCutoverOperation(`cut_it_3_${suffix}`)).resolves.toMatchObject({
+      phase: "control_plane_converged",
+    });
+
+    // The disposition is durable: a third pass with NO flags must not
+    // rediscover the run as unmapped.
+    const third = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: `cut_it_3_${suffix}`,
+    });
+    expect(third.holds).toEqual([]);
+    expect(third.unmappedTerminatedRuns).toEqual([]);
 
     // The corrupt run is fenced and quarantined at RUN scope…
     expect(await isRunQuarantined(pool, TENANT, corruptRun)).toBe(true);
@@ -424,7 +459,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     await prepareSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_2",
+      operationId: `cut_it_2_${suffix}`,
       runsWithoutFamilies: [{ tenantId: TENANT, runId }],
     });
     expect(await isRunQuarantined(pool, TENANT, runId)).toBe(true);
@@ -445,14 +480,18 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     await store.updateDeploymentStatus(archivedUnscoped.id, "archived");
     await store.updateDeploymentStatus(archivedShared.id, "archived");
 
-    const result = await prepareSharedWorldCutover({ pool, store, operationId: "cut_it_4" });
+    const result = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: `cut_it_4_${suffix}`,
+    });
     expect(result.holds).toEqual([]);
     // The retired archived owner is deployment-fenced: the OTLP projector
     // accepts retained rows regardless of archive status, so a delayed batch
     // must hit the fence, not a gap.
     expect(result.retiredDeployments).toContain(archivedUnscoped.id);
     expect(await store.getActiveWorkflowFence("deployment", archivedUnscoped.id)).toMatchObject({
-      operationId: "cut_it_4",
+      operationId: `cut_it_4_${suffix}`,
     });
     // The shared-capable archived row classifies but never stages — an
     // archived Deployment has no runtime future to convert.
@@ -497,11 +536,11 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     const held = await prepareSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_5",
+      operationId: `cut_it_5_${suffix}`,
       legacyWorlds: { baseUrl: undefined },
     });
     expect(held.holds[0]).toMatch(/legacy Worlds/);
-    await expect(store.getWorkflowCutoverOperation("cut_it_5")).resolves.toMatchObject({
+    await expect(store.getWorkflowCutoverOperation(`cut_it_5_${suffix}`)).resolves.toMatchObject({
       phase: "fenced",
     });
 
@@ -509,7 +548,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     const stillActive = await prepareSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_5",
+      operationId: `cut_it_5_${suffix}`,
       legacyWorlds: {
         baseUrl: "postgres://unused.invalid/postgres",
         terminate: async (_baseUrl, projectId) => ({
@@ -526,7 +565,7 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     const done = await prepareSharedWorldCutover({
       pool,
       store,
-      operationId: "cut_it_5",
+      operationId: `cut_it_5_${suffix}`,
       legacyWorlds: {
         baseUrl: "postgres://unused.invalid/postgres",
         terminate: async (_baseUrl, projectId) => ({
@@ -541,10 +580,44 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     expect(done.legacyWorlds[0]?.cancelledRuns).toBe(3);
     expect(done.retiredDeployments).toContain(deployment.id);
     expect(await store.getActiveWorkflowFence("deployment", deployment.id)).toMatchObject({
-      operationId: "cut_it_5",
+      operationId: `cut_it_5_${suffix}`,
     });
-    await expect(store.getWorkflowCutoverOperation("cut_it_5")).resolves.toMatchObject({
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({
+      workflowTopology: { conversionState: "terminated" },
+    });
+    await expect(store.getWorkflowCutoverOperation(`cut_it_5_${suffix}`)).resolves.toMatchObject({
       phase: "control_plane_converged",
+    });
+  }, 120_000);
+
+  test("an idle owner outside the dispatch-protocol window retires instead of staging", async () => {
+    const store = createTestStore();
+    // per_run_queue_v1 but no dispatch protocol: a pre-protocol Release. With
+    // no active run it never passes through the run assessment — the
+    // inventory itself must apply the full compatibility window.
+    const deployment = await createControlPlaneDeployment(store, {
+      enqueueCapability: "per_run_queue_v1",
+      hostPort: 42_610,
+      dispatchProtocol: null,
+    });
+    await store.updateDeploymentWorkflowTopology(deployment.id, {
+      runnerMode: "unknown",
+      conversionState: "unclassified",
+    });
+
+    const result = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: `cut_it_6_${suffix}`,
+    });
+    expect(result.holds).toEqual([]);
+    expect(result.staged).not.toContain(deployment.id);
+    expect(result.retiredDeployments).toContain(deployment.id);
+    expect(await store.getActiveWorkflowFence("deployment", deployment.id)).toMatchObject({
+      operationId: `cut_it_6_${suffix}`,
+    });
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({
+      workflowTopology: { conversionState: "terminated" },
     });
   }, 120_000);
 

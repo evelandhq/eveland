@@ -2,6 +2,7 @@ import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { recordCutoverProof } from "@evelandhq/workflow-world";
 import pg from "pg";
 import { resolveWorkflowWorldPlatformUrl } from "../runtime/eveland-workflow-world-url.js";
+import { resolveBootstrapPostgresUrl } from "../runtime/workflow-world-bootstrap.js";
 import {
   assessSharedActiveRuns,
   finalizeSharedWorldCutover,
@@ -59,7 +60,15 @@ async function main(): Promise<void> {
             ? { runSessionFamilies: parseFamilyList(flags["run-families"]!) }
             : {}),
           ...(flags["no-family"] ? { runsWithoutFamilies: parseRunList(flags["no-family"]!) } : {}),
-          legacyWorlds: { baseUrl: process.env.WORKFLOW_POSTGRES_URL },
+          // WORKFLOW_POSTGRES_URL is the Deployment-facing address and may
+          // say host.docker.internal; this host process must connect the way
+          // bootstrap and the reaper do, or every legacy World looks
+          // unreachable and the cutover holds forever.
+          legacyWorlds: {
+            baseUrl: process.env.WORKFLOW_POSTGRES_URL
+              ? resolveBootstrapPostgresUrl(process.env, process.env.WORKFLOW_POSTGRES_URL)
+              : undefined,
+          },
           log: (message, meta) =>
             console.error(`[cutover] ${message} ${JSON.stringify(meta ?? {})}`),
         });

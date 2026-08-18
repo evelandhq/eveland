@@ -87,7 +87,10 @@ db:migrate`; the shared World migrates itself on the next start). Historical
 
    Legacy owners are terminated **in their own databases**: run the cutover
    with `WORKFLOW_POSTGRES_URL` set so `prepare` can cancel every active run
-   in each retired project's derived `eveland_wf_*` database. Retiring a
+   in each retired project's derived `eveland_wf_*` database (the host-side
+   connection resolves through `WORKFLOW_POSTGRES_BOOTSTRAP_URL` exactly like
+   bootstrap does, so a Deployment-facing `host.docker.internal` URL does not
+   strand the termination). Retiring a
    legacy owner in the control plane alone is not workflow safety — if the
    base URL is missing, a legacy World is unreachable, or active runs survive
    the cancel, `prepare` reports it in `holds`, exits non-zero, and the saga
@@ -96,7 +99,10 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    `--run-families` maps managed-terminated runs to their Eve session
    families so their control-plane Sessions are failed and tombstoned
    individually; `--no-family` records the explicit assertion that a run
-   projected no Eve family. A terminated run with neither is a **hold**: the
+   projected no Eve family. Both are durable dispositions keyed by the run's
+   quarantine marker, so supplying them on a **retry** works even though the
+   run was already cancelled on the first pass and no longer shows up as
+   active — and they never need re-supplying on later reruns. A terminated run with neither is a **hold**: the
    saga stops at `workflow_safe` (the quarantine satisfies the World
    postcondition, so this gate is the only thing standing between a missing
    tombstone and a late OTLP batch reopening the family). Repeat until

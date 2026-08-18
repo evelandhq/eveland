@@ -70,6 +70,7 @@ export type CutoverStore = Pick<
   | "advanceWorkflowCutoverOperation"
   | "getWorkflowCutoverOperation"
   | "writeWorkflowFences"
+  | "getActiveWorkflowFence"
   | "convergeWorkflowTermination"
   | "convergeWorkflowRunFamilies"
   | "updateDeploymentWorkflowTopology"
@@ -346,11 +347,16 @@ export async function prepareSharedWorldCutover(input: {
             release = (await store.attestReleaseWorkflow(release.id, attestation)) ?? release;
           }
         }
-        const { worldKind, enqueueCapability } = release.workflow;
+        const { worldKind, enqueueCapability, dispatchProtocol } = release.workflow;
         if (worldKind === "legacy_project") legacyProjects.add(project.id);
+        // The full compatibility decision — capability AND dispatch-protocol
+        // window — applies to every retained Deployment, active run or not.
+        // An idle incompatible owner that staged here would finalize as
+        // `external` while the activation path rejects its every workflow.
+        const outsideWindow = dispatchProtocol === null || dispatchProtocol > DISPATCH_VERSION;
         if (
           worldKind === "legacy_project" ||
-          (worldKind === "shared" && enqueueCapability !== "per_run_queue_v1")
+          (worldKind === "shared" && (enqueueCapability !== "per_run_queue_v1" || outsideWindow))
         ) {
           inventoryRetired.push(deployment.id);
         } else if (worldKind === "unknown") {
@@ -418,18 +424,20 @@ export async function prepareSharedWorldCutover(input: {
     const quarantined: Array<{ tenantId: string; runId: string }> = [];
     for (const assessment of nonRecoverable) {
       const target = { tenantId: assessment.tenantId, runId: assessment.runId };
-      const cancelled = await cancelRunDirectly(pool, target);
-      if (cancelled) {
-        terminated.push(target);
-      }
-      // Corrupted or not, a quarantine marker keeps any racing or historical
-      // job from being claimed, and parks existing payloads intact.
+      // Quarantine BEFORE cancel: the durable marker is the identity record a
+      // retry seeds family convergence from. In the other order, a crash
+      // between the two leaves a cancelled run that no longer shows up as
+      // active AND has no marker — invisible to every later pass.
       await quarantineRun(pool, workerUtils, {
         ...target,
         operationId,
         reason: assessment.reasons.join("; ") || assessment.classification,
       });
       quarantined.push(target);
+      const cancelled = await cancelRunDirectly(pool, target);
+      if (cancelled) {
+        terminated.push(target);
+      }
       log("managed termination staged", { ...target, cancelled });
     }
 
@@ -521,34 +529,94 @@ export async function prepareSharedWorldCutover(input: {
     // family the operator proved. Unproven families are named, not guessed.
     const converged = await store.convergeWorkflowTermination(operationId, retiredDeployments);
     const retired = new Set(retiredDeployments);
-    const familyByRun = new Map(
-      (input.runSessionFamilies ?? []).map((entry) => [`${entry.tenantId}:${entry.runId}`, entry]),
-    );
-    const assertedNoFamily = new Set(
-      (input.runsWithoutFamilies ?? []).map((run) => `${run.tenantId}:${run.runId}`),
-    );
+    // Permanently retired owners reach their terminal topology here: archive
+    // explicitly permits only `external` or `terminated`, so leaving them at
+    // their previous non-terminal state would make their artifacts
+    // unarchivable forever.
+    for (const deploymentId of retiredDeployments) {
+      await store.updateDeploymentWorkflowTopology(deploymentId, {
+        conversionState: "terminated",
+        conversionOperationId: operationId,
+      });
+    }
+
+    // The disposition ledger is durable ON PURPOSE: a terminated run is
+    // cancelled on the first pass and never shows up as active again, so
+    // mappings and assertions supplied on a retry must land against the
+    // persisted identities, not against the (now empty) live assessment.
+    const dispositions = await readFamilyDispositions(store, operationId);
+    for (const entry of input.runSessionFamilies ?? []) {
+      dispositions[`${entry.tenantId}:${entry.runId}`] = {
+        kind: "mapped",
+        projectId: entry.tenantId,
+        eveSessionId: entry.eveSessionId,
+      };
+    }
+    for (const run of input.runsWithoutFamilies ?? []) {
+      dispositions[`${run.tenantId}:${run.runId}`] = { kind: "asserted_no_family" };
+    }
+
+    // The worklist is seeded from BOTH this call's live assessment and every
+    // unresolved quarantine this operation wrote on an earlier pass — the
+    // quarantine-before-cancel ordering above guarantees a terminated run is
+    // always in at least one of the two.
+    const worklist = new Map<
+      string,
+      { tenantId: string; runId: string; deploymentId: string | null }
+    >();
+    for (const assessment of nonRecoverable) {
+      worklist.set(`${assessment.tenantId}:${assessment.runId}`, {
+        tenantId: assessment.tenantId,
+        runId: assessment.runId,
+        deploymentId: assessment.deploymentId,
+      });
+    }
+    for (const quarantine of await listUnresolvedRunQuarantines(pool)) {
+      if (quarantine.operationId !== operationId) continue;
+      const key = `${quarantine.tenantId}:${quarantine.runId}`;
+      if (worklist.has(key)) continue;
+      const { rows } = await pool.query<{ deployment_id: string | null }>(
+        `select deployment_id from workflow.workflow_runs where tenant_id = $1 and id = $2`,
+        [quarantine.tenantId, quarantine.runId],
+      );
+      worklist.set(key, {
+        tenantId: quarantine.tenantId,
+        runId: quarantine.runId,
+        deploymentId: rows[0]?.deployment_id ?? null,
+      });
+    }
+
     const mappedFamilies: Array<{ projectId: string; eveSessionId: string }> = [];
     const acceptedWithoutFamily: Array<{ tenantId: string; runId: string }> = [];
     const unmappedTerminatedRuns: Array<{ tenantId: string; runId: string }> = [];
-    for (const assessment of nonRecoverable) {
-      if (assessment.deploymentId && retired.has(assessment.deploymentId)) continue;
-      const key = `${assessment.tenantId}:${assessment.runId}`;
-      const mapping = familyByRun.get(key);
-      if (mapping) {
+    for (const entry of worklist.values()) {
+      // Deployment-wide convergence already tombstones every named family on
+      // a permanently retired owner — whether it retired in this call or in
+      // an earlier one (its unresolved deployment fence is the record).
+      if (entry.deploymentId) {
+        if (retired.has(entry.deploymentId)) continue;
+        if ((await store.getActiveWorkflowFence("deployment", entry.deploymentId)) !== null) {
+          continue;
+        }
+      }
+      const disposition = dispositions[`${entry.tenantId}:${entry.runId}`];
+      if (disposition?.kind === "mapped") {
         mappedFamilies.push({
-          projectId: mapping.tenantId,
-          eveSessionId: mapping.eveSessionId,
+          projectId: disposition.projectId,
+          eveSessionId: disposition.eveSessionId,
         });
-      } else if (assertedNoFamily.has(key)) {
-        acceptedWithoutFamily.push({ tenantId: assessment.tenantId, runId: assessment.runId });
+      } else if (disposition?.kind === "asserted_no_family") {
+        acceptedWithoutFamily.push({ tenantId: entry.tenantId, runId: entry.runId });
       } else {
-        unmappedTerminatedRuns.push({
-          tenantId: assessment.tenantId,
-          runId: assessment.runId,
-        });
+        unmappedTerminatedRuns.push({ tenantId: entry.tenantId, runId: entry.runId });
       }
     }
+    // Converge every mapped family (idempotent), and persist the ledger even
+    // on a hold: partial mappings supplied so far must survive the retry.
     const familyConvergence = await store.convergeWorkflowRunFamilies(operationId, mappedFamilies);
+    await store.advanceWorkflowCutoverOperation(operationId, {
+      checkpoint: { key: "familyDispositions", value: dispositions },
+    });
     if (unmappedTerminatedRuns.length > 0) {
       // The World postcondition passes for these runs (they are quarantined),
       // so this is the ONLY gate that notices a missing tombstone. Blocking
@@ -652,6 +720,21 @@ async function readStagedCheckpoint(
   return Array.isArray(operation?.checkpoints.staged)
     ? (operation.checkpoints.staged as string[])
     : [];
+}
+
+type FamilyDisposition =
+  | { kind: "mapped"; projectId: string; eveSessionId: string }
+  | { kind: "asserted_no_family" };
+
+async function readFamilyDispositions(
+  store: Pick<Store, "getWorkflowCutoverOperation">,
+  operationId: string,
+): Promise<Record<string, FamilyDisposition>> {
+  const operation = await store.getWorkflowCutoverOperation(operationId);
+  const value = operation?.checkpoints.familyDispositions;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? { ...(value as Record<string, FamilyDisposition>) }
+    : {};
 }
 
 export type CutoverPostcondition = {

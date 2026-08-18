@@ -1218,13 +1218,21 @@ running SessionNode 收敛为 terminal、删除 binding、释放 lease、终止 
 shared-capable owner 上的单个坏 run 只得到 run fence + durable World quarantine，同
 Deployment 的健康 run 继续可用；被 managed-terminate 的 run 通过 operator 提供的
 run→Eve-session family 映射逐 family 收敛控制面（fail Session/SessionNode、删 binding、写
-session-family tombstone），或由 operator 显式断言其确无投影 family（`--no-family`，记入
-checkpoint）。两者皆无的 run 是 **hold** 而非报告项：World 后置条件因 quarantine 而通过，
+session-family tombstone），或由 operator 显式断言其确无投影 family（`--no-family`）。两者都是以 run 的 durable
+quarantine marker 为 key 的持久 disposition（`familyDispositions` checkpoint）：run 在首轮
+已被 cancel、不再出现在 active 评估中，重试时的收敛 worklist 从本轮评估 ∪ 本 operation 的
+未决 quarantine marker 播种（quarantine 先于 cancel 写入，crash 窗口因此闭合），映射与断言
+落在持久身份上且此后免重复提供。两者皆无的 run 是 **hold** 而非报告项：World 后置条件因 quarantine 而通过，
 所以 saga 必须停在 `workflow_safe`、finalize 拒绝 completion，直到每个 run 被 tombstone 或
 显式断言——否则迟到的 OTLP batch 恰好能复活被终止的那个 family。绝不猜测。
 cutover 的 prepare 遍历**全量**控制面 inventory 而非仅 active-run owner：每个 Deployment
 要么完成分类/退休/staging，要么（仍为 `unknown` 时）获得 deployment fence 并置于 `fenced`
-topology，杜绝转换途中被唤醒；archived 行同样参与分类与退休 fence——OTLP projector 接受任何
+topology，杜绝转换途中被唤醒；inventory 对每个保留 Deployment 应用**完整**兼容窗口判定
+（enqueue capability 且 dispatch protocol 非 null 且落在 dispatcher 窗口内）——无 active run
+的 idle owner 不经过 run 评估，窗口外仍 staging 会让它以 `external` 完成转换却被 activation
+路径逐一拒绝；被退休的 owner 在控制面收敛时同步写入 terminal topology
+（`conversionState = terminated`），否则 archive 门（仅允许 external|terminated）会让其
+artifact 永远无法归档；archived 行同样参与分类与退休 fence——OTLP projector 接受任何
 仍保留的 Deployment 行，archive 状态不是投影屏障——只是绝不 staging。legacy owner 的退休必须
 同时在其派生 `eveland_wf_*` 数据库内 cancel 全部活跃 run（状态按 text 比较以兼容
 world-postgres 0004 前后两代 enum）：缺 `WORKFLOW_POSTGRES_URL`、库不可达或 cancel 后仍有
