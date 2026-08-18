@@ -39,6 +39,7 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
@@ -225,13 +226,13 @@ export function IdentitySettings({
         });
         replaceProviders(updated);
         setNotice(
-          "OIDC Provider updated. A security-relevant change signs existing OIDC users out.",
+          `OIDC Provider updated with ${describeOidcResolution(updated)}. A security-relevant change signs existing OIDC users out.`,
         );
       } else {
         const created = await createOidcIdentityProvider({ ...input, enabled: false });
         replaceProviders(created);
         setNotice(
-          "OIDC Provider configured. Register the redirect URI at your IdP, add an allowed Realm, run the preflight, then select OIDC above.",
+          `OIDC Provider configured with ${describeOidcResolution(created)}. Register the redirect URI at your IdP, add an allowed Realm, run the preflight, then select OIDC above.`,
         );
       }
     });
@@ -676,6 +677,23 @@ const OIDC_RESOLUTIONS = [
   },
 ] as const;
 
+/**
+ * Echoes the stored resolution back from the server response rather than the
+ * submitted form, so a save that did not apply the mode the administrator
+ * expected is visible in the notice instead of surfacing later as failed
+ * logins.
+ */
+function describeOidcResolution(
+  provider: Pick<PublicIdentityProvider, "externalRealmResolution" | "externalRealmClaim">,
+) {
+  const label =
+    OIDC_RESOLUTIONS.find((candidate) => candidate.value === provider.externalRealmResolution)
+      ?.label ?? provider.externalRealmResolution;
+  return provider.externalRealmResolution === "connection"
+    ? `Realm resolution “${label}”`
+    : `Realm resolution “${label}” reading the “${provider.externalRealmClaim}” claim`;
+}
+
 function OidcProviderCard({
   provider,
   oidcRedirectUri,
@@ -707,11 +725,26 @@ function OidcProviderCard({
   const [authMethod, setAuthMethod] = useState<
     OidcIdentityProviderConfigInput["tokenEndpointAuthMethod"]
   >(provider?.tokenEndpointAuthMethod ?? "client_secret_basic");
+  const [claimError, setClaimError] = useState<string | null>(null);
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const clientSecret = String(data.get("clientSecret") ?? "");
+    const claim = String(data.get("externalRealmClaim") ?? "").trim();
+    if (resolution !== "connection") {
+      // "connection" typed here means the administrator meant the resolution
+      // mode of that name, not an IdP claim — saving it would make every
+      // login fail claim lookup.
+      const mode = OIDC_RESOLUTIONS.find((candidate) => candidate.value === claim);
+      if (mode) {
+        setClaimError(
+          `“${claim}” is the name of a resolution mode, not an IdP claim. To resolve Realms that way, choose “${mode.label}” in the Realm resolution dropdown instead.`,
+        );
+        return;
+      }
+    }
+    setClaimError(null);
     void onSave({
       displayName: String(data.get("displayName") ?? ""),
       issuer: String(data.get("issuer") ?? ""),
@@ -722,9 +755,7 @@ function OidcProviderCard({
         .filter(Boolean),
       tokenEndpointAuthMethod: authMethod,
       externalRealmResolution: resolution,
-      ...(resolution === "connection"
-        ? {}
-        : { externalRealmClaim: String(data.get("externalRealmClaim") ?? "") }),
+      ...(resolution === "connection" ? {} : { externalRealmClaim: claim }),
     });
   }
 
@@ -844,6 +875,7 @@ function OidcProviderCard({
                       setResolution(
                         value as OidcIdentityProviderConfigInput["externalRealmResolution"],
                       );
+                      setClaimError(null);
                     }
                   }}
                 >
@@ -864,7 +896,7 @@ function OidcProviderCard({
                 </FieldDescription>
               </Field>
               {resolution !== "connection" ? (
-                <Field>
+                <Field data-invalid={claimError !== null}>
                   <FieldLabel htmlFor={claimId}>Realm claim</FieldLabel>
                   <Input
                     id={claimId}
@@ -875,7 +907,10 @@ function OidcProviderCard({
                     autoComplete="off"
                     spellCheck={false}
                     disabled={pending !== null}
+                    aria-invalid={claimError !== null || undefined}
+                    onChange={() => setClaimError(null)}
                   />
+                  {claimError ? <FieldError>{claimError}</FieldError> : null}
                   <FieldDescription>
                     The claim whose value names the caller's external Realm.
                   </FieldDescription>

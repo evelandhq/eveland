@@ -171,6 +171,55 @@ describe("IdentitySettings OIDC configuration", () => {
     });
   });
 
+  test("changing Realm resolution to whole-connection reaches the update call", async () => {
+    api.updateOidcIdentityProvider.mockResolvedValue({
+      ...oidcProvider,
+      externalRealmResolution: "connection",
+      externalRealmClaim: null,
+    });
+    renderSettings([openProvider, oidcProvider]);
+
+    pickOption(screen.getByRole("combobox", { name: "Realm resolution" }), "Whole connection");
+    fireEvent.click(screen.getByRole("button", { name: /Save OIDC Provider/ }));
+
+    // A first-time setup ended with the dropdown's stored value silently
+    // unchanged (issue: every login then failed identity_oidc_claims_invalid),
+    // so the controlled Select state must provably flow into the PATCH.
+    await waitFor(() => expect(api.updateOidcIdentityProvider).toHaveBeenCalledOnce());
+    const input = api.updateOidcIdentityProvider.mock.calls[0]![0] as Record<string, unknown>;
+    expect(input).toMatchObject({ externalRealmResolution: "connection" });
+    expect(input).not.toHaveProperty("externalRealmClaim");
+    // The notice echoes the stored resolution so a save that did not apply
+    // what the administrator expected is visible immediately.
+    expect(screen.getByText(/Realm resolution “Whole connection”/)).toBeDefined();
+  });
+
+  test("rejects a resolution-mode name typed into the Realm claim field", async () => {
+    renderSettings([openProvider, oidcProvider]);
+
+    fireEvent.change(screen.getByLabelText("Realm claim"), {
+      target: { value: "connection" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Save OIDC Provider/ }));
+
+    // The incident input: the user typed the resolution mode's name into the
+    // claim field; the IdP never issues a claim by that name, so the save
+    // must stop client-side and point at the dropdown.
+    expect(
+      await screen.findByText(/choose “Whole connection” in the Realm resolution/),
+    ).toBeDefined();
+    expect(api.updateOidcIdentityProvider).not.toHaveBeenCalled();
+
+    // Correcting the claim clears the error and lets the save through.
+    api.updateOidcIdentityProvider.mockResolvedValue(oidcProvider);
+    fireEvent.change(screen.getByLabelText("Realm claim"), {
+      target: { value: "account_id" },
+    });
+    expect(screen.queryByText(/resolution mode, not an IdP claim/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Save OIDC Provider/ }));
+    await waitFor(() => expect(api.updateOidcIdentityProvider).toHaveBeenCalledOnce());
+  });
+
   test("keeps the stored client secret when the field is left empty on update", async () => {
     api.updateOidcIdentityProvider.mockResolvedValue(oidcProvider);
     renderSettings([openProvider, oidcProvider]);
@@ -240,6 +289,21 @@ describe("IdentitySettings OIDC configuration", () => {
     expect(api.setIdentityProviderEnabled).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Drives a Base UI Select in jsdom: click opens the popup, but committing an
+ * option needs the full pointer-then-click sequence — a bare click on the
+ * option is swallowed by Base UI's click-through guard and selects nothing.
+ */
+function pickOption(trigger: HTMLElement, name: string) {
+  fireEvent.click(trigger);
+  const option = screen.getByRole("option", { name });
+  fireEvent.pointerDown(option);
+  fireEvent.mouseDown(option);
+  fireEvent.pointerUp(option);
+  fireEvent.mouseUp(option);
+  fireEvent.click(option);
+}
 
 function renderSettings(providers: PublicIdentityProvider[]) {
   render(
