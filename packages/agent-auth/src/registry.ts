@@ -6,7 +6,7 @@ import {
 } from "@evelandhq/core/agent-auth";
 import type { AgentConnection } from "@evelandhq/core/contracts";
 
-// Eve 0.29.5's Client `vercelOidc` variant sends this Deployment Protection
+// Eve's Client `vercelOidc` variant sends this Deployment Protection
 // header alongside Authorization. It is declared in Eve's client/types module
 // but is not re-exported from the public `eve/client` entry point.
 const VERCEL_TRUSTED_OIDC_IDP_TOKEN_HEADER = "x-vercel-trusted-oidc-idp-token";
@@ -267,7 +267,7 @@ const builtinProviders: AgentAuthProviderRegistration[] = [
       method: "vercel-oidc",
       label: "Vercel OIDC",
       description:
-        "Send a Vercel-issued OIDC token using Eve 0.29.5's trusted deployment and Agent headers.",
+        "Send a Vercel-issued OIDC token using Eve's trusted deployment and Agent headers.",
       credentialScope: "connection",
       interactive: false,
       fields: [

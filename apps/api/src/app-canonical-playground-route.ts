@@ -3,12 +3,11 @@ import { encodeAgentAuthEnvelope } from "@evelandhq/core/agent-auth";
 import {
   classifyEveSessionRequest,
   getEveString,
-  isEveRecord,
   PLAYGROUND_MAX_TRANSPORT_BYTES,
   validatePlaygroundTurn,
 } from "@evelandhq/core/eve";
 import { unsupportedEveVersionMessage } from "@evelandhq/core/source";
-import type { ProjectStore, RoutingStore, SessionStore } from "@evelandhq/db";
+import type { ProjectStore, SessionStore } from "@evelandhq/db";
 import type { AgentAuthService } from "./agent-auth-service.js";
 import {
   agentAuthFailureStatus,
@@ -26,7 +25,6 @@ import type { PlaygroundProxy } from "./gateway-playground.js";
 
 export type CanonicalPlaygroundStore = EveVersionStore &
   Pick<ProjectStore, "getProject"> &
-  Pick<RoutingStore, "findSessionBindingByContinuationToken"> &
   Pick<SessionStore, "completeSession" | "createSession" | "getSessionByEveSessionId">;
 
 export function registerCanonicalPlaygroundRoute(input: {
@@ -93,22 +91,10 @@ export function registerCanonicalPlaygroundRoute(input: {
     }
 
     let body: Uint8Array | null = null;
-    let resetContinuationToken: string | null = null;
     if (isInitial || isContinuation || isSessionControl) {
       try {
         body = await readLimitedPlaygroundBody(c.req.raw, PLAYGROUND_MAX_TRANSPORT_BYTES);
-        if (isReset && !pathSessionId) {
-          // Eve 0.29/0.30 generation: reset addresses the session through a
-          // continuation token in the body. Eve 0.31 resets carry the session
-          // in the path and need no token.
-          const resetBody = parsePlaygroundBody(body);
-          resetContinuationToken = isEveRecord(resetBody)
-            ? getEveString(resetBody, "continuationToken")
-            : null;
-          if (!resetContinuationToken) {
-            throw new Error("Playground reset requires a continuationToken.");
-          }
-        } else if (isInitial || isContinuation) {
+        if (isInitial || isContinuation) {
           validatePlaygroundTurn(parsePlaygroundBody(body));
         }
       } catch (error) {
@@ -118,14 +104,9 @@ export function registerCanonicalPlaygroundRoute(input: {
       }
     }
 
-    const resetBinding = resetContinuationToken
-      ? await store.findSessionBindingByContinuationToken(projectId, resetContinuationToken)
-      : null;
     let platformSession = pathSessionId
       ? await store.getSessionByEveSessionId(projectId, pathSessionId)
-      : resetBinding
-        ? await store.getSessionByEveSessionId(projectId, resetBinding.eveSessionId)
-        : null;
+      : null;
     if (pathSessionId && !platformSession) {
       return c.json({ error: "Playground session not found" }, 404);
     }
@@ -159,34 +140,15 @@ export function registerCanonicalPlaygroundRoute(input: {
       }
     };
 
-    // A pre-0.31 Deployment had no ID-addressed reset route; the stored
-    // continuation token is both the proof of that generation and the value its
-    // tokenless reset needs. Every supported Eve line is now 0.31+, so this
-    // only fires for Sessions a since-upgraded Deployment created. Retire it
-    // with the `continuation_token` columns once those Sessions run out.
-    const legacyResetToken =
-      isReset && pathSessionId ? (platformSession?.continuationToken ?? null) : null;
-    const proxyPath = legacyResetToken
-      ? `/eve/v1/session/reset${requestUrl.search}`
-      : `${evePath}${requestUrl.search}`;
-    let proxyBody = body;
-    let proxyHeaders = c.req.raw.headers;
-    if (legacyResetToken) {
-      proxyBody = new TextEncoder().encode(JSON.stringify({ continuationToken: legacyResetToken }));
-      proxyHeaders = new Headers(c.req.raw.headers);
-      proxyHeaders.set("content-type", "application/json");
-      proxyHeaders.delete("content-length");
-    }
-
     let upstream: Response;
     try {
       const proxy = (envelope: string) =>
         playgroundProxy({
           projectId,
-          path: proxyPath,
+          path: `${evePath}${requestUrl.search}`,
           method: c.req.method,
-          headers: proxyHeaders,
-          body: proxyBody,
+          headers: c.req.raw.headers,
+          body,
           signal: c.req.raw.signal,
           agentAuthEnvelope: envelope,
         });
@@ -266,7 +228,6 @@ export function registerCanonicalPlaygroundRoute(input: {
       await store.completeSession(platformSession.id, {
         status: "running",
         eveSessionId,
-        continuationToken: getEveString(parsed, "continuationToken"),
       });
     }
     if (isReset && upstream.ok && platformSession) {
@@ -278,7 +239,6 @@ export function registerCanonicalPlaygroundRoute(input: {
         await store.completeSession(platformSession.id, {
           status: "completed",
           eveSessionId: platformSession.eveSessionId,
-          continuationToken: null,
         });
       }
     }

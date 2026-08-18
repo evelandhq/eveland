@@ -8,7 +8,7 @@ import {
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
-describe("Gateway durable Eve 0.37.1 routing", () => {
+describe("Gateway durable Eve routing", () => {
   test("HMACs operation ids without retaining their raw value", () => {
     const first = createOperationKey("customer-visible-operation", "secret-a");
     expect(first).toMatch(/^hmac-sha256-[a-f0-9]{64}$/);

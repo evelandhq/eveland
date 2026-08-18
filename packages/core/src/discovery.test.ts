@@ -7,7 +7,7 @@ import { projectDiscoveryManifest } from "./discovery.js";
 // this projection on manifests generated live by each pinned eve binary.
 const nestedManifest = {
   kind: "eve-agent-discovery-manifest",
-  version: 12,
+  version: 13,
   agentId: "eveland-observer-coverage-fixture",
   agentRoot: "/srv/app/agent",
   appRoot: "/srv/app",
@@ -168,13 +168,15 @@ describe("projectDiscoveryManifest", () => {
 
   test("returns null for anything that is not a discovery manifest", () => {
     expect(projectDiscoveryManifest(null)).toBeNull();
-    expect(projectDiscoveryManifest({ kind: "something-else", version: 12 })).toBeNull();
+    expect(projectDiscoveryManifest({ kind: "something-else", version: 13 })).toBeNull();
     expect(projectDiscoveryManifest({ kind: "eve-agent-discovery-manifest" })).toBeNull();
     expect(projectDiscoveryManifest([])).toBeNull();
   });
 
   test("fails closed on an unknown schema version instead of becoming authoritative emptiness", () => {
     expect(projectDiscoveryManifest({ ...nestedManifest, version: 99 })).toBeNull();
+    // v12 (eve <= 0.34) left the whitelist when the window floor moved to 0.38.
+    expect(projectDiscoveryManifest({ ...nestedManifest, version: 12 })).toBeNull();
   });
 
   test("fails closed on invalid Extension namespaces and unsupported schedule modules", () => {
@@ -200,7 +202,7 @@ describe("projectDiscoveryManifest", () => {
     expect(
       projectDiscoveryManifest({
         kind: "eve-agent-discovery-manifest",
-        version: 12,
+        version: 13,
         agentRoot: "/srv/app/agent",
         appRoot: "/srv/app",
       }),

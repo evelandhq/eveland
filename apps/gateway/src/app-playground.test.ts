@@ -13,7 +13,7 @@ import {
 registerGatewayTestCleanup();
 
 describe("Gateway", () => {
-  test("proxies Eve 0.37.1 parent-origin subagent streams through Playground", async () => {
+  test("proxies Eve parent-origin subagent streams through Playground", async () => {
     let upstreamPath: string | undefined;
     const upstream = await startUpstream((request, response) => {
       upstreamPath = request.url;
@@ -25,7 +25,6 @@ describe("Gateway", () => {
       id: "bind_playground_parent",
       projectId: "proj_1",
       eveSessionId: "eve_parent",
-      continuationToken: null,
       routeId: "route_project",
       deploymentId: "dep_1",
       trigger: "playground",
@@ -63,7 +62,6 @@ describe("Gateway", () => {
       id: "bind_expired_playground",
       projectId: "proj_1",
       eveSessionId: "eve_expired_playground",
-      continuationToken: "continue_expired_playground",
       routeId: "route_project",
       deploymentId: "dep_1",
       trigger: "playground",
@@ -113,79 +111,46 @@ describe("Gateway", () => {
     expect(activationClient.activate).not.toHaveBeenCalled();
   });
 
-  test.each([
-    {
-      operation: "continuation",
-      path: "/eve/v1/session/eve_persist_playground",
-      body: JSON.stringify({ message: "continue" }),
-      response: {
-        sessionId: "eve_persist_playground",
-        continuationToken: "continue_next_playground",
-      },
-      expectedToken: "continue_next_playground",
-    },
-    {
-      operation: "reset",
-      path: "/eve/v1/session/reset",
-      body: JSON.stringify({
-        continuationToken: "continue_current_playground",
-      }),
-      response: {
-        ok: true,
-        previousSessionId: "eve_persist_playground",
-        status: "reset",
-      },
-      expectedToken: null,
-    },
-  ])(
-    "cleans up an activated canonical Playground upstream when $operation binding persistence fails",
-    async ({ path, body, response: responseBody, expectedToken }) => {
-      const { repo, activationClient, persistenceError } =
-        await activatedSessionPersistenceFailureFixture({
-          trigger: "playground",
-          eveSessionId: "eve_persist_playground",
-          continuationToken: "continue_current_playground",
-          leaseId: "lease_persist_playground",
-          responseBody,
-        });
-      const cancel = vi.spyOn(ReadableStream.prototype, "cancel");
-      const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
-      const app = createGatewayApp(repo, {
-        allowedBaseDomains: ["agent.localhost"],
-        affinitySecret,
-        internalServiceToken: "service-secret",
-        activationClient,
-        now: () => new Date("2026-07-28T12:00:00.000Z"),
+  test("cleans up an activated canonical Playground upstream when initial session binding persistence fails", async () => {
+    const { repo, activationClient, persistenceError } =
+      await activatedSessionPersistenceFailureFixture({
+        trigger: "playground",
+        leaseId: "lease_persist_playground",
+        responseBody: { sessionId: "eve_persist_playground" },
       });
+    const cancel = vi.spyOn(ReadableStream.prototype, "cancel");
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+      activationClient,
+      now: () => new Date("2026-07-28T12:00:00.000Z"),
+    });
 
-      try {
-        const result = await app.request(
-          `http://gateway/internal/projects/proj_1/playground${path}`,
-          {
-            method: "POST",
-            headers: {
-              authorization: "Bearer service-secret",
-              "content-type": "application/json",
-            },
-            body,
+    try {
+      const result = await app.request(
+        "http://gateway/internal/projects/proj_1/playground/eve/v1/session",
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer service-secret",
+            "content-type": "application/json",
           },
-        );
+          body: JSON.stringify({ message: "hello" }),
+        },
+      );
 
-        expect(result.status).toBe(500);
-        expect(repo.setSessionBindingContinuationToken).toHaveBeenCalledWith(
-          "proj_1",
-          "eve_persist_playground",
-          expectedToken,
-        );
-        expect(cancel).toHaveBeenCalledWith(persistenceError);
-        expect(activationClient.release).toHaveBeenCalledTimes(1);
-        expect(activationClient.release).toHaveBeenCalledWith("lease_persist_playground");
-      } finally {
-        cancel.mockRestore();
-        errorLog.mockRestore();
-      }
-    },
-  );
+      expect(result.status).toBe(500);
+      expect(repo.bindSession).toHaveBeenCalledTimes(1);
+      expect(cancel).toHaveBeenCalledWith(persistenceError);
+      expect(activationClient.release).toHaveBeenCalledTimes(1);
+      expect(activationClient.release).toHaveBeenCalledWith("lease_persist_playground");
+    } finally {
+      cancel.mockRestore();
+      errorLog.mockRestore();
+    }
+  });
 
   test("proxies the canonical Eve Playground protocol with streaming, attachments, and pinned continuations", async () => {
     const requests: Array<{
@@ -209,12 +174,7 @@ describe("Gateway", () => {
             "content-type": "application/json",
             "x-eve-session-id": "eve_stream",
           });
-          response.end(
-            JSON.stringify({
-              sessionId: "eve_stream",
-              continuationToken: "continue_1",
-            }),
-          );
+          response.end(JSON.stringify({ sessionId: "eve_stream" }));
           return;
         }
         if (request.method === "POST" && request.url === "/eve/v1/session/eve_stream") {
@@ -222,12 +182,7 @@ describe("Gateway", () => {
             "content-type": "application/json",
             "x-eve-session-id": "eve_stream",
           });
-          response.end(
-            JSON.stringify({
-              sessionId: "eve_stream",
-              continuationToken: "continue_2",
-            }),
-          );
+          response.end(JSON.stringify({ sessionId: "eve_stream" }));
           return;
         }
         if (request.method === "POST" && request.url === "/eve/v1/session/eve_stream/cancel") {
@@ -235,7 +190,7 @@ describe("Gateway", () => {
           response.end(JSON.stringify({ sessionId: "eve_stream", status: "accepted" }));
           return;
         }
-        if (request.method === "POST" && request.url === "/eve/v1/session/reset") {
+        if (request.method === "POST" && request.url === "/eve/v1/session/eve_stream/reset") {
           response.writeHead(200, { "content-type": "application/json" });
           response.end(
             JSON.stringify({
@@ -322,7 +277,6 @@ describe("Gateway", () => {
       },
     );
     const continuationBody = JSON.stringify({
-      continuationToken: "continue_1",
       inputResponses: [{ requestId: "request_1", optionId: "approve" }],
     });
     const continuation = await app.request(
@@ -348,9 +302,9 @@ describe("Gateway", () => {
         body: cancelBody,
       },
     );
-    const resetBody = JSON.stringify({ continuationToken: "continue_2" });
+    const resetBody = "";
     const reset = await app.request(
-      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/reset",
+      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_stream/reset",
       {
         method: "POST",
         headers: {
@@ -377,11 +331,10 @@ describe("Gateway", () => {
     expect(initial.status).toBe(202);
     await expect(initial.json()).resolves.toMatchObject({
       sessionId: "eve_stream",
-      continuationToken: "continue_1",
     });
     expect(continuation.status).toBe(202);
     await expect(continuation.json()).resolves.toMatchObject({
-      continuationToken: "continue_2",
+      sessionId: "eve_stream",
     });
     expect(cancel.status).toBe(202);
     await expect(cancel.json()).resolves.toEqual({
@@ -420,7 +373,7 @@ describe("Gateway", () => {
         },
         {
           method: "POST",
-          path: "/eve/v1/session/reset",
+          path: "/eve/v1/session/eve_stream/reset",
           host: `localhost:${upstream.port}`,
           body: resetBody,
         },
@@ -435,7 +388,6 @@ describe("Gateway", () => {
     expect(repo.bindings).toContainEqual(
       expect.objectContaining({
         eveSessionId: "eve_stream",
-        continuationToken: null,
         trigger: "playground",
       }),
     );

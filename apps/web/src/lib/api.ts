@@ -20,12 +20,12 @@ import type {
   PublicJob as CorePublicJob,
   PublicReleaseRecord as CorePublicRelease,
   PublicSecret as CorePublicSecret,
-  PublicSession as CorePublicSession,
   PublicSourceRevision as CorePublicSourceRevision,
   ResolvedAgentRoute as CoreResolvedAgentRoute,
   ScheduleRecord,
   ScheduleRunListItem,
   ScheduleVersion as CoreScheduleVersion,
+  Session as CoreSession,
   SessionEvent as CoreSessionEvent,
   SessionNode as CoreSessionNode,
   SessionTokenUsage as CoreSessionTokenUsage,
@@ -39,7 +39,7 @@ export type Schedule = ScheduleRecord;
 export type ProjectSchedule = CoreProjectSchedule;
 export type ScheduleVersion = CoreScheduleVersion;
 export type ProjectScheduleSummary = CoreProjectScheduleSummary;
-export type Session = CorePublicSession;
+export type Session = CoreSession;
 export type ScheduleRun = Omit<ScheduleRunListItem, "sessions"> & {
   sessions: Session[];
 };

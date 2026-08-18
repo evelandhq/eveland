@@ -792,41 +792,14 @@ export function createPostgresDeploymentRoutingStore({
       return binding ? operationBindingRowToOperationBinding(binding) : null;
     },
 
-    async findSessionBindingByContinuationToken(projectId, continuationToken) {
-      const [binding] = await db
-        .select()
-        .from(sessionBindings)
-        .where(
-          and(
-            eq(sessionBindings.projectId, projectId),
-            eq(sessionBindings.continuationToken, continuationToken),
-          ),
-        )
-        .limit(1);
-      return binding ? sessionBindingRowToSessionBinding(binding) : null;
-    },
-
     async bindSession(input) {
       return db.transaction(async (tx) => {
-        const continuationToken = input.continuationToken ?? null;
-        if (continuationToken !== null) {
-          await tx
-            .update(sessionBindings)
-            .set({ continuationToken: null, updatedAt: new Date() })
-            .where(
-              and(
-                eq(sessionBindings.projectId, input.projectId),
-                eq(sessionBindings.continuationToken, continuationToken),
-                ne(sessionBindings.eveSessionId, input.eveSessionId),
-              ),
-            );
-        }
         const [binding] = await tx
           .insert(sessionBindings)
-          .values({ id: createId("bind"), ...input, continuationToken })
+          .values({ id: createId("bind"), ...input })
           .onConflictDoUpdate({
             target: [sessionBindings.projectId, sessionBindings.eveSessionId],
-            set: { ...input, continuationToken, updatedAt: new Date() },
+            set: { ...input, updatedAt: new Date() },
           })
           .returning();
         if (!binding) throw new Error("Failed to persist the Gateway SessionBinding.");
@@ -838,7 +811,6 @@ export function createPostgresDeploymentRoutingStore({
             experimentId: input.experimentId,
             variantName: input.variantName,
             deploymentId: input.deploymentId,
-            continuationToken,
           })
           .where(
             and(
@@ -846,44 +818,6 @@ export function createPostgresDeploymentRoutingStore({
               eq(sessions.eveSessionId, input.eveSessionId),
             ),
           );
-        return sessionBindingRowToSessionBinding(binding);
-      });
-    },
-
-    async setSessionBindingContinuationToken(
-      projectId,
-      eveSessionId,
-      continuationToken,
-      now = new Date(),
-    ) {
-      return db.transaction(async (tx) => {
-        if (continuationToken !== null) {
-          await tx
-            .update(sessionBindings)
-            .set({ continuationToken: null, updatedAt: now })
-            .where(
-              and(
-                eq(sessionBindings.projectId, projectId),
-                eq(sessionBindings.continuationToken, continuationToken),
-                ne(sessionBindings.eveSessionId, eveSessionId),
-              ),
-            );
-        }
-        const [binding] = await tx
-          .update(sessionBindings)
-          .set({ continuationToken, updatedAt: now })
-          .where(
-            and(
-              eq(sessionBindings.projectId, projectId),
-              eq(sessionBindings.eveSessionId, eveSessionId),
-            ),
-          )
-          .returning();
-        if (!binding) return null;
-        await tx
-          .update(sessions)
-          .set({ continuationToken })
-          .where(and(eq(sessions.projectId, projectId), eq(sessions.eveSessionId, eveSessionId)));
         return sessionBindingRowToSessionBinding(binding);
       });
     },

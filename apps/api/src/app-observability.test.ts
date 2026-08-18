@@ -53,7 +53,6 @@ describe("api app", () => {
     const completed = await store.completeSession(session.id, {
       status: "waiting",
       eveSessionId: "eve_usage",
-      continuationToken: null,
     });
 
     expect(completed?.usage).toMatchObject({

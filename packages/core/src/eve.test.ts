@@ -93,7 +93,12 @@ describe("Eve session request classification", () => {
     if (typeof classify !== "function") return;
 
     expect(classify("POST", "/eve/v1/session")).toEqual({ kind: "initial", sessionId: null });
-    expect(classify("POST", "/eve/v1/session/reset")).toEqual({ kind: "reset", sessionId: null });
+    // The pre-0.31 tokenless reset route is gone; the path segment now reads
+    // as an ordinary (if odd) session id, exactly like any other segment.
+    expect(classify("POST", "/eve/v1/session/reset")).toEqual({
+      kind: "continuation",
+      sessionId: "reset",
+    });
     expect(classify("POST", "/eve/v1/session/eve%2Fencoded")).toEqual({
       kind: "continuation",
       sessionId: "eve/encoded",
@@ -168,7 +173,7 @@ describe("Eve session request classification", () => {
     expect(Eve.isWorkflowQueueNamespace("/api/.well-known/workflow/v1/flow")).toBe(false);
   });
 
-  test("classifies only the canonical Eve 0.37.1 task-input callback", () => {
+  test("classifies only the canonical Eve task-input callback", () => {
     const classify = (Eve as Record<string, unknown>).classifyEveTaskInputRequest;
     expect(classify).toBeTypeOf("function");
     if (typeof classify !== "function") return;

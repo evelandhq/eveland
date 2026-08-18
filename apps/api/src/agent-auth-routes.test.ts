@@ -143,7 +143,7 @@ describe("Agent Auth control-plane routes", () => {
         seen.push(input.agentAuthEnvelope ?? "");
         if (input.path.endsWith("/stream")) return new Response(null, { status: 200 });
         return Response.json(
-          { sessionId: "eve_protected", continuationToken: "continue_protected" },
+          { sessionId: "eve_protected" },
           { status: 202, headers: { "x-eve-session-id": "eve_protected" } },
         );
       },
@@ -233,7 +233,7 @@ describe("Agent Auth control-plane routes", () => {
       playgroundProxy: async (input) => {
         seen.push(input.agentAuthEnvelope ?? "");
         return Response.json(
-          { sessionId: "eve_oidc", continuationToken: "continue_oidc" },
+          { sessionId: "eve_oidc" },
           { status: 202, headers: { "x-eve-session-id": "eve_oidc" } },
         );
       },
@@ -323,7 +323,7 @@ describe("Agent Auth control-plane routes", () => {
           return Response.json({ error: "expired" }, { status: 401 });
         }
         return Response.json(
-          { sessionId: "eve_refreshed", continuationToken: "continue_refreshed" },
+          { sessionId: "eve_refreshed" },
           { status: 202, headers: { "x-eve-session-id": "eve_refreshed" } },
         );
       },
@@ -381,7 +381,7 @@ describe("Agent Auth control-plane routes", () => {
         if (credential === "Bearer generation-1")
           return Response.json({ error: "expired" }, { status: 401 });
         return Response.json(
-          { sessionId: "eve_opaque", continuationToken: "continue_opaque" },
+          { sessionId: "eve_opaque" },
           { status: 202, headers: { "x-eve-session-id": "eve_opaque" } },
         );
       },
@@ -486,7 +486,6 @@ describe("Agent Auth control-plane routes", () => {
         return Response.json(
           {
             sessionId: `eve_reference_${seen.length}`,
-            continuationToken: `continue_reference_${seen.length}`,
           },
           { status: 202, headers: { "x-eve-session-id": `eve_reference_${seen.length}` } },
         );

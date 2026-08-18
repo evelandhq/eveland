@@ -1,22 +1,16 @@
 import type {
   DeploymentRecord,
   ReleaseRecord,
-  Session,
   SourceRevision,
   TeamInvitation,
 } from "@evelandhq/core/contracts";
 import { invitationHandle } from "./auth.js";
 
-// Control-plane responses cross the browser boundary. Strip runtime
-// capability material (session continuation tokens) and host infrastructure
-// detail (host source paths, container names, container-internal ports,
-// registry image refs) before serialization; Gateway and Worker keep
-// consuming the full records. app-response-redaction.test.ts is the ratchet.
-
-export function publicSession<T extends Session>(session: T): Omit<T, "continuationToken"> {
-  const { continuationToken: _continuationToken, ...rest } = session;
-  return rest;
-}
+// Control-plane responses cross the browser boundary. Strip host
+// infrastructure detail (host source paths, container names,
+// container-internal ports, registry image refs) before serialization;
+// Gateway and Worker keep consuming the full records.
+// app-response-redaction.test.ts is the ratchet.
 
 // The Better Auth invitation row id IS the single-use acceptance token, so
 // serialized invitations swap it for a derived management handle. The raw

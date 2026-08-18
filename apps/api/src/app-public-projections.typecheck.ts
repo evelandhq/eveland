@@ -2,17 +2,14 @@ import type {
   DeploymentRecord,
   PublicDeploymentRecord,
   PublicReleaseRecord,
-  PublicSession,
   PublicSourceRevision,
   ReleaseRecord,
-  Session,
   SourceRevision,
 } from "@evelandhq/core/contracts";
 
 import type {
   publicDeployment,
   publicRelease,
-  publicSession,
   publicSourceRevision,
 } from "./app-public-projections.js";
 
@@ -28,7 +25,6 @@ type Equal<Left, Right> =
 type Assert<Condition extends true> = Condition;
 
 export type PublicProjectionPins = [
-  Assert<Equal<ReturnType<typeof publicSession<Session>>, PublicSession>>,
   Assert<Equal<ReturnType<typeof publicSourceRevision<SourceRevision>>, PublicSourceRevision>>,
   Assert<Equal<ReturnType<typeof publicDeployment<DeploymentRecord>>, PublicDeploymentRecord>>,
   Assert<Equal<ReturnType<typeof publicRelease<ReleaseRecord>>, PublicReleaseRecord>>,

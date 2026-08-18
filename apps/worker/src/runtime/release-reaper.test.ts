@@ -166,7 +166,6 @@ describe("sweepReleaseRetention", () => {
     await store.bindSession({
       projectId: project.id,
       eveSessionId: "eve_expired_playground_sweep",
-      continuationToken: "continue_expired_playground_sweep",
       routeId: projectRoute!.id,
       deploymentId: deployments[0]!.id,
       trigger: "playground",

@@ -102,8 +102,8 @@ export function repository(routes: ResolvedAgentRoute[]): GatewayRepository & {
       return deployments.has(deploymentId)
         ? {
             version: "0.38.3",
-            expected: "0.37.x or 0.38.x",
-            supportedRanges: ["0.37.x", "0.38.x"],
+            expected: "0.38.x or 0.39.x",
+            supportedRanges: ["0.38.x", "0.39.x"],
             supported: true,
             sourceRevisionId: `src-${deploymentId}`,
           }
@@ -116,14 +116,6 @@ export function repository(routes: ResolvedAgentRoute[]): GatewayRepository & {
         ) as never) ?? null
       );
     },
-    async findSessionBindingByContinuationToken(projectId, continuationToken) {
-      return (
-        (bindings.find(
-          (binding) =>
-            binding.projectId === projectId && binding.continuationToken === continuationToken,
-        ) as never) ?? null
-      );
-    },
     async bindSession(input) {
       const now = new Date().toISOString();
       bindings.push({
@@ -132,20 +124,6 @@ export function repository(routes: ResolvedAgentRoute[]): GatewayRepository & {
         updatedAt: now,
         ...input,
       });
-    },
-    async setSessionBindingContinuationToken(
-      projectId,
-      eveSessionId,
-      continuationToken,
-      now = new Date(),
-    ) {
-      const binding = bindings.find(
-        (candidate) => candidate.projectId === projectId && candidate.eveSessionId === eveSessionId,
-      );
-      if (!binding) return null;
-      binding.continuationToken = continuationToken;
-      binding.updatedAt = now.toISOString();
-      return binding as never;
     },
     async touchSessionBinding(projectId, eveSessionId, now = new Date()) {
       const binding = bindings.find(
@@ -202,8 +180,6 @@ export async function startUpstream(
 
 export async function activatedSessionPersistenceFailureFixture(input: {
   trigger: "api" | "playground";
-  eveSessionId: string;
-  continuationToken: string;
   leaseId: string;
   responseBody: unknown;
 }) {
@@ -212,25 +188,8 @@ export async function activatedSessionPersistenceFailureFixture(input: {
     response.end(JSON.stringify(input.responseBody));
   });
   const repo = repository([route({ hostPort: upstream.port, deploymentStatus: "stopped" })]);
-  repo.bindings.push({
-    id: `bind_persist_${input.trigger}`,
-    projectId: "proj_1",
-    eveSessionId: input.eveSessionId,
-    continuationToken: input.continuationToken,
-    routeId: "route_project",
-    deploymentId: "dep_1",
-    trigger: input.trigger,
-    variantName: null,
-    experimentId: null,
-    requestId: `request_persist_${input.trigger}`,
-    remoteIp: null,
-    affinityFingerprint: null,
-    affinitySource: null,
-    createdAt: "2026-07-28T10:00:00.000Z",
-    updatedAt: "2026-07-28T10:00:00.000Z",
-  });
-  const persistenceError = new Error("session token persistence failed");
-  repo.setSessionBindingContinuationToken = vi.fn(async () => {
+  const persistenceError = new Error("session binding persistence failed");
+  repo.bindSession = vi.fn(async () => {
     throw persistenceError;
   });
   const activationClient = {

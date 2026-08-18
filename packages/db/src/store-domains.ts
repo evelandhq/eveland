@@ -608,21 +608,9 @@ export interface RoutingStore {
     operationKey: string,
     now?: Date,
   ): Promise<OperationBinding | null>;
-  findSessionBindingByContinuationToken(
-    projectId: string,
-    continuationToken: string,
-  ): Promise<SessionBinding | null>;
   bindSession(
-    input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt" | "continuationToken"> & {
-      continuationToken?: string | null;
-    },
+    input: Omit<SessionBinding, "id" | "createdAt" | "updatedAt">,
   ): Promise<SessionBinding>;
-  setSessionBindingContinuationToken(
-    projectId: string,
-    eveSessionId: string,
-    continuationToken: string | null,
-    now?: Date,
-  ): Promise<SessionBinding | null>;
   touchSessionBinding(
     projectId: string,
     eveSessionId: string,
@@ -637,7 +625,6 @@ export interface SessionStore {
     trigger: SessionTrigger;
     scheduleId?: string | null;
     eveSessionId?: string | null;
-    continuationToken?: string | null;
   }): Promise<Session>;
   getSessionByEveSessionId(projectId: string, eveSessionId: string): Promise<Session | null>;
   appendSessionEvent(sessionId: string, type: string, payload: unknown): Promise<SessionEvent>;
@@ -654,7 +641,6 @@ export interface SessionStore {
     input: {
       status: SessionStatus;
       eveSessionId?: string | null;
-      continuationToken?: string | null;
     },
   ): Promise<Session | null>;
   listSessions(projectId: string): Promise<Session[]>;

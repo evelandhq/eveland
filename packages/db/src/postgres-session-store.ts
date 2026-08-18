@@ -46,7 +46,6 @@ export function createPostgresSessionStore({
             projectId: input.projectId,
             deploymentId: input.deploymentId ?? null,
             eveSessionId: input.eveSessionId ?? null,
-            continuationToken: input.continuationToken ?? null,
             trigger: input.trigger,
             scheduleId: input.scheduleId ?? null,
             status: "running",
@@ -213,7 +212,6 @@ export function createPostgresSessionStore({
           .set({
             status: input.status,
             eveSessionId: input.eveSessionId,
-            continuationToken: input.continuationToken,
             ...(binding
               ? {
                   trigger: binding.trigger,

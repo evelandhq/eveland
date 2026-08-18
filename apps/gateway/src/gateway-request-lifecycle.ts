@@ -41,42 +41,18 @@ export function clientClosedResponse(): Response {
 export async function unsupportedDeploymentResponse(
   repository: GatewayRepository,
   deploymentId: string,
-  minimumVersion?: string | null,
 ): Promise<Response | null> {
   const eveVersion =
     (await repository.getDeploymentEveVersion(deploymentId)) ?? createEveVersionInfo(null, null);
-  if (
-    eveVersion.supported &&
-    (!minimumVersion || isVersionAtLeast(eveVersion.version, minimumVersion))
-  ) {
-    return null;
-  }
+  if (eveVersion.supported) return null;
   return Response.json(
     {
       error: "Unsupported Eve version",
-      detail:
-        eveVersion.supported && minimumVersion
-          ? `This Eve route requires version ${minimumVersion} or later; the selected Deployment runs ${eveVersion.version ?? "an unknown version"}.`
-          : unsupportedEveVersionMessage(eveVersion.version),
+      detail: unsupportedEveVersionMessage(eveVersion.version),
       eveVersion,
     },
     { status: 409 },
   );
-}
-
-function isVersionAtLeast(version: string | null, minimum: string): boolean {
-  const actual = parseExactVersion(version);
-  const required = parseExactVersion(minimum);
-  if (!actual || !required) return false;
-  for (let index = 0; index < required.length; index += 1) {
-    if (actual[index]! !== required[index]!) return actual[index]! > required[index]!;
-  }
-  return true;
-}
-
-function parseExactVersion(version: string | null): [number, number, number] | null {
-  const match = version?.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
 export function activationKind(
@@ -93,9 +69,9 @@ export function isAbortError(error: unknown): boolean {
 
 /**
  * Enforce the declared-length limit and buffer the body the session-routing
- * layer must inspect (initial/reset continuation-token lookup, create-once
- * operation IDs, and Eve MCP tools). Non-JSON request kinds stay unread here
- * (`body: undefined`) and stream into the proxy step's own limited read.
+ * layer must inspect (create-once operation IDs on initial requests, and Eve
+ * MCP tools). Non-JSON request kinds stay unread here (`body: undefined`) and
+ * stream into the proxy step's own limited read.
  */
 export async function readRoutingBody(input: {
   request: Request;
@@ -109,13 +85,11 @@ export async function readRoutingBody(input: {
       response: Response.json({ error: "Request body too large" }, { status: 413 }),
     };
   }
-  const sniffsContinuationToken =
-    input.eveRequest?.kind === "initial" ||
-    (input.eveRequest?.kind === "reset" && input.eveRequest.sessionId === null);
+  const sniffsInitialBody = input.eveRequest?.kind === "initial";
   const sniffsJsonProtocol = input.request.headers
     .get("content-type")
     ?.includes("application/json");
-  if (!sniffsContinuationToken && !sniffsJsonProtocol) {
+  if (!sniffsInitialBody && !sniffsJsonProtocol) {
     return { ok: true, body: undefined };
   }
   try {
@@ -161,7 +135,6 @@ export async function executeGatewaySessionProxy(input: {
   binding: SessionBinding | null;
   operationBinding?: OperationBinding | null;
   operationKey?: string | null;
-  minimumEveVersion?: string | null;
   targetKey: string;
   activationOwnerId: string;
   provenance: GatewaySessionProvenance;
@@ -176,33 +149,20 @@ export async function executeGatewaySessionProxy(input: {
 
   let effectiveOperationBinding = input.operationBinding ?? null;
   const routingBinding = binding ?? effectiveOperationBinding;
-  const selectionRoute =
-    input.minimumEveVersion && !routingBinding
-      ? await compatibleRoute(repository, route, input.minimumEveVersion)
-      : route;
-  if (!selectionRoute) {
-    return Response.json(
-      {
-        error: "Unsupported Eve version",
-        detail: `This Eve route requires version ${input.minimumEveVersion} or later, but no compatible Deployment is available.`,
-      },
-      { status: 409 },
-    );
-  }
   let target = await resolveTarget(
     repository,
-    selectionRoute,
+    route,
     routingBinding,
     input.targetKey,
     Boolean(activationClient),
   );
   if (!target) return Response.json({ error: "No running deployment target" }, { status: 503 });
-  if (eveRequest) {
-    const versionFailure = await unsupportedDeploymentResponse(
-      repository,
-      target.deploymentId,
-      input.minimumEveVersion,
-    );
+  // Every public request is version-gated, not only classified Eve session
+  // operations: custom channel routes and webhooks must fail closed with the
+  // same 409 upgrade diagnostic instead of reaching (or waking) an
+  // out-of-window Deployment.
+  {
+    const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
     if (versionFailure) return versionFailure;
   }
 
@@ -228,14 +188,8 @@ export async function executeGatewaySessionProxy(input: {
       if (!claimedTarget)
         return Response.json({ error: "No running deployment target" }, { status: 503 });
       target = claimedTarget;
-      if (eveRequest) {
-        const versionFailure = await unsupportedDeploymentResponse(
-          repository,
-          target.deploymentId,
-          input.minimumEveVersion,
-        );
-        if (versionFailure) return versionFailure;
-      }
+      const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
+      if (versionFailure) return versionFailure;
     }
   }
 
@@ -289,7 +243,6 @@ export async function executeGatewaySessionProxy(input: {
       repository,
       projectId: route.projectId,
       request: eveRequest,
-      binding,
       upstream,
       target: {
         routeId: effectiveOperationBinding?.routeId ?? route.id,
@@ -331,27 +284,6 @@ export async function executeGatewaySessionProxy(input: {
         input.activationRenewIntervalMs,
       )
     : response;
-}
-
-async function compatibleRoute(
-  repository: GatewayRepository,
-  route: ResolvedAgentRoute,
-  minimumVersion: string,
-): Promise<ResolvedAgentRoute | null> {
-  const compatible = (
-    await Promise.all(
-      route.targets.map(async (target) => {
-        const info = await repository.getDeploymentEveVersion(target.deploymentId);
-        return info?.supported && isVersionAtLeast(info.version, minimumVersion) ? target : null;
-      }),
-    )
-  ).filter((target): target is ResolvedAgentRoute["targets"][number] => target !== null);
-  if (compatible.length === 0) return null;
-  if (compatible.length === route.targets.length) return route;
-  return {
-    ...route,
-    targets: compatible.map((target) => ({ ...target, weight: 10_000 })),
-  };
 }
 
 export async function cancelUpstreamAndReleaseActivation(

@@ -56,8 +56,8 @@ describe("api app", () => {
           id: project.id,
           eveVersion: {
             version: "0.38.3",
-            expected: "0.37.x or 0.38.x",
-            supportedRanges: ["0.37.x", "0.38.x"],
+            expected: "0.38.x or 0.39.x",
+            supportedRanges: ["0.38.x", "0.39.x"],
             supported: true,
             sourceRevisionId: revision.id,
           },
@@ -719,7 +719,6 @@ describe("api app", () => {
     await store.bindSession({
       projectId: project.id,
       eveSessionId: "eve_expired_retention",
-      continuationToken: "continue_expired_retention",
       routeId: stableRoute!.id,
       deploymentId: deployments[0]!.id,
       trigger: "playground",

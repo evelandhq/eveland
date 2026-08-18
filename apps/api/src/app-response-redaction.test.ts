@@ -6,14 +6,7 @@ import { createScheduleRunFixture } from "./app.test-support.js";
 // Runtime-internal capability and infrastructure fields must never reach the
 // browser. Key-name assertions are the durable ratchet; value assertions
 // catch a leak that survives a field rename.
-const FORBIDDEN_KEYS = [
-  '"continuationToken"',
-  '"containerName"',
-  '"internalPort"',
-  '"imageTag"',
-  '"observerContract"',
-];
-const CONTINUATION_TOKEN = "forbidden-continuation-token-value";
+const FORBIDDEN_KEYS = ['"containerName"', '"internalPort"', '"imageTag"', '"observerContract"'];
 const HOST_SOURCE_PATH = "/tmp/scheduled-agent";
 
 async function serializedBody(response: Response): Promise<string> {
@@ -30,7 +23,6 @@ describe("control-plane responses redact internal fields", () => {
       deploymentId: deployment.id,
       trigger: "playground",
       eveSessionId: "eve-session-redaction",
-      continuationToken: CONTINUATION_TOKEN,
     });
     const app = createApp(store);
 
@@ -54,9 +46,6 @@ describe("control-plane responses redact internal fields", () => {
       for (const key of FORBIDDEN_KEYS) {
         expect.soft(body, `${route} must not serialize ${key}`).not.toContain(key);
       }
-      expect
-        .soft(body, `${route} must not leak the continuation token`)
-        .not.toContain(CONTINUATION_TOKEN);
       expect
         .soft(body, `${route} must not leak the host source path`)
         .not.toContain(HOST_SOURCE_PATH);

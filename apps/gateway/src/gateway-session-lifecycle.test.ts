@@ -11,7 +11,6 @@ const activeBinding: SessionBinding = {
   id: "bind_1",
   projectId: "proj_1",
   eveSessionId: "eve_1",
-  continuationToken: "continue_1",
   routeId: "route_1",
   deploymentId: "dep_1",
   trigger: "api",
@@ -28,21 +27,16 @@ const activeBinding: SessionBinding = {
 function repositoryFixture(
   input: {
     bySession?: SessionBinding | null;
-    byToken?: SessionBinding | null;
     touched?: SessionBinding | null;
   } = {},
 ) {
-  const located = input.bySession ?? input.byToken ?? null;
+  const located = input.bySession ?? null;
   return {
     findSessionBinding: vi.fn(async () => input.bySession ?? null),
-    findSessionBindingByContinuationToken: vi.fn(async () => input.byToken ?? null),
     touchSessionBinding: vi.fn(async () => (input.touched === undefined ? located : input.touched)),
     bindSession: vi.fn(async () => undefined),
-    setSessionBindingContinuationToken: vi.fn(async () => activeBinding),
   } satisfies GatewaySessionBindingRepository;
 }
-
-const bufferedJson = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
 describe("Gateway SessionBinding lifecycle", () => {
   test("resolves and refreshes a path SessionBinding", async () => {
@@ -57,7 +51,6 @@ describe("Gateway SessionBinding lifecycle", () => {
       repository,
       projectId: "proj_1",
       request: { kind: "continuation", sessionId: "eve_1" },
-      bufferedBody: undefined,
       now: clock,
       idlePolicy: { apiIdleTtlMs: 86_400_000 },
     });
@@ -69,32 +62,8 @@ describe("Gateway SessionBinding lifecycle", () => {
       binding: activeBinding,
     });
     expect(repository.findSessionBinding).toHaveBeenCalledWith("proj_1", "eve_1");
-    expect(repository.findSessionBindingByContinuationToken).not.toHaveBeenCalled();
     expect(repository.touchSessionBinding).toHaveBeenCalledWith("proj_1", "eve_1", now);
     expect(clock).toHaveBeenCalledOnce();
-  });
-
-  test("resolves an initial or reset request by its buffered continuation token", async () => {
-    const repository = repositoryFixture({ byToken: activeBinding });
-
-    const resolution = await resolveGatewaySessionBinding({
-      repository,
-      projectId: "proj_1",
-      request: { kind: "reset", sessionId: null },
-      bufferedBody: bufferedJson({ continuationToken: "continue_1" }),
-      now: () => new Date("2026-07-28T12:00:00.000Z"),
-      idlePolicy: { apiIdleTtlMs: 86_400_000 },
-    });
-
-    expect(resolution).toMatchObject({
-      state: "active",
-      lookup: "continuation_token",
-      binding: activeBinding,
-    });
-    expect(repository.findSessionBindingByContinuationToken).toHaveBeenCalledWith(
-      "proj_1",
-      "continue_1",
-    );
   });
 
   test("does not read the idle clock when no binding lookup is needed", async () => {
@@ -105,7 +74,6 @@ describe("Gateway SessionBinding lifecycle", () => {
       repository,
       projectId: "proj_1",
       request: null,
-      bufferedBody: undefined,
       now: clock,
       idlePolicy: {},
     });
@@ -117,6 +85,26 @@ describe("Gateway SessionBinding lifecycle", () => {
       binding: null,
     });
     expect(clock).not.toHaveBeenCalled();
+  });
+
+  test("leaves an initial request unbound without a token-based lookup", async () => {
+    const repository = repositoryFixture({ bySession: activeBinding });
+
+    const resolution = await resolveGatewaySessionBinding({
+      repository,
+      projectId: "proj_1",
+      request: { kind: "initial", sessionId: null },
+      now: () => new Date("2026-07-28T12:00:00.000Z"),
+      idlePolicy: { apiIdleTtlMs: 86_400_000 },
+    });
+
+    expect(resolution).toEqual({
+      state: "unbound",
+      lookup: "none",
+      request: { kind: "initial", sessionId: null },
+      binding: null,
+    });
+    expect(repository.findSessionBinding).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -137,7 +125,6 @@ describe("Gateway SessionBinding lifecycle", () => {
       repository,
       projectId: "proj_1",
       request: { kind: "continuation", sessionId: "eve_1" },
-      bufferedBody: undefined,
       now: () => new Date("2026-07-28T12:00:00.000Z"),
       idlePolicy: { apiIdleTtlMs: 3_600_000 },
     });
@@ -161,7 +148,6 @@ describe("Gateway SessionBinding lifecycle", () => {
       repository,
       projectId: "proj_1",
       request: { kind: "initial", sessionId: null },
-      binding: null,
       upstream,
       target: {
         routeId: "route_1",
@@ -184,7 +170,6 @@ describe("Gateway SessionBinding lifecycle", () => {
     expect(repository.bindSession).toHaveBeenCalledWith({
       projectId: "proj_1",
       eveSessionId: "eve_created",
-      continuationToken: null,
       routeId: "route_1",
       deploymentId: "dep_1",
       trigger: "api",
@@ -213,7 +198,6 @@ describe("Gateway SessionBinding lifecycle", () => {
       repository,
       projectId: "proj_1",
       request: { kind: "initial", sessionId: null },
-      binding: null,
       upstream,
       target: {
         routeId: "route_1",
@@ -228,7 +212,6 @@ describe("Gateway SessionBinding lifecycle", () => {
     expect(repository.bindSession).toHaveBeenCalledWith(
       expect.objectContaining({
         eveSessionId: "eve_big",
-        continuationToken: null,
       }),
     );
   });
@@ -258,8 +241,7 @@ describe("Gateway SessionBinding lifecycle", () => {
     await applyGatewaySessionResponse({
       repository,
       projectId: "proj_1",
-      request: { kind: "continuation", sessionId: "eve_1" },
-      binding: activeBinding,
+      request: { kind: "initial", sessionId: null },
       upstream,
       target: {
         routeId: "route_1",
@@ -271,43 +253,7 @@ describe("Gateway SessionBinding lifecycle", () => {
     });
 
     expect(sent).toBeLessThan(total);
-    expect(repository.setSessionBindingContinuationToken).not.toHaveBeenCalled();
-  });
-
-  test.each([
-    {
-      request: { kind: "continuation" as const, sessionId: "eve_1" },
-      body: { sessionId: "eve_1", continuationToken: "continue_2" },
-      expectedToken: "continue_2",
-    },
-    {
-      request: { kind: "reset" as const, sessionId: null },
-      body: { ok: true, previousSessionId: "eve_1", status: "reset" },
-      expectedToken: null,
-    },
-  ])("persists a successful $request.kind response", async ({ request, body, expectedToken }) => {
-    const repository = repositoryFixture();
-
-    await applyGatewaySessionResponse({
-      repository,
-      projectId: "proj_1",
-      request,
-      binding: activeBinding,
-      upstream: Response.json(body, { status: 202 }),
-      target: {
-        routeId: "route_1",
-        deploymentId: "dep_1",
-        variantName: null,
-        experimentId: null,
-      },
-      provenance: { kind: "playground", requestId: "request_playground" },
-    });
-
-    expect(repository.setSessionBindingContinuationToken).toHaveBeenCalledWith(
-      "proj_1",
-      "eve_1",
-      expectedToken,
-    );
+    expect(repository.bindSession).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -319,15 +265,17 @@ describe("Gateway SessionBinding lifecycle", () => {
     {
       reason: "the request is a stream",
       request: { kind: "stream" as const, sessionId: "eve_1" },
-      response: Response.json({ continuationToken: "continue_ignored" }),
+      response: Response.json({ sessionId: "eve_ignored" }),
     },
     {
-      reason: "reset ownership does not match",
-      request: { kind: "reset" as const, sessionId: null },
-      response: Response.json({
-        previousSessionId: "eve_other",
-        status: "reset",
-      }),
+      reason: "the request is a continuation",
+      request: { kind: "continuation" as const, sessionId: "eve_1" },
+      response: Response.json({ sessionId: "eve_1" }),
+    },
+    {
+      reason: "the request is a reset",
+      request: { kind: "reset" as const, sessionId: "eve_1" },
+      response: Response.json({ previousSessionId: "eve_1", status: "reset" }),
     },
   ])("does not mutate bindings when $reason", async ({ request, response }) => {
     const repository = repositoryFixture();
@@ -337,7 +285,6 @@ describe("Gateway SessionBinding lifecycle", () => {
       repository,
       projectId: "proj_1",
       request,
-      binding: activeBinding,
       upstream: response,
       target: {
         routeId: "route_1",
@@ -349,9 +296,6 @@ describe("Gateway SessionBinding lifecycle", () => {
     });
 
     expect(repository.bindSession).not.toHaveBeenCalled();
-    expect(repository.setSessionBindingContinuationToken).not.toHaveBeenCalled();
-    if (!response.ok || request.kind === "stream") {
-      expect(clone).not.toHaveBeenCalled();
-    }
+    expect(clone).not.toHaveBeenCalled();
   });
 });

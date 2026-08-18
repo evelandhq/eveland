@@ -316,7 +316,6 @@ export type Session = {
   projectId: string;
   deploymentId: string | null;
   eveSessionId: string | null;
-  continuationToken: string | null;
   rootNodeId: string | null;
   routeId: string | null;
   experimentId: string | null;
@@ -329,10 +328,6 @@ export type Session = {
   completedAt: string | null;
   usage: SessionTokenUsage;
 };
-
-// The browser-facing shape: the continuation token is session-continuation
-// capability material and never leaves the server.
-export type PublicSession = Omit<Session, "continuationToken">;
 
 export type AgentRouteKind = "project" | "deployment" | "alias";
 
@@ -411,7 +406,6 @@ export type SessionBinding = {
   id: string;
   projectId: string;
   eveSessionId: string;
-  continuationToken: string | null;
   routeId: string;
   deploymentId: string;
   trigger: "api" | "playground";

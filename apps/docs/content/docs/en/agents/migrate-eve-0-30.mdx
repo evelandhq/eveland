@@ -3,7 +3,7 @@ title: Migrating an Agent to Eve 0.30
 description: What to change in an imported Agent before upgrading its eve dependency to 0.30.
 ---
 
-**If you are not upgrading eve, you do not need to do anything.** Every project pins its own eve version, and Agents staying on `0.28.x` or `0.29.x` behave exactly as before. This page is only for a project moving to `0.30.x`.
+**Eveland only hosts Eve versions inside its supported window (0.38.x and 0.39.x), all of which include this change.** An Agent written against Eve 0.29 or older must adopt one of the auth strategies below as part of moving into the window — there is no supported version left where the old `localDev()` behavior still works.
 
 ## What changed
 
