@@ -190,17 +190,29 @@ export function createPostgresJobSourceStore({
           .limit(1)
           .for("update");
         if (existing) {
-          if (
+          // Coalescing must not strip the operation stamp: a pre-cutover
+          // ordinary activation job that this cutover enqueue coalesces onto
+          // would otherwise never be claimable by the cutover Worker, and
+          // exact activation would time out. Stamp the surviving row.
+          const existingPayload = (existing.payload ?? {}) as Record<string, unknown>;
+          const needsStamp =
+            cutoverOperationId !== undefined &&
+            existingPayload.cutoverOperationId !== cutoverOperationId;
+          const stale =
             existing.status === "running" &&
-            existing.updatedAt.getTime() <= now.getTime() - staleAfterMs
-          ) {
-            const [recovered] = await tx
+            existing.updatedAt.getTime() <= now.getTime() - staleAfterMs;
+          if (needsStamp || stale) {
+            const [updated] = await tx
               .update(jobs)
-              .set({ status: "queued", lockedAt: null, updatedAt: now })
+              .set({
+                ...(stale ? { status: "queued", lockedAt: null } : {}),
+                ...(needsStamp ? { payload: { ...existingPayload, cutoverOperationId } } : {}),
+                updatedAt: now,
+              })
               .where(eq(jobs.id, existing.id))
               .returning();
-            if (!recovered) throw new Error("Failed to recover stale Deployment activation job.");
-            return jobRowToJob(recovered);
+            if (!updated) throw new Error("Failed to recover stale Deployment activation job.");
+            return jobRowToJob(updated);
           }
           return jobRowToJob(existing);
         }

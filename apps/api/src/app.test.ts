@@ -114,7 +114,7 @@ describe("api app", () => {
       workflowWorld: {
         worldKind: "shared",
         worldPackage: "@evelandhq/workflow-world",
-        worldVersion: "0.10.1",
+        worldVersion: "0.11.0",
         storageSpec: 6,
         dispatchProtocol: 1,
         enqueueCapability: "per_run_queue_v1",
@@ -157,6 +157,7 @@ describe("api app", () => {
       headers: {
         authorization: "Bearer gateway-service-token",
         "content-type": "application/json",
+        "x-eveland-dispatcher-instance": "wfd_stale_eve_test",
       },
       body: JSON.stringify({
         deploymentId: deployment.id,

@@ -8,7 +8,7 @@ function release(worldKind: "shared" | "legacy_project" | "unknown") {
     workflow: {
       worldKind,
       worldPackage: worldKind === "shared" ? "@evelandhq/workflow-world" : null,
-      worldVersion: worldKind === "shared" ? "0.10.1" : null,
+      worldVersion: worldKind === "shared" ? "0.11.0" : null,
       storageSpec: worldKind === "shared" ? 6 : null,
       dispatchProtocol: worldKind === "shared" ? 1 : null,
       enqueueCapability:

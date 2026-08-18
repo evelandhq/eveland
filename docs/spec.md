@@ -1185,7 +1185,7 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 兼容性验证的依赖版本，不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
 不得被修改。Eve 0.38 起要求 workflow spec v6；共享 world 固定为
-`@evelandhq/workflow-world@0.10.1`，必须通过 0.38.3 与 0.39.0 的 World contract 门禁
+`@evelandhq/workflow-world@0.11.0`，必须通过 0.38.3 与 0.39.0 的 World contract 门禁
 （legacy `@workflow/world-postgres@5.0.0-beta.34` 仅作为历史 Deployment 的既有事实保留同一门禁）。
 runner mode 只支持 `external`：`EVELAND_WORKFLOW_RUNNER` 未设置时解析为 `external`，显式
 `embedded` 是配置错误，worker 启动与 Deployment 启动都必须 fail closed，不得静默回退。
@@ -1216,14 +1216,25 @@ activation **与 lease 续期**，并触发控制面收敛（fail 全部非 term
 Deployment 上所有具名 Eve family——包括早已 failed 的——写 session-family tombstone、把
 running SessionNode 收敛为 terminal、删除 binding、释放 lease、终止 ScheduleRun）。
 shared-capable owner 上的单个坏 run 只得到 run fence + durable World quarantine，同
-Deployment 的健康 run 继续可用。cutover 的 finalize 是门禁而非赋值：operation 必须已达
+Deployment 的健康 run 继续可用；被 managed-terminate 的 run 通过 operator 提供的
+run→Eve-session family 映射逐 family 收敛控制面（fail Session/SessionNode、删 binding、写
+session-family tombstone），无法映射的 run 在报告中列为 `unmappedTerminatedRuns`，绝不猜测。
+cutover 的 prepare 遍历**全量**控制面 inventory 而非仅 active-run owner：每个 Deployment
+要么完成分类/退休/staging，要么（仍为 `unknown` 时）获得 deployment fence 并置于 `fenced`
+topology，杜绝转换途中被唤醒。cutover 的 finalize 是门禁而非赋值：operation 必须已达
 control-plane convergence、数据库后置条件当下成立、且每个 Deployment 处于同一 operation 的
-`converting`，否则逐个拒绝并输出原因。cutover 进程模式下,cutover API 只接受携带完全一致
-cutover operation id 的 dispatcher heartbeat/resume；cutover Worker 只认领同一 operation
-显式盖章（payload `cutoverOperationId`）的 activation/reconciliation job，普通或过期 job
-留给停机后的 normal worker。dispatcher readiness 判定除新鲜度外还校验 World database
-identity（库名+端口必须一致，host 允许是同一库的不同网络视图）、operation 归属与
-unscoped-job 计数（非 0 或未知都不 ready）。
+`converting`，否则逐个拒绝并输出原因；operation 到达 `completed` 还要求 finalize 零拒绝、
+operation staged 的全部 Deployment 已为 `external`、且 operator 以显式 continuity 断言
+（`--continuity-verified`，记录为 checkpoint）确认过连续性门，否则停在可重试的
+`control_plane_converged`。cutover 进程模式下,cutover API 只接受携带完全一致
+cutover operation id 的 dispatcher heartbeat/resume，且启动时校验该 operation 存在且未
+completed（否则拒绝启动）；cutover Worker 只认领同一 operation
+显式盖章（payload `cutoverOperationId`）的 activation/reconciliation job——盖章在 enqueue
+被 coalesce 到既有 pending job 时同样必须落到该已有 payload 上——普通或过期 job
+留给停机后的 normal worker。dispatcher readiness 判定除新鲜度外还校验 World cluster
+identity、operation 归属与 unscoped-job 计数（非 0 或未知都不 ready）。cluster identity 是
+`cluster:<pg system_identifier>/<database>`，双方都从数据库本身读取（`pg_control_system()`），
+严格相等比较——URL/host 形态的比较会在不相关集群间 fail open，禁止使用。
 配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在 dispatcher 或 Deployment 使用共享库前幂等执行
 `@evelandhq/workflow-world` migration；若 host 与 Deployment 访问同一数据库所需地址不同，
 host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。新空库可以无人值守完成完整
@@ -1236,11 +1247,15 @@ maintenance-window gate 或预先执行 `workflow-world-setup`。
 
 dispatcher readiness 是机器可读的持久化 registration，由实际持有 ownership lock 的
 dispatcher 通过受服务认证的 heartbeat 上报（instance/generation、ownership、boot recovery
-完成、shared database identity——只含 host:port/db，绝不含凭据——schema generation、dispatch
+完成、World cluster identity——从数据库自身读取的 `cluster:<system_identifier>/<database>`，
+绝不含凭据——schema generation、dispatch
 protocol 窗口、cutover operation id、仍可 claim 的 unscoped job 数、状态与时间）。stdout 的
 ready token 与 systemd `active` 只作人工诊断。production 中 shared build 与 `workflow_step`
 activation 都以该 registration 的新鲜度（`EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS`）
-fail closed；`workflow_step` activation 还要求目标 Release attestation 为 shared、enqueue
+fail closed；`workflow_step` activation 的调用方还必须以
+`x-eveland-dispatcher-instance` header 携带与该 registration 完全一致的 instance id——绑定
+的是通过 readiness 门禁的那个进程，而不是任何持有 service token 的进程——不一致返回 409；
+activation 还要求目标 Release attestation 为 shared、enqueue
 capability 为 `per_run_queue_v1`、dispatch protocol 落在 registration 声明的窗口内，否则返回
 带 `workflow_migration_required` 稳定前缀的 409；dispatcher 不可证明时返回带
 `workflow_unavailable` 前缀的 503。activation response 对 `workflow_step` 附带协商结果
@@ -1248,7 +1263,10 @@ capability 为 `per_run_queue_v1`、dispatch protocol 落在 registration 声明
 `recover-paused` 启动：ownership、migration 与 boot recovery 完成后进入 `ready_paused`，
 不 claim 任何 job；只有 Control API 上受认证的显式 resume（经 heartbeat 回复送达）才进入
 `ready`。dispatcher 启动前的 preflight 在仍存在可 claim 的 unscoped early-external job 时
-fail closed；不可恢复的 shared run 必须已 workflow-terminal 或带有 boot recovery、enqueue 与
+fail closed；设置了 cutover operation id 时还要求 World 内存在该 operation 的 **passed**
+cutover proof（`workflow.cutover_proofs`，由 `cutover postcondition --operation-id` 写入）——
+dispatcher 永不读取控制面数据库，postcondition 的完整结论必须以它可见的形式存在于它已拥有
+的 World 中。不可恢复的 shared run 必须已 workflow-terminal 或带有 boot recovery、enqueue 与
 dispatch handler 都识别的 durable World quarantine marker——仅控制面 fence 不满足该门禁。
 完整维护停机 cutover 的可执行顺序见 `docs/deploy/workflow-external-cutover.md`。
 当前 external dispatcher 是单实例：健康门打开后先获取生命周期 PostgreSQL advisory lock，
@@ -1281,7 +1299,7 @@ per-project workflow 的过期 stream chunks。默认保留窗口为 24 小时
 run 的 `eof=false` chunk，EOF marker 永久保留；`EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=0`
 只禁用这条 legacy sweep。
 
-共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.10.1` 与 dispatcher 共同持有。
+共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.11.0` 与 dispatcher 共同持有。
 World 默认在写入前剥离可由 delta 重建的累计 snapshot，并按 128 个 logical chunk 或 64 KiB
 建立 server-side checkpoint；`writeMulti` 最多把 64 个 logical chunk、256 KiB 写入一个
 physical block，reader 仍按原 logical chunk id 和 cursor 返回兼容字节。

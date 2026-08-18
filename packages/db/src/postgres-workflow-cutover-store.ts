@@ -177,6 +177,74 @@ export function createPostgresWorkflowCutoverStore(
       return row ? fenceRowToFence(row) : null;
     },
 
+    async convergeWorkflowRunFamilies(operationId, families) {
+      if (families.length === 0) return { failedSessions: 0, tombstonedFamilies: 0 };
+      return db.transaction(async (tx) => {
+        let failedSessions = 0;
+        let tombstonedFamilies = 0;
+        for (const family of families) {
+          const failed = await tx
+            .update(sessions)
+            .set({ status: "failed" })
+            .where(
+              and(
+                eq(sessions.projectId, family.projectId),
+                eq(sessions.eveSessionId, family.eveSessionId),
+                inArray(sessions.status, ["running", "waiting"]),
+              ),
+            )
+            .returning({ id: sessions.id });
+          failedSessions += failed.length;
+          const rows = await tx
+            .select({ id: sessions.id })
+            .from(sessions)
+            .where(
+              and(
+                eq(sessions.projectId, family.projectId),
+                eq(sessions.eveSessionId, family.eveSessionId),
+              ),
+            );
+          if (rows.length > 0) {
+            await tx
+              .update(sessionNodes)
+              .set({ status: "failed", updatedAt: new Date() })
+              .where(
+                and(
+                  inArray(
+                    sessionNodes.rootSessionId,
+                    rows.map((row) => row.id),
+                  ),
+                  eq(sessionNodes.status, "running"),
+                ),
+              );
+          }
+          await tx
+            .delete(sessionBindings)
+            .where(
+              and(
+                eq(sessionBindings.projectId, family.projectId),
+                eq(sessionBindings.eveSessionId, family.eveSessionId),
+              ),
+            );
+          const [fence] = await tx
+            .insert(workflowFences)
+            .values({
+              id: createId("wff"),
+              scopeKind: "session_family",
+              scopeId: `${family.projectId}:${family.eveSessionId}`,
+              operationId,
+              reason: "workflow run managed-terminated",
+            })
+            .onConflictDoNothing({
+              target: [workflowFences.scopeKind, workflowFences.scopeId],
+            })
+            .returning({ id: workflowFences.id });
+          if (fence) tombstonedFamilies += 1;
+        }
+        return { failedSessions, tombstonedFamilies };
+      });
+    },
+
     async convergeWorkflowTermination(operationId, deploymentIds) {
       if (deploymentIds.length === 0) {
         return {

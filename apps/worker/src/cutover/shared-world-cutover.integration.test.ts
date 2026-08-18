@@ -209,13 +209,26 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
 
     // Finalize only after the continuity gate: the staged deployment becomes
     // the external topology and its launches are allowed again.
-    const finalizeResult = await finalizeSharedWorldCutover({
+    // Without the continuity checkpoint the operation must NOT complete.
+    const premature = await finalizeSharedWorldCutover({
       pool,
       store,
       operationId: "cut_it_1",
       deploymentIds: result.staged,
     });
+    expect(premature.completed).toBe(false);
+    await expect(store.getWorkflowCutoverOperation("cut_it_1")).resolves.toMatchObject({
+      phase: "control_plane_converged",
+    });
+    const finalizeResult = await finalizeSharedWorldCutover({
+      pool,
+      store,
+      operationId: "cut_it_1",
+      deploymentIds: result.staged,
+      continuityVerified: true,
+    });
     expect(finalizeResult.refused).toEqual([]);
+    expect(finalizeResult.completed).toBe(true);
     // A typo or stale invocation never promotes an unstaged deployment.
     const bogus = await finalizeSharedWorldCutover({
       pool,
@@ -263,10 +276,8 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
     // which proves a 0.9.0 shared world was actually injected.
     const assessments = await assessSharedActiveRuns(pool, store, {
       classifier: async (input) => {
-        expect(input).toEqual({
-          releaseRef: "/var/lib/eveland/builds/historical/rel_hist",
-          runtimeKind: "systemd",
-        });
+        if (input.releaseRef !== "/var/lib/eveland/builds/historical/rel_hist") return null;
+        expect(input.runtimeKind).toBe("systemd");
         return {
           worldKind: "shared",
           worldPackage: "@evelandhq/workflow-world",

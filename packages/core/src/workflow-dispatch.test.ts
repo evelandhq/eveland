@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { WorkflowDispatcherRegistration } from "./contracts.js";
 import {
   assessDispatcherReadiness,
-  worldDatabaseIdentitiesCompatible,
+  clusterWorldIdentity,
   worldDatabaseIdentity,
 } from "./workflow-dispatch.js";
 
@@ -16,7 +16,7 @@ function registration(
     ownershipAcquired: true,
     bootRecoveryCompleted: true,
     reenqueuedRuns: 0,
-    worldDatabaseIdentity: "localhost:5432/eveland_workflow",
+    worldDatabaseIdentity: clusterWorldIdentity("7234567890123456789", "eveland_workflow"),
     schemaGeneration: null,
     protocolMin: 1,
     protocolMax: 1,
@@ -37,19 +37,35 @@ describe("assessDispatcherReadiness", () => {
   });
 
   test("rejects a dispatcher claiming from the wrong World database", () => {
-    // The Worker would inject database A while the dispatcher claims B —
-    // durable turns would never be consumed no matter how fresh the heartbeat.
+    // Identity is the database's own cluster fingerprint — never a URL, whose
+    // host/port comparison fails open across unrelated servers.
     const decision = assessDispatcherReadiness(
-      registration({ worldDatabaseIdentity: "localhost:5432/eveland" }),
-      { expectedWorldDatabaseIdentity: "host.docker.internal:5432/eveland_workflow" },
+      registration({
+        worldDatabaseIdentity: clusterWorldIdentity("999", "eveland_workflow"),
+      }),
+      {
+        expectedWorldDatabaseIdentity: clusterWorldIdentity(
+          "7234567890123456789",
+          "eveland_workflow",
+        ),
+      },
     );
     expect(decision.ready).toBe(false);
     if (!decision.ready) expect(decision.reason).toContain("claiming from");
 
-    // Hosts may differ between network views of one server; name and port may not.
+    // A non-cluster (URL-shaped or unknown) identity never satisfies the gate.
+    const urlShaped = assessDispatcherReadiness(
+      registration({ worldDatabaseIdentity: "localhost:5432/eveland_workflow" }),
+      { expectedWorldDatabaseIdentity: "localhost:5432/eveland_workflow" },
+    );
+    expect(urlShaped.ready).toBe(false);
+
     expect(
       assessDispatcherReadiness(registration(), {
-        expectedWorldDatabaseIdentity: "host.docker.internal:5432/eveland_workflow",
+        expectedWorldDatabaseIdentity: clusterWorldIdentity(
+          "7234567890123456789",
+          "eveland_workflow",
+        ),
       }),
     ).toEqual({ ready: true });
   });
@@ -78,14 +94,9 @@ describe("worldDatabaseIdentity", () => {
     expect(worldDatabaseIdentity("not a url")).toBe("unknown");
   });
 
-  test("compatibility compares database name and port, never the host view", () => {
-    expect(
-      worldDatabaseIdentitiesCompatible("localhost:5432/wf", "host.docker.internal:5432/wf"),
-    ).toBe(true);
-    expect(worldDatabaseIdentitiesCompatible("localhost:5432/wf", "localhost:5432/other")).toBe(
-      false,
-    );
-    expect(worldDatabaseIdentitiesCompatible("localhost:5432/wf", "localhost:6432/wf")).toBe(false);
-    expect(worldDatabaseIdentitiesCompatible("unknown", "localhost:5432/wf")).toBe(false);
+  test("cluster identity is stable across network views by construction", () => {
+    expect(clusterWorldIdentity("7234", "wf")).toBe("cluster:7234/wf");
+    expect(clusterWorldIdentity("7234", "wf")).not.toBe(clusterWorldIdentity("9999", "wf"));
+    expect(clusterWorldIdentity("7234", "wf")).not.toBe(clusterWorldIdentity("7234", "other"));
   });
 });

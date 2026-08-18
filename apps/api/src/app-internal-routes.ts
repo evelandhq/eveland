@@ -135,6 +135,18 @@ export function registerInternalRoutes(input: {
           : {}),
       });
       if (!readiness.ready) return c.json({ error: readiness.reason }, 503);
+      // Exact activation is bound to the registration this API validated: the
+      // dispatcher sends its instance id, and a stale process sharing the
+      // service token must not activate under another instance's registration.
+      const callerInstance = c.req.header("x-eveland-dispatcher-instance");
+      if (!callerInstance || callerInstance !== registration!.instanceId) {
+        return c.json(
+          {
+            error: `workflow_unavailable: activation caller instance ${String(callerInstance)} does not match the validated dispatcher registration ${registration!.instanceId}`,
+          },
+          409,
+        );
+      }
       const release = await store.getRelease(deployment.releaseId);
       if (!release) return c.json({ error: "Deployment activation Release is missing" }, 409);
       const { workflow } = release;

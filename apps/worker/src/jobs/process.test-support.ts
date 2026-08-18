@@ -12,7 +12,7 @@ import path from "node:path";
 export const sharedWorkflowWorldAttestation: ReleaseWorkflowAttestation = {
   worldKind: "shared",
   worldPackage: "@evelandhq/workflow-world",
-  worldVersion: "0.10.1",
+  worldVersion: "0.11.0",
   storageSpec: 6,
   dispatchProtocol: 1,
   enqueueCapability: "per_run_queue_v1",
@@ -42,7 +42,7 @@ export async function recordReadyDispatcherFixture(
       readyAt: string | null;
     }) => Promise<unknown>;
   },
-  worldDatabaseIdentity = "localhost:5432/eveland_workflow",
+  worldDatabaseIdentity = "cluster:7234567890123456789/eveland_workflow",
 ): Promise<void> {
   await store.recordWorkflowDispatcherHeartbeat({
     instanceId: "wfd_fixture",

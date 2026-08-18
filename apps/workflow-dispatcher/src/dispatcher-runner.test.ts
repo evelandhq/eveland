@@ -46,6 +46,8 @@ function runnerDeps(overrides: Record<string, unknown> = {}) {
     countUnscopedJobs: vi.fn(async () => 0),
     countUnresolvedQuarantines: vi.fn(async () => 0),
     readSchemaGeneration: vi.fn(async () => "0013_run_quarantines.sql"),
+    readWorldIdentity: vi.fn(async () => "cluster:7234567890123456789/eveland_workflow"),
+    readCutoverProof: vi.fn(async () => ({ passed: true })),
     now: () => new Date("2026-08-18T00:00:00.000Z"),
     ...overrides,
   };
@@ -86,7 +88,7 @@ describe("eveland workflow dispatcher runner", () => {
       schemaGeneration: "0013_run_quarantines.sql",
       protocolMin: 1,
       protocolMax: 1,
-      worldDatabaseIdentity: "db.internal:5432/eveland_workflow",
+      worldDatabaseIdentity: "cluster:7234567890123456789/eveland_workflow",
     });
     // The identity never carries the URL or its credentials.
     expect(JSON.stringify(heartbeats[0])).not.toContain("postgres://");
@@ -102,6 +104,35 @@ describe("eveland workflow dispatcher runner", () => {
     await handle.heartbeat();
     expect(resume).toHaveBeenCalledTimes(1);
     expect(heartbeats.at(-1)).toMatchObject({ state: "ready" });
+  });
+
+  test("cutover mode refuses boot recovery without a passed World-visible proof", async () => {
+    const state = { phase: "ready_paused" as const } as {
+      phase: "ready_paused" | "ready" | "stopped";
+    };
+    const missing = fakeServiceFactory(state);
+    await expect(
+      startEvelandWorkflowDispatcher(
+        { EVELAND_WORKFLOW_CUTOVER_OPERATION_ID: "cut_x" },
+        telemetry,
+        {
+          ...runnerDeps({ readCutoverProof: vi.fn(async () => null) }),
+          startService: missing.startService,
+        } as never,
+      ),
+    ).rejects.toThrow(/No cutover postcondition proof/);
+
+    const failed = fakeServiceFactory(state);
+    await expect(
+      startEvelandWorkflowDispatcher(
+        { EVELAND_WORKFLOW_CUTOVER_OPERATION_ID: "cut_x" },
+        telemetry,
+        {
+          ...runnerDeps({ readCutoverProof: vi.fn(async () => ({ passed: false })) }),
+          startService: failed.startService,
+        } as never,
+      ),
+    ).rejects.toThrow(/last FAILED/);
   });
 
   test("fails startup closed while early-external jobs are still claimable", async () => {

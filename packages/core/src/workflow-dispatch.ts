@@ -59,27 +59,20 @@ export function worldDatabaseIdentity(worldUrl: string): string {
 }
 
 /**
- * Whether two database identities plausibly name the same database. Hosts may
- * legitimately differ between network views of one server (`localhost` vs
- * `host.docker.internal` vs a Compose service name), but the database NAME and
- * port never do — a dispatcher claiming from `.../eveland` while the worker
- * injects `.../eveland_workflow` is exactly the split this check exists to
- * catch.
+ * The canonical, network-view-independent World identity: the Postgres
+ * cluster's `system_identifier` plus the database name, as
+ * `cluster:<system_identifier>/<database>`. Comparing URLs (or any part of
+ * them) fails open — `db-a:5432/wf` and `db-b:5432/wf` can be unrelated
+ * servers — so both ends read the identity FROM the database itself
+ * (`pg_control_system()`), and readiness compares it with strict equality.
  */
-export function worldDatabaseIdentitiesCompatible(left: string, right: string): boolean {
-  const parse = (identity: string) => {
-    const slash = identity.indexOf("/");
-    if (slash < 0) return null;
-    const hostPort = identity.slice(0, slash);
-    const database = identity.slice(slash);
-    const colon = hostPort.lastIndexOf(":");
-    return { port: colon >= 0 ? hostPort.slice(colon + 1) : "5432", database };
-  };
-  const a = parse(left);
-  const b = parse(right);
-  if (!a || !b) return false;
-  return a.port === b.port && a.database === b.database;
+export function clusterWorldIdentity(systemIdentifier: string, database: string): string {
+  return `cluster:${systemIdentifier}/${database}`;
 }
+
+/** SQL both ends run to derive {@link clusterWorldIdentity} from a connection. */
+export const WORLD_IDENTITY_SQL =
+  "select system_identifier::text as system_identifier, current_database() as database from pg_control_system()";
 
 /**
  * Freshness check the activation path, the production deploy gate and the
@@ -128,10 +121,8 @@ export function assessDispatcherReadiness(
   }
   if (
     input.expectedWorldDatabaseIdentity !== undefined &&
-    !worldDatabaseIdentitiesCompatible(
-      registration.worldDatabaseIdentity,
-      input.expectedWorldDatabaseIdentity,
-    )
+    (registration.worldDatabaseIdentity !== input.expectedWorldDatabaseIdentity ||
+      !registration.worldDatabaseIdentity.startsWith("cluster:"))
   ) {
     return {
       ready: false,

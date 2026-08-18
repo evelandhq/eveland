@@ -1,4 +1,5 @@
 import { createStoreFromEnv } from "@evelandhq/db/factory";
+import { recordCutoverProof } from "@evelandhq/workflow-world";
 import pg from "pg";
 import { resolveWorkflowWorldPlatformUrl } from "../runtime/eveland-workflow-world-url.js";
 import {
@@ -16,9 +17,11 @@ import {
  * producer/consumer stopped; it does not verify quiescence itself.
  *
  *   pnpm --filter @evelandhq/worker cutover -- inventory --operation-id cut_x
- *   pnpm --filter @evelandhq/worker cutover -- prepare --operation-id cut_x
- *   pnpm --filter @evelandhq/worker cutover -- postcondition
- *   pnpm --filter @evelandhq/worker cutover -- finalize --operation-id cut_x --deployments dep_a,dep_b
+ *   pnpm --filter @evelandhq/worker cutover -- prepare --operation-id cut_x \
+ *     [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...]
+ *   pnpm --filter @evelandhq/worker cutover -- postcondition --operation-id cut_x
+ *   pnpm --filter @evelandhq/worker cutover -- finalize --operation-id cut_x \
+ *     --deployments dep_a,dep_b --continuity-verified true
  */
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
@@ -48,6 +51,12 @@ async function main(): Promise<void> {
           pool,
           store,
           operationId: operationId!,
+          ...(flags["corrupted-runs"]
+            ? { corruptedRuns: parseRunList(flags["corrupted-runs"]!) }
+            : {}),
+          ...(flags["run-families"]
+            ? { runSessionFamilies: parseFamilyList(flags["run-families"]!) }
+            : {}),
           log: (message, meta) =>
             console.error(`[cutover] ${message} ${JSON.stringify(meta ?? {})}`),
         });
@@ -56,7 +65,20 @@ async function main(): Promise<void> {
       }
       case "postcondition": {
         const result = await verifySharedWorldPostcondition(pool, store);
-        emit({ command, ...result });
+        // The proof is World-visible on purpose: the dispatcher's recover-paused
+        // preflight gates boot recovery on it and never reads the control-plane
+        // database. A failed check is recorded too — a stale passed proof must
+        // not outlive a regression.
+        if (operationId) {
+          await recordCutoverProof(pool, {
+            operationId,
+            passed: result.passed,
+            claimableUnscopedJobs: result.claimableUnscopedJobs,
+            blockingRuns: result.blockingRuns.length,
+            recordedBy: "eveland-cutover-cli",
+          });
+        }
+        emit({ command, ...result, proofRecorded: Boolean(operationId) });
         if (!result.passed) process.exitCode = 1;
         return;
       }
@@ -72,8 +94,10 @@ async function main(): Promise<void> {
           store,
           operationId: operationId!,
           deploymentIds: deployments,
+          continuityVerified: flags["continuity-verified"] === "true",
         });
         emit({ command, ...result });
+        if (!result.completed) process.exitCode = 1;
         return;
       }
       default:
@@ -85,6 +109,33 @@ async function main(): Promise<void> {
     await pool.end().catch(() => {});
     await storeFactory.close().catch(() => {});
   }
+}
+
+function parseRunList(value: string): Array<{ tenantId: string; runId: string }> {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [tenantId, runId] = entry.split(":");
+      if (!tenantId || !runId) fail(`Invalid run "${entry}": expected tenant:run.`);
+      return { tenantId: tenantId!, runId: runId! };
+    });
+}
+
+function parseFamilyList(
+  value: string,
+): Array<{ tenantId: string; runId: string; eveSessionId: string }> {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [tenantId, runId, eveSessionId] = entry.split(":");
+      if (!tenantId || !runId || !eveSessionId)
+        fail(`Invalid family "${entry}": expected tenant:run:eveSessionId.`);
+      return { tenantId: tenantId!, runId: runId!, eveSessionId: eveSessionId! };
+    });
 }
 
 function parseFlags(args: string[]): Record<string, string> {

@@ -3,7 +3,6 @@ import type { Job } from "@evelandhq/core/contracts";
 import {
   assessDispatcherReadiness,
   resolveDispatcherHeartbeatTtlMs,
-  worldDatabaseIdentity,
 } from "@evelandhq/core/workflow-dispatch";
 import { projectDiscoveryManifest } from "@evelandhq/core/discovery";
 import { createId } from "@evelandhq/core/ids";
@@ -15,6 +14,7 @@ import { waitForOwnedHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
 import { resolveWorkflowWorldDeploymentUrl } from "../runtime/eveland-workflow-world-url.js";
+import { resolveWorldClusterIdentity } from "../runtime/world-identity.js";
 import {
   deriveWorkflowWorldAttestation,
   EVELAND_WORKFLOW_WORLD,
@@ -90,12 +90,14 @@ export async function handleBuildDeployJob(
   // proven to be claiming; machine-readable readiness gates the deploy, never
   // a stdout token or systemd's "active".
   if (isProduction) {
+    // The dispatcher must be claiming from the same World this deploy
+    // injects — proven by the database's own cluster fingerprint, never by
+    // comparing URLs, which fails open across unrelated servers.
+    const expectedWorldIdentity =
+      options.worldClusterIdentity ?? (await resolveWorldClusterIdentity(process.env));
     const readiness = assessDispatcherReadiness(await store.getWorkflowDispatcherRegistration(), {
       ttlMs: resolveDispatcherHeartbeatTtlMs(process.env),
-      // The dispatcher must be claiming from the same World this deploy
-      // injects; a fresh heartbeat against the wrong database still means
-      // durable turns are never consumed.
-      expectedWorldDatabaseIdentity: worldDatabaseIdentity(evelandWorkflowWorldUrl!),
+      expectedWorldDatabaseIdentity: expectedWorldIdentity,
     });
     if (!readiness.ready) {
       await store.appendLog({

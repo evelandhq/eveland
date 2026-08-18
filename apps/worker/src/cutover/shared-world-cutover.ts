@@ -59,11 +59,14 @@ export type CutoverStore = Pick<
   | "getDeployment"
   | "getRelease"
   | "attestReleaseWorkflow"
+  | "listProjects"
+  | "listDeployments"
   | "ensureWorkflowCutoverOperation"
   | "advanceWorkflowCutoverOperation"
   | "getWorkflowCutoverOperation"
   | "writeWorkflowFences"
   | "convergeWorkflowTermination"
+  | "convergeWorkflowRunFamilies"
   | "updateDeploymentWorkflowTopology"
 >;
 
@@ -177,7 +180,11 @@ export async function assessSharedActiveRuns(
     } else {
       if (release.workflow.worldKind !== "shared") {
         if (classification === "recoverable_shared") classification = "quarantined_unknown";
-        ownerRetired = release.workflow.worldKind === "legacy_project";
+        // Legacy AND unclassifiable-unknown owners are both retired at
+        // deployment scope: run fences are invisible to activation and to the
+        // OTLP projector, so an unknown owner left unfenced could keep
+        // serving and re-materializing read models.
+        ownerRetired = true;
         reasons.push(
           `owner Release ${release.id} attestation is ${release.workflow.worldKind}, not shared`,
         );
@@ -241,8 +248,12 @@ export type CutoverPrepareResult = {
   quarantined: Array<{ tenantId: string; runId: string }>;
   /** Deployments permanently retired (fenced + control-plane converged). */
   retiredDeployments: string[];
+  /** Unknown-topology deployments fenced pending operator disposition. */
+  fencedUnknownDeployments: string[];
   staged: string[];
   converged: { failedSessions: number; removedSessionBindings: number };
+  /** Terminated runs whose Eve family could not be proven; operator must map them. */
+  unmappedTerminatedRuns: Array<{ tenantId: string; runId: string }>;
 };
 
 /**
@@ -257,6 +268,13 @@ export async function prepareSharedWorldCutover(input: {
   store: CutoverStore;
   operationId: string;
   corruptedRuns?: Array<{ tenantId: string; runId: string }>;
+  /**
+   * Operator-provided run→Eve-family mapping for individually terminated
+   * runs. The workflow database records no session linkage, so per-run
+   * observability convergence can only follow proof; unmapped terminated runs
+   * are named in the result for explicit disposition.
+   */
+  runSessionFamilies?: Array<{ tenantId: string; runId: string; eveSessionId: string }>;
   classifier?: ArtifactClassifier;
   log?: (message: string, meta?: Record<string, unknown>) => void;
 }): Promise<CutoverPrepareResult> {
@@ -275,6 +293,46 @@ export async function prepareSharedWorldCutover(input: {
       ...(input.classifier ? { classifier: input.classifier } : {}),
     });
 
+    // Full control-plane inventory — the shared database's active runs are
+    // NOT the whole estate. Legacy Deployments (whose runs live in per-project
+    // databases this command never opens) and Deployments with no active
+    // shared run must still be classified, fenced, and — for legacy —
+    // terminated, or their late telemetry and activations slip every gate.
+    const classifier = input.classifier ?? classifyArtifactFromFilesystem;
+    const inventoryRetired: string[] = [];
+    const inventoryUnknown: string[] = [];
+    const inventoryStageable: string[] = [];
+    for (const project of await store.listProjects()) {
+      for (const deployment of await store.listDeployments(project.id)) {
+        if (deployment.status === "archived") continue;
+        let release = await store.getRelease(deployment.releaseId);
+        if (!release) continue;
+        if (release.workflow.worldKind === "unknown") {
+          const attestation = await classifier({
+            releaseRef: release.imageTag,
+            runtimeKind: deployment.runtimeKind,
+          });
+          if (attestation) {
+            release = (await store.attestReleaseWorkflow(release.id, attestation)) ?? release;
+          }
+        }
+        const { worldKind, enqueueCapability } = release.workflow;
+        if (
+          worldKind === "legacy_project" ||
+          (worldKind === "shared" && enqueueCapability !== "per_run_queue_v1")
+        ) {
+          inventoryRetired.push(deployment.id);
+        } else if (worldKind === "unknown") {
+          inventoryUnknown.push(deployment.id);
+        } else if (
+          worldKind === "shared" &&
+          deployment.workflowTopology.conversionState === "unclassified"
+        ) {
+          inventoryStageable.push(deployment.id);
+        }
+      }
+    }
+
     // Fence first — in the control plane, before any workflow database write.
     // Deployment scope only for permanently retired owners; every other
     // non-recoverable object is fenced at run scope so a healthy sibling run
@@ -284,18 +342,26 @@ export async function prepareSharedWorldCutover(input: {
         assessment.classification === "managed_termination_required" ||
         assessment.classification === "quarantined_unknown",
     );
-    const retiredDeployments = [
-      ...new Set(
-        assessments.flatMap((assessment) =>
-          assessment.ownerRetired && assessment.deploymentId ? [assessment.deploymentId] : [],
-        ),
-      ),
-    ];
+    const retiredFromRuns = assessments.flatMap((assessment) =>
+      assessment.ownerRetired && assessment.deploymentId ? [assessment.deploymentId] : [],
+    );
+    const fencedUnknownDeployments = [...new Set(inventoryUnknown)];
+    const retiredDeployments = [...new Set([...retiredFromRuns, ...inventoryRetired])].filter(
+      (deploymentId) => !fencedUnknownDeployments.includes(deploymentId),
+    );
     await store.writeWorkflowFences(operationId, [
       ...retiredDeployments.map((deploymentId) => ({
         scopeKind: "deployment" as const,
         scopeId: deploymentId,
         reason: "owner Release permanently retired by the external-only cutover",
+      })),
+      // Unknown topology stays Deployment-fenced — invisible-to-projector run
+      // fences are not enough — but is NOT converged: the operator may still
+      // classify it, and convergence is the point of no return.
+      ...fencedUnknownDeployments.map((deploymentId) => ({
+        scopeKind: "deployment" as const,
+        scopeId: deploymentId,
+        reason: "unknown workflow topology pending operator disposition",
       })),
       ...nonRecoverable.map((assessment) => ({
         scopeKind: "run" as const,
@@ -303,6 +369,12 @@ export async function prepareSharedWorldCutover(input: {
         reason: assessment.reasons.join("; ") || assessment.classification,
       })),
     ]);
+    for (const deploymentId of fencedUnknownDeployments) {
+      await store.updateDeploymentWorkflowTopology(deploymentId, {
+        conversionState: "fenced",
+        conversionOperationId: operationId,
+      });
+    }
     await store.advanceWorkflowCutoverOperation(operationId, {
       phase: "fenced",
       checkpoint: { key: "assessments", value: summarize(assessments) },
@@ -346,29 +418,67 @@ export async function prepareSharedWorldCutover(input: {
       },
     });
 
-    // Control-plane convergence — only for the permanently retired owners.
+    // Control-plane convergence — deployment-wide for the permanently retired
+    // owners, and per-family for individually terminated runs whose Eve
+    // family the operator proved. Unproven families are named, not guessed.
     const converged = await store.convergeWorkflowTermination(operationId, retiredDeployments);
+    const retired = new Set(retiredDeployments);
+    const familyByRun = new Map(
+      (input.runSessionFamilies ?? []).map((entry) => [`${entry.tenantId}:${entry.runId}`, entry]),
+    );
+    const mappedFamilies: Array<{ projectId: string; eveSessionId: string }> = [];
+    const unmappedTerminatedRuns: Array<{ tenantId: string; runId: string }> = [];
+    for (const assessment of nonRecoverable) {
+      if (assessment.deploymentId && retired.has(assessment.deploymentId)) continue;
+      const mapping = familyByRun.get(`${assessment.tenantId}:${assessment.runId}`);
+      if (mapping) {
+        mappedFamilies.push({
+          projectId: mapping.tenantId,
+          eveSessionId: mapping.eveSessionId,
+        });
+      } else {
+        unmappedTerminatedRuns.push({
+          tenantId: assessment.tenantId,
+          runId: assessment.runId,
+        });
+      }
+    }
+    const familyConvergence = await store.convergeWorkflowRunFamilies(operationId, mappedFamilies);
+    if (unmappedTerminatedRuns.length > 0) {
+      log("terminated runs without a proven Eve family; operator mapping required", {
+        runs: unmappedTerminatedRuns.length,
+      });
+    }
     await store.advanceWorkflowCutoverOperation(operationId, {
       phase: "control_plane_converged",
-      checkpoint: { key: "converged", value: converged },
+      checkpoint: {
+        key: "converged",
+        value: {
+          ...converged,
+          runFamilies: familyConvergence,
+          unmappedTerminatedRuns,
+        },
+      },
     });
 
-    // Stage surviving shared deployments to `converting`; finalize comes only
-    // after the post-resume continuity gate. A retired deployment never
+    // Stage surviving shared deployments to `converting` — including shared
+    // owners with no active run at all. Finalize comes only after the
+    // post-resume continuity gate; a retired or unknown deployment never
     // stages, even when it also owns a recoverable-looking run.
     const staged: string[] = [];
-    const retired = new Set(retiredDeployments);
-    const recoverableDeployments = new Set(
-      assessments
+    const unstageable = new Set([...retiredDeployments, ...fencedUnknownDeployments]);
+    const recoverableDeployments = new Set([
+      ...assessments
         .filter(
           (assessment) =>
             assessment.classification === "recoverable_shared" ||
             assessment.classification === "queue_migration_required",
         )
         .flatMap((assessment) => (assessment.deploymentId ? [assessment.deploymentId] : [])),
-    );
+      ...inventoryStageable,
+    ]);
     for (const deploymentId of recoverableDeployments) {
-      if (retired.has(deploymentId)) continue;
+      if (unstageable.has(deploymentId)) continue;
       const updated = await store.updateDeploymentWorkflowTopology(deploymentId, {
         runnerMode: "external",
         conversionState: "converting",
@@ -376,6 +486,11 @@ export async function prepareSharedWorldCutover(input: {
       });
       if (updated) staged.push(deploymentId);
     }
+    // The staged set is the operation's durable memory: finalize completes
+    // only once every one of these has actually finalized.
+    await store.advanceWorkflowCutoverOperation(operationId, {
+      checkpoint: { key: "staged", value: staged },
+    });
 
     return {
       operationId,
@@ -388,11 +503,13 @@ export async function prepareSharedWorldCutover(input: {
       terminated,
       quarantined,
       retiredDeployments,
+      fencedUnknownDeployments,
       staged,
       converged: {
         failedSessions: converged.failedSessions,
         removedSessionBindings: converged.removedSessionBindings,
       },
+      unmappedTerminatedRuns,
     };
   } finally {
     await Promise.resolve(workerUtils.release()).catch(() => {});
@@ -442,6 +559,9 @@ export async function verifySharedWorldPostcondition(
 export type CutoverFinalizeResult = {
   finalized: string[];
   refused: Array<{ deploymentId: string; reason: string }>;
+  /** Staged deployments not yet finalized; the operation stays retryable. */
+  pendingStaged: string[];
+  completed: boolean;
 };
 
 /**
@@ -458,6 +578,12 @@ export async function finalizeSharedWorldCutover(input: {
   store: CutoverStore;
   operationId: string;
   deploymentIds: string[];
+  /**
+   * The operator's explicit statement that the cross-Release continuity gate
+   * passed on the resumed dispatcher. Recorded as a durable checkpoint; the
+   * operation cannot complete without it.
+   */
+  continuityVerified?: boolean;
 }): Promise<CutoverFinalizeResult> {
   const operation = await input.store.getWorkflowCutoverOperation(input.operationId);
   if (!operation) {
@@ -473,6 +599,11 @@ export async function finalizeSharedWorldCutover(input: {
     throw new Error(
       `The shared-world postcondition does not hold (${String(postcondition.claimableUnscopedJobs)} unscoped job(s), ${String(postcondition.blockingRuns.length)} blocking run(s)); finalize refused.`,
     );
+  }
+  if (input.continuityVerified) {
+    await input.store.advanceWorkflowCutoverOperation(input.operationId, {
+      checkpoint: { key: "continuity", value: { verifiedAt: new Date().toISOString() } },
+    });
   }
   const finalized: string[] = [];
   const refused: CutoverFinalizeResult["refused"] = [];
@@ -501,11 +632,39 @@ export async function finalizeSharedWorldCutover(input: {
     });
     if (updated) finalized.push(deploymentId);
   }
-  await input.store.advanceWorkflowCutoverOperation(input.operationId, {
-    phase: "completed",
-    checkpoint: { key: "finalized", value: finalized },
-  });
-  return { finalized, refused };
+  // Completion is earned, not assumed: every deployment the operation staged
+  // must be finalized, nothing may have been refused in this call, and the
+  // continuity gate must be durably recorded. Anything less leaves the saga
+  // at control-plane convergence, retryable.
+  const current = await input.store.getWorkflowCutoverOperation(input.operationId);
+  const stagedSet = Array.isArray(current?.checkpoints.staged)
+    ? (current.checkpoints.staged as string[])
+    : [];
+  const pending: string[] = [];
+  for (const deploymentId of stagedSet) {
+    const deployment = await input.store.getDeployment(deploymentId);
+    if (deployment?.workflowTopology.conversionState !== "external") pending.push(deploymentId);
+  }
+  const continuityRecorded = current?.checkpoints.continuity !== undefined;
+  if (refused.length === 0 && pending.length === 0 && continuityRecorded) {
+    await input.store.advanceWorkflowCutoverOperation(input.operationId, {
+      phase: "completed",
+      checkpoint: { key: "finalized", value: finalized },
+    });
+  } else {
+    await input.store.advanceWorkflowCutoverOperation(input.operationId, {
+      checkpoint: {
+        key: "finalized",
+        value: { finalized, refused, pendingStaged: pending, continuityRecorded },
+      },
+    });
+  }
+  return {
+    finalized,
+    refused,
+    pendingStaged: pending,
+    completed: refused.length === 0 && pending.length === 0 && continuityRecorded,
+  };
 }
 
 /**

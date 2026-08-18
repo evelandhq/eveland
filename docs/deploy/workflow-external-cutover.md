@@ -30,6 +30,13 @@ unterminated, or blocking readiness. Never infer state from logs.
 - Managed termination is a fail-closed saga:
   `pending → fenced → workflow_safe → control_plane_converged → completed`.
   A mid-phase failure keeps the operation fenced; it never reopens wake.
+- Activation is bound to the registered dispatcher **instance**: the
+  workflow-step activation call must carry the exact instance id the readiness
+  gate approved, so a stale or rogue dispatcher process cannot ride a healthy
+  registration.
+- The API refuses to boot in `workflow-cutover` mode unless the configured
+  operation exists and is not already completed — a typoed or finished
+  operation id fails at startup, not at the first 409.
 - Session-family tombstones and retired-deployment projection fences keep
   late/replayed OTLP batches from re-materializing terminated Sessions; raw
   batches remain stored as audit data.
@@ -56,8 +63,9 @@ db:migrate`; the shared World migrates itself on the next start). Historical
 
    ```bash
    pnpm --filter @evelandhq/worker cutover -- inventory --operation-id <id>
-   pnpm --filter @evelandhq/worker cutover -- prepare --operation-id <id>
-   pnpm --filter @evelandhq/worker cutover -- postcondition
+   pnpm --filter @evelandhq/worker cutover -- prepare --operation-id <id> \
+     [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...]
+   pnpm --filter @evelandhq/worker cutover -- postcondition --operation-id <id>
    ```
 
    `prepare` first classifies still-`unknown` owners from their immutable
@@ -67,14 +75,34 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    terminates/quarantines the non-recoverable, migrates provable
    early-external jobs onto their **exact** per-run queues in place, converges
    the control plane for the retired owners, and stages surviving shared
-   deployments to `converting`. Repeat until `postcondition` reports
-   `"passed": true`.
+   deployments to `converting`.
+
+   `prepare` walks the **entire** control-plane inventory, not just owners of
+   active runs: every deployment either classifies, retires, stages, or — when
+   it stays `unknown` — gets a deployment fence and the `fenced` topology so it
+   cannot wake mid-conversion. `--run-families` maps managed-terminated runs to
+   their Eve session families so their control-plane Sessions are failed and
+   tombstoned individually; runs terminated without a mapping are reported as
+   `unmappedTerminatedRuns` and must be resolved (or accepted explicitly)
+   before finalize. Repeat until `postcondition` reports `"passed": true` —
+   with `--operation-id` it also records a World-visible proof row
+   (`workflow.cutover_proofs`) that the dispatcher preflight requires.
 
 6. **Start the dispatcher recover-paused**
    (`EVELAND_WORKFLOW_DISPATCHER_START_MODE=recover-paused`). Watch its
    registration reach `ready_paused` via
    `GET /internal/workflow/dispatcher/registration`; its own preflight
-   re-verifies the unscoped-job postcondition before boot recovery runs.
+   re-verifies the unscoped-job postcondition before boot recovery runs, and —
+   when `EVELAND_WORKFLOW_CUTOVER_OPERATION_ID` is set — additionally requires
+   a **passed** `workflow.cutover_proofs` row for this exact operation (the
+   one `cutover postcondition --operation-id` records). The dispatcher never
+   reads the control-plane database; the proof lives in the World it already
+   owns. Its heartbeat also reports the World's **cluster identity**
+   (`cluster:<pg system_identifier>/<database>`, read from the database
+   itself), and API-side readiness compares it strictly against the identity
+   the control plane derives from `EVELAND_WORKFLOW_WORLD_URL` — two different
+   clusters can never look "ready" just because their URLs resemble each
+   other.
 7. **Verify exact activation** end to end through the cutover API, then
    **resume explicitly**:
 
@@ -98,8 +126,14 @@ db:migrate`; the shared World migrates itself on the next start). Historical
 
    ```bash
    pnpm --filter @evelandhq/worker cutover -- finalize --operation-id <id> \
-     --deployments dep_a,dep_b
+     --deployments dep_a,dep_b --continuity-verified true
    ```
+
+   The operation reaches `completed` only when finalize refused nothing, every
+   deployment the operation staged is now `external`, and the operator
+   attested the continuity gates with `--continuity-verified true` (recorded
+   as an operation checkpoint). Anything short of that leaves the operation
+   retryable at `control_plane_converged` and the command exits non-zero.
 
 9. **Restart API/Worker in normal mode** (drop `EVELAND_PROCESS_MODE`), keep
    ingress closed until readiness passes, then reopen Gateway/Web. When the

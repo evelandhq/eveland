@@ -37,7 +37,7 @@ describe("release workflow attestation and deployment execution topology", () =>
       workflowWorld: {
         worldKind: "shared",
         worldPackage: "@evelandhq/workflow-world",
-        worldVersion: "0.10.1",
+        worldVersion: "0.11.0",
         storageSpec: 6,
         dispatchProtocol: 1,
         enqueueCapability: "per_run_queue_v1",
@@ -48,7 +48,7 @@ describe("release workflow attestation and deployment execution topology", () =>
     expect(release?.workflow).toEqual({
       worldKind: "shared",
       worldPackage: "@evelandhq/workflow-world",
-      worldVersion: "0.10.1",
+      worldVersion: "0.11.0",
       storageSpec: 6,
       dispatchProtocol: 1,
       enqueueCapability: "per_run_queue_v1",

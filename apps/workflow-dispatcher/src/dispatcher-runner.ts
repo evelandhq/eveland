@@ -6,11 +6,17 @@ import type {
   DispatcherServiceOptions,
   DispatcherTelemetry,
 } from "@evelandhq/workflow-world/dispatcher";
-import { worldDatabaseIdentity } from "@evelandhq/core/workflow-dispatch";
+import {
+  clusterWorldIdentity,
+  WORLD_IDENTITY_SQL,
+  worldDatabaseIdentity,
+} from "@evelandhq/core/workflow-dispatch";
+import { createActivationClient } from "@evelandhq/workflow-world/dispatcher";
 import {
   countClaimableUnscopedFlowJobs,
   DISPATCH_VERSION,
   listUnresolvedRunQuarantines,
+  readLatestCutoverProof,
 } from "@evelandhq/workflow-world";
 
 /** The pg pool type as workflow-world exposes it; this app has no pg dependency. */
@@ -40,6 +46,10 @@ export type DispatcherRunnerDeps = {
   countUnscopedJobs: (pool: WorldPool) => Promise<number>;
   countUnresolvedQuarantines: (pool: WorldPool) => Promise<number>;
   readSchemaGeneration: (pool: WorldPool) => Promise<string | null>;
+  /** `cluster:<system_identifier>/<database>` from the connected database itself. */
+  readWorldIdentity: (pool: WorldPool) => Promise<string>;
+  /** The newest World-visible cutover proof for an operation, if any. */
+  readCutoverProof: (pool: WorldPool, operationId: string) => Promise<{ passed: boolean } | null>;
   now: () => Date;
 };
 
@@ -68,6 +78,7 @@ export async function startEvelandWorkflowDispatcher(
     unscopedRunnableJobs: null as number | null,
     unresolvedQuarantines: null as number | null,
     schemaGeneration: null as string | null,
+    worldIdentity: "unknown",
     state: "recovering" as
       | "recovering"
       | "ready_paused"
@@ -108,32 +119,64 @@ export async function startEvelandWorkflowDispatcher(
     }
   };
 
+  const apiUrlForActivation = (env.WORKFLOW_DISPATCHER_ACTIVATION_API_URL ?? "").replace(
+    /\/+$/u,
+    "",
+  );
   const service = await deps.startService({
     env,
     telemetry,
     startPaused,
     lifecycle: { onPhase },
+    // Exact activation is bound to THIS registration: the client sends the
+    // instance id on every activation, and the control plane matches it to the
+    // registration it validated before selecting a protocol.
+    ...(apiUrlForActivation
+      ? {
+          activation: createActivationClient({
+            apiUrl: apiUrlForActivation,
+            serviceToken: env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ?? "eveland-dev-gateway-token",
+            instanceId,
+          }),
+        }
+      : {}),
     async beforeBootRecovery({ pool }) {
-      const [unscoped, quarantines, schemaGeneration] = await Promise.all([
+      const [unscoped, quarantines, schemaGeneration, worldIdentity] = await Promise.all([
         deps.countUnscopedJobs(pool),
         deps.countUnresolvedQuarantines(pool),
         deps.readSchemaGeneration(pool),
+        deps.readWorldIdentity(pool),
       ]);
       snapshot.unscopedRunnableJobs = unscoped;
       snapshot.unresolvedQuarantines = quarantines;
       snapshot.schemaGeneration = schemaGeneration;
+      snapshot.worldIdentity = worldIdentity;
       if (unscoped > 0) {
         throw new Error(
           `${String(unscoped)} early-external job(s) are still claimable outside a per-run queue. ` +
             "Run the cutover job migration before starting the dispatcher; boot recovery must not race them.",
         );
       }
+      // Cutover mode: boot recovery may only run after the operator's
+      // postcondition ran and PASSED against this exact database — the proof
+      // is World-visible on purpose, because this process never reads the
+      // control-plane database and a control-plane fence is invisible here.
+      const operationId = env.EVELAND_WORKFLOW_CUTOVER_OPERATION_ID;
+      if (operationId) {
+        const proof = await deps.readCutoverProof(pool, operationId);
+        if (!proof || !proof.passed) {
+          throw new Error(
+            proof
+              ? `The cutover postcondition for operation ${operationId} last FAILED against this database; boot recovery must not run.`
+              : `No cutover postcondition proof exists for operation ${operationId} in this database. Run \`cutover postcondition\` (which records the proof) before starting the dispatcher.`,
+          );
+        }
+      }
     },
   });
 
-  const apiUrl = (env.WORKFLOW_DISPATCHER_ACTIVATION_API_URL ?? "").replace(/\/+$/u, "");
+  const apiUrl = apiUrlForActivation;
   const activationToken = env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ?? "eveland-dev-gateway-token";
-  const identity = worldDatabaseIdentity(service.config.worldUrl);
 
   const heartbeat = async () => {
     if (!apiUrl) return;
@@ -153,7 +196,7 @@ export async function startEvelandWorkflowDispatcher(
             ownershipAcquired: snapshot.ownershipAcquired,
             bootRecoveryCompleted: snapshot.bootRecoveryCompleted,
             reenqueuedRuns: snapshot.reenqueuedRuns,
-            worldDatabaseIdentity: identity,
+            worldDatabaseIdentity: snapshot.worldIdentity,
             schemaGeneration: snapshot.schemaGeneration,
             protocolMin: DISPATCH_VERSION,
             protocolMax: DISPATCH_VERSION,
@@ -224,10 +267,26 @@ export async function readLatestSchemaGeneration(pool: WorldPool): Promise<strin
   }
 }
 
+export async function readWorldClusterIdentity(pool: WorldPool): Promise<string> {
+  try {
+    const { rows } = await pool.query<{ system_identifier: string; database: string }>(
+      WORLD_IDENTITY_SQL,
+    );
+    const row = rows[0];
+    if (!row) return "unknown";
+    return clusterWorldIdentity(row.system_identifier, row.database);
+  } catch {
+    // "unknown" never satisfies the readiness gate — fail closed, not open.
+    return "unknown";
+  }
+}
+
 export const defaultRunnerDeps: Omit<DispatcherRunnerDeps, "startService"> = {
   fetchImplementation: fetch,
   countUnscopedJobs: countClaimableUnscopedFlowJobs,
   countUnresolvedQuarantines: async (pool) => (await listUnresolvedRunQuarantines(pool)).length,
   readSchemaGeneration: readLatestSchemaGeneration,
+  readWorldIdentity: readWorldClusterIdentity,
+  readCutoverProof: async (pool, operationId) => readLatestCutoverProof(pool, operationId),
   now: () => new Date(),
 };

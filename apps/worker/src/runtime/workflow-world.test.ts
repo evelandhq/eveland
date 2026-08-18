@@ -12,7 +12,7 @@ describe("deriveWorkflowWorldAttestation", () => {
     expect(
       deriveWorkflowWorldAttestation({
         packageName: "@evelandhq/workflow-world",
-        packageVersion: "0.10.1",
+        packageVersion: "0.11.0",
       }),
     ).toMatchObject({
       worldKind: "shared",

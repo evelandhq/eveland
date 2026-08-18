@@ -176,4 +176,64 @@ describe("workflow cutover operations", () => {
       releasedLeases: 0,
     });
   });
+
+  test("per-run family convergence fails only the named family and tombstones its projection", async () => {
+    const store = createTestStore();
+    const { project, deployment } = await createTerminationFixture(store);
+    await store.createSession({
+      projectId: project.id,
+      deploymentId: deployment.id,
+      trigger: "playground",
+      eveSessionId: "eve_family_doomed",
+    });
+    await store.createSession({
+      projectId: project.id,
+      deploymentId: deployment.id,
+      trigger: "playground",
+      eveSessionId: "eve_family_healthy",
+    });
+    const routes = await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
+    for (const eveSessionId of ["eve_family_doomed", "eve_family_healthy"]) {
+      await store.bindSession({
+        projectId: project.id,
+        eveSessionId,
+        routeId: routes[0]!.id,
+        deploymentId: deployment.id,
+        trigger: "api",
+        variantName: null,
+        experimentId: null,
+        requestId: `req_${eveSessionId}`,
+        remoteIp: null,
+        affinityFingerprint: null,
+        affinitySource: null,
+      });
+    }
+
+    const result = await store.convergeWorkflowRunFamilies("cut_family_test", [
+      { projectId: project.id, eveSessionId: "eve_family_doomed" },
+    ]);
+    expect(result).toMatchObject({ failedSessions: 1, tombstonedFamilies: 1 });
+
+    // The named family is failed and fenced against late OTLP resurrection...
+    await expect(
+      store.getSessionByEveSessionId(project.id, "eve_family_doomed"),
+    ).resolves.toMatchObject({ status: "failed" });
+    expect(
+      await store.getActiveWorkflowFence("session_family", `${project.id}:eve_family_doomed`),
+    ).toMatchObject({ operationId: "cut_family_test" });
+
+    // ...while the sibling family on the SAME deployment is untouched.
+    await expect(
+      store.getSessionByEveSessionId(project.id, "eve_family_healthy"),
+    ).resolves.toMatchObject({ status: "running" });
+    expect(
+      await store.getActiveWorkflowFence("session_family", `${project.id}:eve_family_healthy`),
+    ).toBeNull();
+
+    // Idempotent: the retried saga step converges nothing twice.
+    const second = await store.convergeWorkflowRunFamilies("cut_family_test", [
+      { projectId: project.id, eveSessionId: "eve_family_doomed" },
+    ]);
+    expect(second).toMatchObject({ failedSessions: 0, tombstonedFamilies: 0 });
+  });
 });

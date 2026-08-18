@@ -469,6 +469,7 @@ describe("processNextJob", () => {
     await recordReadyDispatcherFixture(store);
 
     const evelandWorldUrl = "postgres://eveland:eveland@host.docker.internal:5432/eveland_workflow";
+    const worldClusterIdentity = "cluster:7234567890123456789/eveland_workflow";
     const ensuredTenants: string[] = [];
     const ensuredLegacyProjects: string[] = [];
     await expect(
@@ -480,6 +481,7 @@ describe("processNextJob", () => {
         // legacy build: the build-selection semantics are gone.
         workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
         evelandWorkflowWorldUrl: evelandWorldUrl,
+        worldClusterIdentity,
         ensureEvelandWorkflowTenant: async (_worldUrl, projectId) => {
           ensuredTenants.push(projectId);
         },
@@ -1066,15 +1068,16 @@ describe("processNextJob", () => {
       schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
-    // The dispatcher must be claiming from the SAME database (name+port) this
-    // deploy injects; the fixture registers a matching identity.
-    await recordReadyDispatcherFixture(store, "localhost:5452/eveland_workflow");
+    // The dispatcher must be claiming from the SAME database — proven by the
+    // cluster fingerprint; the fixture registers a matching identity.
+    await recordReadyDispatcherFixture(store, "cluster:5452999/eveland_workflow");
 
     await expect(
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
         evelandWorkflowWorldUrl:
           "postgres://eveland:eveland@host.docker.internal:5452/eveland_workflow",
+        worldClusterIdentity: "cluster:5452999/eveland_workflow",
         ensureEvelandWorkflowTenant: async () => {},
         runtime: {
           name: "docker",

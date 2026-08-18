@@ -68,7 +68,7 @@ async function createDeployableFixture(
 const sharedAttestation = {
   worldKind: "shared" as const,
   worldPackage: "@evelandhq/workflow-world",
-  worldVersion: "0.10.1",
+  worldVersion: "0.11.0",
   storageSpec: 6,
   dispatchProtocol: 1,
   enqueueCapability: "per_run_queue_v1" as const,
@@ -220,10 +220,14 @@ describe("cutover process mode", () => {
 });
 
 describe("workflow_step activation gating", () => {
-  async function activate(app: ReturnType<typeof createApp>, deploymentId: string) {
+  async function activate(
+    app: ReturnType<typeof createApp>,
+    deploymentId: string,
+    instanceId = "wfd_api_test",
+  ) {
     return app.request("/internal/runtime/activations", {
       method: "POST",
-      headers: serviceHeaders,
+      headers: { ...serviceHeaders, "x-eveland-dispatcher-instance": instanceId },
       body: JSON.stringify({
         deploymentId,
         kind: "workflow_step",
@@ -273,6 +277,14 @@ describe("workflow_step activation gating", () => {
       selectedProtocol: 1,
       enqueueCapability: "per_run_queue_v1",
     });
+
+    // Exact activation is bound to the validated registration: a stale
+    // process sharing the service token cannot activate under it.
+    const staleInstance = await activate(app, deployment.id, "wfd_stale_generation");
+    expect(staleInstance.status).toBe(409);
+    expect(((await staleInstance.json()) as { error: string }).error).toContain(
+      "does not match the validated dispatcher registration",
+    );
   });
 
   test("an unattested or enqueue-incapable release is terminal workflow_migration_required, not a timeout", async () => {

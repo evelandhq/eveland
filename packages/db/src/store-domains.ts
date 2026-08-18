@@ -932,6 +932,17 @@ export interface WorkflowCutoverStore {
     resolvedBy: string,
   ): Promise<WorkflowFence | null>;
   /**
+   * Per-run managed termination: converge exactly the named Eve families —
+   * fail their Sessions and running SessionNodes, tombstone them, and remove
+   * their Session bindings — without touching anything else on the (still
+   * healthy) Deployment. Used when a single run is terminated on a
+   * shared-capable owner.
+   */
+  convergeWorkflowRunFamilies(
+    operationId: string,
+    families: Array<{ projectId: string; eveSessionId: string }>,
+  ): Promise<{ failedSessions: number; tombstonedFamilies: number }>;
+  /**
    * The control-plane half of a managed termination, in one idempotent
    * transaction per call: non-terminal Sessions on the targeted deployments
    * fail, their Session/Operation bindings are removed, activation leases are
