@@ -268,8 +268,15 @@ function normalizeHttpsIssuer(value: unknown): string {
   } catch {
     throw new Error("OIDC issuer must be a valid HTTPS URL.");
   }
+  // Loopback http is allowed so integration harnesses can register an
+  // in-process IdP; the protocol layer still refuses to fetch from it unless
+  // EVELAND_IDENTITY_OIDC_ALLOW_INSECURE is set, so a production instance
+  // that stores one simply fails every login and preflight.
+  const loopbackHttp =
+    issuer.protocol === "http:" &&
+    ["localhost", "127.0.0.1", "[::1]", "::1"].includes(issuer.hostname);
   if (
-    issuer.protocol !== "https:" ||
+    (issuer.protocol !== "https:" && !loopbackHttp) ||
     issuer.username ||
     issuer.password ||
     issuer.search ||
