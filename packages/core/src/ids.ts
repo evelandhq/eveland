@@ -63,6 +63,18 @@ export function normalizeGitHttpHost(input: string): string | null {
   }
 }
 
+// Accepts what a person types into a "Host" field — a bare host with an
+// optional port, or the same with an https:// prefix — and returns the same
+// normalized form normalizeGitHttpHost derives from a repository URL.
+export function normalizeGitCredentialHost(input: string): string | null {
+  const bare = input
+    .trim()
+    .replace(/^https:\/\//i, "")
+    .replace(/\/+$/, "");
+  if (!bare || /[/@\\\s?#]/.test(bare)) return null;
+  return normalizeGitHttpHost(`https://${bare}`);
+}
+
 export async function claimProjectSlug<T>(
   requestedName: string,
   claim: (candidate: string) => Promise<T | null>,

@@ -416,6 +416,56 @@ describe("api app", () => {
     ).resolves.not.toBeNull();
   });
 
+  test("manually saves a Git credential, normalizing the host and never echoing the PAT", async () => {
+    const store = createTestStore();
+    const app = createApp(store, {
+      appSecretKey: "eveland-test-secret-key-00000000",
+    });
+
+    const rejected = await app.request("/git-credentials", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ host: "gitlab.example.com/group", gitlabPat: "glpat-manual" }),
+    });
+    expect(rejected.status).toBe(400);
+
+    const created = await app.request("/git-credentials", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ host: "https://GitLab.Example.COM:8443", gitlabPat: "glpat-manual" }),
+    });
+    expect(created.status).toBe(201);
+    const createdBody = (await created.json()) as { credential: { id: string; host: string } };
+    expect(createdBody.credential.host).toBe("gitlab.example.com:8443");
+    expect(JSON.stringify(createdBody)).not.toContain("glpat-manual");
+    expect(JSON.stringify(createdBody)).not.toContain("user_local_admin");
+
+    const stored = await store.getGitCredential("user_local_admin", "gitlab.example.com:8443");
+    expect(
+      decryptSecretValue(
+        JSON.parse(stored!.encryptedToken) as EncryptedSecret,
+        "eveland-test-secret-key-00000000",
+      ),
+    ).toBe("glpat-manual");
+
+    const replaced = await app.request("/git-credentials", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ host: "gitlab.example.com:8443", gitlabPat: "glpat-rotated" }),
+    });
+    expect(replaced.status).toBe(201);
+    const replacedBody = (await replaced.json()) as { credential: { id: string } };
+    expect(replacedBody.credential.id).toBe(createdBody.credential.id);
+    await expect(store.listGitCredentials("user_local_admin")).resolves.toHaveLength(1);
+    const rotated = await store.getGitCredential("user_local_admin", "gitlab.example.com:8443");
+    expect(
+      decryptSecretValue(
+        JSON.parse(rotated!.encryptedToken) as EncryptedSecret,
+        "eveland-test-secret-key-00000000",
+      ),
+    ).toBe("glpat-rotated");
+  });
+
   test("rejects a manually edited project name that is not already URL-friendly", async () => {
     const response = await createApp(createTestStore()).request("/projects", {
       method: "POST",

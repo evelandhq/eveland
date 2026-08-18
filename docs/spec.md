@@ -222,9 +222,12 @@ Profile 更新复用 Better Auth 用户记录。Better Auth 的 HTTP 面按 allo
 
 #### Git Credentials (/settings/git-credentials)
 
-个人设置列出当前用户已验证并保存的 Git HTTPS host 凭据，只显示规范化的 host、更新时间
-和删除操作，不返回、复制或提示 PAT 原值、长度或前后缀。凭据按 `(userId, host)` 隔离，
-不能由同一 Team 的其他成员复用。删除后仅影响后续 import/sync，不修改已导入的 Source Revision。
+个人设置列出当前用户保存的 Git HTTPS host 凭据，只显示规范化的 host、更新时间和删除
+操作，不返回、复制或提示 PAT 原值、长度或前后缀。凭据来自两条路径：import 私有仓库
+成功后自动保存，或在本页手工添加（输入 host 与 PAT，host 规范化为小写并可带端口，
+拒绝路径、scheme 之外的前缀或内嵌凭据；同一 host 重复添加即替换其 PAT）。手工保存
+即时生效，不要求先完成一次 import。凭据按 `(userId, host)` 隔离，不能由同一 Team 的
+其他成员复用。删除后仅影响后续 import/sync，不修改已导入的 Source Revision。
 
 #### Members (/settings/members)
 
