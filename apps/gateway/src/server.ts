@@ -6,6 +6,7 @@ import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
 import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
 import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { createGatewayApp } from "./app.js";
+import { withDeploymentEveVersionCache } from "./gateway-eve-version-cache.js";
 import { createApiActivationClient } from "./activation-client.js";
 import { createApiIdentityClient } from "./identity-client.js";
 
@@ -36,7 +37,9 @@ const internalServiceToken = resolveSecretWithDevFallback(
 const apiInternalUrl = process.env.EVELAND_API_INTERNAL_URL ?? "http://127.0.0.1:4000";
 const { store, close } = createStoreFromEnv();
 await store.reconcileAgentRoutes(allowedBaseDomains[0] ?? "agent.localhost");
-const app = createGatewayApp(store, {
+// The version gate runs on every public request; a Deployment's Eve version
+// is immutable, so memoize it instead of paying the join each time.
+const app = createGatewayApp(withDeploymentEveVersionCache(store), {
   allowedBaseDomains,
   affinitySecret,
   buildInfo,
