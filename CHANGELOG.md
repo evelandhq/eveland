@@ -4,6 +4,34 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.37.0](https://github.com/evelandhq/eveland/compare/v0.36.0...v0.37.0) (2026-08-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* cut the workflow platform over to the shared World with an external-only dispatcher ([#333](https://github.com/evelandhq/eveland/issues/333))
+
+### Features
+
+* allow manually adding a Git credential in settings ([#327](https://github.com/evelandhq/eveland/issues/327)) ([d0224e3](https://github.com/evelandhq/eveland/commit/d0224e3906e3ff25669bbb94506f25c6b3157066))
+* cut the workflow platform over to the shared World with an external-only dispatcher ([#333](https://github.com/evelandhq/eveland/issues/333)) ([f165943](https://github.com/evelandhq/eveland/commit/f1659437fc875264cbb9318299977f302bd71a7d))
+* **identity:** teach the Identity Broker the OIDC login core ([#328](https://github.com/evelandhq/eveland/issues/328)) ([8f86208](https://github.com/evelandhq/eveland/commit/8f86208e71aaab444e049d48249e3eac4343bced))
+* **identity:** wire the OIDC login flow through the broker HTTP surface ([#329](https://github.com/evelandhq/eveland/issues/329)) ([bc2b82f](https://github.com/evelandhq/eveland/commit/bc2b82f11cd693d43e1a1ba88a89401a1f6ce0e6))
+* **web:** add session Trace view and compact the session detail header ([#325](https://github.com/evelandhq/eveland/issues/325)) ([4f80195](https://github.com/evelandhq/eveland/commit/4f8019511afc8aa8411a07be8e496a9ac01c6eef))
+* **web:** configure and select the OIDC Identity Provider in settings ([#330](https://github.com/evelandhq/eveland/issues/330)) ([94e4c61](https://github.com/evelandhq/eveland/commit/94e4c6106720e35d24d10b27fba97ac259f55ca2))
+* **worker:** add a cutover retire command for unclassifiable unknown owners ([#341](https://github.com/evelandhq/eveland/issues/341)) ([5de4a0c](https://github.com/evelandhq/eveland/commit/5de4a0c8214038b588800af6874e64e77b05e43a))
+* **worker:** adopt @evelandhq/workflow-world 0.12.0 ([#343](https://github.com/evelandhq/eveland/issues/343)) ([8453e91](https://github.com/evelandhq/eveland/commit/8453e91de918f5a50f0c928f5ba7aaa792b01f7d))
+
+
+### Bug Fixes
+
+* **api:** enforce the World cluster identity in the workflow_step activation gate ([#336](https://github.com/evelandhq/eveland/issues/336)) ([6123567](https://github.com/evelandhq/eveland/commit/61235671d17fd71695c33351ae563e73782ca4dd))
+* **ci:** provision the shared workflow world database in the systemd smoke ([#337](https://github.com/evelandhq/eveland/issues/337)) ([7983be5](https://github.com/evelandhq/eveland/commit/7983be5fd333806cd48142974e19b17fa2eaf041))
+* **ci:** provision the shared workflow world database in the systemd smoke ([#337](https://github.com/evelandhq/eveland/issues/337)) ([b6b7517](https://github.com/evelandhq/eveland/commit/b6b7517d1b62f2fb74a14e134f1ebc6acefaa2c6))
+* **db:** strip NUL from stored error text before it hits a Postgres text column ([#334](https://github.com/evelandhq/eveland/issues/334)) ([9a26db3](https://github.com/evelandhq/eveland/commit/9a26db3da8479e2c9660e1089f72053884daa399))
+* **web:** make the OIDC Realm resolution save unmistakable in settings ([#332](https://github.com/evelandhq/eveland/issues/332)) ([11102c5](https://github.com/evelandhq/eveland/commit/11102c5d284649fa7cac1d73272c63e05eef54c2))
+* **worker:** close the cutover CLI's three audit minors ([#340](https://github.com/evelandhq/eveland/issues/340)) ([b53ec7c](https://github.com/evelandhq/eveland/commit/b53ec7cb2e8d756e61ef7830121a299fc6afed16))
+
 ## [0.36.0](https://github.com/evelandhq/eveland/compare/v0.35.0...v0.36.0) (2026-08-18)
 
 
