@@ -4,7 +4,7 @@ import {
   runMigrations,
 } from "@evelandhq/workflow-world/migrate";
 import { Pool } from "pg";
-import { resolveWorkflowWorldPlatformUrl } from "./eveland-workflow-world-url.js";
+import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 
 export type EvelandWorkflowWorldBootstrapDeps = {
   createPool: (connectionString: string) => Pool;

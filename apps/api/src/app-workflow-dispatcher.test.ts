@@ -7,6 +7,9 @@ const serviceHeaders = {
   "content-type": "application/json",
 };
 
+/** The cluster identity both the fixture dispatcher and the API expect. */
+const WORLD_IDENTITY = "cluster:7234567890123456789/eveland_workflow";
+
 function heartbeatBody(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     instanceId: "wfd_api_test",
@@ -15,7 +18,7 @@ function heartbeatBody(overrides: Record<string, unknown> = {}) {
     ownershipAcquired: true,
     bootRecoveryCompleted: true,
     reenqueuedRuns: 2,
-    worldDatabaseIdentity: "localhost:5432/eveland_workflow",
+    worldDatabaseIdentity: WORLD_IDENTITY,
     schemaGeneration: "0013_run_quarantines.sql",
     protocolMin: 1,
     protocolMax: 1,
@@ -105,7 +108,7 @@ describe("workflow dispatcher registration API", () => {
     };
     expect(registrationBody.registration).toMatchObject({
       state: "ready_paused",
-      worldDatabaseIdentity: "localhost:5432/eveland_workflow",
+      worldDatabaseIdentity: WORLD_IDENTITY,
     });
     // The readiness surface never carries credentials.
     expect(JSON.stringify(registrationBody)).not.toContain("postgres://");
@@ -123,6 +126,25 @@ describe("workflow dispatcher registration API", () => {
       }),
     });
     expect(response.status).toBe(400);
+
+    // The legacy host:port/database shape no longer registers either: the
+    // readiness gate compares cluster fingerprints, and a URL-derived identity
+    // is exactly the fails-open comparison the cluster form exists to replace.
+    const legacyShape = await app.request("/internal/workflow/dispatcher/heartbeat", {
+      method: "POST",
+      headers: serviceHeaders,
+      body: heartbeatBody({ worldDatabaseIdentity: "localhost:5432/eveland_workflow" }),
+    });
+    expect(legacyShape.status).toBe(400);
+
+    // "unknown" stays registrable: a dispatcher that cannot read its World
+    // must still be able to report itself (it never satisfies readiness).
+    const unknownIdentity = await app.request("/internal/workflow/dispatcher/heartbeat", {
+      method: "POST",
+      headers: serviceHeaders,
+      body: heartbeatBody({ worldDatabaseIdentity: "unknown" }),
+    });
+    expect(unknownIdentity.status).toBe(200);
   });
 
   test("the explicit resume flips the desired state exactly once from ready_paused", async () => {
@@ -239,7 +261,10 @@ describe("workflow_step activation gating", () => {
   test("fails closed with workflow_unavailable when no fresh dispatcher registration exists", async () => {
     const store = createTestStore();
     const deployment = await createDeployableFixture(store, sharedAttestation);
-    const app = createApp(store, { gatewayServiceToken: "gateway-service-token" });
+    const app = createApp(store, {
+      gatewayServiceToken: "gateway-service-token",
+      worldClusterIdentity: WORLD_IDENTITY,
+    });
 
     const response = await activate(app, deployment.id);
     expect(response.status).toBe(503);
@@ -252,6 +277,7 @@ describe("workflow_step activation gating", () => {
     const deployment = await createDeployableFixture(store, sharedAttestation);
     const app = createApp(store, {
       gatewayServiceToken: "gateway-service-token",
+      worldClusterIdentity: WORLD_IDENTITY,
       runtimeActivationWaiter: async (claim) => {
         const ready = await store.updateRuntimeInstance(claim.runtimeInstance.id, {
           status: "ready",
@@ -298,7 +324,10 @@ describe("workflow_step activation gating", () => {
       ...sharedAttestation,
       dispatchProtocol: 99,
     });
-    const app = createApp(store, { gatewayServiceToken: "gateway-service-token" });
+    const app = createApp(store, {
+      gatewayServiceToken: "gateway-service-token",
+      worldClusterIdentity: WORLD_IDENTITY,
+    });
     await app.request("/internal/workflow/dispatcher/heartbeat", {
       method: "POST",
       headers: serviceHeaders,
@@ -311,5 +340,33 @@ describe("workflow_step activation gating", () => {
       const body = (await response.json()) as { error: string };
       expect(body.error).toContain("workflow_migration_required");
     }
+  });
+
+  test("a dispatcher claiming from a different Postgres cluster is refused activation", async () => {
+    const store = createTestStore();
+    const deployment = await createDeployableFixture(store, sharedAttestation);
+    const app = createApp(store, {
+      gatewayServiceToken: "gateway-service-token",
+      worldClusterIdentity: WORLD_IDENTITY,
+    });
+    // Same database name, fresh heartbeat, healthy state — but another
+    // cluster's fingerprint. URL-ish resemblance must count for nothing.
+    const foreignIdentity = "cluster:9999999999999999999/eveland_workflow";
+    await app.request("/internal/workflow/dispatcher/heartbeat", {
+      method: "POST",
+      headers: serviceHeaders,
+      body: heartbeatBody({
+        state: "ready",
+        readyAt: new Date().toISOString(),
+        worldDatabaseIdentity: foreignIdentity,
+      }),
+    });
+
+    const response = await activate(app, deployment.id);
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toContain("workflow_unavailable");
+    expect(body.error).toContain(foreignIdentity);
+    expect(body.error).toContain(WORLD_IDENTITY);
   });
 });

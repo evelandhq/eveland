@@ -352,7 +352,10 @@ export type WorkflowDispatcherRegistration = {
   ownershipAcquired: boolean;
   bootRecoveryCompleted: boolean;
   reenqueuedRuns: number | null;
-  /** host:port/database of the shared World — identity, never credentials. */
+  /**
+   * `cluster:<system_identifier>/<database>` of the shared World, read from
+   * the database itself ("unknown" while unreadable) — never credentials.
+   */
   worldDatabaseIdentity: string;
   /** Latest applied shared-World schema migration name. */
   schemaGeneration: string | null;

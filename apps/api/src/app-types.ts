@@ -54,6 +54,13 @@ export type AppOptions = {
    * and health. Everything else answers a stable managed 503.
    */
   cutoverOperationId?: string;
+  /**
+   * Expected `cluster:<system_identifier>/<database>` identity of the shared
+   * workflow World, compared strictly against the dispatcher registration
+   * before a workflow_step activation. Tests inject it; production derives it
+   * from the World database itself via `EVELAND_WORKFLOW_WORLD_URL`.
+   */
+  worldClusterIdentity?: string;
   apiSessionIdleTtlMs?: number;
   sessionBindingNow?: () => Date;
   agentAuthProviders?: AgentAuthProviderRegistration[];

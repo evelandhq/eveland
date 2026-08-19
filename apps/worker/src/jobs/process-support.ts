@@ -24,7 +24,7 @@ import { ensureEvelandWorkflowTenant } from "../runtime/eveland-workflow-world-b
 import {
   resolveWorkflowWorldDeploymentUrl,
   resolveWorkflowWorldPlatformUrl,
-} from "../runtime/eveland-workflow-world-url.js";
+} from "@evelandhq/core/workflow-world-url";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
 import { resolveWorkflowRunnerMode } from "../runtime/workflow-world.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";

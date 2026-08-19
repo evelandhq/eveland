@@ -570,6 +570,11 @@ complete production boundary:
   worker fails at startup and a deploy also retains a defensive gate if it is
   absent. The legacy `WORKFLOW_POSTGRES_URL` no longer satisfies or replaces
   this requirement.
+- The API reads the same variable (through the host-view
+  `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when that is set) to learn the World's
+  cluster identity from the database itself, and refuses workflow-step
+  activation while the registered dispatcher reports any other cluster — keep
+  it in the API service environment too.
 - The runner mode is external-only: `EVELAND_WORKFLOW_RUNNER` defaults to
   `external`, and an explicit `embedded` fails worker startup closed. Exactly
   one workflow dispatcher must run alongside the worker for durable timers,
