@@ -41,21 +41,11 @@ describe("cutover job claiming", () => {
     expect(normalClaim).toMatchObject({ type: "build_deploy" });
     await store.completeJob(normalClaim!.id);
 
-    // A stale ordinary restart job stays queued for the normal worker…
-    await store.enqueueJob(project.id, "restart_deployment", { reason: "stale" });
-    expect(
-      await store.claimNextJob("cutover-worker", new Date(), {
-        allowedTypes: [...CUTOVER_ALLOWED_JOB_TYPES],
-        cutoverOperationId: "cut_claim_test",
-      }),
-    ).toBeNull();
-    const staleClaim = await store.claimNextJob("normal-worker");
-    expect(staleClaim).toMatchObject({ type: "restart_deployment" });
-    await store.completeJob(staleClaim!.id);
-
-    // …while a job the operation stamped for itself is exactly its business.
+    // A restart job stays queued for the normal worker even when it carries
+    // the operation's stamp: no production flow enqueues a cutover restart,
+    // so the allowlist does not admit the type at all.
     await store.enqueueJob(project.id, "restart_deployment", {
-      reason: "cutover_reconciliation",
+      reason: "stale",
       cutoverOperationId: "cut_claim_test",
     });
     expect(
@@ -63,6 +53,22 @@ describe("cutover job claiming", () => {
         allowedTypes: [...CUTOVER_ALLOWED_JOB_TYPES],
         cutoverOperationId: "cut_claim_test",
       }),
-    ).toMatchObject({ type: "restart_deployment" });
+    ).toBeNull();
+    const restartClaim = await store.claimNextJob("normal-worker");
+    expect(restartClaim).toMatchObject({ type: "restart_deployment" });
+    await store.completeJob(restartClaim!.id);
+
+    // …while a stamped exact-activation job is exactly its business.
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: "dep_cutover_claim",
+      runtimeInstanceId: "ri_cutover_claim",
+      cutoverOperationId: "cut_claim_test",
+    });
+    expect(
+      await store.claimNextJob("cutover-worker", new Date(), {
+        allowedTypes: [...CUTOVER_ALLOWED_JOB_TYPES],
+        cutoverOperationId: "cut_claim_test",
+      }),
+    ).toMatchObject({ type: "ensure_deployment_running" });
   });
 });

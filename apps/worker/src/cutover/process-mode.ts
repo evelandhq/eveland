@@ -11,10 +11,10 @@ export type WorkerProcessMode =
   | { mode: "normal" }
   | { mode: "workflow-cutover"; operationId: string };
 
-export const CUTOVER_ALLOWED_JOB_TYPES: readonly JobType[] = [
-  "ensure_deployment_running",
-  "restart_deployment",
-];
+// Only exact activation: it is the only job type a cutover operation stamps
+// (enqueueDeploymentActivation), so nothing else can ever pass the claim's
+// operation-id filter anyway.
+export const CUTOVER_ALLOWED_JOB_TYPES: readonly JobType[] = ["ensure_deployment_running"];
 
 export function resolveWorkerProcessMode(env: NodeJS.ProcessEnv): WorkerProcessMode {
   if (env.EVELAND_PROCESS_MODE === "workflow-cutover") {
