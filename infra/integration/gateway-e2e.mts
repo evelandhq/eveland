@@ -15,6 +15,7 @@ import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
+import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
 
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
 const FIXTURE_TEMPLATE = fileURLToPath(
@@ -28,6 +29,9 @@ async function main(): Promise<void> {
     const fixtureSourcePath = path.join(fixtureRoot, "source");
     await materializeEveFixtureDirectory(FIXTURE_TEMPLATE, fixtureSourcePath);
     const { store, close } = await createPgliteTestStore();
+    // Post-cutover: turns execute only via the external dispatcher.
+    let workflowRuntime: WorkflowRuntime | null = null;
+    workflowRuntime = await startWorkflowRuntime(store);
     let runtime: ReturnType<typeof createRuntimeAdapterFromEnv> | null = null;
     const processNames: string[] = [];
     let server: ReturnType<typeof serve> | null = null;
@@ -286,6 +290,7 @@ async function main(): Promise<void> {
           ),
         );
       }
+      await workflowRuntime?.stop().catch(() => {});
       await close();
     }
   } finally {

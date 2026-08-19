@@ -430,6 +430,15 @@ const syncedSourcePath = path.join(sourceTempRoot, "source");
 await materializeEveFixtureDirectory(FIXTURE_SOURCE_PATH, syncedSourcePath);
 
 const { store, close } = await createPgliteTestStore();
+// Post-cutover: the live sandbox turn executes only via the external
+// dispatcher. Computed specifier: the helper lives with the infra smokes and
+// tsx resolves it at runtime, keeping this app's typecheck inside its tree.
+const { startWorkflowRuntime } = (await import(
+  new URL("../../../../infra/integration/workflow-runtime.mts", import.meta.url).href
+)) as {
+  startWorkflowRuntime: (store: unknown) => Promise<{ stop: () => Promise<void> }>;
+};
+const workflowRuntime = await startWorkflowRuntime(store);
 const project = await store.createProject({
   name: "Agent Sandbox E2E",
   importKind: "zip",
@@ -652,5 +661,6 @@ try {
   const projectCacheDir = resolveProjectSandboxCacheDir(sandboxCacheRoot, project.id);
   await rm(projectCacheDir, { recursive: true, force: true });
   await rm(sourceTempRoot, { recursive: true, force: true });
+  await workflowRuntime.stop().catch(() => {});
   await close();
 }

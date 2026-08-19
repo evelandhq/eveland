@@ -50,13 +50,30 @@ git -C "$REPO_DIR" ls-files --cached --others --exclude-standard -z |
   COPYFILE_DISABLE=1 tar -czf - --null -T - |
   limactl shell "$VM" -- sudo tar -xzf - -C /opt/eveland --exclude='._*'
 
-limactl shell "$VM" -- sudo bash -c "
+# The external-only cutover made every new Release a shared-World build:
+# deployments need EVELAND_WORKFLOW_WORLD_URL at runtime and turns execute
+# only through the external dispatcher, so the guest now carries a real
+# Postgres; each turn-driving smoke provisions its own scratch database off
+# this server (see infra/integration/workflow-runtime.mts). Single-quoted on
+# purpose: the smoke block below is one double-quoted string, and inner SQL
+# quoting inside it would terminate that string mid-script.
+limactl shell "$VM" -- sudo bash -c '
   set -euo pipefail
 
   # Lima provisions only when the VM is first created. Keep reused guests on
-  # the current platform-owned sandbox command baseline before pnpm or the
-  # worker preflight can fail on a tool added after that guest was created.
-  apt-get install -y apparmor bash bubblewrap ca-certificates curl docker.io findutils git grep jq openssl python-is-python3 python3 python3-pip ripgrep unzip zstd
+  # the current platform-owned toolchain baseline before pnpm or the worker
+  # preflight can fail on a tool added after that guest was created.
+  apt-get install -y apparmor bash bubblewrap ca-certificates curl docker.io findutils git grep jq openssl postgresql python-is-python3 python3 python3-pip ripgrep unzip zstd
+
+  systemctl start postgresql
+  sudo -u postgres createuser --createdb eveland 2>/dev/null || true
+  sudo -u postgres psql -c "alter role eveland with login password \$\$eveland\$\$"
+  sudo -u postgres createdb -O eveland eveland_workflow 2>/dev/null || true
+'
+
+limactl shell "$VM" -- sudo bash -c "
+  set -euo pipefail
+
   corepack enable
   corepack install --global pnpm@11.7.0
 
@@ -66,6 +83,8 @@ limactl shell "$VM" -- sudo bash -c "
   # Same reuse problem for the build user: a VM created before EVELAND_BUILD_USER
   # became a required preflight check would never pick it up otherwise.
   id -u eveland-build >/dev/null 2>&1 || useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
+
+  export EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow
 
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -37,6 +38,7 @@ async function main(): Promise<void> {
   const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-schedule-e2e-source-"));
   const priorNodeEnv = process.env.NODE_ENV;
   let cleanupStore: Awaited<ReturnType<typeof createPgliteTestStore>> | null = null;
+  let cleanupWorkflowRuntime: WorkflowRuntime | null = null;
   let cleanupRuntime: TestRuntime | null = null;
   let cleanupReceiver: Awaited<ReturnType<typeof startOtlpTestReceiver>> | null = null;
   let deploymentName: string | null = null;
@@ -55,6 +57,13 @@ async function main(): Promise<void> {
     process.env.EVELAND_HEALTH_TIMEOUT_MS ??= "30000";
 
     cleanupStore = await createPgliteTestStore();
+    // Post-cutover: turns execute only via the external dispatcher.
+    // The dispatch runtime secret shares its env name with the scheduler
+    // runtime secret ON PURPOSE (one contract, both ends); this smoke injects
+    // its own value into the deployment via jobOptions, so the dispatcher
+    // must sign with the same one.
+    process.env.EVELAND_SCHEDULER_RUNTIME_SECRET = SCHEDULER_RUNTIME_SECRET;
+    cleanupWorkflowRuntime = await startWorkflowRuntime(cleanupStore.store);
     const { store } = cleanupStore;
     const runtime = createRuntimeAdapterFromEnv();
     cleanupRuntime = runtime;
@@ -265,6 +274,9 @@ async function main(): Promise<void> {
     if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = priorNodeEnv;
     if (cleanupStore) {
+      if (cleanupWorkflowRuntime) {
+        await attemptCleanup(() => cleanupWorkflowRuntime!.stop());
+      }
       await attemptCleanup(() => cleanupStore!.close());
     }
     await attemptCleanup(() => rm(fixtureRoot, { recursive: true, force: true }));
