@@ -4,6 +4,7 @@ import { recordCutoverProof } from "@evelandhq/workflow-world";
 import pg from "pg";
 import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 import { resolveBootstrapPostgresUrl } from "../runtime/workflow-world-bootstrap.js";
+import { CutoverUsageError, parseCutoverFlags } from "./cli-flags.js";
 import {
   assessCutoverProofEligibility,
   assessSharedActiveRuns,
@@ -31,7 +32,13 @@ import {
  */
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
-  const flags = parseFlags(rest);
+  let flags: Record<string, string>;
+  try {
+    flags = parseCutoverFlags(rest);
+  } catch (error) {
+    if (error instanceof CutoverUsageError) fail(error.message);
+    throw error;
+  }
   const operationId = flags["operation-id"] ?? process.env.EVELAND_WORKFLOW_CUTOVER_OPERATION_ID;
 
   const worldUrl = resolveWorkflowWorldPlatformUrl(process.env);
@@ -43,7 +50,30 @@ async function main(): Promise<void> {
   const storeFactory = createStoreFromEnv();
   const pool = new pg.Pool({ connectionString: worldUrl, max: 4 });
   try {
-    const store = storeFactory.store;
+    await dispatch(command, flags, operationId, pool, storeFactory.store);
+  } catch (error) {
+    // A refused precondition mid-window (operation missing, phase not
+    // converged, postcondition regressed) is a hold to fix and re-run
+    // idempotently — it must land in the same machine-readable report every
+    // other outcome uses, never as a bare stack trace an operator has to
+    // read as possible corruption.
+    const message = error instanceof Error ? error.message : String(error);
+    emit({ command: command ?? null, error: message, holds: [message] });
+    process.exitCode = 1;
+  } finally {
+    await pool.end().catch(() => {});
+    await storeFactory.close().catch(() => {});
+  }
+}
+
+async function dispatch(
+  command: string | undefined,
+  flags: Record<string, string>,
+  operationId: string | undefined,
+  pool: pg.Pool,
+  store: Awaited<ReturnType<typeof createStoreFromEnv>>["store"],
+): Promise<void> {
+  {
     switch (command) {
       case "inventory": {
         const assessments = await assessSharedActiveRuns(pool, store);
@@ -159,9 +189,6 @@ async function main(): Promise<void> {
           `Unknown cutover command "${command ?? ""}". Use inventory | prepare | postcondition | finalize.`,
         );
     }
-  } finally {
-    await pool.end().catch(() => {});
-    await storeFactory.close().catch(() => {});
   }
 }
 
@@ -190,24 +217,6 @@ function parseFamilyList(
         fail(`Invalid family "${entry}": expected tenant:run:eveSessionId.`);
       return { tenantId: tenantId!, runId: runId!, eveSessionId: eveSessionId! };
     });
-}
-
-function parseFlags(args: string[]): Record<string, string> {
-  const flags: Record<string, string> = {};
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]!;
-    if (arg.startsWith("--")) {
-      const name = arg.slice(2);
-      const value = args[index + 1];
-      if (value && !value.startsWith("--")) {
-        flags[name] = value;
-        index += 1;
-      } else {
-        flags[name] = "true";
-      }
-    }
-  }
-  return flags;
 }
 
 function emit(payload: Record<string, unknown>): void {
