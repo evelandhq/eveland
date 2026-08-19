@@ -40,6 +40,7 @@ import {
   appendSessionEventRow,
   applySchedulerTargetTx,
   insertJobRowTx,
+  sanitizeStoredErrorText,
 } from "./postgres-store-support.js";
 
 export function createPostgresScheduleStore({ db }: PostgresStoreContext): ScheduleStore {
@@ -551,6 +552,9 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
     },
 
     async completeScheduleRun(scheduleRunId, input) {
+      // The reported error originates in the deployment runtime and can carry
+      // bytes Postgres text refuses (NUL from a dumped binary payload).
+      const reportedError = sanitizeStoredErrorText(input.error ?? null);
       return db.transaction(async (tx) => {
         const [run] = await tx
           .select()
@@ -586,7 +590,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
           let sessionId = existing?.id;
           let executionStatus: "running" | "succeeded" | "failed" | "parked" =
             input.status === "succeeded" ? "running" : "failed";
-          let executionError = input.status === "succeeded" ? null : (input.error ?? null);
+          let executionError = input.status === "succeeded" ? null : reportedError;
           if (existing) {
             await tx
               .update(sessions)
@@ -620,7 +624,9 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
               );
               executionError =
                 executionStatus === "failed"
-                  ? scheduleExecutionErrorFromEveEvent(boundary?.type, boundary?.payload)
+                  ? sanitizeStoredErrorText(
+                      scheduleExecutionErrorFromEveEvent(boundary?.type, boundary?.payload),
+                    )
                   : null;
             }
           } else {
@@ -674,7 +680,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
           .update(scheduleRuns)
           .set({
             status: remainsRunning ? "running" : terminalStatus,
-            error: executionFailure?.error ?? input.error ?? null,
+            error: executionFailure?.error ?? reportedError,
             completedAt: remainsRunning ? null : now,
             updatedAt: now,
           })

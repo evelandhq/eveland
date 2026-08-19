@@ -467,6 +467,68 @@ describe("schedule persistence", () => {
     );
   });
 
+  test("persists a reported failure whose error embeds NUL bytes", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "NUL-poisoned schedule error",
+      importKind: "zip",
+    });
+    await store.completeJob((await store.claimNextJob("fixture-import"))!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/nul-poisoned-schedule-error",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const [recorded] = await store.recordScheduleVersions({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      definitions: [
+        {
+          key: "heartbeat",
+          kind: "markdown",
+          cron: "0 2 * * *",
+          sourcePath: "agent/schedules/heartbeat.md",
+          definitionHash: "a".repeat(64),
+        },
+      ],
+    });
+    if (!recorded) throw new Error("Expected schedule fixture.");
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:nul-error",
+      containerName: "fixture-nul-error",
+      internalPort: 3000,
+      hostPort: 41996,
+      runtimeKind: "docker",
+    });
+    await store.setProjectSchedulerTarget(project.id, deployment.id);
+    const run = await store.createManualScheduleRun(
+      project.id,
+      recorded.schedule.id,
+      new Date("2026-08-19T02:32:00.000Z"),
+    );
+    await store.claimScheduleRunActivation(run.id);
+    await store.redeemScheduleRunDispatch(run.id, deployment.id);
+
+    // A deployment reporting a failed query dumps its params verbatim, CBOR
+    // bytes included; Postgres text rejects the NUL outright (22021), so the
+    // store must strip it or the failure itself becomes unrecordable.
+    const completed = await store.completeScheduleRun(run.id, {
+      status: "failed",
+      error: 'Failed query: insert into "workflow"."workflow_events"\nparams: \u0000binary',
+      eveSessionIds: ["eve_nul_error_session"],
+    });
+
+    expect(completed).toMatchObject({ id: run.id, status: "failed" });
+    expect(completed?.error).not.toContain("\u0000");
+    expect(completed?.error).toContain("Failed query");
+  });
+
   test("paginates filtered run and Session history with zero-Session runs and aggregate usage", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Schedule history", importKind: "zip" });

@@ -5,7 +5,7 @@ import {
   runtimeInstanceRowToRuntimeInstance,
 } from "./mappers.js";
 import { activationLeases, deployments, runtimeInstances, workflowFences } from "./schema.js";
-import { isUniqueConstraint } from "./postgres-store-support.js";
+import { isUniqueConstraint, sanitizeStoredErrorText } from "./postgres-store-support.js";
 import { RuntimeInstanceDrainingError } from "./store-shared.js";
 import type { RuntimeStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
@@ -207,7 +207,7 @@ export function createPostgresRuntimeStore({ db }: PostgresStoreContext): Runtim
           status: input.status,
           ...(input.endpointHost !== undefined ? { endpointHost: input.endpointHost } : {}),
           ...(input.endpointPort !== undefined ? { endpointPort: input.endpointPort } : {}),
-          ...(input.error !== undefined ? { lastError: input.error } : {}),
+          ...(input.error !== undefined ? { lastError: sanitizeStoredErrorText(input.error) } : {}),
           ...(input.status === "ready" ? { readyAt: now } : {}),
           ...(input.status === "stopped" || input.status === "failed" ? { stoppedAt: now } : {}),
         })
