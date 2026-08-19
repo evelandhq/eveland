@@ -17,6 +17,7 @@ import {
   appendSessionEventRow,
   mergeSessionRows,
   moveSessionEventsForMerge,
+  sanitizeStoredErrorText,
 } from "./postgres-store-support.js";
 import {
   sessionEventRowToSessionEvent,
@@ -442,7 +443,7 @@ export async function ingestPostgresAgentEvent(
                 completedAt: now,
                 error:
                   executionStatus === "failed"
-                    ? scheduleExecutionErrorFromEveEvent(type, payload)
+                    ? sanitizeStoredErrorText(scheduleExecutionErrorFromEveEvent(type, payload))
                     : null,
               }
             : {}),

@@ -255,6 +255,19 @@ export function normalizeBaseDomain(value: string): string {
   return normalized;
 }
 
+/**
+ * Postgres `text` rejects NUL (`\u0000`) with `22021 invalid byte sequence`,
+ * and error strings arriving from a deployment runtime can embed raw binary --
+ * a failed query's CBOR params, a file read gone wrong. Persisting one
+ * unsanitized poisons the very write that records the failure, so every
+ * error column fed from outside the platform passes through here first.
+ */
+export function sanitizeStoredErrorText(value: string): string;
+export function sanitizeStoredErrorText(value: string | null): string | null;
+export function sanitizeStoredErrorText(value: string | null): string | null {
+  return value === null ? null : value.replaceAll("\u0000", "\uFFFD");
+}
+
 export function isUniqueConstraint(error: unknown, constraint: string): boolean {
   if (typeof error !== "object" || error === null) return false;
   const record = error as {

@@ -28,7 +28,7 @@ import type {
   SourceStore,
 } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
-import { insertJobRowTx } from "./postgres-store-support.js";
+import { insertJobRowTx, sanitizeStoredErrorText } from "./postgres-store-support.js";
 
 type PostgresJobSourceDomain = JobStore &
   Pick<ProjectStore, "updateProjectState"> &
@@ -411,7 +411,7 @@ export function createPostgresJobSourceStore({
         .update(jobs)
         .set({
           status: "failed",
-          lastError: error,
+          lastError: sanitizeStoredErrorText(error),
           updatedAt: new Date(),
           lockedAt: null,
         })
