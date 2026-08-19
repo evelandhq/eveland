@@ -4,7 +4,7 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 
 import { listDeploymentsWithActiveWorkflowRuns } from "../../runtime/eveland-workflow-world-runs.js";
-import { resolveWorkflowWorldPlatformUrl } from "../../runtime/eveland-workflow-world-url.js";
+import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import type { ProcessJobOptions } from "../process-types.js";
 import { assessWorkflowArchive } from "../workflow-topology-gate.js";

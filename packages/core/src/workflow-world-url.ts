@@ -5,8 +5,9 @@
  * A deployment runs inside a container, so its injected `EVELAND_WORKFLOW_WORLD_URL`
  * has to name the database the way a container reaches it — on Docker Desktop
  * that is `host.docker.internal`, which does not resolve on the host at all.
- * The platform's own processes (the worker provisioning partitions, the
- * dispatcher claiming jobs) run on the host and need `localhost`.
+ * The platform's own processes (the worker provisioning partitions, the API
+ * verifying the dispatcher's World identity, the dispatcher claiming jobs) run
+ * on the host and need `localhost`.
  *
  * This mirrors the split the legacy world already makes between
  * `WORKFLOW_POSTGRES_URL` and `WORKFLOW_POSTGRES_BOOTSTRAP_URL`. On a

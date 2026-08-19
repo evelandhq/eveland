@@ -13,8 +13,8 @@ import path from "node:path";
 import { waitForOwnedHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
-import { resolveWorkflowWorldDeploymentUrl } from "../runtime/eveland-workflow-world-url.js";
-import { resolveWorldClusterIdentity } from "../runtime/world-identity.js";
+import { resolveWorkflowWorldDeploymentUrl } from "@evelandhq/core/workflow-world-url";
+import { resolveWorldClusterIdentity } from "@evelandhq/db/workflow-world-identity";
 import {
   deriveWorkflowWorldAttestation,
   EVELAND_WORKFLOW_WORLD,

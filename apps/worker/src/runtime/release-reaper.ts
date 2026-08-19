@@ -1,7 +1,7 @@
 import type { Store } from "@evelandhq/db";
 import type { SessionBindingIdlePolicy } from "@evelandhq/core/routing";
 import { listDeploymentsWithActiveWorkflowRuns } from "./eveland-workflow-world-runs.js";
-import { resolveWorkflowWorldPlatformUrl } from "./eveland-workflow-world-url.js";
+import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 
 export async function sweepReleaseRetention(
   store: Store,

@@ -520,15 +520,15 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   },
   {
     name: "EVELAND_WORKFLOW_WORLD_URL",
-    components: ["worker", "workflow-dispatcher"],
+    components: ["api", "worker", "workflow-dispatcher"],
     sensitivity: "url",
     purpose:
-      "Shared Postgres database backing @evelandhq/workflow-world; every new build uses it, so production fails closed without it.",
+      "Shared Postgres database backing @evelandhq/workflow-world; every new build uses it, so production fails closed without it. The API derives the World's cluster identity from it to verify the dispatcher registration at workflow-step activation.",
     required: production,
   },
   {
     name: "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL",
-    components: ["worker", "workflow-dispatcher"],
+    components: ["api", "worker", "workflow-dispatcher"],
     sensitivity: "url",
     purpose:
       "Host-reachable URL for the shared workflow database. Set when deployments reach Postgres by a different name than the platform does (e.g. host.docker.internal under Docker Desktop); defaults to EVELAND_WORKFLOW_WORLD_URL.",

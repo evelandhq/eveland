@@ -346,11 +346,21 @@ export const workflowDispatcherHeartbeatSchema = z
     startedAt: z.string().datetime(),
     readyAt: z.string().datetime().nullable(),
   })
-  // The identity is host:port/database, never a connection URL: a registration
-  // is diagnostics surface and must not be able to carry credentials.
-  .refine((value) => !/:\/\/|@/.test(value.worldDatabaseIdentity), {
-    message: "worldDatabaseIdentity must be a host:port/database identity, not a URL",
-  });
+  // The identity is the database's own cluster fingerprint
+  // (`cluster:<pg system_identifier>/<database>`), or "unknown" while the
+  // dispatcher cannot read it — never a connection URL: a registration is
+  // diagnostics surface and must not be able to carry credentials, and
+  // readiness compares cluster identities, so nothing else may register.
+  .refine(
+    (value) =>
+      value.worldDatabaseIdentity === "unknown" ||
+      (value.worldDatabaseIdentity.startsWith("cluster:") &&
+        !/:\/\/|@/.test(value.worldDatabaseIdentity)),
+    {
+      message:
+        'worldDatabaseIdentity must be a cluster:<system_identifier>/<database> identity or "unknown", never a URL',
+    },
+  );
 
 export const runtimeActivationSchema = z.object({
   deploymentId: z.string().min(1),

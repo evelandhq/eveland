@@ -7,6 +7,7 @@ import {
   verifyScheduleDispatchCredential,
 } from "@evelandhq/core/server/scheduler-dispatch";
 import type { Store } from "@evelandhq/db";
+import { resolveWorldClusterIdentity } from "@evelandhq/db/workflow-world-identity";
 import { runtimeActivationSchema, schedulerDispatchSchema } from "./app-schemas.js";
 import { isServiceRequest, safeSecretEqual, waitForRuntimeActivation } from "./app-support.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
@@ -125,12 +126,20 @@ export function registerInternalRoutes(input: {
     let negotiated: { selectedProtocol: number; enqueueCapability: string } | undefined;
     if (parsed.data.kind === "workflow_step") {
       const registration = await store.getWorkflowDispatcherRegistration();
+      // The dispatcher must be claiming from the same World this control
+      // plane is configured for — proven by the cluster fingerprint both ends
+      // read from the database itself, never by comparing URLs, which fails
+      // open across unrelated servers. An unresolvable identity ("unknown")
+      // fails closed, exactly like the worker's deploy gate.
+      const expectedWorldIdentity =
+        options.worldClusterIdentity ?? (await resolveWorldClusterIdentity(process.env));
       const readiness = assessDispatcherReadiness(registration, {
         ttlMs: resolveDispatcherHeartbeatTtlMs(process.env),
         // During the cutover the paused dispatcher verifies its exact
         // activation path before the explicit resume — but only the
         // dispatcher serving this API's operation.
         allowPaused: true,
+        expectedWorldDatabaseIdentity: expectedWorldIdentity,
         ...(cutoverActivationOperationId(options) !== undefined
           ? { expectedOperationId: cutoverActivationOperationId(options) }
           : {}),

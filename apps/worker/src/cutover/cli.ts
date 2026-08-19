@@ -2,7 +2,7 @@ import { execa } from "execa";
 import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { recordCutoverProof } from "@evelandhq/workflow-world";
 import pg from "pg";
-import { resolveWorkflowWorldPlatformUrl } from "../runtime/eveland-workflow-world-url.js";
+import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 import { resolveBootstrapPostgresUrl } from "../runtime/workflow-world-bootstrap.js";
 import {
   assessCutoverProofEligibility,

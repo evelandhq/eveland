@@ -130,7 +130,7 @@ describe("api app", () => {
       ownershipAcquired: true,
       bootRecoveryCompleted: true,
       reenqueuedRuns: 0,
-      worldDatabaseIdentity: "localhost:5432/eveland_workflow",
+      worldDatabaseIdentity: "cluster:7234567890123456789/eveland_workflow",
       schemaGeneration: null,
       protocolMin: 1,
       protocolMax: 1,
@@ -143,6 +143,7 @@ describe("api app", () => {
     let gatedLeaseId: string | null = null;
     const app = createApp(store, {
       gatewayServiceToken: "gateway-service-token",
+      worldClusterIdentity: "cluster:7234567890123456789/eveland_workflow",
       // The worker records the gate failure on the runtime instance and
       // waitForRuntimeActivation rethrows it as a bare message, which is exactly
       // what the waiter stands in for here.
@@ -220,7 +221,7 @@ describe("api app", () => {
       ownershipAcquired: true,
       bootRecoveryCompleted: true,
       reenqueuedRuns: 0,
-      worldDatabaseIdentity: "localhost:5432/eveland_workflow",
+      worldDatabaseIdentity: "cluster:7234567890123456789/eveland_workflow",
       schemaGeneration: null,
       protocolMin: 1,
       protocolMax: 1,
@@ -230,7 +231,10 @@ describe("api app", () => {
       startedAt: new Date().toISOString(),
       readyAt: new Date().toISOString(),
     });
-    const app = createApp(store, { gatewayServiceToken: "gateway-service-token" });
+    const app = createApp(store, {
+      gatewayServiceToken: "gateway-service-token",
+      worldClusterIdentity: "cluster:7234567890123456789/eveland_workflow",
+    });
 
     const activation = await app.request("/internal/runtime/activations", {
       method: "POST",

@@ -28,6 +28,7 @@
     "./source": "./src/source.ts",
     "./transcript": "./src/transcript.ts",
     "./workflow-dispatch": "./src/workflow-dispatch.ts",
+    "./workflow-world-url": "./src/workflow-world-url.ts",
     "./server/agent-telemetry-credential": "./src/server/agent-telemetry-credential.ts",
     "./server/archive": "./src/server/archive.ts",
     "./server/build-info": "./src/server/build-info.ts",

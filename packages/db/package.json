@@ -10,7 +10,8 @@
     "./factory": "./src/store-factory.ts",
     "./schema": "./src/schema.ts",
     "./test": "./src/test-store.ts",
-    "./vitest": "./src/vitest-store.ts"
+    "./vitest": "./src/vitest-store.ts",
+    "./workflow-world-identity": "./src/workflow-world-identity.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

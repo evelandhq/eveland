@@ -1,6 +1,6 @@
 import { clusterWorldIdentity, WORLD_IDENTITY_SQL } from "@evelandhq/core/workflow-dispatch";
+import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 import postgres from "postgres";
-import { resolveWorkflowWorldPlatformUrl } from "./eveland-workflow-world-url.js";
 
 /**
  * The shared World's canonical identity — the Postgres cluster fingerprint
@@ -8,7 +8,7 @@ import { resolveWorkflowWorldPlatformUrl } from "./eveland-workflow-world-url.js
  * open across unrelated servers; this cannot. Cached per URL because the
  * fingerprint is immutable for the life of the cluster, and "unknown" (which
  * never satisfies the readiness gate) is deliberately not cached so a
- * transient outage does not poison later deploys.
+ * transient outage does not poison later deploys or activations.
  */
 const identityCache = new Map<string, string>();
 

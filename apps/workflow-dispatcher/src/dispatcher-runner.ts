@@ -34,8 +34,8 @@ type WorldPool = Parameters<typeof countClaimableUnscopedFlowJobs>[0];
  *   still claimable outside a per-run queue.
  *
  * The registration deliberately carries the database *identity*
- * (host:port/name), never the URL: the readiness surface must not be able to
- * leak credentials.
+ * (`cluster:<system_identifier>/<database>`, read from the database itself),
+ * never the URL: the readiness surface must not be able to leak credentials.
  */
 
 export const DISPATCHER_READY_TOKEN = "workflow-dispatcher: ready";

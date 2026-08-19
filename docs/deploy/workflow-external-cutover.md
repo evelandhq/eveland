@@ -154,8 +154,11 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    reads the control-plane database; the proof lives in the World it already
    owns. Its heartbeat also reports the World's **cluster identity**
    (`cluster:<pg system_identifier>/<database>`, read from the database
-   itself), and API-side readiness compares it strictly against the identity
-   the control plane derives from `EVELAND_WORKFLOW_WORLD_URL` — two different
+   itself), and API-side readiness — the workflow-step activation gate, like
+   the Worker's deploy gate — compares it strictly against the identity the
+   control plane reads through its own `EVELAND_WORKFLOW_WORLD_URL` connection
+   (the host-view `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when set; the cutover
+   API therefore needs the variable in its environment) — two different
    clusters can never look "ready" just because their URLs resemble each
    other.
 7. **Verify exact activation** end to end through the cutover API, then

@@ -1,7 +1,7 @@
 import type { Store } from "@evelandhq/db";
 
 import { dropEvelandWorkflowTenant } from "../../runtime/eveland-workflow-world-bootstrap.js";
-import { resolveWorkflowWorldPlatformUrl } from "../../runtime/eveland-workflow-world-url.js";
+import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import { dropProjectWorkflowWorld } from "../../runtime/workflow-world-bootstrap.js";
 import { removeManagedProjectFiles } from "../process-support.js";

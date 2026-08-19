@@ -1,4 +1,4 @@
-import { resolveWorkflowWorldPlatformUrl } from "./eveland-workflow-world-url.js";
+import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 import { resolveWorkflowRunnerMode } from "./workflow-world.js";
 
 /**
