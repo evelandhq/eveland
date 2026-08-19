@@ -4,9 +4,10 @@ This is the operator runbook for the one-time maintenance-downtime cutover
 (issue #278): after it, every new Release builds against the shared
 `@evelandhq/workflow-world`, the runner is external-only, and historical
 topologies are either converted, managed-terminated, or durably quarantined.
-The design and invariants live in
-`docs/superpowers/plans/2026-08-18-shared-workflow-world-external-cutover-handoff.md`;
-this file is the executable order of operations.
+This file is the executable order of operations, and the invariants below are
+the authoritative summary of what the tooling enforces; the dispatcher's
+`recover-paused` boot-recovery design is covered in
+`docs/superpowers/plans/2026-08-09-workflow-dispatcher-boot-recovery-handoff.md`.
 
 Every command below is idempotent under one operation id and prints a
 machine-readable JSON report of exactly which objects are unclassified,
