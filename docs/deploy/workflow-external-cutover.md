@@ -83,7 +83,7 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    World jobs), runs your `--backup-command` (its output is the recorded
    evidence — make it create AND name the formal snapshots of step 3), then
    measures again; any live activity or movement of the protected sequences
-   (run count, append-only World event count, monotonic World job id, latest
+   (run count, append-only World event count, World jobs-sequence high-water mark, latest
    run update, control-plane job/Session marks) anywhere in that span
    refuses the attestation — a snapshot taken while something was writing is
    not a rollback point. Every later `prepare` re-validates the persisted

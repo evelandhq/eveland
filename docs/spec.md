@@ -1232,7 +1232,7 @@ operator 的维护边界 attestation（`--quiescence-verified`/`--backup-command
 attestation 是**测量三明治**而非采信：先测量静默（无 running job、无未过期 activation
 lease、无 locked World job），随后在测量窗口**之内**执行正式备份回调（命令输出即持久化的
 evidence），再次测量；窗口内任何活跃或受保护序列的移动（run 数、append-only World event
-数、单调 World graphile job id、最新 run 更新时间、控制面 job/Session 标记）都拒绝
+数、World graphile jobs 序列高水位（用 id sequence 而非活表 max(id)——完成的 job 会被删除，活表最大值不单调，会漏掉两次测量之间入队又被消费的异己 job）、最新 run 更新时间、控制面 job/Session 标记）都拒绝
 attestation——备份期间有写入的快照不是回滚点。测得的 baseline 随 attestation 持久化；
 此后每次 prepare 重新校验——任何本 operation 自身盖章解释不了的推进（包括对**既有** run
 的裸 enqueue 或 event 追加）都令边界**失效**，saga 持住直到 operator 以新的窗口内备份

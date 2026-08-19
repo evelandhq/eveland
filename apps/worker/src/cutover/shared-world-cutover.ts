@@ -801,7 +801,11 @@ type QuiescenceReading = {
   worldRunCount: number;
   /** Append-only event log size: catches writes to EXISTING runs. */
   worldEventCount: number;
-  /** Monotonic graphile job id: catches any enqueue, locked or not. */
+  /**
+   * The jobs ID SEQUENCE high-water mark — not max(id) over the live table,
+   * which shrinks when completed jobs are deleted and would miss a foreign
+   * job enqueued and consumed between two measurements.
+   */
   worldMaxJobId: string;
   /** Catches status/续写 updates on existing run rows. */
   worldMaxRunUpdatedAt: string | null;
@@ -825,7 +829,9 @@ async function readQuiescence(
     `select (select count(*)::int from graphile_worker._private_jobs where locked_by is not null) as locked,
             (select count(*)::int from workflow.workflow_runs) as runs,
             (select count(*)::int from workflow.workflow_events) as events,
-            (select max(id)::text from graphile_worker._private_jobs) as max_job_id,
+            (select coalesce(last_value, 0)::text from pg_sequences
+              where schemaname = 'graphile_worker'
+                and sequencename = split_part(pg_get_serial_sequence('graphile_worker._private_jobs', 'id'), '.', 2)) as max_job_id,
             (select max(updated_at)::text from workflow.workflow_runs) as max_run_updated`,
   );
   const control = await store.measureCutoverQuiescence();
