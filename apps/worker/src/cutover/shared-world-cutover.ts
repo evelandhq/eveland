@@ -1320,6 +1320,159 @@ export async function finalizeSharedWorldCutover(input: {
   };
 }
 
+export type UnknownRetirementResult = {
+  operationId: string;
+  /** Deployments now (or already) at the `terminated` terminal topology. */
+  retired: string[];
+  refused: Array<{ deploymentId: string; reason: string }>;
+  converged: { failedSessions: number; removedSessionBindings: number };
+};
+
+/**
+ * Explicit operator disposition for owners `prepare` can only fence: Releases
+ * whose artifact is unclassifiable (Docker images, deleted release
+ * directories), which therefore hold `unknown` topology forever and keep
+ * their Deployments — and their artifacts — unarchivable.
+ *
+ * This is a managed termination, not a shortcut, and it stays fail-closed:
+ * a target must be provably unknown (the classifier is consulted first — an
+ * artifact that classifies belongs to prepare/finalize, never to disposition)
+ * and must own NO active run in the shared World. Anything else is refused by
+ * name. Accepted owners get the same treatment prepare gives permanently
+ * retired ones: a deployment-scope fence, control-plane convergence, then the
+ * `terminated` terminal topology that archive accepts.
+ */
+export async function retireUnknownDeployments(input: {
+  pool: pg.Pool;
+  store: CutoverStore;
+  operationId: string;
+  deploymentIds?: string[];
+  /** Also target every retained Deployment whose Release is still `unknown`. */
+  allUnknown?: boolean;
+  classifier?: ArtifactClassifier;
+  log?: (message: string, meta?: Record<string, unknown>) => void;
+}): Promise<UnknownRetirementResult> {
+  const { pool, store, operationId } = input;
+  const log = input.log ?? (() => {});
+  const classifier = input.classifier ?? classifyArtifactFromFilesystem;
+  await store.ensureWorkflowCutoverOperation({
+    id: operationId,
+    kind: "termination",
+    scope: { disposition: "retire_unknown" },
+  });
+
+  const targets = new Set(input.deploymentIds ?? []);
+  if (input.allUnknown) {
+    for (const project of await store.listProjects()) {
+      for (const deployment of await store.listDeployments(project.id)) {
+        if (deployment.status === "archived") continue;
+        const release = await store.getRelease(deployment.releaseId);
+        if (release?.workflow.worldKind === "unknown") targets.add(deployment.id);
+      }
+    }
+  }
+
+  const retired: string[] = [];
+  const refused: UnknownRetirementResult["refused"] = [];
+  const accepted: string[] = [];
+  for (const deploymentId of targets) {
+    const deployment = await store.getDeployment(deploymentId);
+    if (!deployment) {
+      refused.push({ deploymentId, reason: "deployment does not exist" });
+      continue;
+    }
+    const { conversionState } = deployment.workflowTopology;
+    if (conversionState === "terminated") {
+      retired.push(deploymentId); // idempotent re-run
+      continue;
+    }
+    if (conversionState === "external" || conversionState === "converting") {
+      refused.push({
+        deploymentId,
+        reason: `deployment is ${conversionState}; disposition only retires unclassified/fenced unknown topologies`,
+      });
+      continue;
+    }
+    let release = await store.getRelease(deployment.releaseId);
+    if (!release) {
+      refused.push({ deploymentId, reason: `release ${deployment.releaseId} does not exist` });
+      continue;
+    }
+    if (release.workflow.worldKind === "unknown") {
+      // Same rule as assessment: persist what the immutable artifact proves
+      // before deciding. An owner that classifies is not "unknown" — it is
+      // the cutover's to stage or retire, never disposition's to terminate.
+      const attestation = await classifier({
+        releaseRef: release.imageTag,
+        runtimeKind: deployment.runtimeKind,
+      });
+      if (attestation) {
+        release = (await store.attestReleaseWorkflow(release.id, attestation)) ?? release;
+      }
+    }
+    if (release.workflow.worldKind !== "unknown") {
+      refused.push({
+        deploymentId,
+        reason: `Release ${release.id} attestation is ${release.workflow.worldKind}, not unknown; run the cutover's prepare/finalize instead`,
+      });
+      continue;
+    }
+    const { rows } = await pool.query<{ active: number }>(
+      `select count(*)::int as active
+         from workflow.workflow_runs
+        where deployment_id = $1 and status in ('pending', 'running')`,
+      [deploymentId],
+    );
+    const activeRuns = rows[0]?.active ?? 0;
+    if (activeRuns > 0) {
+      refused.push({
+        deploymentId,
+        reason: `deployment owns ${String(activeRuns)} active run(s) in the shared World; terminate them via prepare before disposition`,
+      });
+      continue;
+    }
+    accepted.push(deploymentId);
+  }
+
+  let converged = { failedSessions: 0, removedSessionBindings: 0 };
+  if (accepted.length > 0) {
+    // Fence first, converge second, terminal topology last — the same order
+    // prepare uses for permanently retired owners, so a crash between steps
+    // always leaves the owner MORE protected than before, never less.
+    await store.writeWorkflowFences(
+      operationId,
+      accepted.map((deploymentId) => ({
+        scopeKind: "deployment" as const,
+        scopeId: deploymentId,
+        reason: "unknown workflow topology managed-terminated by operator disposition",
+      })),
+    );
+    const convergence = await store.convergeWorkflowTermination(operationId, accepted);
+    converged = {
+      failedSessions: convergence.failedSessions,
+      removedSessionBindings: convergence.removedSessionBindings,
+    };
+    for (const deploymentId of accepted) {
+      await store.updateDeploymentWorkflowTopology(deploymentId, {
+        conversionState: "terminated",
+        conversionOperationId: operationId,
+      });
+      retired.push(deploymentId);
+      log("unknown owner retired by operator disposition", { deploymentId });
+    }
+  }
+
+  await store.advanceWorkflowCutoverOperation(operationId, {
+    checkpoint: { key: "retiredUnknown", value: { retired, refused } },
+    ...(refused.length === 0
+      ? { phase: "completed" as const, lastError: null }
+      : {
+          lastError: refused.map((entry) => `${entry.deploymentId}: ${entry.reason}`).join("; "),
+        }),
+  });
+  return { operationId, retired, refused, converged };
+}
+
 /**
  * The World's own cancel semantics via direct terminal update. `run_cancelled`
  * is idempotent upstream; a run the storage layer refuses to modify stays
