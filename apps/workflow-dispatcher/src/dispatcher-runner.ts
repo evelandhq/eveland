@@ -6,11 +6,7 @@ import type {
   DispatcherServiceOptions,
   DispatcherTelemetry,
 } from "@evelandhq/workflow-world/dispatcher";
-import {
-  clusterWorldIdentity,
-  WORLD_IDENTITY_SQL,
-  worldDatabaseIdentity,
-} from "@evelandhq/core/workflow-dispatch";
+import { clusterWorldIdentity, WORLD_IDENTITY_SQL } from "@evelandhq/core/workflow-dispatch";
 import { createActivationClient } from "@evelandhq/workflow-world/dispatcher";
 import {
   countClaimableUnscopedFlowJobs,
@@ -59,8 +55,6 @@ export type DispatcherRunnerHandle = {
   heartbeat(): Promise<void>;
   stop(): Promise<void>;
 };
-
-export { worldDatabaseIdentity };
 
 export async function startEvelandWorkflowDispatcher(
   env: NodeJS.ProcessEnv,

@@ -59,20 +59,6 @@ export function resolveDispatcherHeartbeatTtlMs(env: NodeJS.ProcessEnv): number 
 }
 
 /**
- * The non-secret identity of a workflow database URL: host, port and database
- * name — never credentials. The readiness surface compares identities, so the
- * URL itself must not travel.
- */
-export function worldDatabaseIdentity(worldUrl: string): string {
-  try {
-    const url = new URL(worldUrl);
-    return `${url.hostname}:${url.port || "5432"}${url.pathname || ""}`;
-  } catch {
-    return "unknown";
-  }
-}
-
-/**
  * The canonical, network-view-independent World identity: the Postgres
  * cluster's `system_identifier` plus the database name, as
  * `cluster:<system_identifier>/<database>`. Comparing URLs (or any part of

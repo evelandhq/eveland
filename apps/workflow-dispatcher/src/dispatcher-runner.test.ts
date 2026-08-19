@@ -3,7 +3,7 @@ import type {
   DispatcherService,
   DispatcherServiceOptions,
 } from "@evelandhq/workflow-world/dispatcher";
-import { startEvelandWorkflowDispatcher, worldDatabaseIdentity } from "./dispatcher-runner.js";
+import { startEvelandWorkflowDispatcher } from "./dispatcher-runner.js";
 
 const telemetry = { emit: vi.fn(), shutdown: vi.fn(async () => {}) };
 
@@ -167,13 +167,5 @@ describe("eveland workflow dispatcher runner", () => {
     expect(telemetry.emit).toHaveBeenCalledWith(
       expect.objectContaining({ eventName: "workflow_dispatcher.heartbeat_failed" }),
     );
-  });
-});
-
-describe("worldDatabaseIdentity", () => {
-  test("keeps host, port and database; drops credentials", () => {
-    expect(worldDatabaseIdentity("postgres://user:secret@db:6432/wf")).toBe("db:6432/wf");
-    expect(worldDatabaseIdentity("postgres://db/wf")).toBe("db:5432/wf");
-    expect(worldDatabaseIdentity("not a url")).toBe("unknown");
   });
 });

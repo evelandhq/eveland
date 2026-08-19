@@ -1,10 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { WorkflowDispatcherRegistration } from "./contracts.js";
-import {
-  assessDispatcherReadiness,
-  clusterWorldIdentity,
-  worldDatabaseIdentity,
-} from "./workflow-dispatch.js";
+import { assessDispatcherReadiness, clusterWorldIdentity } from "./workflow-dispatch.js";
 
 function registration(
   overrides: Partial<WorkflowDispatcherRegistration> = {},
@@ -87,13 +83,7 @@ describe("assessDispatcherReadiness", () => {
   });
 });
 
-describe("worldDatabaseIdentity", () => {
-  test("keeps host, port and database; drops credentials", () => {
-    expect(worldDatabaseIdentity("postgres://user:secret@db:6432/wf")).toBe("db:6432/wf");
-    expect(worldDatabaseIdentity("postgres://db/wf")).toBe("db:5432/wf");
-    expect(worldDatabaseIdentity("not a url")).toBe("unknown");
-  });
-
+describe("clusterWorldIdentity", () => {
   test("cluster identity is stable across network views by construction", () => {
     expect(clusterWorldIdentity("7234", "wf")).toBe("cluster:7234/wf");
     expect(clusterWorldIdentity("7234", "wf")).not.toBe(clusterWorldIdentity("9999", "wf"));
