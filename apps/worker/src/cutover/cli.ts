@@ -9,6 +9,7 @@ import {
   assessSharedActiveRuns,
   finalizeSharedWorldCutover,
   prepareSharedWorldCutover,
+  retireUnknownDeployments,
   verifySharedWorldPostcondition,
 } from "./shared-world-cutover.js";
 
@@ -28,6 +29,8 @@ import {
  *   pnpm --filter @evelandhq/worker cutover -- postcondition --operation-id cut_x
  *   pnpm --filter @evelandhq/worker cutover -- finalize --operation-id cut_x \
  *     --deployments dep_a,dep_b --continuity-verified true
+ *   pnpm --filter @evelandhq/worker cutover -- retire --operation-id term_x \
+ *     (--deployments dep_a,dep_b | --all-unknown)
  */
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
@@ -154,9 +157,31 @@ async function main(): Promise<void> {
         if (!result.completed) process.exitCode = 1;
         return;
       }
+      case "retire": {
+        if (!operationId) fail("retire requires --operation-id.");
+        const deployments = (flags.deployments ?? "")
+          .split(",")
+          .map((d) => d.trim())
+          .filter(Boolean);
+        const allUnknown = flags["all-unknown"] === "true";
+        if (deployments.length === 0 && !allUnknown)
+          fail("retire requires --deployments dep_a,dep_b and/or --all-unknown.");
+        const result = await retireUnknownDeployments({
+          pool,
+          store,
+          operationId: operationId!,
+          ...(deployments.length > 0 ? { deploymentIds: deployments } : {}),
+          ...(allUnknown ? { allUnknown } : {}),
+          log: (message, meta) =>
+            console.error(`[cutover] ${message} ${JSON.stringify(meta ?? {})}`),
+        });
+        emit({ command, ...result });
+        if (result.refused.length > 0) process.exitCode = 1;
+        return;
+      }
       default:
         fail(
-          `Unknown cutover command "${command ?? ""}". Use inventory | prepare | postcondition | finalize.`,
+          `Unknown cutover command "${command ?? ""}". Use inventory | prepare | postcondition | finalize | retire.`,
         );
     }
   } finally {

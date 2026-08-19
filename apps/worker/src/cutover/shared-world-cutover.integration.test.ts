@@ -15,12 +15,14 @@ import {
   dropProjectWorkflowWorld,
   ensureProjectWorkflowWorld,
 } from "../runtime/workflow-world-bootstrap.js";
+import { assessWorkflowArchive } from "../jobs/workflow-topology-gate.js";
 import { terminateLegacyProjectRuns } from "./legacy-world-termination.js";
 import {
   assessCutoverProofEligibility,
   assessSharedActiveRuns,
   finalizeSharedWorldCutover,
   prepareSharedWorldCutover,
+  retireUnknownDeployments,
   verifySharedWorldPostcondition,
 } from "./shared-world-cutover.js";
 
@@ -110,6 +112,41 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
           : {}),
         ...(input.storageSpec !== undefined ? { storageSpec: input.storageSpec } : {}),
       },
+    });
+  }
+
+  /**
+   * The unclassifiable historical shape: a Docker Release recorded before the
+   * topology columns existed, so migration 0052 backfilled it `unknown` and
+   * the filesystem classifier can never prove anything about its image.
+   */
+  async function createUnknownDeployment(
+    store: ReturnType<typeof createTestStore>,
+    hostPort: number,
+  ) {
+    const project = await store.createProject({
+      name: `Unknown Agent ${hostPort}`,
+      importKind: "zip",
+    });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/unknown-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    return store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: `fixture:unknown-${hostPort}`,
+      containerName: `fixture-unknown-${hostPort}`,
+      internalPort: 3000,
+      hostPort,
+      runtimeKind: "docker",
     });
   }
 
@@ -902,5 +939,113 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
         workflowTopology: { conversionState: "terminated" },
       });
     }
+  }, 120_000);
+
+  test("operator disposition retires unclassifiable unknown owners, refusing everything it cannot prove", async () => {
+    const store = createTestStore();
+    // The local-dev archive-starvation shape: a Docker Release nothing can
+    // classify, no runs anywhere — prepare could only fence it, so its
+    // artifact was unarchivable forever.
+    const idleUnknown = await createUnknownDeployment(store, 42_620);
+    // Same shape but still owning an active shared run: refused by name.
+    const busyUnknown = await createUnknownDeployment(store, 42_621);
+    const busyRun = await createSharedRun(busyUnknown.id);
+    // A shared-attested owner: never disposition's to terminate.
+    const sharedOwner = await createControlPlaneDeployment(store, {
+      enqueueCapability: "per_run_queue_v1",
+      hostPort: 42_622,
+    });
+
+    const opId = `term_it_1_${suffix}`;
+    const result = await retireUnknownDeployments({
+      pool,
+      store,
+      operationId: opId,
+      deploymentIds: [idleUnknown.id, busyUnknown.id, sharedOwner.id, "dep_never_existed"],
+    });
+    expect(result.retired).toEqual([idleUnknown.id]);
+    expect(result.refused).toContainEqual({
+      deploymentId: busyUnknown.id,
+      reason: expect.stringContaining("1 active run(s)"),
+    });
+    // Born after the cutover, so already `external`: the terminal-topology
+    // check refuses it before attestation is even consulted.
+    expect(result.refused).toContainEqual({
+      deploymentId: sharedOwner.id,
+      reason: expect.stringContaining("deployment is external"),
+    });
+    expect(result.refused).toContainEqual({
+      deploymentId: "dep_never_existed",
+      reason: "deployment does not exist",
+    });
+
+    // The retired owner reaches the same terminal shape prepare gives
+    // permanently retired ones: fenced, converged, and archivable.
+    const retiredDeployment = await store.getDeployment(idleUnknown.id);
+    expect(retiredDeployment).toMatchObject({
+      workflowTopology: { conversionState: "terminated", conversionOperationId: opId },
+    });
+    expect(await store.getActiveWorkflowFence("deployment", idleUnknown.id)).toMatchObject({
+      operationId: opId,
+    });
+    const retiredRelease = await store.getRelease(idleUnknown.releaseId);
+    expect(assessWorkflowArchive(retiredRelease!, retiredDeployment!)).toEqual({ allowed: true });
+    // Refused owners are untouched, and refusals hold the operation open.
+    await expect(store.getDeployment(busyUnknown.id)).resolves.toMatchObject({
+      workflowTopology: { conversionState: "unclassified" },
+    });
+    expect(await store.getActiveWorkflowFence("deployment", busyUnknown.id)).toBeNull();
+    await expect(store.getWorkflowCutoverOperation(opId)).resolves.toMatchObject({
+      phase: "pending",
+      kind: "termination",
+    });
+
+    // An artifact that CLASSIFIES is refused too — and the attestation the
+    // probe proved is persisted, exactly like assessment's classification.
+    const classifiable = await createUnknownDeployment(store, 42_623);
+    const classified = await retireUnknownDeployments({
+      pool,
+      store,
+      operationId: opId,
+      deploymentIds: [classifiable.id],
+      classifier: async () => ({
+        worldKind: "shared",
+        worldPackage: "@evelandhq/workflow-world",
+        worldVersion: "0.9.0",
+        storageSpec: 6,
+        dispatchProtocol: 1,
+        enqueueCapability: "per_run_queue_v1",
+      }),
+    });
+    expect(classified.retired).toEqual([]);
+    expect(classified.refused[0]?.reason).toMatch(/attestation is shared/);
+    await expect(store.getRelease(classifiable.releaseId)).resolves.toMatchObject({
+      workflow: { worldKind: "shared" },
+    });
+
+    // --all-unknown discovers what is left once its runs are terminal; the
+    // classified owner no longer matches. Completion is earned: only a call
+    // that refuses nothing completes the operation.
+    await pool.query(
+      "update workflow.workflow_runs set status = 'completed', completed_at = now() where tenant_id = $1 and id = $2",
+      [TENANT, busyRun],
+    );
+    const swept = await retireUnknownDeployments({
+      pool,
+      store,
+      operationId: opId,
+      allUnknown: true,
+    });
+    expect(swept.refused).toEqual([]);
+    expect(swept.retired).toContain(idleUnknown.id); // idempotent re-run
+    expect(swept.retired).toContain(busyUnknown.id);
+    expect(swept.retired).not.toContain(classifiable.id);
+    await expect(store.getDeployment(busyUnknown.id)).resolves.toMatchObject({
+      workflowTopology: { conversionState: "terminated", conversionOperationId: opId },
+    });
+    await expect(store.getWorkflowCutoverOperation(opId)).resolves.toMatchObject({
+      phase: "completed",
+      lastError: null,
+    });
   }, 120_000);
 });
