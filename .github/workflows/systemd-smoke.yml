@@ -26,6 +26,13 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # The external-only cutover made every new Release a shared-World build:
+      # deployments crash at boot without an injected WORKFLOW_WORLD_URL. Same
+      # throwaway single-host database the Lima guest provisions
+      # (infra/integration/run.sh); `sudo -E` carries it into every worker
+      # step below.
+      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +50,7 @@ jobs:
           sudo apt-get update
           # Parity with the Lima guest's provisioning list (infra/integration/run.sh),
           # minus docker.io: the worker preflight requires e.g. ripgrep on PATH.
-          sudo apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq openssl python-is-python3 python3 python3-pip ripgrep unzip zstd
+          sudo apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq openssl postgresql python-is-python3 python3 python3-pip ripgrep unzip zstd
           # bwrap binds /workspace as the sandbox workspace destination and
           # cannot create it itself.
           sudo mkdir -p /workspace
@@ -79,6 +86,17 @@ jobs:
           # unlike the Lima guest's /opt/eveland. Grant traverse on the
           # ancestors only (contents keep their checkout permissions).
           sudo chmod o+x /home/runner /home/runner/work "$GITHUB_WORKSPACE/.." "$GITHUB_WORKSPACE"
+
+      - name: Provision the shared workflow world database
+        run: |
+          # Same role/database the Lima guest creates: the worker injects
+          # EVELAND_WORKFLOW_WORLD_URL (job env above) into every Release it
+          # builds, and the deployed server refuses to boot without it. The
+          # runner image ships PostgreSQL but leaves the service stopped.
+          sudo systemctl start postgresql
+          sudo -u postgres createuser --createdb eveland 2>/dev/null || true
+          sudo -u postgres psql -c "alter role eveland with login password \$\$eveland\$\$"
+          sudo -u postgres createdb -O eveland eveland_workflow 2>/dev/null || true
 
       - name: Worker preflight
         run: |
