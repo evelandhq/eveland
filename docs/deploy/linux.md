@@ -915,8 +915,12 @@ this order:
 1. Budget RAM: `total − 2 GB (OS + control plane) − builds × 2 GB` → divide by
    ~0.3 GB for the sustainable running-Agent count.
 2. Set `max_connections ≈ agents × WORKFLOW_POSTGRES_MAX_POOL_SIZE + 30
-(control plane) + headroom`. Lower the pool size to fit more Agents per
-   instance when workflows are light.
+(control plane) + WORKFLOW_DISPATCHER_POOL_SIZE + headroom`. Lower the
+   per-Agent pool size to fit more Agents per instance when workflows are
+   light. The dispatcher's pool (10 by default) is a **flat** cost: it does not
+   grow with the Agent count, and raising `WORKFLOW_DISPATCHER_CONCURRENCY` to
+   run more dispatches at once does not raise it either — a dispatch held open
+   waiting on an Agent occupies a socket, not a connection.
 
 Reference points (the "Concurrent builds" column is what the worker's derived
 cap enforces on a typical host of that size — memory-bound at one build per
