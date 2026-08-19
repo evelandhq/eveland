@@ -7,6 +7,7 @@ import { listDeploymentsWithActiveWorkflowRuns } from "../../runtime/eveland-wor
 import { resolveWorkflowWorldPlatformUrl } from "../../runtime/eveland-workflow-world-url.js";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import type { ProcessJobOptions } from "../process-types.js";
+import { assessWorkflowArchive } from "../workflow-topology-gate.js";
 import type { RuntimeJob } from "./types.js";
 
 // Statuses an archive may claim from. "archiving" re-claims a prior attempt
@@ -45,6 +46,25 @@ export async function handleArchiveDeploymentJob(
   if (!claimable.includes(deployment.status)) {
     if (automatic) return;
     throw new Error(`Deployment cannot be archived while ${deployment.status}.`);
+  }
+
+  // Unknown and unterminated legacy topologies conservatively protect their
+  // artifact — it may be the only thing able to resume or diagnose a parked
+  // run — until the cutover classifies or managed-terminates them.
+  const archiveRelease = await store.getRelease(deployment.releaseId);
+  if (!archiveRelease) throw new Error(`Release ${deployment.releaseId} not found for archive.`);
+  const archiveDecision = assessWorkflowArchive(archiveRelease, deployment);
+  if (!archiveDecision.allowed) {
+    if (automatic) {
+      await store.appendLog({
+        projectId: job.projectId,
+        deploymentId: deployment.id,
+        type: "runtime",
+        line: `Archive skipped: ${archiveDecision.reason}`,
+      });
+      return;
+    }
+    throw new Error(archiveDecision.reason);
   }
 
   // Claim before touching anything: holding "archiving" keeps activation,

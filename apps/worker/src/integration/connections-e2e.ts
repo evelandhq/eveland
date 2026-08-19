@@ -47,6 +47,15 @@ async function main(): Promise<void> {
   await materializeConnectionOrigin(sourcePath, fixtureOrigin);
 
   const { store, close } = await createPgliteTestStore();
+  // Post-cutover: turns execute only via the external dispatcher. The helper
+  // lives with the infra smokes; the computed specifier keeps this app's
+  // typecheck out of the cross-tree import while tsx resolves it at runtime.
+  const { startWorkflowRuntime } = (await import(
+    new URL("../../../../infra/integration/workflow-runtime.mts", import.meta.url).href
+  )) as {
+    startWorkflowRuntime: (store: unknown) => Promise<{ stop: () => Promise<void> }>;
+  };
+  const workflowRuntime = await startWorkflowRuntime(store);
   const project = await store.createProject({
     name: `Managed Connections E2E ${Date.now()}`,
     importKind: "zip",
@@ -201,6 +210,7 @@ async function main(): Promise<void> {
       }
     }
     await connectionServer.close();
+    await workflowRuntime.stop().catch(() => {});
     await close();
     await rm(sourceRoot, { recursive: true, force: true });
   }

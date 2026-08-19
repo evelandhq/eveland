@@ -11,7 +11,9 @@
     "test": "vitest run --maxWorkers=2 --testTimeout=30000",
     "smoke:connections": "tsx src/integration/connections-e2e.ts",
     "smoke:docker-sandbox": "tsx src/integration/docker-sandbox-smoke.ts",
-    "smoke:workflow-wake": "tsx src/integration/workflow-wake-e2e.ts"
+    "smoke:workflow-wake": "tsx src/integration/workflow-wake-e2e.ts",
+    "smoke:workflow-dual-release": "tsx src/integration/workflow-dual-release-e2e.ts",
+    "cutover": "tsx src/cutover/cli.ts"
   },
   "dependencies": {
     "@evelandhq/agent-observer": "workspace:*",
@@ -20,11 +22,12 @@
     "@evelandhq/db": "workspace:*",
     "@evelandhq/platform-observability": "workspace:*",
     "@evelandhq/sandbox-bwrap": "^0.2.0",
-    "@evelandhq/workflow-world": "^0.9.0",
+    "@evelandhq/workflow-world": "^0.11.0",
     "@opentelemetry/api": "^1.9.1",
     "@workflow/world-postgres": "5.0.0-beta.34",
     "esbuild": "^0.28.1",
     "execa": "^9.6.1",
+    "graphile-worker": "0.16.6",
     "pg": "8.20.0",
     "postgres": "^3.4.9",
     "yaml": "^2.9.0",

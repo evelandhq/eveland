@@ -1179,16 +1179,96 @@ systemd 记录 unit state、result/restart count 与最近 200 行 journal。诊
 logs 前必须使用完整 Project Secret 集合脱敏并限制为 32,000 字符。诊断采集或后续清理失败
 只能追加独立错误，不能覆盖原始健康检查错误；响应和持久化日志不得泄露 Secret 明文。
 
-durable workflow world 是平台 runtime contract，不是 Agent 源码 contract。worker 按
-`EVELAND_WORKFLOW_WORLD_ROLLOUT` 为每个新 Release 选择 legacy
-`@workflow/world-postgres` 或共享 `@evelandhq/workflow-world`，并强制注入平台固定且经过 Eve
-兼容性验证的依赖版本；不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
+durable workflow world 是平台 runtime contract，不是 Agent 源码 contract。每个新 Release
+无条件构建进共享 `@evelandhq/workflow-world`，不存在选择 build topology 的 rollout flag，
+也不再创建 legacy `@workflow/world-postgres` Release；worker 强制注入平台固定且经过 Eve
+兼容性验证的依赖版本，不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
-不得被修改。Eve 0.38 起要求 workflow spec v6，因此 legacy world 固定为
-`@workflow/world-postgres@5.0.0-beta.34`，共享 world 固定为
-`@evelandhq/workflow-world@0.9.0`；两者都必须通过 0.38.3 与 0.39.0 的 World contract 门禁。
-`WORKFLOW_POSTGRES_URL` 是保留的运行时变量，Project Secret 不得覆盖。production worker
-缺少该变量必须在接收 job 前失败；development 未配置时继续使用 Eve local world。
+不得被修改。Eve 0.38 起要求 workflow spec v6；共享 world 固定为
+`@evelandhq/workflow-world@0.11.0`，必须通过 0.38.3 与 0.39.0 的 World contract 门禁
+（legacy `@workflow/world-postgres@5.0.0-beta.34` 仅作为历史 Deployment 的既有事实保留同一门禁）。
+runner mode 只支持 `external`：`EVELAND_WORKFLOW_RUNNER` 未设置时解析为 `external`，显式
+`embedded` 是配置错误，worker 启动与 Deployment 启动都必须 fail closed，不得静默回退。
+`WORKFLOW_POSTGRES_URL` 与 `EVELAND_WORKFLOW_WORLD_URL`、`EVELAND_WORKFLOW_RUNNER` 都是保留的
+运行时变量，Project Secret 不得覆盖。production worker 缺少 `EVELAND_WORKFLOW_WORLD_URL`
+必须在接收 job 前失败；`WORKFLOW_POSTGRES_URL` 不再是 production 必需项，只服务仍处于
+legacy 终止流程的既有安装。development 未配置共享 world 时继续使用 Eve local world。
+
+每个 Release 持久化 immutable workflow attestation（world kind、package/version、storage
+spec、dispatch protocol、deployment-side enqueue capability），来源是 release preparation 实际
+注入的内容，绝不来自记录时的 worker 环境；runner mode 是启动时输入，不属于 attestation。
+capability 是版本事实：0.5.0 之前的 shared world 不具备 per-run enqueue，分类后 attest 为
+`unscoped`。历史 `unknown` Release 只能通过读取 immutable artifact 分类（systemd release
+目录内生成的 agent config 与其 node_modules 内实际安装的 world manifest；Docker image 保持
+`unknown` 等待人工处置），且 attestation 一经写入不可更改。每个
+Deployment 另行持久化 mutable execution topology（runner mode、conversion state、cutover
+operation id、runner evidence）。历史行 migration 为 `unknown`/`unclassified`。deploy start、
+restart、cold activation 等所有启动路径只依据持久化的 attestation 与 topology 决策：只有
+`shared` attestation 且 conversion state 为 `external` 的 Deployment 可以启动；legacy、
+`unknown` 或未完成转换的对象返回带 `workflow_migration_required`/`workflow_unavailable`
+稳定前缀的 managed error 并 fail closed，不得按当前环境猜测。archive 只允许 conversion
+state 为 `external` 或 `terminated` 的 Deployment——shared attestation 本身不允许销毁
+artifact；automatic sweep 对受保护对象静默跳过并记录原因。
+
+fence 的作用域是精确的：deployment fence 只保留给被永久退休的 owner（非 shared attestation
+或 enqueue capability 无法 per-run 的 immutable Release），它阻断该 Deployment 的所有
+activation **与 lease 续期**，并触发控制面收敛（fail 全部非 terminal Session、对该
+Deployment 上所有具名 Eve family——包括早已 failed 的——写 session-family tombstone、把
+running SessionNode 收敛为 terminal、删除 binding、释放 lease、终止 ScheduleRun）。
+shared-capable owner 上的单个坏 run 只得到 run fence + durable World quarantine，同
+Deployment 的健康 run 继续可用；被 managed-terminate 的 run 通过 operator 提供的
+run→Eve-session family 映射逐 family 收敛控制面（fail Session/SessionNode、删 binding、写
+session-family tombstone），或由 operator 显式断言其确无投影 family（`--no-family`）。两者都是以 run 的 durable
+quarantine marker 为 key 的持久 disposition（`familyDispositions` checkpoint）：run 在首轮
+已被 cancel、不再出现在 active 评估中，重试时的收敛 worklist 从本轮评估 ∪ 本 operation 的
+未决 quarantine marker 播种（quarantine 先于 cancel 写入，crash 窗口因此闭合），映射与断言
+落在持久身份上且此后免重复提供。worklist 只跳过**可证 terminal** 的 owner（本轮退休集合或
+topology 已 `terminated`）：unknown-topology 的临时 deployment fence 不算收敛——operator
+之后分类并解除该 fence 时，被它跳过的 family 将没有 tombstone。两者皆无的 run 是 **hold** 而非报告项：World 后置条件因 quarantine 而通过，
+所以 saga 必须停在 `workflow_safe`、finalize 拒绝 completion，直到每个 run 被 tombstone 或
+显式断言——否则迟到的 OTLP batch 恰好能复活被终止的那个 family。绝不猜测。
+cutover 的 prepare 在写任何 fence/cancel/topology 之前要求 operation 上已持久记录
+operator 的维护边界 attestation（`--quiescence-verified`/`--backup-command`）——且该
+attestation 是**测量三明治**而非采信：先测量静默（无 running job、无未过期 activation
+lease、无 locked World job），随后在测量窗口**之内**执行正式备份回调（命令输出即持久化的
+evidence），再次测量；窗口内任何活跃或受保护序列的移动（run 数、append-only World event
+数、World graphile jobs 序列高水位（用 id sequence 而非活表 max(id)——完成的 job 会被删除，活表最大值不单调，会漏掉两次测量之间入队又被消费的异己 job）、最新 run 更新时间、控制面 job/Session 标记）都拒绝
+attestation——备份期间有写入的快照不是回滚点。测得的 baseline 随 attestation 持久化；
+此后每次 prepare 重新校验——任何本 operation 自身盖章解释不了的推进（包括对**既有** run
+的裸 enqueue 或 event 追加）都令边界**失效**，saga 持住直到 operator 以新的窗口内备份
+重新 attest。prepare 自身的变更（cancel/quarantine/migration）在每个变更过的 pass 结束时
+折算进 baseline，只有异己写入触发失效。runbook 文字不是 fail-closed 门，部分停机的误操作
+不得产生任何变更。cutover 的 prepare 遍历**全量**控制面 inventory 而非仅 active-run owner：每个 Deployment
+要么完成分类/退休/staging，要么（仍为 `unknown` 时）获得 deployment fence 并置于 `fenced`
+topology，杜绝转换途中被唤醒；inventory 对每个保留 Deployment 应用**完整**兼容窗口判定
+（enqueue capability、dispatch protocol 非 null 且落在 dispatcher 窗口内、且 storage
+generation 落在平台支持窗口内——protocol 与 storage 是独立轴，`workflow_step` activation
+对窗口外 storage 同样返回 `workflow_migration_required` 409）——无 active run
+的 idle owner 不经过 run 评估，窗口外仍 staging 会让它以 `external` 完成转换却被 activation
+路径逐一拒绝；被退休的 owner 在控制面收敛时同步写入 terminal topology
+（`conversionState = terminated`），否则 archive 门（仅允许 external|terminated）会让其
+artifact 永远无法归档；archived 行同样参与分类与退休 fence——OTLP projector 接受任何
+仍保留的 Deployment 行，archive 状态不是投影屏障——只是绝不 staging。legacy owner 的退休必须
+同时在其派生 `eveland_wf_*` 数据库内 cancel 全部活跃 run（状态按 text 比较以兼容
+world-postgres 0004 前后两代 enum）：缺 `WORKFLOW_POSTGRES_URL`、库不可达或 cancel 后仍有
+活跃 run 都是 hold，saga 停在 `fenced`，控制面退休本身永远不算 workflow safety。cutover 的 finalize 是门禁而非赋值：operation 必须已达
+control-plane convergence、数据库后置条件当下成立、且每个 Deployment 处于同一 operation 的
+`converting`，否则逐个拒绝并输出原因；operation 到达 `completed` 还要求 finalize 零拒绝、
+operation staged 的全部 Deployment 已为 `external`（staged checkpoint 跨 prepare 重跑只增
+不减——已 staged 的 Deployment 在重跑中已是 `converting`、不再被 inventory 或 run 评估看到，
+覆盖写会让它悄悄脱离 completion 门）、无未决 family、且 operator 以显式 continuity 断言
+（`--continuity-verified`，记录为 checkpoint）确认过连续性门，否则停在可重试的
+`control_plane_converged`。cutover 进程模式下,cutover API 只接受携带完全一致
+cutover operation id 的 dispatcher heartbeat/resume，且启动时校验该 operation 存在且未
+completed（否则拒绝启动）；cutover Worker 只认领同一 operation
+显式盖章（payload `cutoverOperationId`）的 activation/reconciliation job——盖章在 enqueue
+被 coalesce 到既有 job 时同样必须落到该已有 payload 上，且对仍为 `running` 的既有行直接
+requeue 而不等 300s stale 窗口：维护边界已停掉所有 normal worker，该 claim 是孤儿；万一
+持有者仍在，其下一次 heartbeat 因 status 不再是 running 而失败并中止——普通或过期 job
+留给停机后的 normal worker。dispatcher readiness 判定除新鲜度外还校验 World cluster
+identity、operation 归属与 unscoped-job 计数（非 0 或未知都不 ready）。cluster identity 是
+`cluster:<pg system_identifier>/<database>`，双方都从数据库本身读取（`pg_control_system()`），
+严格相等比较——URL/host 形态的比较会在不相关集群间 fail open，禁止使用。
 配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在 dispatcher 或 Deployment 使用共享库前幂等执行
 `@evelandhq/workflow-world` migration；若 host 与 Deployment 访问同一数据库所需地址不同，
 host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。新空库可以无人值守完成完整
@@ -1198,6 +1278,34 @@ maintenance-window gate 或预先执行 `workflow-world-setup`。
 外部 workflow dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Control API 的
 公开 `/health` 成功，不能用 Graphile job 的首次失败承担并行进程启动顺序；健康门打开后
 的 activation、executor dispatch 与重试语义仍由 dispatcher 持有。
+
+dispatcher readiness 是机器可读的持久化 registration，由实际持有 ownership lock 的
+dispatcher 通过受服务认证的 heartbeat 上报（instance/generation、ownership、boot recovery
+完成、World cluster identity——从数据库自身读取的 `cluster:<system_identifier>/<database>`，
+绝不含凭据——schema generation、dispatch
+protocol 窗口、cutover operation id、仍可 claim 的 unscoped job 数、状态与时间）。stdout 的
+ready token 与 systemd `active` 只作人工诊断。production 中 shared build 与 `workflow_step`
+activation 都以该 registration 的新鲜度（`EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS`）
+fail closed；`workflow_step` activation 的调用方还必须以
+`x-eveland-dispatcher-instance` header 携带与该 registration 完全一致的 instance id——绑定
+的是通过 readiness 门禁的那个进程，而不是任何持有 service token 的进程——不一致返回 409；
+activation 还要求目标 Release attestation 为 shared、enqueue
+capability 为 `per_run_queue_v1`、dispatch protocol 落在 registration 声明的窗口内，否则返回
+带 `workflow_migration_required` 稳定前缀的 409；dispatcher 不可证明时返回带
+`workflow_unavailable` 前缀的 503。activation response 对 `workflow_step` 附带协商结果
+（selected protocol 与 enqueue capability）。cutover 期间 dispatcher 以
+`recover-paused` 启动：ownership、migration 与 boot recovery 完成后进入 `ready_paused`，
+不 claim 任何 job；只有 Control API 上受认证的显式 resume（经 heartbeat 回复送达）才进入
+`ready`。dispatcher 启动前的 preflight 在仍存在可 claim 的 unscoped early-external job 时
+fail closed；设置了 cutover operation id 时还要求 World 内存在该 operation 的 **passed**
+cutover proof（`workflow.cutover_proofs`，由 `cutover postcondition --operation-id` 写入；
+passed 是挣来的——数据库后置条件对空闲 shared World 上的全新 operation 也会成立，故只有
+operation 已达 control-plane convergence 且无未决 family disposition 时才记录 passed，
+否则记录 failed proof）——
+dispatcher 永不读取控制面数据库，postcondition 的完整结论必须以它可见的形式存在于它已拥有
+的 World 中。不可恢复的 shared run 必须已 workflow-terminal 或带有 boot recovery、enqueue 与
+dispatch handler 都识别的 durable World quarantine marker——仅控制面 fence 不满足该门禁。
+完整维护停机 cutover 的可执行顺序见 `docs/deploy/workflow-external-cutover.md`。
 当前 external dispatcher 是单实例：健康门打开后先获取生命周期 PostgreSQL advisory lock，
 再从 active run 的精确 `wfrun:<tenant>:<run>` queue 收集旧 Graphile worker id 并强制解锁，
 随后 re-enqueue，最后才启动新 worker pool。第二个 dispatcher 必须 fail closed；从未参与
@@ -1214,10 +1322,10 @@ legacy workflow 的隔离按 Project 物理分库：`WORKFLOW_POSTGRES_URL` 是 
 派生库不得作为孤儿残留。
 
 共享 workflow 使用一个数据库内的 `tenant_id` 作为强制查询边界，events 与 stream chunks
-按 Project LIST partition；queue 只由 tenant-safe 的 embedded runner 或平台 dispatcher
-认领，cold-start recovery 也必须按 tenant 过滤。Project 删除时 drop 自己的 partitions，
-不得扫描或删除其他 tenant。legacy 与共享 Deployment 可在 rollout 期间并存；选择是
-Release 的 build-time 属性，不能用运行时改 flag 的方式替换仍在执行的 World。
+按 Project LIST partition；queue 只由平台 external dispatcher 认领，cold-start recovery
+也必须按 tenant 过滤。Project 删除时 drop 自己的 partitions，不得扫描或删除其他 tenant。
+既有 legacy Deployment 与共享 Deployment 在 cutover 完成前可以并存，但 world 是 Release 的
+build-time 属性，不能用运行时改环境变量的方式替换仍在执行的 World；新 build 一律共享。
 当 Deployment URL 使用 `host.docker.internal` 且除 host 外与 `DATABASE_URL` 完全一致时，
 worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置的
 `WORKFLOW_POSTGRES_BOOTSTRAP_URL` 始终优先，平台不得对其他数据库地址关系做猜测。
@@ -1228,7 +1336,7 @@ per-project workflow 的过期 stream chunks。默认保留窗口为 24 小时
 run 的 `eof=false` chunk，EOF marker 永久保留；`EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=0`
 只禁用这条 legacy sweep。
 
-共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.9.0` 与 dispatcher 共同持有。
+共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.11.0` 与 dispatcher 共同持有。
 World 默认在写入前剥离可由 delta 重建的累计 snapshot，并按 128 个 logical chunk 或 64 KiB
 建立 server-side checkpoint；`writeMulti` 最多把 64 个 logical chunk、256 KiB 写入一个
 physical block，reader 仍按原 logical chunk id 和 cursor 返回兼容字节。

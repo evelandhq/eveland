@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import type { DeploymentRecord } from "@evelandhq/core/contracts";
-import { createFixtureEveProject } from "./process.test-support.js";
+import { createFixtureEveProject, sharedWorkflowWorldAttestation } from "./process.test-support.js";
 import { execa } from "execa";
 
 describe("processNextJob", () => {
@@ -241,6 +241,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41010,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     // A re-sync whose source fails to scan (here, an empty directory) must not
     // knock the running deployment into a failed state.
@@ -516,6 +517,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41077,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -597,6 +599,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41080,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.ensureDeploymentRoutes(project.id, production.id, "agent.localhost");
     await store.enqueueJob(project.id, "build_deploy", {
@@ -673,6 +676,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41078,
       runtimeKind: "systemd",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -759,6 +763,7 @@ describe("processNextJob", () => {
           internalPort: 3000,
           hostPort: 41200 + index,
           runtimeKind: "docker",
+          workflowWorld: sharedWorkflowWorldAttestation,
         }),
       );
     }
@@ -842,6 +847,7 @@ describe("processNextJob", () => {
           internalPort: 3000,
           hostPort: 41220 + index,
           runtimeKind: "systemd",
+          workflowWorld: sharedWorkflowWorldAttestation,
         }),
       );
     }

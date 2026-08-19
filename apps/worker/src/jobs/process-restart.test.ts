@@ -3,12 +3,11 @@ import type { Store } from "@evelandhq/db";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { processNextJob } from "./process.js";
 import { type RuntimeAdapter } from "../runtime/types.js";
-import { deriveProjectWorkflowUrl } from "../runtime/workflow-world-bootstrap.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { encryptSecretValue } from "@evelandhq/core/server/secrets";
-import { createFixtureEveProject } from "./process.test-support.js";
+import { createFixtureEveProject, sharedWorkflowWorldAttestation } from "./process.test-support.js";
 
 describe("processNextJob", () => {
   test("restarts the current deployment by stopping and starting it on the recorded runtime kind", async () => {
@@ -47,15 +46,16 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41050,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "restart_deployment");
 
+    const evelandWorldUrl = "postgres://platform@host.docker.internal:5432/eveland_workflow";
     await expect(
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
-        workflowPostgresUrl: "postgres://platform@host.docker.internal:5432/eveland",
-        ensureProjectWorkflowWorld: async (env, projectId) =>
-          deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId),
+        evelandWorkflowWorldUrl: evelandWorldUrl,
+        ensureEvelandWorkflowTenant: async () => {},
         runtime: {
           name: "docker",
           async buildRelease() {
@@ -82,10 +82,8 @@ describe("processNextJob", () => {
           releaseRef: "eveland/proj:rel_cur",
           port: deployment.hostPort,
           env: expect.objectContaining({
-            WORKFLOW_POSTGRES_URL: deriveProjectWorkflowUrl(
-              "postgres://platform@host.docker.internal:5432/eveland",
-              project.id,
-            ),
+            EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
+            EVELAND_WORKFLOW_RUNNER: "external",
             OPENAI_API_KEY: "sk-test-restart",
             EVELAND_DEPLOYMENT_ID: deployment.id,
           }),
@@ -101,6 +99,68 @@ describe("processNextJob", () => {
         line: `Deployment running on 127.0.0.1:${deployment.hostPort}.`,
       }),
     ]);
+  });
+
+  test("fails a restart closed when the deployment's workflow topology is unclassified", async () => {
+    const runtimeCalls: Array<{ name: string; input: unknown }> = [];
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Unclassified Restart Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    // No attestation: a historical row the cutover has not classified yet.
+    await store.recordDeployment({
+      releaseId: "rel_unclassified",
+      deploymentId: "dep_unclassified",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_unclassified",
+      containerName: "eveland-unclassified",
+      internalPort: 3000,
+      hostPort: 41056,
+      runtimeKind: "docker",
+    });
+    await store.enqueueJob(project.id, "restart_deployment");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess(input) {
+            runtimeCalls.push({ name: "startProcess", input });
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess(processName) {
+            runtimeCalls.push({ name: "stopProcess", input: { processName } });
+          },
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    // Fails closed before touching the running process.
+    expect(runtimeCalls).toEqual([]);
+    await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
+      expect.objectContaining({
+        line: expect.stringContaining("workflow_migration_required"),
+      }),
+    );
   });
 
   test("restores the Deployment status when runtime reconciliation races with a successful restart", async () => {
@@ -132,6 +192,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41054,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "restart_deployment", {
       deploymentId: deployment.id,
@@ -188,6 +249,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41055,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.updateDeploymentStatus(deployment.id, "draining");
     await store.enqueueJob(project.id, "restart_deployment", {
@@ -252,6 +314,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41056,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.updateDeploymentStatus(deployment.id, "archived");
     await store.enqueueJob(project.id, "restart_deployment", {
@@ -322,6 +385,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41057,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "restart_deployment", {
       deploymentId: deployment.id,
@@ -385,6 +449,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41052,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     const preview = await store.recordDeployment({
       releaseId: "rel_target_preview",
@@ -396,6 +461,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41053,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "restart_deployment", {
       deploymentId: preview.id,
@@ -469,6 +535,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41051,
       runtimeKind: "systemd",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "restart_deployment");
 
@@ -538,6 +605,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41113,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "restart_deployment");
 
@@ -605,6 +673,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41114,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "restart_deployment");
 
@@ -703,6 +772,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41052,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "restart_deployment");
     // Simulates corrupt state: the deployment's release row is gone even though
@@ -765,6 +835,7 @@ describe("processNextJob", () => {
       internalPort: 3000,
       hostPort: 41060,
       runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
     });
     await store.enqueueJob(project.id, "restart_deployment");
 

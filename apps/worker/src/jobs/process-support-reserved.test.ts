@@ -17,8 +17,9 @@ const baseOptions = {
 } as const;
 
 /**
- * Every platform-owned runtime name for a project on the legacy per-project
- * world.
+ * Every platform-owned runtime name for a Deployment still on the legacy
+ * per-project world. Only the legacy termination path launches with this kind;
+ * no new build ever selects it.
  */
 async function composeOnWorldPostgres() {
   return composeDeploymentEnv(
@@ -26,6 +27,7 @@ async function composeOnWorldPostgres() {
     "proj_reserved",
     {
       ...baseOptions,
+      workflowWorldKind: "legacy_project",
       workflowPostgresUrl,
       ensureProjectWorkflowWorld: async () => `${workflowPostgresUrl}_wf_proj_reserved`,
     },
@@ -34,10 +36,11 @@ async function composeOnWorldPostgres() {
 }
 
 /**
- * The same, for a project built against the platform world. The two sets are
- * mutually exclusive by design — a project on the platform world gets no
- * per-project database, and so no `WORKFLOW_POSTGRES_URL` — which is why the
- * exported list is the union of both rather than what either one produces.
+ * The same, for a Deployment on the shared platform world — the only kind new
+ * builds produce. The two sets are mutually exclusive by design — a project on
+ * the platform world gets no per-project database, and so no
+ * `WORKFLOW_POSTGRES_URL` — which is why the exported list is the union of
+ * both rather than what either one produces.
  */
 async function composeOnEvelandWorld() {
   return composeDeploymentEnv(
@@ -50,7 +53,6 @@ async function composeOnEvelandWorld() {
       ensureEvelandWorkflowTenant: async () => {},
     },
     {
-      EVELAND_WORKFLOW_WORLD_ROLLOUT: "all",
       EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
       EVELAND_WORKFLOW_STREAM_COMPACTION: "off",
     },
@@ -87,7 +89,7 @@ describe("reserved runtime environment names", () => {
     const { env, secretValues } = await composeOnEvelandWorld();
 
     expect(env.EVELAND_WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
-    expect(env.EVELAND_WORKFLOW_RUNNER).toBe("embedded");
+    expect(env.EVELAND_WORKFLOW_RUNNER).toBe("external");
     expect(env.EVELAND_WORKFLOW_STREAM_COMPACTION).toBe("off");
     expect(env.EVELAND_SANDBOX_RUN_TIMEOUT_MS).toBe("600000");
     expect(env.EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES).toBe("64");

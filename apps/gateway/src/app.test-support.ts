@@ -76,6 +76,13 @@ export function repository(routes: ResolvedAgentRoute[]): GatewayRepository & {
               hostPort: target.hostPort,
               status: target.status,
               runtimeKind: "docker" as const,
+              workflowTopology: {
+                runnerMode: "external" as const,
+                conversionState: "external" as const,
+                conversionOperationId: null,
+                runnerEvidence: null,
+                convertedAt: null,
+              },
               createdAt: "2026-07-13T00:00:00.000Z",
               updatedAt: "2026-07-13T00:00:00.000Z",
             },

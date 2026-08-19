@@ -29,6 +29,8 @@ const jobPayloadSchemas: {
     .object({
       deploymentId: z.string().optional(),
       reason: z.string().optional(),
+      /** Present only on jobs a cutover operation enqueued for itself. */
+      cutoverOperationId: z.string().optional(),
     })
     .passthrough(),
   trigger_schedule: z.object({ scheduleRunId: z.string() }).passthrough(),
@@ -36,6 +38,8 @@ const jobPayloadSchemas: {
     .object({
       deploymentId: z.string(),
       runtimeInstanceId: z.string(),
+      /** Present only on jobs a cutover operation enqueued for itself. */
+      cutoverOperationId: z.string().optional(),
     })
     .passthrough(),
   archive_deployment: z

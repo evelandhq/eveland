@@ -48,6 +48,12 @@ export type AppOptions = {
   runtimeActivationWaitTimeoutMs?: number;
   sourcePreflightTtlMs?: number;
   playgroundSessionIdleTtlMs?: number;
+  /**
+   * Serve the maintenance-downtime cutover surface only: dispatcher
+   * registration/heartbeat/resume, exact runtime activation, operation status
+   * and health. Everything else answers a stable managed 503.
+   */
+  cutoverOperationId?: string;
   apiSessionIdleTtlMs?: number;
   sessionBindingNow?: () => Date;
   agentAuthProviders?: AgentAuthProviderRegistration[];

@@ -26,11 +26,7 @@ import {
   resolveWorkflowWorldPlatformUrl,
 } from "../runtime/eveland-workflow-world-url.js";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
-import {
-  EVELAND_WORKFLOW_WORLD,
-  resolveWorkflowRunnerMode,
-  resolveWorkflowWorldChoice,
-} from "../runtime/workflow-world.js";
+import { resolveWorkflowRunnerMode } from "../runtime/workflow-world.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";
 
 import type { ProcessJobOptions, ScheduleDispatchInput } from "./process-types.js";
@@ -221,8 +217,12 @@ export async function composeDeploymentEnv(
   const nodeEnv = options.nodeEnv ?? workerEnv.NODE_ENV;
   const isProduction = nodeEnv === "production";
   const workflowPostgresUrl = options.workflowPostgresUrl ?? workerEnv.WORKFLOW_POSTGRES_URL;
-  const evelandWorld = resolveWorkflowWorldChoice(workerEnv, projectId);
-  const usesEvelandWorld = evelandWorld.packageName === EVELAND_WORKFLOW_WORLD.packageName;
+  // Every new build bakes in the shared world, so the only launches that still
+  // get a legacy per-project database are the ones a caller explicitly marks
+  // `legacy_project` — the legacy termination flow, never a fresh deploy. The
+  // decision is the caller's persisted knowledge of the Deployment, not this
+  // worker's current global environment.
+  const usesLegacyWorld = options.workflowWorldKind === "legacy_project";
   // Legacy world: each project gets its own physical workflow database derived
   // from the platform base URL. A single shared database let any runtime claim
   // any project's queued turns and re-enqueue every project's active runs on
@@ -234,7 +234,7 @@ export async function composeDeploymentEnv(
   // empty database behind for every project on the new world.
   const ensureWorld = options.ensureProjectWorkflowWorld ?? ensureProjectWorkflowWorld;
   const projectWorkflowUrl =
-    workflowPostgresUrl && !usesEvelandWorld
+    workflowPostgresUrl && usesLegacyWorld
       ? await ensureWorld({ ...workerEnv, WORKFLOW_POSTGRES_URL: workflowPostgresUrl }, projectId)
       : undefined;
   // The platform world's equivalent: migrations plus this tenant's partitions.

@@ -1,5 +1,9 @@
 import { OBSERVER_RUNTIME_CONTRACT } from "@evelandhq/agent-observer";
 import type { Job } from "@evelandhq/core/contracts";
+import {
+  assessDispatcherReadiness,
+  resolveDispatcherHeartbeatTtlMs,
+} from "@evelandhq/core/workflow-dispatch";
 import { projectDiscoveryManifest } from "@evelandhq/core/discovery";
 import { createId } from "@evelandhq/core/ids";
 import { maskKnownSecrets } from "@evelandhq/core/server/secrets";
@@ -9,7 +13,12 @@ import path from "node:path";
 import { waitForOwnedHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
-import { resolveWorkflowWorldChoice } from "../runtime/workflow-world.js";
+import { resolveWorkflowWorldDeploymentUrl } from "../runtime/eveland-workflow-world-url.js";
+import { resolveWorldClusterIdentity } from "../runtime/world-identity.js";
+import {
+  deriveWorkflowWorldAttestation,
+  EVELAND_WORKFLOW_WORLD,
+} from "../runtime/workflow-world.js";
 import {
   createDeploymentStartInput,
   ensureDeploymentLaunchSandbox,
@@ -39,6 +48,7 @@ type BuildDeployStore = LaunchInputStore &
     | "appendLog"
     | "recordScheduleVersions"
     | "listReservedDeploymentHostPorts"
+    | "getWorkflowDispatcherRegistration"
     | "recordDeployment"
     | "setProjectSchedulerTarget"
     | "ensureDeploymentRoutes"
@@ -62,17 +72,41 @@ export async function handleBuildDeployJob(
 
   const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV;
   const isProduction = nodeEnv === "production";
-  const workflowPostgresUrl = options.workflowPostgresUrl ?? process.env.WORKFLOW_POSTGRES_URL;
+  const evelandWorkflowWorldUrl =
+    options.evelandWorkflowWorldUrl ?? resolveWorkflowWorldDeploymentUrl(process.env);
 
-  if (isProduction && !workflowPostgresUrl) {
+  if (isProduction && !evelandWorkflowWorldUrl) {
     const detail =
-      "No WORKFLOW_POSTGRES_URL is configured for the platform-owned durable workflow world.";
+      "No EVELAND_WORKFLOW_WORLD_URL is configured for the shared durable workflow world every new build uses.";
     await store.appendLog({
       projectId: job.projectId,
       type: "deploy",
       line: `Deploy blocked: ${detail}`,
     });
     throw new Error(detail);
+  }
+
+  // A shared build only makes sense while the external dispatcher can be
+  // proven to be claiming; machine-readable readiness gates the deploy, never
+  // a stdout token or systemd's "active".
+  if (isProduction) {
+    // The dispatcher must be claiming from the same World this deploy
+    // injects — proven by the database's own cluster fingerprint, never by
+    // comparing URLs, which fails open across unrelated servers.
+    const expectedWorldIdentity =
+      options.worldClusterIdentity ?? (await resolveWorldClusterIdentity(process.env));
+    const readiness = assessDispatcherReadiness(await store.getWorkflowDispatcherRegistration(), {
+      ttlMs: resolveDispatcherHeartbeatTtlMs(process.env),
+      expectedWorldDatabaseIdentity: expectedWorldIdentity,
+    });
+    if (!readiness.ready) {
+      await store.appendLog({
+        projectId: job.projectId,
+        type: "deploy",
+        line: `Deploy blocked: ${readiness.reason}`,
+      });
+      throw new Error(readiness.reason);
+    }
   }
 
   const runtime = options.runtime ?? createRuntimeAdapterFromEnv();
@@ -127,12 +161,10 @@ export async function handleBuildDeployJob(
       commandContext: launchPrerequisites.commandContext,
       buildVariables,
       ...(options.signal ? { signal: options.signal } : {}),
-      // Which world gets baked in is a per-project, build-time decision — that
-      // is what lets deployments on the old and new worlds coexist, and what
-      // makes rollback a rebuild rather than a data migration.
-      ...(workflowPostgresUrl
-        ? { workflowWorld: resolveWorkflowWorldChoice(process.env, project.id) }
-        : {}),
+      // Every new Release unconditionally bakes in the shared workflow world;
+      // the legacy per-project world and the rollout flag that selected it are
+      // no longer build options.
+      workflowWorld: EVELAND_WORKFLOW_WORLD,
     });
   } catch (error) {
     await rm(buildDir, { recursive: true, force: true });
@@ -242,6 +274,12 @@ export async function handleBuildDeployJob(
       internalPort: started.internalPort,
       hostPort,
       runtimeKind: runtime.name,
+      // Attest what the build actually injected. A build result without an
+      // injected world records the Release as unknown, which blocks its
+      // launches rather than guessing a topology.
+      ...(build.workflowWorld
+        ? { workflowWorld: deriveWorkflowWorldAttestation(build.workflowWorld) }
+        : {}),
     });
     deploymentRecorded = true;
     if (releaseSummary) {

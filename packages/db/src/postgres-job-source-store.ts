@@ -152,6 +152,7 @@ export function createPostgresJobSourceStore({
       runtimeInstanceId,
       now = new Date(),
       staleAfterMs = 300_000,
+      cutoverOperationId,
     ) {
       return db.transaction(async (tx) => {
         const [runtimeInstance] = await tx
@@ -189,24 +190,48 @@ export function createPostgresJobSourceStore({
           .limit(1)
           .for("update");
         if (existing) {
-          if (
+          // Coalescing must not strip the operation stamp: a pre-cutover
+          // ordinary activation job that this cutover enqueue coalesces onto
+          // would otherwise never be claimable by the cutover Worker, and
+          // exact activation would time out. Stamp the surviving row.
+          const existingPayload = (existing.payload ?? {}) as Record<string, unknown>;
+          const needsStamp =
+            cutoverOperationId !== undefined &&
+            existingPayload.cutoverOperationId !== cutoverOperationId;
+          const stale =
             existing.status === "running" &&
-            existing.updatedAt.getTime() <= now.getTime() - staleAfterMs
-          ) {
-            const [recovered] = await tx
+            existing.updatedAt.getTime() <= now.getTime() - staleAfterMs;
+          // A cutover enqueue additionally requeues a still-"running" row
+          // without waiting out the stale window: the maintenance boundary
+          // stopped every ordinary Worker, so that claim is an orphan — and
+          // the cutover Worker claims queued jobs only, so leaving it locked
+          // would time the activation out. If the old holder somehow lives,
+          // its next heartbeat fails on status != running and it aborts.
+          const requeue =
+            stale || (cutoverOperationId !== undefined && existing.status === "running");
+          if (needsStamp || requeue) {
+            const [updated] = await tx
               .update(jobs)
-              .set({ status: "queued", lockedAt: null, updatedAt: now })
+              .set({
+                ...(requeue ? { status: "queued", lockedAt: null } : {}),
+                ...(needsStamp ? { payload: { ...existingPayload, cutoverOperationId } } : {}),
+                updatedAt: now,
+              })
               .where(eq(jobs.id, existing.id))
               .returning();
-            if (!recovered) throw new Error("Failed to recover stale Deployment activation job.");
-            return jobRowToJob(recovered);
+            if (!updated) throw new Error("Failed to recover stale Deployment activation job.");
+            return jobRowToJob(updated);
           }
           return jobRowToJob(existing);
         }
         const created = await insertJobRowTx(tx, {
           projectId,
           type: "ensure_deployment_running",
-          payload: { deploymentId, runtimeInstanceId },
+          payload: {
+            deploymentId,
+            runtimeInstanceId,
+            ...(cutoverOperationId ? { cutoverOperationId } : {}),
+          },
           createdAt: now,
           updatedAt: now,
         });
@@ -227,6 +252,21 @@ export function createPostgresJobSourceStore({
       // Concurrent claims each count committed running heavy jobs, so two
       // simultaneous claims can momentarily overshoot the cap by one; with a
       // single worker admitting one job per tick that window is negligible.
+      // Cutover process mode: only the operation's allowlisted job families
+      // may be claimed; everything else stays queued for the normal worker.
+      const allowedTypesClause =
+        options.allowedTypes === undefined
+          ? sql``
+          : sql` and candidate.type in (${sql.join(
+              options.allowedTypes.map((type) => sql`${type}`),
+              sql`, `,
+            )})`;
+      // A cutover Worker claims only jobs its exact operation stamped; a
+      // stale or ordinary activation/restart job is not its business.
+      const operationClause =
+        options.cutoverOperationId === undefined
+          ? sql``
+          : sql` and candidate.payload->>'cutoverOperationId' = ${options.cutoverOperationId}`;
       const heavyCapClause =
         heavyCap === undefined
           ? sql``
@@ -270,7 +310,7 @@ export function createPostgresJobSourceStore({
                   and (
                     project.deletion_status is distinct from 'deleting'
                     or candidate.type = 'delete_project'
-                  )${heavyCapClause}
+                  )${allowedTypesClause}${operationClause}${heavyCapClause}
                 order by candidate.created_at asc, candidate.sequence asc
                 limit 1
                 for update skip locked

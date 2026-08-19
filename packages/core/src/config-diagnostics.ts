@@ -508,8 +508,8 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     name: "WORKFLOW_POSTGRES_URL",
     components: ["worker"],
     sensitivity: "url",
-    purpose: "Platform-owned durable workflow database URL injected into every Deployment.",
-    required: production,
+    purpose:
+      "Legacy per-project workflow database base URL. Only needed while legacy Deployments are still being terminated; external-only installs never set it.",
   },
   {
     name: "WORKFLOW_POSTGRES_BOOTSTRAP_URL",
@@ -523,7 +523,8 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     components: ["worker", "workflow-dispatcher"],
     sensitivity: "url",
     purpose:
-      "Shared Postgres database backing @evelandhq/workflow-world; unset keeps projects on the per-project world-postgres databases.",
+      "Shared Postgres database backing @evelandhq/workflow-world; every new build uses it, so production fails closed without it.",
+    required: production,
   },
   {
     name: "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL",
@@ -533,16 +534,45 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
       "Host-reachable URL for the shared workflow database. Set when deployments reach Postgres by a different name than the platform does (e.g. host.docker.internal under Docker Desktop); defaults to EVELAND_WORKFLOW_WORLD_URL.",
   },
   entry(
-    "EVELAND_WORKFLOW_WORLD_ROLLOUT",
-    ["worker"],
-    'Which projects build against @evelandhq/workflow-world: "off", "all", or a comma-separated list of project ids.',
-    "off",
-  ),
-  entry(
     "EVELAND_WORKFLOW_RUNNER",
     ["worker"],
-    'Whether deployments on the platform world run their own queue runner ("embedded") or leave claiming to the dispatcher ("external").',
-    "embedded",
+    'Workflow runner mode injected into deployments. Only "external" is supported; an explicit "embedded" fails startup closed.',
+    "external",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS",
+    ["api", "worker"],
+    "How fresh the dispatcher's registration heartbeat must be before shared builds and workflow-step activation fail closed.",
+    "60000",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_INTERVAL_MS",
+    ["workflow-dispatcher"],
+    "How often the dispatcher reports its machine-readable registration to the Control API.",
+    "15000",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_DISPATCHER_START_MODE",
+    ["workflow-dispatcher"],
+    'Set "recover-paused" during the external-only cutover: ownership, migrations and boot recovery complete, but nothing is claimed until the Control API\'s authenticated resume.',
+    "normal",
+  ),
+  entry(
+    "EVELAND_WORKFLOW_CUTOVER_OPERATION_ID",
+    ["workflow-dispatcher", "api", "worker"],
+    "The maintenance-downtime cutover operation this process participates in; reported on the dispatcher registration and required by the cutover process modes.",
+  ),
+  entry(
+    "EVELAND_PROCESS_MODE",
+    ["api", "worker"],
+    'Set "workflow-cutover" during the maintenance downtime: the API serves only the cutover surface and the Worker claims only exact activation jobs. Requires EVELAND_WORKFLOW_CUTOVER_OPERATION_ID.',
+    "normal",
+  ),
+  entry(
+    "EVELAND_WEB_PROXY_MARGIN_MS",
+    ["web"],
+    "Transport margin added on top of cold activation and the upstream idle timeout when computing the Web proxy budget.",
+    "15000",
   ),
   entry(
     "EVELAND_WORKFLOW_STREAM_COMPACTION",

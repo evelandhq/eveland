@@ -193,14 +193,12 @@ services:
       # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
       NODE_ENV: development
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
-      WORKFLOW_POSTGRES_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
-      # The worker bootstraps the same database through its Compose-reachable address;
-      # deployed Agent containers keep using the host-gateway address above.
-      WORKFLOW_POSTGRES_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
+      # Deployed Agent containers reach the shared workflow database through the
+      # host gateway; the worker bootstraps it through its Compose-reachable
+      # address below.
       EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
       EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
-      EVELAND_WORKFLOW_WORLD_ROLLOUT: ${EVELAND_WORKFLOW_WORLD_ROLLOUT:-off}
-      EVELAND_WORKFLOW_RUNNER: ${EVELAND_WORKFLOW_RUNNER:-embedded}
+      EVELAND_WORKFLOW_RUNNER: ${EVELAND_WORKFLOW_RUNNER:-external}
       EVELAND_WORKFLOW_STREAM_COMPACTION: ${EVELAND_WORKFLOW_STREAM_COMPACTION:-on}
       EVELAND_DATA_DIR: /workspace/.eveland-data
       # docker run bind mounts are resolved by the host daemon, not inside this container.

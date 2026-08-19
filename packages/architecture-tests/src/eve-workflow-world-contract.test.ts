@@ -123,7 +123,7 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins the spec-v6 platform worlds reviewed for Eve 0.38.3", () => {
-    expect(worldManifest.version).toBe("0.9.0");
+    expect(worldManifest.version).toBe("0.11.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     const workspace = readSource("pnpm-workspace.yaml");

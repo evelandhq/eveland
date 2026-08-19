@@ -15,6 +15,7 @@ import { projectAgentEventsFromOtlpLogs } from "../../packages/session-collector
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
 import { startOtlpTestReceiver } from "./otlp-test-receiver.mts";
+import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
 
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
 const AGENT_TELEMETRY_SECRET = deriveAgentTelemetrySecret(APP_SECRET_KEY);
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
     const { store, close } = await createPgliteTestStore();
     let runtime: ReturnType<typeof createRuntimeAdapterFromEnv> | null = null;
     let receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>> | null = null;
+    let workflowRuntime: WorkflowRuntime | null = null;
     let processName: string | null = null;
     let primaryFailed = false;
     let primaryError: unknown;
@@ -38,6 +40,10 @@ async function main(): Promise<void> {
     try {
       runtime = createRuntimeAdapterFromEnv();
       receiver = await startOtlpTestReceiver();
+      // Post-cutover, this fixture's turn executes only through the external
+      // dispatcher; start the workflow runtime BEFORE the build so the
+      // scratch World URL is injected into the Release.
+      workflowRuntime = await startWorkflowRuntime(store);
       const project = await store.createProject({
         name: `OTLP Agent E2E ${Date.now()}`,
         importKind: "zip",
@@ -126,6 +132,7 @@ async function main(): Promise<void> {
         await attemptCleanup(() => runtime!.stopProcess(processName!));
       }
       if (receiver) await attemptCleanup(() => receiver!.close());
+      if (workflowRuntime) await attemptCleanup(() => workflowRuntime!.stop());
       await attemptCleanup(close);
     }
     if (primaryFailed) {

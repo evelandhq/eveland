@@ -45,6 +45,7 @@
 //   EVELAND_AGENT_BASE_DOMAINS=agent.localhost pnpm exec tsx infra/integration/identity-e2e.mts
 // or inside the Lima VM with EVELAND_RUNTIME=systemd, like the other e2e's.
 import assert from "node:assert/strict";
+import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
 import { execFile } from "node:child_process";
 import { createHash, createSign, generateKeyPairSync, randomBytes } from "node:crypto";
 import { once } from "node:events";
@@ -102,6 +103,8 @@ async function main(): Promise<void> {
   const processNames: string[] = [];
   let runtime: ReturnType<typeof createRuntimeAdapterFromEnv> | null = null;
   const database = await createPgliteTestStore();
+  // Post-cutover: turns execute only via the external dispatcher.
+  const workflowRuntime: WorkflowRuntime = await startWorkflowRuntime(database.store);
   const { store } = database;
   try {
     const source = path.join(fixtureRoot, "source");
@@ -672,6 +675,7 @@ async function main(): Promise<void> {
         processNames.map((name) => runtime!.stopProcess(name).catch(() => undefined)),
       );
     }
+    await workflowRuntime.stop().catch(() => {});
     await database.close();
     await rm(fixtureRoot, { recursive: true, force: true });
   }

@@ -29,8 +29,8 @@ import { fileURLToPath } from "node:url";
 import { materializeEveFixtureDirectory } from "@evelandhq/core/server/eve-fixture";
 import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { runMigrations } from "@evelandhq/workflow-world";
-import { startDispatcherService } from "@evelandhq/workflow-world/dispatcher";
 import { Pool } from "pg";
+import { spawnDispatcherApp, waitForDispatcherRegistration } from "./dispatcher-process.js";
 
 const IDLE_TTL_MS = Number(process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 60_000);
 /** Comfortably past the reap, so the job can only run on a woken deployment. */
@@ -62,7 +62,13 @@ async function waitFor<T>(
 const { store, close } = createStoreFromEnv();
 const worldPool = new Pool({ connectionString: WORLD_URL, max: 2 });
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-workflow-wake-"));
-let recoveryDispatcher: Awaited<ReturnType<typeof startDispatcherService>> | undefined;
+// Exact activation is bound to the registered dispatcher instance, so the
+// harness runs the REAL dispatcher app and owns its lifecycle; the platform
+// under test must not run its own.
+let dispatcher: ReturnType<typeof spawnDispatcherApp> | undefined;
+const dispatcherEnv: NodeJS.ProcessEnv = {
+  EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_INTERVAL_MS: "2000",
+};
 
 try {
   // --- 1. Deploy a project on the platform world ---------------------------
@@ -101,6 +107,9 @@ try {
 
   // --- 2. Start the real workflow; it sleeps past the idle reap -------------
   await runMigrations(worldPool);
+  dispatcher = spawnDispatcherApp(dispatcherEnv, log);
+  const firstRegistration = await waitForDispatcherRegistration(store);
+  log("dispatcher registered", firstRegistration);
   const workflowToken = `wake-${Date.now().toString(36)}`;
   const startResponse = await fetch(`http://127.0.0.1:${String(deployment.hostPort)}/start-wake`, {
     method: "POST",
@@ -203,37 +212,17 @@ try {
   );
   log("removed original delayed job", { jobs: deleted.rowCount });
 
-  const recoveryEvents: Array<{
-    eventName: string;
-    body: string;
-    attributes?: Record<string, string | number | boolean>;
-  }> = [];
-  recoveryDispatcher = await startDispatcherService({
-    config: {
-      worldUrl: WORLD_URL,
-      poolSize: 3,
-      concurrency: 1,
-      pollIntervalMs: 100,
-      maxInFlightPerTenant: 1,
-      queueGcIntervalMs: 300_000,
-    },
-    telemetry: {
-      emit(event) {
-        recoveryEvents.push(event);
-        log(`recovery dispatcher: ${event.body}`, event.attributes);
-      },
-      async shutdown() {},
-    },
+  await dispatcher.stop();
+  log("dispatcher stopped; respawning for ownership handoff + boot recovery");
+  dispatcher = spawnDispatcherApp(dispatcherEnv, log);
+  const recoveryRegistration = await waitForDispatcherRegistration(store, {
+    notInstanceId: firstRegistration.instanceId,
   });
   assert.ok(
-    recoveryEvents.some(
-      (event) =>
-        event.eventName === "workflow_dispatcher.boot_recovery" &&
-        event.body === "re-enqueued active runs on boot" &&
-        Number(event.attributes?.runs ?? 0) >= 1,
-    ),
+    recoveryRegistration.reenqueuedRuns >= 1,
     "the second dispatcher must reconstruct at least this active run during boot recovery",
   );
+  log("recovery dispatcher registered", recoveryRegistration);
 
   // --- 5. The recovered namespaced message must wake and complete ----------
   const wokeAt = await waitFor(
@@ -290,7 +279,7 @@ try {
   console.log("\nWORKFLOW WAKE E2E OK");
   console.log("  PROVEN reaped=1 bootRecovery=1 namespacePersisted=1 bodyResumed=1 deadLetters=0");
 } finally {
-  await recoveryDispatcher?.stop().catch(() => {});
+  await dispatcher?.stop().catch(() => {});
   await worldPool.end().catch(() => {});
   await close().catch(() => {});
   await rm(temporaryRoot, { recursive: true, force: true }).catch(() => {});
