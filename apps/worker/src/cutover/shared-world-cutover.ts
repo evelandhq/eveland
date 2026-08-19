@@ -564,14 +564,16 @@ export async function prepareSharedWorldCutover(input: {
       await store.advanceWorkflowCutoverOperation(operationId, {
         lastError: legacyHolds.join("; "),
       });
-      await refreshMaintenanceMarks(pool, store, operationId);
+      const markHold = await refreshMaintenanceMarks(pool, store, operationId, {
+        settleMs: input.quiescenceSettleMs ?? 1_500,
+      });
       return {
         ...partialResult,
         legacyWorlds,
         staged: await readStagedCheckpoint(store, operationId),
         converged: { failedSessions: 0, removedSessionBindings: 0 },
         unmappedTerminatedRuns: [],
-        holds: legacyHolds,
+        holds: markHold ? [...legacyHolds, markHold] : legacyHolds,
       };
     }
 
@@ -701,7 +703,9 @@ export async function prepareSharedWorldCutover(input: {
         lastError: hold,
         checkpoint: { key: "unresolvedFamilies", value: unmappedTerminatedRuns },
       });
-      await refreshMaintenanceMarks(pool, store, operationId);
+      const markHold = await refreshMaintenanceMarks(pool, store, operationId, {
+        settleMs: input.quiescenceSettleMs ?? 1_500,
+      });
       return {
         ...partialResult,
         legacyWorlds,
@@ -711,7 +715,7 @@ export async function prepareSharedWorldCutover(input: {
           removedSessionBindings: converged.removedSessionBindings,
         },
         unmappedTerminatedRuns,
-        holds: [hold],
+        holds: markHold ? [hold, markHold] : [hold],
       };
     }
     await store.advanceWorkflowCutoverOperation(operationId, {
@@ -767,7 +771,12 @@ export async function prepareSharedWorldCutover(input: {
     await store.advanceWorkflowCutoverOperation(operationId, {
       checkpoint: { key: "staged", value: stagedUnion },
     });
-    await refreshMaintenanceMarks(pool, store, operationId);
+    const markHold = await refreshMaintenanceMarks(pool, store, operationId, {
+      settleMs: input.quiescenceSettleMs ?? 1_500,
+    });
+    if (markHold) {
+      await store.advanceWorkflowCutoverOperation(operationId, { lastError: markHold });
+    }
 
     return {
       ...partialResult,
@@ -778,7 +787,7 @@ export async function prepareSharedWorldCutover(input: {
         removedSessionBindings: converged.removedSessionBindings,
       },
       unmappedTerminatedRuns,
-      holds: [],
+      holds: markHold ? [markHold] : [],
     };
   } finally {
     await Promise.resolve(workerUtils.release()).catch(() => {});
@@ -1021,32 +1030,70 @@ async function enforceMaintenanceBoundary(
  * Prepare's own mutations (cancels, quarantines, migrations) legitimately
  * advance the World marks; fold them into the baseline at the end of a
  * mutating pass so the next validation flags only FOREIGN writes.
+ *
+ * The fold is guarded, never blind: by this point the pass has finished
+ * writing, so any movement across a settle window — and any platform job not
+ * stamped by this operation since the recorded baseline — is a foreign
+ * writer inside the maintenance window. A blind fold here would absorb those
+ * writes into the baseline and silently bless a backup they postdate.
+ * Instead the refresh refuses, keeps the recorded baseline standing, and
+ * returns a hold; the next prepare's validation then invalidates the
+ * boundary against that same baseline until the operator re-attests over a
+ * fresh in-window backup.
  */
 async function refreshMaintenanceMarks(
   pool: pg.Pool,
   store: CutoverStore,
   operationId: string,
-): Promise<void> {
+  input: { settleMs: number },
+): Promise<string | null> {
   const operation = await store.getWorkflowCutoverOperation(operationId);
   const recorded = operation?.checkpoints.maintenance as
     | ({ quiescenceVerified?: boolean } & Partial<MaintenanceBaseline>)
     | undefined;
-  if (recorded?.quiescenceVerified !== true) return;
-  const current = await readQuiescence(pool, store);
+  if (recorded?.quiescenceVerified !== true) return null;
+  const first = await readQuiescence(pool, store);
+  await new Promise((resolve) => setTimeout(resolve, input.settleMs));
+  const second = await readQuiescence(pool, store);
+  const problems = [...new Set([...liveActivity(first), ...liveActivity(second)])];
+  if (!sequencesEqual(first, second)) {
+    problems.push("protected sequences advanced after this pass finished writing");
+  }
+  if (typeof recorded.latestJobSequence === "number") {
+    const foreign = await store.measureCutoverQuiescence({
+      sinceSequence: recorded.latestJobSequence,
+      excludeOperationId: operationId,
+    });
+    if (foreign.foreignJobsSince > 0) {
+      problems.push(
+        `${String(foreign.foreignJobsSince)} platform job(s) not stamped by this operation created after the backup`,
+      );
+    }
+  }
+  if (problems.length > 0) {
+    await store.advanceWorkflowCutoverOperation(operationId, {
+      checkpoint: {
+        key: "maintenanceViolation",
+        value: { at: new Date().toISOString(), violations: problems },
+      },
+    });
+    return `maintenance marks not folded — foreign writes inside the window (${problems.join("; ")}); the recorded baseline stands, so re-validation will hold until a fresh in-window backup is attested`;
+  }
   await store.advanceWorkflowCutoverOperation(operationId, {
     checkpoint: {
       key: "maintenance",
       value: {
         ...recorded,
-        worldRunCount: current.worldRunCount,
-        worldEventCount: current.worldEventCount,
-        worldMaxJobId: current.worldMaxJobId,
-        worldMaxRunUpdatedAt: current.worldMaxRunUpdatedAt,
-        latestSessionStartedAt: current.latestSessionStartedAt,
-        latestJobSequence: current.latestJobSequence,
+        worldRunCount: second.worldRunCount,
+        worldEventCount: second.worldEventCount,
+        worldMaxJobId: second.worldMaxJobId,
+        worldMaxRunUpdatedAt: second.worldMaxRunUpdatedAt,
+        latestSessionStartedAt: second.latestSessionStartedAt,
+        latestJobSequence: second.latestJobSequence,
       },
     },
   });
+  return null;
 }
 
 async function readStagedCheckpoint(
