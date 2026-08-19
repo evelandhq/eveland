@@ -1185,7 +1185,7 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 兼容性验证的依赖版本，不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
 不得被修改。Eve 0.38 起要求 workflow spec v6；共享 world 固定为
-`@evelandhq/workflow-world@0.11.0`，必须通过 0.38.3 与 0.39.0 的 World contract 门禁
+`@evelandhq/workflow-world@0.12.0`，必须通过 0.38.3 与 0.39.0 的 World contract 门禁
 （legacy `@workflow/world-postgres@5.0.0-beta.34` 仅作为历史 Deployment 的既有事实保留同一门禁）。
 runner mode 只支持 `external`：`EVELAND_WORKFLOW_RUNNER` 未设置时解析为 `external`，显式
 `embedded` 是配置错误，worker 启动与 Deployment 启动都必须 fail closed，不得静默回退。
@@ -1336,7 +1336,7 @@ per-project workflow 的过期 stream chunks。默认保留窗口为 24 小时
 run 的 `eof=false` chunk，EOF marker 永久保留；`EVELAND_WORKFLOW_SWEEP_INTERVAL_MS=0`
 只禁用这条 legacy sweep。
 
-共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.11.0` 与 dispatcher 共同持有。
+共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.12.0` 与 dispatcher 共同持有。
 World 默认在写入前剥离可由 delta 重建的累计 snapshot，并按 128 个 logical chunk 或 64 KiB
 建立 server-side checkpoint；`writeMulti` 最多把 64 个 logical chunk、256 KiB 写入一个
 physical block，reader 仍按原 logical chunk id 和 cursor 返回兼容字节。

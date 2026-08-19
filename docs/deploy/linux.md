@@ -583,7 +583,7 @@ complete production boundary:
   one workflow dispatcher must run alongside the worker for durable timers,
   wake, and continuation to fire.
 - Eve 0.38.3 requires workflow spec v6; every new Release injects
-  `@evelandhq/workflow-world@0.11.0`. The legacy
+  `@evelandhq/workflow-world@0.12.0`. The legacy
   `@workflow/world-postgres@5.0.0-beta.34` path exists only in historical
   Releases and is never selected for a new build. On legacy installs, use
   `WORKFLOW_POSTGRES_BOOTSTRAP_URL` only when the worker needs another address
