@@ -328,7 +328,17 @@ export async function prepareSharedWorldCutover(input: {
    * re-attests over fresh backups. Without a valid recorded boundary, prepare
    * mutates NOTHING.
    */
-  maintenance?: { quiescenceVerified: boolean; backupEvidence: string };
+  maintenance?: {
+    quiescenceVerified: boolean;
+    /**
+     * The formal backup, invoked INSIDE the measured window: quiescence is
+     * measured, this callback creates (or verifies) the backup, and the
+     * measurement repeats before anything records — a write during the
+     * backup refuses the attestation instead of blessing an inconsistent
+     * snapshot. Returns the evidence string that is persisted.
+     */
+    createBackup: () => Promise<string>;
+  };
   /** Settle interval between the two quiescence reads (default 1500ms). */
   quiescenceSettleMs?: number;
   classifier?: ArtifactClassifier;
@@ -554,6 +564,7 @@ export async function prepareSharedWorldCutover(input: {
       await store.advanceWorkflowCutoverOperation(operationId, {
         lastError: legacyHolds.join("; "),
       });
+      await refreshMaintenanceMarks(pool, store, operationId);
       return {
         ...partialResult,
         legacyWorlds,
@@ -690,6 +701,7 @@ export async function prepareSharedWorldCutover(input: {
         lastError: hold,
         checkpoint: { key: "unresolvedFamilies", value: unmappedTerminatedRuns },
       });
+      await refreshMaintenanceMarks(pool, store, operationId);
       return {
         ...partialResult,
         legacyWorlds,
@@ -755,6 +767,7 @@ export async function prepareSharedWorldCutover(input: {
     await store.advanceWorkflowCutoverOperation(operationId, {
       checkpoint: { key: "staged", value: stagedUnion },
     });
+    await refreshMaintenanceMarks(pool, store, operationId);
 
     return {
       ...partialResult,
@@ -776,6 +789,9 @@ type MaintenanceBaseline = {
   attestedAt: string;
   backupEvidence: string;
   worldRunCount: number;
+  worldEventCount: number;
+  worldMaxJobId: string;
+  worldMaxRunUpdatedAt: string | null;
   latestSessionStartedAt: string | null;
   latestJobSequence: number;
 };
@@ -783,6 +799,12 @@ type MaintenanceBaseline = {
 type QuiescenceReading = {
   lockedWorldJobs: number;
   worldRunCount: number;
+  /** Append-only event log size: catches writes to EXISTING runs. */
+  worldEventCount: number;
+  /** Monotonic graphile job id: catches any enqueue, locked or not. */
+  worldMaxJobId: string;
+  /** Catches status/续写 updates on existing run rows. */
+  worldMaxRunUpdatedAt: string | null;
   runningJobs: number;
   activeActivationLeases: number;
   latestSessionStartedAt: string | null;
@@ -793,19 +815,42 @@ async function readQuiescence(
   pool: pg.Pool,
   store: Pick<Store, "measureCutoverQuiescence">,
 ): Promise<QuiescenceReading> {
-  const { rows } = await pool.query<{ locked: number; runs: number }>(
+  const { rows } = await pool.query<{
+    locked: number;
+    runs: number;
+    events: number;
+    max_job_id: string | null;
+    max_run_updated: string | null;
+  }>(
     `select (select count(*)::int from graphile_worker._private_jobs where locked_by is not null) as locked,
-            (select count(*)::int from workflow.workflow_runs) as runs`,
+            (select count(*)::int from workflow.workflow_runs) as runs,
+            (select count(*)::int from workflow.workflow_events) as events,
+            (select max(id)::text from graphile_worker._private_jobs) as max_job_id,
+            (select max(updated_at)::text from workflow.workflow_runs) as max_run_updated`,
   );
   const control = await store.measureCutoverQuiescence();
   return {
     lockedWorldJobs: rows[0]?.locked ?? 0,
     worldRunCount: rows[0]?.runs ?? 0,
+    worldEventCount: rows[0]?.events ?? 0,
+    worldMaxJobId: rows[0]?.max_job_id ?? "0",
+    worldMaxRunUpdatedAt: rows[0]?.max_run_updated ?? null,
     runningJobs: control.runningJobs,
     activeActivationLeases: control.activeActivationLeases,
     latestSessionStartedAt: control.latestSessionStartedAt,
     latestJobSequence: control.latestJobSequence,
   };
+}
+
+function sequencesEqual(a: QuiescenceReading, b: QuiescenceReading): boolean {
+  return (
+    a.worldRunCount === b.worldRunCount &&
+    a.worldEventCount === b.worldEventCount &&
+    a.worldMaxJobId === b.worldMaxJobId &&
+    a.worldMaxRunUpdatedAt === b.worldMaxRunUpdatedAt &&
+    a.latestJobSequence === b.latestJobSequence &&
+    a.latestSessionStartedAt === b.latestSessionStartedAt
+  );
 }
 
 function liveActivity(reading: QuiescenceReading): string[] {
@@ -822,20 +867,24 @@ function liveActivity(reading: QuiescenceReading): string[] {
  * Returns a hold message when the maintenance boundary is not (or no longer)
  * valid; null when mutation may proceed.
  *
- * Recording requires the operator's flags AND a measured double-read showing
- * zero live activity with stable sequences; the measured baseline persists
- * with the attestation. Validation re-measures on every later prepare:
- * protected sequences advancing past the baseline — new runs, new sessions,
- * new jobs the operation's own stamp cannot explain — mean something wrote
- * AFTER the backup, so the recorded boundary is invalidated and the saga
- * holds until the operator re-attests over fresh backups.
+ * (Re-)attestation is a measured SANDWICH, never self-attested ordering:
+ * quiescence is measured, the formal backup callback runs INSIDE that
+ * window, and the measurement repeats before anything records — a write
+ * during the backup refuses the attestation instead of blessing an
+ * inconsistent snapshot. The measured baseline (control-plane sequences AND
+ * World high-water marks: run count, append-only event count, monotonic
+ * graphile job id, latest run update) persists with the attestation.
+ * Validation re-measures on every later prepare: any advance the operation
+ * itself cannot explain means something wrote AFTER the backup, so the
+ * boundary is invalidated and the saga holds until the operator re-attests
+ * over a fresh in-window backup.
  */
 async function enforceMaintenanceBoundary(
   pool: pg.Pool,
   store: CutoverStore,
   operationId: string,
   input: {
-    maintenance?: { quiescenceVerified: boolean; backupEvidence: string };
+    maintenance?: { quiescenceVerified: boolean; createBackup: () => Promise<string> };
     settleMs: number;
     log: (message: string, meta?: Record<string, unknown>) => void;
   },
@@ -844,8 +893,9 @@ async function enforceMaintenanceBoundary(
   const recorded = operation?.checkpoints.maintenance as
     | ({ quiescenceVerified?: boolean } & Partial<MaintenanceBaseline>)
     | undefined;
-  const flagsSupplied =
-    input.maintenance?.quiescenceVerified === true && input.maintenance.backupEvidence.length > 0;
+  const attestationSupplied =
+    input.maintenance?.quiescenceVerified === true &&
+    typeof input.maintenance.createBackup === "function";
 
   const recordedValid =
     recorded?.quiescenceVerified === true &&
@@ -853,7 +903,7 @@ async function enforceMaintenanceBoundary(
     typeof recorded.attestedAt === "string" &&
     typeof recorded.latestJobSequence === "number";
 
-  if (recordedValid && !flagsSupplied) {
+  if (recordedValid && !attestationSupplied) {
     // Validate the standing boundary: the backup is only a rollback point
     // while nothing has written since it was taken.
     const current = await readQuiescence(pool, store);
@@ -867,15 +917,30 @@ async function enforceMaintenanceBoundary(
         `${String(current.worldRunCount - (recorded.worldRunCount ?? 0))} workflow run(s) created after the backup`,
       );
     }
+    if (current.worldEventCount > (recorded.worldEventCount ?? current.worldEventCount)) {
+      violations.push(
+        `${String(current.worldEventCount - (recorded.worldEventCount ?? 0))} workflow event(s) appended after the backup`,
+      );
+    }
+    if (
+      recorded.worldMaxJobId !== undefined &&
+      BigInt(current.worldMaxJobId) > BigInt(recorded.worldMaxJobId)
+    ) {
+      violations.push("World job(s) enqueued after the backup");
+    }
+    if (
+      recorded.worldMaxRunUpdatedAt !== undefined &&
+      current.worldMaxRunUpdatedAt !== null &&
+      (recorded.worldMaxRunUpdatedAt === null ||
+        current.worldMaxRunUpdatedAt > recorded.worldMaxRunUpdatedAt)
+    ) {
+      violations.push("existing workflow run(s) written after the backup");
+    }
     if (
       current.latestSessionStartedAt !== null &&
-      (recorded.latestSessionStartedAt === null ||
-        recorded.latestSessionStartedAt === undefined ||
-        current.latestSessionStartedAt > recorded.latestSessionStartedAt)
+      recorded.latestSessionStartedAt !== current.latestSessionStartedAt
     ) {
-      if (recorded.latestSessionStartedAt !== current.latestSessionStartedAt) {
-        violations.push("platform Session(s) created after the backup");
-      }
+      violations.push("platform Session(s) created after the backup");
     }
     if (foreign.foreignJobsSince > 0) {
       violations.push(
@@ -889,36 +954,48 @@ async function enforceMaintenanceBoundary(
           value: { at: new Date().toISOString(), violations },
         },
       });
-      return `maintenance boundary invalidated — writes after the recorded backup (${violations.join("; ")}); take fresh quiesced backups and re-attest with --quiescence-verified true --backup-evidence <ids>`;
+      return `maintenance boundary invalidated — writes after the recorded backup (${violations.join("; ")}); take a fresh in-window backup and re-attest with --quiescence-verified true --backup-command <cmd>`;
     }
     return null;
   }
 
-  if (!flagsSupplied) {
-    return "maintenance boundary not attested: stop every producer/consumer, take the formal backups, then supply --quiescence-verified true and --backup-evidence <snapshot ids>";
+  if (!attestationSupplied) {
+    return "maintenance boundary not attested: stop every producer/consumer, then supply --quiescence-verified true and --backup-command <command that creates the formal backups>";
   }
 
-  // (Re-)attestation: measure quiescence with a double read — zero live
-  // activity and stable sequences across the settle interval — before the
-  // operator's statement is accepted and the baseline recorded.
+  // The measured sandwich: quiet read → formal backup INSIDE the window →
+  // settle → quiet read. Any live activity or sequence movement anywhere in
+  // that span refuses the attestation.
   const first = await readQuiescence(pool, store);
+  let firstProblems = liveActivity(first);
+  if (firstProblems.length > 0) {
+    return `quiescence not measured — the system is still live (${firstProblems.join("; ")}); stop every producer/consumer before attesting the maintenance boundary`;
+  }
+  let backupEvidence: string;
+  try {
+    backupEvidence = await input.maintenance!.createBackup();
+  } catch (error) {
+    return `the formal backup failed inside the measured window: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (backupEvidence.trim().length === 0) {
+    return "the formal backup returned no evidence; refusing to attest an unidentifiable snapshot";
+  }
   await new Promise((resolve) => setTimeout(resolve, input.settleMs));
   const second = await readQuiescence(pool, store);
   const problems = [...new Set([...liveActivity(first), ...liveActivity(second)])];
-  if (
-    first.worldRunCount !== second.worldRunCount ||
-    first.latestJobSequence !== second.latestJobSequence ||
-    first.latestSessionStartedAt !== second.latestSessionStartedAt
-  ) {
-    problems.push("protected sequences advanced during the settle interval");
+  if (!sequencesEqual(first, second)) {
+    problems.push("protected sequences advanced during the backup window");
   }
   if (problems.length > 0) {
-    return `quiescence not measured — the system is still live (${problems.join("; ")}); stop every producer/consumer before attesting the maintenance boundary`;
+    return `the backup window was not quiescent (${problems.join("; ")}); the snapshot may be inconsistent — stop every producer/consumer and re-run with a fresh --backup-command`;
   }
   const baseline: MaintenanceBaseline = {
     attestedAt: new Date().toISOString(),
-    backupEvidence: input.maintenance!.backupEvidence,
+    backupEvidence: backupEvidence.trim(),
     worldRunCount: second.worldRunCount,
+    worldEventCount: second.worldEventCount,
+    worldMaxJobId: second.worldMaxJobId,
+    worldMaxRunUpdatedAt: second.worldMaxRunUpdatedAt,
     latestSessionStartedAt: second.latestSessionStartedAt,
     latestJobSequence: second.latestJobSequence,
   };
@@ -928,8 +1005,42 @@ async function enforceMaintenanceBoundary(
       value: { quiescenceVerified: true, ...baseline },
     },
   });
-  input.log("maintenance boundary attested over a measured-quiescent system", { ...baseline });
+  input.log("maintenance boundary attested: backup created inside the measured window", {
+    ...baseline,
+  });
   return null;
+}
+
+/**
+ * Prepare's own mutations (cancels, quarantines, migrations) legitimately
+ * advance the World marks; fold them into the baseline at the end of a
+ * mutating pass so the next validation flags only FOREIGN writes.
+ */
+async function refreshMaintenanceMarks(
+  pool: pg.Pool,
+  store: CutoverStore,
+  operationId: string,
+): Promise<void> {
+  const operation = await store.getWorkflowCutoverOperation(operationId);
+  const recorded = operation?.checkpoints.maintenance as
+    | ({ quiescenceVerified?: boolean } & Partial<MaintenanceBaseline>)
+    | undefined;
+  if (recorded?.quiescenceVerified !== true) return;
+  const current = await readQuiescence(pool, store);
+  await store.advanceWorkflowCutoverOperation(operationId, {
+    checkpoint: {
+      key: "maintenance",
+      value: {
+        ...recorded,
+        worldRunCount: current.worldRunCount,
+        worldEventCount: current.worldEventCount,
+        worldMaxJobId: current.worldMaxJobId,
+        worldMaxRunUpdatedAt: current.worldMaxRunUpdatedAt,
+        latestSessionStartedAt: current.latestSessionStartedAt,
+        latestJobSequence: current.latestJobSequence,
+      },
+    },
+  });
 }
 
 async function readStagedCheckpoint(

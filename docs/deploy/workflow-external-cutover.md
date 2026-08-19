@@ -68,7 +68,7 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    ```bash
    pnpm --filter @evelandhq/worker cutover -- inventory --operation-id <id>
    pnpm --filter @evelandhq/worker cutover -- prepare --operation-id <id> \
-     --quiescence-verified true --backup-evidence <snapshot ids> \
+     --quiescence-verified true --backup-command '<creates + names the backups>' \
      [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...] \
      [--no-family tenant:run,...]
    pnpm --filter @evelandhq/worker cutover -- postcondition --operation-id <id>
@@ -76,17 +76,20 @@ db:migrate`; the shared World migrates itself on the next start). Historical
 
    The maintenance boundary from steps 2–3 is a fail-closed gate, not prose:
    `prepare` mutates **nothing** — no fences, no cancellations, no topology —
-   until the operator's quiescence-and-backup attestation
-   (`--quiescence-verified true --backup-evidence <snapshot ids>`) is durably
-   recorded on the operation. The attestation is **measured, not trusted**:
-   it records only while a double-read of the control plane and the World
-   shows zero live activity (no running jobs, no unexpired activation leases,
-   no locked World jobs) and stable protected sequences, and that measured
-   baseline persists with it. Every later `prepare` re-validates the
-   baseline — new runs, new Sessions, or platform jobs the operation's own
-   stamp cannot explain mean something wrote AFTER the backup, so the
-   boundary is **invalidated**: the saga holds until you take fresh quiesced
-   backups and re-attest with the flags (which re-measures and re-baselines).
+   until the operator's quiescence-and-backup attestation is durably
+   recorded on the operation. The attestation is **measured, not trusted**,
+   and the backup happens INSIDE the measured window: `prepare` measures
+   quiescence (no running jobs, no unexpired activation leases, no locked
+   World jobs), runs your `--backup-command` (its output is the recorded
+   evidence — make it create AND name the formal snapshots of step 3), then
+   measures again; any live activity or movement of the protected sequences
+   (run count, append-only World event count, monotonic World job id, latest
+   run update, control-plane job/Session marks) anywhere in that span
+   refuses the attestation — a snapshot taken while something was writing is
+   not a rollback point. Every later `prepare` re-validates the persisted
+   baseline — any advance the operation's own stamp cannot explain, including
+   a bare enqueue against an EXISTING run, **invalidates** the boundary: the
+   saga holds until you re-attest with a fresh in-window `--backup-command`.
    A valid attestation is recorded once; reruns need no flags. A
    run without a proven family on an owner that is merely unknown-**fenced**
    (not terminal) still needs its `--run-families`/`--no-family` disposition —

@@ -1228,13 +1228,16 @@ topology 已 `terminated`）：unknown-topology 的临时 deployment fence 不�
 所以 saga 必须停在 `workflow_safe`、finalize 拒绝 completion，直到每个 run 被 tombstone 或
 显式断言——否则迟到的 OTLP batch 恰好能复活被终止的那个 family。绝不猜测。
 cutover 的 prepare 在写任何 fence/cancel/topology 之前要求 operation 上已持久记录
-operator 的维护边界 attestation（`--quiescence-verified`/`--backup-evidence`）——且该
-attestation 是**测量得出**而非采信：仅当对控制面与 World 的双读测量显示零活跃
-（无 running job、无未过期 activation lease、无 locked World job）且受保护序列在
-settle 间隔内稳定时才记录，测得的 baseline 随之持久化；此后每次 prepare 都重新校验
-baseline——出现新 run、新 Session、或本 operation 盖章无法解释的新平台 job 即证明备份
-之后仍有写入，边界随即**失效**，saga 持住直到 operator 以新鲜静默备份重新 attest
-（重新测量、重新建立 baseline）。runbook 文字不是 fail-closed 门，部分停机的误操作
+operator 的维护边界 attestation（`--quiescence-verified`/`--backup-command`）——且该
+attestation 是**测量三明治**而非采信：先测量静默（无 running job、无未过期 activation
+lease、无 locked World job），随后在测量窗口**之内**执行正式备份回调（命令输出即持久化的
+evidence），再次测量；窗口内任何活跃或受保护序列的移动（run 数、append-only World event
+数、单调 World graphile job id、最新 run 更新时间、控制面 job/Session 标记）都拒绝
+attestation——备份期间有写入的快照不是回滚点。测得的 baseline 随 attestation 持久化；
+此后每次 prepare 重新校验——任何本 operation 自身盖章解释不了的推进（包括对**既有** run
+的裸 enqueue 或 event 追加）都令边界**失效**，saga 持住直到 operator 以新的窗口内备份
+重新 attest。prepare 自身的变更（cancel/quarantine/migration）在每个变更过的 pass 结束时
+折算进 baseline，只有异己写入触发失效。runbook 文字不是 fail-closed 门，部分停机的误操作
 不得产生任何变更。cutover 的 prepare 遍历**全量**控制面 inventory 而非仅 active-run owner：每个 Deployment
 要么完成分类/退休/staging，要么（仍为 `unknown` 时）获得 deployment fence 并置于 `fenced`
 topology，杜绝转换途中被唤醒；inventory 对每个保留 Deployment 应用**完整**兼容窗口判定

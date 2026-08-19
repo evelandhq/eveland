@@ -35,7 +35,10 @@ import {
  * Set `EVELAND_WORKFLOW_WORLD_TEST_URL` to a scratch shared-world database.
  */
 const testUrl = process.env.EVELAND_WORKFLOW_WORLD_TEST_URL;
-const TEST_MAINTENANCE = { quiescenceVerified: true, backupEvidence: "pg_dump:test-snapshot" };
+const TEST_MAINTENANCE = {
+  quiescenceVerified: true,
+  createBackup: async () => "pg_dump:test-snapshot",
+};
 const suffix = `${String(process.pid)}${Date.now().toString(36)}`;
 const TENANT = `p_cut_${suffix}`;
 
@@ -765,10 +768,69 @@ describe.skipIf(!testUrl)("shared-world external-only cutover", () => {
       pool,
       store,
       operationId: `cut_it_7_${suffix}`,
-      maintenance: { quiescenceVerified: true, backupEvidence: "pg_dump:fresh-snapshot" },
+      maintenance: { quiescenceVerified: true, createBackup: async () => "pg_dump:fresh-snapshot" },
       quiescenceSettleMs: 50,
     });
     expect(reattested.holds).toEqual([]);
+
+    // A WORLD write to an existing estate — a bare enqueue, no new run, no
+    // control-plane trace — must also invalidate the boundary.
+    const foreignJob = await workerUtils.addJob(
+      "eveland_wf_flows",
+      MessageData.encode({
+        id: "greet",
+        data: Buffer.from(JSON.stringify({ runId: `wrun_foreign_${suffix}` })),
+        attempt: 1,
+        messageId: `msg_foreign_${suffix}` as MessageData["messageId"],
+        tenantId: TENANT,
+        deploymentId: deployment.id,
+      }),
+      { maxAttempts: 10 },
+    );
+    const worldInvalidated = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: `cut_it_7_${suffix}`,
+    });
+    expect(worldInvalidated.holds[0]).toMatch(/maintenance boundary invalidated/);
+    expect(worldInvalidated.holds[0]).toMatch(/World job/);
+    await pool.query(`delete from graphile_worker._private_jobs where id = $1::bigint`, [
+      String(foreignJob.id),
+    ]);
+  }, 120_000);
+
+  test("a write during the backup window refuses the attestation", async () => {
+    const store = createTestStore();
+    const deployment = await createControlPlaneDeployment(store, {
+      enqueueCapability: "per_run_queue_v1",
+      hostPort: 42_615,
+    });
+    // The backup callback itself observes a concurrent write — the exact
+    // shape of a producer that stopped only after the snapshot started.
+    const held = await prepareSharedWorldCutover({
+      pool,
+      store,
+      operationId: `cut_it_10_${suffix}`,
+      maintenance: {
+        quiescenceVerified: true,
+        createBackup: async () => {
+          await store.createSession({
+            projectId: deployment.projectId,
+            deploymentId: deployment.id,
+            trigger: "playground",
+            eveSessionId: "eve_written_during_backup",
+          });
+          return "pg_dump:torn-snapshot";
+        },
+      },
+      quiescenceSettleMs: 50,
+    });
+    expect(held.holds[0]).toMatch(/backup window was not quiescent/);
+    // Nothing recorded, nothing mutated: the operation is still pending.
+    await expect(store.getWorkflowCutoverOperation(`cut_it_10_${suffix}`)).resolves.toMatchObject({
+      phase: "pending",
+    });
+    expect(await store.getActiveWorkflowFence("deployment", deployment.id)).toBeNull();
   }, 120_000);
 
   test("attestation is refused while the system is measurably live", async () => {

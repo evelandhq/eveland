@@ -1,3 +1,4 @@
+import { execa } from "execa";
 import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { recordCutoverProof } from "@evelandhq/workflow-world";
 import pg from "pg";
@@ -21,7 +22,7 @@ import {
  *
  *   pnpm --filter @evelandhq/worker cutover -- inventory --operation-id cut_x
  *   pnpm --filter @evelandhq/worker cutover -- prepare --operation-id cut_x \
- *     --quiescence-verified true --backup-evidence <snapshot ids> \
+ *     --quiescence-verified true --backup-command '<creates + names the backups>' \
  *     [--corrupted-runs tenant:run,...] [--run-families tenant:run:eveSessionId,...] \
  *     [--no-family tenant:run,...]
  *   pnpm --filter @evelandhq/worker cutover -- postcondition --operation-id cut_x
@@ -63,10 +64,28 @@ async function main(): Promise<void> {
             ? { runSessionFamilies: parseFamilyList(flags["run-families"]!) }
             : {}),
           ...(flags["no-family"] ? { runsWithoutFamilies: parseRunList(flags["no-family"]!) } : {}),
-          maintenance: {
-            quiescenceVerified: flags["quiescence-verified"] === "true",
-            backupEvidence: flags["backup-evidence"] ?? "",
-          },
+          // The backup runs INSIDE prepare's measured quiescence window; the
+          // command's output is the recorded evidence. A backup taken before
+          // the measurement cannot prove nothing wrote while it ran.
+          ...(flags["quiescence-verified"] === "true" && flags["backup-command"]
+            ? {
+                maintenance: {
+                  quiescenceVerified: true,
+                  createBackup: async () => {
+                    const backup = await execa("sh", ["-c", flags["backup-command"]!], {
+                      all: true,
+                      reject: false,
+                    });
+                    if (backup.exitCode !== 0) {
+                      throw new Error(
+                        `backup command exited ${String(backup.exitCode)}: ${backup.all?.slice(-500) ?? ""}`,
+                      );
+                    }
+                    return backup.all?.trim() || `backup-command: ${flags["backup-command"]!}`;
+                  },
+                },
+              }
+            : {}),
           // WORKFLOW_POSTGRES_URL is the Deployment-facing address and may
           // say host.docker.internal; this host process must connect the way
           // bootstrap and the reaper do, or every legacy World looks

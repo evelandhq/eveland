@@ -442,7 +442,9 @@ try {
   });
 
   dispatcher = spawnDispatcherApp(dispatcherEnv, log);
-  await waitForDispatcherRegistration(store, { notInstanceId: secondRegistration.instanceId });
+  const thirdRegistration = await waitForDispatcherRegistration(store, {
+    notInstanceId: secondRegistration.instanceId,
+  });
 
   await waitFor(
     "the raced run to complete despite the duplicate delivery",
@@ -597,12 +599,10 @@ try {
   // in-process dedup (keyed by message identity) swallows a verbatim copy
   // before it ever activates, as a previous run of this harness proved live.
   // A redelivery beyond dedup's reach is the shape the historical incidents
-  // actually had. Both copies are future-dated to the SAME instant: the
-  // restarting dispatcher's preflight (correctly!) refuses to boot over a
-  // claimable unscoped job — also proven live by this harness — so the race
-  // arms only after boot recovery, both copies claimable simultaneously
-  // under a running worker pool.
-  const raceAt = new Date(Date.now() + 25_000).toISOString();
+  // actually had. Both copies park FAR in the future first: the restarting
+  // dispatcher's preflight (correctly!) refuses to boot over a claimable
+  // unscoped job — also proven live by this harness.
+  const parkUntil = new Date(Date.now() + 10 * 60_000).toISOString();
   const duplicateMessageId = `msg_race_dup_${Date.now().toString(36)}`;
   await worldPool.query(
     `select graphile_worker.add_job(
@@ -611,29 +611,95 @@ try {
        run_at => $2::timestamptz, max_attempts => (max_attempts)::integer)
        from graphile_worker._private_jobs as jobs
       where jobs.id = $1::bigint`,
-    [pendingFirst.id, raceAt, duplicateMessageId],
+    [pendingFirst.id, parkUntil, duplicateMessageId],
   );
   await worldPool.query(
     `update graphile_worker._private_jobs set run_at = $2::timestamptz where id = $1::bigint`,
-    [pendingFirst.id, raceAt],
+    [pendingFirst.id, parkUntil],
   );
-  log("duplicated the never-dispatched first delivery off-queue; both copies armed", {
+  log("duplicated the never-dispatched first delivery off-queue; both copies parked", {
     runId: pendingFirst.run_id,
     messageId: pendingFirst.message_id,
     duplicateMessageId,
-    raceAt,
   });
 
-  dispatcher = spawnDispatcherApp(dispatcherEnv, log);
-  await waitForDispatcherRegistration(store);
+  // Hold the dispatcher where boot recovery CANNOT settle the run: start it
+  // recover-paused (recovery re-enqueues, the pool claims nothing), prove
+  // the run is still pending, remove recovery's own re-delivery of this run
+  // while paused, resume, prove the run is STILL pending — and only then
+  // release both copies together. The race IS the first dispatch.
+  dispatcher = spawnDispatcherApp(
+    { ...dispatcherEnv, EVELAND_WORKFLOW_DISPATCHER_START_MODE: "recover-paused" },
+    log,
+  );
+  // The previous instance's final heartbeat can still read fresh+ready; wait
+  // for the NEW instance to register in the paused state specifically.
+  await waitFor(
+    "the recover-paused dispatcher to register as ready_paused",
+    async () => {
+      const registration = await store.getWorkflowDispatcherRegistration();
+      return registration?.state === "ready_paused" &&
+        registration.instanceId !== thirdRegistration.instanceId
+        ? registration
+        : null;
+    },
+    2 * 60_000,
+  );
+  const assertStillPending = async (when: string) => {
+    const { rows } = await worldPool.query<{ status: string }>(
+      `select status from workflow.workflow_runs where tenant_id = $1 and id = $2`,
+      [project.id, pendingFirst.run_id],
+    );
+    assert.equal(rows[0]?.status, "pending", `the raced run must still be undispatched ${when}`);
+  };
+  await assertStillPending("while the dispatcher is ready_paused");
+  await worldPool.query(
+    `delete from graphile_worker._private_jobs
+      where payload ->> 'tenantId' = $1 and payload ->> 'messageId' = $2 and locked_by is null`,
+    [project.id, `msg_recover_${pendingFirst.run_id}`],
+  );
+  const apiUrl = (process.env.EVELAND_API_INTERNAL_URL ?? "http://127.0.0.1:4000").replace(
+    /\/+$/u,
+    "",
+  );
+  const resume = await fetch(`${apiUrl}/internal/workflow/dispatcher/resume`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ?? "eveland-dev-gateway-token"}`,
+    },
+    signal: AbortSignal.timeout(30_000),
+  });
+  assert.ok(resume.ok, `dispatcher resume returned HTTP ${String(resume.status)}`);
+  await waitFor(
+    "the dispatcher to pick the resume up and start its pool",
+    async () => {
+      const registration = await store.getWorkflowDispatcherRegistration();
+      return registration?.state === "ready" &&
+        registration.instanceId !== thirdRegistration.instanceId
+        ? registration
+        : null;
+    },
+    60_000,
+  );
   await bothReady();
+  await assertStillPending("after resume, before the copies are released");
+  // Release both copies together: due NOW, claimable in the same poll tick.
+  await worldPool.query(
+    `update graphile_worker._private_jobs set run_at = now()
+      where id = $1::bigint
+         or payload ->> 'messageId' = $2`,
+    [pendingFirst.id, duplicateMessageId],
+  );
+  log("released both first-delivery copies together", {
+    runId: pendingFirst.run_id,
+  });
 
   const firstWrite = await waitFor(
     "the run's first dispatch to settle its execution",
     async () => {
       const { rows } = await worldPool.query<{ deployment_id: string; status: string }>(
         `select deployment_id, status from workflow.workflow_runs
-          where tenant_id = $1 and id = $2`,
+          where tenant_id = $1 and id = $2 and status <> 'pending'`,
         [project.id, pendingFirst.run_id],
       );
       return rows[0] ?? null;
@@ -643,7 +709,7 @@ try {
   assert.equal(
     firstWrite.deployment_id,
     deploymentA.id,
-    "the first write must choose the hint owner — never the promoted decoy",
+    "the first dispatch must land on the hint owner — never the promoted decoy",
   );
   const racedTurn = await waitFor(
     "the raced session's turn to complete",
@@ -662,10 +728,8 @@ try {
   await assertRunSemantics(project.id, racedTurn.id, deploymentA.id, pendingFirst.run_id);
   await assertNoPoison(project.id);
 
-  // Boot recovery may legitimately execute the entry BEFORE the armed copies
-  // come due; the copies are then racing duplicate deliveries of an
-  // already-started run — wait until both are actually consumed before
-  // reading the lease trail.
+  // Wait until both released copies are actually consumed before reading
+  // the lease trail.
   await waitFor(
     "both raced delivery copies to be consumed",
     async () => {
@@ -681,9 +745,8 @@ try {
     3 * 60_000,
   );
   // Every dispatch of the raced message — either copy — activated A and only
-  // A. The verbatim copy may legitimately be swallowed by dedup (exactly-once
-  // is a PASS, not a miss); the distinct-identity redelivery cannot be, so at
-  // least one lease must exist, and none anywhere but A.
+  // A. With recovery's re-delivery removed and both identities distinct,
+  // neither copy can be dedup-swallowed: BOTH must have activated A.
   const raceOwners = [
     `workflow-dispatcher:${pendingFirst.message_id}`,
     `workflow-dispatcher:${duplicateMessageId}`,
@@ -699,7 +762,10 @@ try {
       where owner_id = any($1) and deployment_id = $2`,
     [raceOwners, deploymentA.id],
   );
-  assert.ok(homeLeases.length >= 1, "the raced deliveries must have activated Release A");
+  assert.ok(
+    homeLeases.length >= 2,
+    `both raced deliveries must have activated Release A (saw ${String(homeLeases.length)})`,
+  );
 
   // Observed peak execution concurrency 1: no two steps of the raced turn
   // overlap in time.
