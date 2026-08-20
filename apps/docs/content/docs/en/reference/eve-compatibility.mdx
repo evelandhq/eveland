@@ -3,7 +3,7 @@ title: Eve compatibility
 description: Understand Eveland's verified Eve version window and fail-closed policy.
 ---
 
-Until Eve publishes a stable compatibility contract, Eveland supports only minor lines that have passed the complete compatibility matrix, and changes that window explicitly. The checked-in product contract supports `0.38.x` and `0.39.x`, verified at `0.38.3` and `0.39.0`. Eve 0.37 and older are no longer accepted for import, build, restart, activation, Playground, Gateway, or schedule execution.
+Until Eve publishes a stable compatibility contract, Eveland supports only minor lines that have passed the complete compatibility matrix, and changes that window explicitly. The checked-in product contract supports `0.38.x` and `0.39.x`, verified at `0.38.3` and `0.39.3`. Eve 0.37 and older are no longer accepted for import, build, restart, activation, Playground, Gateway, or schedule execution.
 
 The UI marks only the latest supported line, `0.39.x`, in green. Eve 0.38.x stays operational but appears in red with an upgrade reminder; unsupported versions also appear in red and remain blocked.
 
@@ -23,7 +23,7 @@ Everything the platform once carried for older Eve lines is now the baseline of 
 
 **Eve 0.39 promotes ChatGPT subscription models and makes the sandbox search tools opt-in.** `chatgpt()` is stable with Codex-owned authentication — but ChatGPT subscription models are local-only by design: there is no Codex sign-in inside an Eveland deployment, so an Agent pinned to `chatgpt()` deploys and then fails at run time. Use an AI Gateway or server-authenticated model for deployed Agents. Eve 0.39 also removes `glob` and `grep` from the default Agent tool set; an Agent that relies on them must export `defineGlobTool()` / `defineGrepTool()` from the corresponding tool files. A child agent may now return `parent.sandbox` from a `defineSandbox` callback to share the dispatching parent's live sandbox; such a child cannot also declare managed workspace or skill resources, and Eveland's managed backend replacement applies to the parent definition as usual.
 
-For the current latest line, Agent projects should refresh their lockfile and redeploy to receive `0.39.0`, even when a range such as `^0.39.0` already permits it. Custom NDJSON consumers must ignore blank lines and must not treat a background-task receipt as terminal. Only enable remote principal forwarding after both deployments are upgraded and the receiver can name the exact trusted forwarder.
+For the current latest line, Agent projects should refresh their lockfile and redeploy to receive `0.39.3`, even when a range such as `^0.39.0` already permits it. Custom NDJSON consumers must ignore blank lines and must not treat a background-task receipt as terminal. Only enable remote principal forwarding after both deployments are upgraded and the receiver can name the exact trusted forwarder.
 
 An npm publication alone does not widen the window. A new minor enters only after changelog and source review plus the complete compatibility matrix; removing an older minor is also an explicit product change.
 

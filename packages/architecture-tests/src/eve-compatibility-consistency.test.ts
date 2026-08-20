@@ -31,7 +31,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.39.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.39.3");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
