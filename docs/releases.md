@@ -22,11 +22,11 @@ Every Eveland component reports one product identity:
   `package.json` and `@evelandhq/core/build-info`.
 - `revision` is the exact Git commit deployed by the operator.
 - `channel` is `dev`, `edge`, `prerelease`, or `stable`.
-- `component` identifies the reporting process without turning API, Gateway,
-  Web, or Worker into independently versioned products.
+- `component` identifies the reporting process without turning API, Agent Gateway,
+  Dashboard, or Worker into independently versioned products.
 
-API and Gateway include this identity in `GET /health`. API, Gateway, and
-Worker include it in startup logs. Web shows its own build and the API build in
+API and Agent Gateway include this identity in `GET /health`. API, Agent Gateway, and
+Worker include it in startup logs. Dashboard shows its own build and the API build in
 Settings > About, and warns when their version, revision, or channel differs.
 
 Set `EVELAND_REVISION` and `EVELAND_RELEASE_CHANNEL` identically for every
@@ -96,7 +96,7 @@ Before merging a Release PR:
 
 The current single-box production topology runs a tagged source checkout. A
 GitHub Release therefore identifies a reproducible source version, not yet an
-immutable set of API/Gateway/Web images plus a host Worker package. Operators
+immutable set of API/Agent Gateway/Dashboard images plus a host Worker package. Operators
 must check out the tag, install the frozen lockfile, apply migrations, and
 restart all components from the same revision.
 

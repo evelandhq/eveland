@@ -53,7 +53,7 @@ Team
 
 ### 登录 (/login)
 
-控制面使用邮箱和密码登录。首次启动时平台幂等创建默认 Admin：
+平台使用邮箱和密码登录。首次启动时平台幂等创建默认 Admin：
 
 - 默认邮箱：`admin@example.com`，可由 `EVELAND_ADMIN_EMAIL` 覆盖
 - 初始密码：必须由 `EVELAND_ADMIN_PASSWORD` 提供，至少 12 个字符
@@ -62,14 +62,14 @@ Team
 - 登录 Session 使用 HttpOnly、SameSite=Lax Cookie；账户连接默认禁止隐式合并
 - 已有有效成员 Session 时访问 `/login`，直接跳转到 `/projects`
 
-除健康检查和邀请接受外，所有控制面 API 都要求有效成员 Session。公开 Agent Gateway 流量使用独立认证边界。
-API 与 Gateway 的公开 `/health` 除存活状态外还返回 Eveland 产品 `version`、Git
+除健康检查和邀请接受外，所有平台 API 都要求有效成员 Session。公开 Agent Gateway 流量使用独立认证边界。
+API 与 Agent Gateway 的公开 `/health` 除存活状态外还返回 Eveland 产品 `version`、Git
 `revision`、发布 `channel` 与当前 `component`；所有组件共享 `service = eveland`，
-不得把 API、Web、Gateway 或 Worker 建模成独立产品版本。
+不得把 API、Dashboard、Agent Gateway 或 Worker 建模成独立产品版本。
 
 ### Agent 用户身份 (/settings/identity)
 
-Agent 用户身份与控制面 Better Auth、Playground authentication credential 是三条独立边界。
+Agent 用户身份与平台 Better Auth、Playground authentication credential 是三条独立边界。
 Identity Provider 是实例级的，且任意时刻只能启用一个，三选一：
 
 - `Open`（新实例默认）：Eveland 不认证任何人。它没有 provider 配置，只有一个共享
@@ -88,11 +88,11 @@ Identity Provider 是实例级的，且任意时刻只能启用一个，三选�
   （从指定 claim 取外部 Realm id）——且只允许落在管理员预先登记的 Realm 白名单内，
   未登记的 Realm 一律 `identity_realm_not_allowed` 403。ID token 验签只接受非对称
   算法；client secret 与换回的 access/refresh token 均以 APP_SECRET_KEY 派生密钥
-  加密存储。OIDC 模式下 Playground 的 `eveland-identity` 凭据（控制面用户直发
+  加密存储。OIDC 模式下 Playground 的 `eveland-identity` 凭据（平台用户直发
   Caller Token）不可用——Playground 用户与 IdP 用户之间没有可信映射。
 
 Better Auth cookie/token、member role 与 provider credential 都不得进入 Caller Token、
-浏览器聊天存储、Gateway 或 Agent。
+浏览器聊天存储、Agent Gateway 或 Agent。
 
 System Admin 选择当前唯一 active Provider、允许的 Identity Realm 与精确 web-chat return
 origin。切换 Provider 会使既有 Identity Session 不再认证任何人。有效 Identity Session
@@ -130,7 +130,7 @@ principal 与 active Realm 对该聊天应用的登录作用域；聊天应用�
 就自动取得或发送 Caller Token；必须先遵循 Agent route auth，只有 Agent 要求
 `evelandIdentity()` 时才进入 Eveland continuation。Caller Token 可携带 Eveland 解析并签名的
 `agent_url` 供 endpoint-substitution 防护，但该 claim 不表示 Agent 使用 Eveland Identity。
-（这条约束的对象是**客户端**。平台 Identity Provider 为 `Open` 时 Gateway 自己注入
+（这条约束的对象是**客户端**。平台 Identity Provider 为 `Open` 时 Agent Gateway 自己注入
 Caller Token，见下文。）
 
 `evelandIdentity()` 通过标准 `WWW-Authenticate` Bearer challenge 声明 Eveland-owned
@@ -138,21 +138,21 @@ Caller Token，见下文。）
 例如 Basic 与 Eveland Identity 仍是 fallback，而不是由 Eveland challenge 抢占。已有 Identity
 Session 的客户端可静默签发 Caller Token；否则浏览器导航到 `/identity/login`。登录 state
 随机、短时且只能消费一次，Eveland 根据当前 active Provider 完成认证后签发统一 Caller Token。
-Gateway 必须透明转发 challenge、请求 credential 与响应，不解释或改写该协议；它唯一的
+Agent Gateway 必须透明转发 challenge、请求 credential 与响应，不解释或改写该协议；它唯一的
 例外是 open 模式下为无凭据请求注入 Caller Token（见下文），且从不改写已有 credential。
 
 部署 Worker 把 `EVELAND_IDENTITY_ISSUER`、`EVELAND_IDENTITY_JWKS_URL` 和不可由 Project
-覆盖的 `EVELAND_PROJECT_ID` 注入 Agent。公开 Gateway 原样转发 Agent-owned Authorization；
+覆盖的 `EVELAND_PROJECT_ID` 注入 Agent。公开 Agent Gateway 原样转发 Agent-owned Authorization；
 它不验签、不换 token、不读取 identity claims。Agent 的 `evelandIdentity()` AuthFn
 验证 issuer、project audience、ES256、kid、exp/nbf 后建立 `principalType=user`。
 
-平台 Identity Provider 为 `Open` 时是唯一的例外:公开 Gateway 在客户端**完全没带**
-`Authorization` 的情况下注入一个 open 模式 Caller Token。这是对上面「Gateway 不换
+平台 Identity Provider 为 `Open` 时是唯一的例外:公开 Agent Gateway 在客户端**完全没带**
+`Authorization` 的情况下注入一个 open 模式 Caller Token。这是对上面「Agent Gateway 不换
 token」的**蓄意修订**,理由是 open 模式下不存在要保护的身份,而跳转到登录对 curl、CI、
 agent 互调、eve TUI 这类非浏览器调用方根本不可行,`WWW-Authenticate: authorization_uri`
 在无需认证时也是协议撒谎。约束:
 
-- 客户端带了任何 `Authorization` 就原样透传,Gateway 绝不覆盖——它无法验证,那是 Agent
+- 客户端带了任何 `Authorization` 就原样透传,Agent Gateway 绝不覆盖——它无法验证,那是 Agent
   的职责,覆盖会打断每一个自带认证的 Agent。**推论:带一个坏 token 比不带更糟**,过期或
   无效的 token 会让 `evelandIdentity()` 返回 null、walk 走空、得到 401;清掉即恢复。
 - 注入不改变 `x-eveland-*` 剥离与 `eveland_affinity` cookie 剥离。
@@ -160,7 +160,7 @@ agent 互调、eve TUI 这类非浏览器调用方根本不可行,`WWW-Authentic
   不只 `/eve/v1/*`。
 - token 按 Project 分键缓存(audience 是 `eveland:project:<projectId>`,不存在跨 Project
   可用的 token),提前刷新;mint 不到时**不带 `Authorization` 转发**,由 Agent 自己的
-  auth 链决定,而不是由 Gateway 拒绝请求。
+  auth 链决定,而不是由 Agent Gateway 拒绝请求。
 - open Caller Token 用 15–30 分钟的长 TTL(默认 20 分钟),Internal 保持约 60 秒。它不承载
   真实身份、无撤销语义,短 TTL 保护不了任何东西;长 TTL 让 Identity 中断一个周期内用户无感。
   TTL 同时就是切换 Provider 后的撤销滞后:Caller Token 是自包含离线校验,禁用 Provider 只
@@ -219,7 +219,7 @@ Personal 与 System 分组导航。
 - 配置 Display timezone；未保存偏好时默认使用浏览器当前 IANA 时区，保存后作为个人偏好跨页面和登录 Session 生效
 - 使用当前密码修改密码；新密码至少 12 个字符，成功后撤销当前 Session 之外的所有登录 Session
 
-Web 中所有绝对日期与时间——包括列表、详情、Logs、Session Timeline、ScheduleRun、
+Dashboard 中所有绝对日期与时间——包括列表、详情、Logs、Session Timeline、ScheduleRun、
 Usage 与 Instance Health 图表坐标和 Tooltip——统一按当前用户的 Display timezone 展示，
 不得由 Next.js Server Component 的运行时默认时区决定。Schedule 的原始 cron 和其声明的
 `UTC` 时区仍按源码语义展示；`nextRunAt`、due/start/complete 等实际时间点使用个人时区。
@@ -261,11 +261,11 @@ Members 位于 Settings 的 System 分组，不再出现在 Workspace 全局导�
 #### About (/settings/about)
 
 About 展示当前 Eveland 产品版本、Git revision 与发布 channel。Sidebar 底部持续显示
-紧凑版本号；About 同时展示 Web build 与 API `/health` 报告的 component build identity。
+紧凑版本号；About 同时展示 Dashboard build 与 API `/health` 报告的 component build identity。
 两者的 version、revision 或 channel 不一致时必须明确提示该实例尚未完成一致升级。
 Worker 没有为此增加公开 HTTP 服务，其 build identity 写入启动日志。
 
-About 还向 Admin 展示 Web、API、Gateway 与 Worker 的只读 runtime configuration
+About 还向 Admin 展示 Dashboard、API、Agent Gateway 与 Worker 的只读 runtime configuration
 诊断，包括受支持的环境变量名称、所属组件、实际生效值、值来源、用途和缺失/警告状态。
 Member 不能读取该诊断接口。诊断使用显式 allowlist，不能枚举或原样返回进程的完整
 `process.env`；Secret 只显示是否已配置，不能提供查看、复制、长度、前后缀或其他可恢复
@@ -273,13 +273,13 @@ Member 不能读取该诊断接口。诊断使用显式 allowlist，不能枚举
 按组件的实际 runtime 规则计算并标明来源，未配置的必填项和不安全的开发 fallback 必须
 明确告警。
 
-Gateway configuration 只能通过现有 service-authenticated `/internal/*` 边界读取，不能
+Agent Gateway configuration 只能通过现有 service-authenticated `/internal/*` 边界读取，不能
 加入公开 `/health`。Worker 仍不增加 HTTP 服务：它在 startup preflight 成功后，仅将已经
 脱敏的 snapshot 以私有权限原子写入共享 `EVELAND_DATA_DIR/diagnostics`，API 再读取该文件；
-任何 Secret 原值都不能进入该 snapshot、API 响应或 Web payload。组件不可达、snapshot
+任何 Secret 原值都不能进入该 snapshot、API 响应或 Dashboard payload。组件不可达、snapshot
 缺失或无效时 About 显示该组件 unavailable，不能回退为读取其原始环境文件。
 
-Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：前者标识控制面
+Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念：前者标识平台
 软件本身，后者仍表示某个导入 Agent 的不可变构建产物与运行目标。
 
 #### Observability (/settings/observability)
@@ -302,7 +302,7 @@ metrics 投影 Instance Health 的容量与心跳读模型。traces 没有 Built
 Destination。
 
 Collector 使用两个互不共享信任的 OTLP receiver。Platform receiver 的 gRPC/HTTP 端口为
-4317/4318，API、Gateway 与 Worker 必须携带 Agent 无法获得的 service token；Agent receiver
+4317/4318，API、Agent Gateway 与 Worker 必须携带 Agent 无法获得的 service token；Agent receiver
 的端口为 4327/4328，只能通过宿主 loopback 或每个活跃 Deployment 独占、仅连接该 Agent
 与 Collector 的私有 Docker network 访问。不同 Deployment 不共享 Docker network；Collector
 缺失不得阻断 Agent 启动或 cold activation，容器恢复或被重建后 Worker 必须按新身份把它
@@ -412,7 +412,7 @@ deployment environment、Source、Release、sandbox 或其他平台数据。
 Agent 源码中的 instrumentation 是独立边界：Eveland 不修改用户监控代码，不注册或替换全局
 TracerProvider、LoggerProvider、MeterProvider，也不截获用户 exporter。Release 准备仅在
 Eve 的平台保留 hook slot 注入使用私有 provider 的 Eveland hook；用户 provider 继续按源码
-配置向用户自己的目标发送。API、Gateway、Worker 使用 Eveland 平台 SDK 产生 platform/runtime/
+配置向用户自己的目标发送。API、Agent Gateway、Worker 使用 Eveland 平台 SDK 产生 platform/runtime/
 capacity 信号；CPU、memory、disk、workload 与 component health 均使用标准 OTel metrics。
 Worker 还把已经脱敏并写入产品日志的 build、deploy 与 runtime lifecycle 日志通过独立
 runtime-domain LoggerProvider 发为 OTel LogRecord。
@@ -427,7 +427,7 @@ Built-in retention 不是可配置项。capacity sample 默认保留 30 天；Se
 Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把“当前是否可用”与
 “是否正在接近容量风险”分开呈现，并至少展示：
 
-- API、Postgres、Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间；Collector
+- API、Postgres、Agent Gateway、Worker 与 Collector 的当前状态、证据和最后观测时间；Collector
   状态来自最近一次 OTLP 批次的到达时间（它是 Built-in 的唯一发送方），过期的批次不能继续
   证明 Collector 在线
 - Worker 持续 heartbeat；启动时配置 snapshot 不能替代在线状态
@@ -436,14 +436,14 @@ Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把“
 - 24 小时与 7 天趋势；有足够增长历史时给出磁盘预计耗尽天数
 
 Worker 是唯一采集宿主机指标的特权组件；它把 heartbeat 与 metric sample 作为 capacity
-domain 的标准 OTLP metrics 发送，Built-in 投影到 Postgres，API 只读取并聚合，Web 只读展示。
+domain 的标准 OTLP metrics 发送，Built-in 投影到 Postgres，API 只读取并聚合，Dashboard 只读展示。
 默认每 60 秒采样、保留 30 天，并每日清理过期 sample。Worker heartbeat 独立于长时间
 build/deploy Job 持续发布，不能因为 Job 正在执行而
 被误判离线。`stopped` RuntimeInstance 是正常 scale-to-zero 状态，不得单独视为故障；
 Collector delayed/degraded 使实例显示降级，但不等价于 Agent Traffic 已中断。
 
 页面内风险提示不能声称覆盖整机断电：服务器完全失联仍需要外部监控轮询公开的 API 与
-Gateway `/health`。Instance Health 不提供 shell、systemd restart 或其他宿主机写操作。
+Agent Gateway `/health`。Instance Health 不提供 shell、systemd restart 或其他宿主机写操作。
 
 ---
 
@@ -460,9 +460,9 @@ Gateway `/health`。Instance Health 不提供 shell、systemd restart 或其他�
 第一步填写 Repo URL 或选择 Zip。API 创建一个用户隔离、带过期时间的 Source Preflight，
 但此时不创建 Project。Git 由 worker 做 shallow clone，Zip 使用已安全解压的同一份快照；
 worker 随后读取真实文件树，检查 Eve 项目结构与 `package.json` 中的 Eve 版本。只有 Preflight
-成功，Web 才进入命名屏幕；失败留在来源屏幕并显示可操作的原因。
+成功，Dashboard 才进入命名屏幕；失败留在来源屏幕并显示可操作的原因。
 
-Web 从 URL 最后一个 path segment
+Dashboard 从 URL 最后一个 path segment
 去掉 `.git` 后猜测 Project 名称，例如 `evelandhq/sample-office-assistant` 得到
 `sample-office-assistant`；Zip 使用文件名按相同规则猜测。第二步展示来源摘要并允许用户
 编辑名称。名称格式和可用性在当前屏幕内校验；只有名称合法且可用时 `Deploy` 才可点击。
@@ -489,14 +489,14 @@ import job 和消费 Preflight，确保 worker 看见首次导入/部署任务�
 SSH/SCP URL 不接受 PAT，URL 中也不允许内嵌 credentials。
 
 创建时确认的 Project 名称用于占用公开 Agent 地址中的不可变 slug：全实例唯一、最长 53 个字符，
-只允许小写字母、数字和 `-`，且不能以 `-` 开头或结尾。Web 通过只读可用性接口提供
+只允许小写字母、数字和 `-`，且不能以 `-` 开头或结尾。Dashboard 通过只读可用性接口提供
 即时反馈；创建接口仍必须在数据库唯一性边界内精确占用用户确认的名称。并发冲突返回
 `409` 并停留在命名屏幕，不允许静默改成 `name-1`、`name-2`。
 创建后 Project 另有可修改的 Display name（最长 80 个字符）和可选纯文本 Description
-（最长 240 个字符）。Display name 用于控制面标题与列表；Description 用简短的能力语言说明
+（最长 240 个字符）。Display name 用于 Dashboard 标题与列表；Description 用简短的能力语言说明
 Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使用。修改二者不得改变 slug、
 公开 Agent endpoint、Project ID、Route 或已有 Session/Deployment 关系。
-`proj_xxxxxxxxxx` 仍是控制面、数据库关系和 `/projects/:projectId` 使用的内部 ID，
+`proj_xxxxxxxxxx` 仍是平台、数据库关系和 `/projects/:projectId` 使用的内部 ID，
 不能因为公开 slug 变得可读而替换内部主键。
 
 导入后平台执行：
@@ -544,9 +544,9 @@ patch、锚定在对应 minor patch 上的 `~`/`^` range，以及
 `0.38` / `0.38.x` / `0.38.*`、`0.39` / `0.39.x` / `0.39.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
 当前窗口之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
-Playground，以及公开 Gateway 到达所选 Deployment 的全部流量——Eve session 新建、继续、取消、
+Playground，以及公开 Agent Gateway 到达所选 Deployment 的全部流量——Eve session 新建、继续、取消、
 reset、stream，以及自定义 Channel route 与 webhook 等未分类请求——不能通过已有的
-旧 Source Revision、旧 Deployment 或 SessionBinding 绕过，也不得因此唤醒休眠的窗口外 Deployment。Gateway 在选定实际 Deployment
+旧 Source Revision、旧 Deployment 或 SessionBinding 绕过，也不得因此唤醒休眠的窗口外 Deployment。Agent Gateway 在选定实际 Deployment
 后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
 无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。
@@ -576,7 +576,7 @@ live-source-only：必须在停止现有进程前确认源码目录仍存在；�
 Overview 默认展示最近七天的执行概况，而不是承担完整的部署管理：
 
 - Session 数、running 数、terminal Session 完成率与失败数
-- Input / Output token 总量、Usage coverage 与 Provider/Gateway 实际报告的成本
+- Input / Output token 总量、Usage coverage 与 Provider/AI Gateway 实际报告的成本
 - 按天的 Session 趋势
 - 最近 Sessions
 - 当前 Production 状态、Eve 版本与 Stable Agent endpoint
@@ -628,21 +628,21 @@ Logs 保持独立一级入口，不要求用户先从 Overview、Session 或 Dep
 
 用于直接测试当前 Deployment。
 
-用户输入消息后，Web 使用 Eve canonical session protocol，经 API 和仅内部可达、带 service credential 的 Gateway Playground path 请求当前 Deployment。对话内容、reasoning、tool 调用与人工输入都按 NDJSON 增量流式展示。公开 Agent 流量使用 canonical stable/preview Host；Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
+用户输入消息后，Dashboard 使用 Eve canonical session protocol，经 API 和仅内部可达、带 service credential 的 Agent Gateway Playground path 请求当前 Deployment。对话内容、reasoning、tool 调用与人工输入都按 NDJSON 增量流式展示。公开 Agent 流量使用 canonical stable/preview Host；Agent Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
 
 每个受管 Project 最多有一套 Playground authentication 配置。它是 Playground 调用 Agent 的客户端配置，
-不是 Project、Deployment、Eve Connection 或控制面登录 Session。Connection 专指 Eve
+不是 Project、Deployment、Eve Connection 或平台登录 Session。Connection 专指 Eve
 `agent/connections/*` 中 Agent 访问外部 MCP/OpenAPI server 的能力。Playground authentication 当前通用方法包括：
 
 - `local-dev`：不发送 credential，并且用 loopback Host 调用 Agent。**它对当前窗口内的
   任何 Agent 都不再构成认证**——`localDev()` 只看进程是否 `eve dev`，
   而 Agent 在 Eveland 上以 `eve start` 运行，因此不放行任何请求。
   该方法只剩历史含义；这类项目必须改用 `eveland-identity` 或 Agent 自有的 AuthFn。
-  Gateway“绝不为公网流量把 Host 改写成 loopback”的不变量与本条无关，且必须保留；
+  Agent Gateway“绝不为公网流量把 Host 改写成 loopback”的不变量与本条无关，且必须保留；
 - `none`：不发送 credential，但仍用 Project 的 canonical Agent Host；
 - `eveland-identity`：发送 Eveland 签发的 Caller Token，让 Agent 的 `evelandIdentity()`
   看到与真实调用方一致的身份。无配置字段：token 代表哪个 Principal 取决于实例的
-  Identity Provider——Open 模式用共享 Principal，Eveland Internal 用当前登录的控制面
+  Identity Provider——Open 模式用共享 Principal，Eveland Internal 用当前登录的平台
   用户（因此按 Caller 而非按 Connection 缓存），OIDC 暂不支持；
 - `basic`：发送 HTTP Basic username 和延迟解析的 password Secret reference；
 - `bearer`：发送延迟解析的外部签发 Bearer token Secret reference；
@@ -680,7 +680,7 @@ parameters，以及 `eve-jwt` 或 `userinfo` access-token verification。confide
 issuer/audience；`userinfo` 必须让 UserInfo `sub` 与已验证 ID Token `sub` 一致。Provider 名称不能
 改变 scope、prompt、client authentication 或 verification 行为。
 
-OIDC interaction 使用 Web-owned callback page 和经过控制面登录认证的 API callback。state、nonce、
+OIDC interaction 使用 Dashboard-owned callback page 和经过平台登录认证的 API callback。state、nonce、
 PKCE verifier、Caller Principal、authentication revision 与 return path 保存在十分钟、一次性消费、
 加密的 transaction 中；过期 transaction 有实际清理路径。access/refresh token 按 Caller Principal
 隔离加密保存，只有 JWT/UserInfo 验证成功后才能发送给 Agent。暂时 verification failure 保持
@@ -693,17 +693,17 @@ refresh 并重发一次，第二个 401 不产生第三个 Agent request；403 �
 Eveland member id 的隔离键，可以与 ID Token `sub`、access-token subject 和 Agent Caller 完全不同。
 
 Playground authentication 的 normalized config 使用 `APP_SECRET_KEY` 派生用途密钥并以 AES-256-GCM 保存，
-AAD 绑定 authentication configuration id、opaque method 和 security revision。API/Web 只返回 descriptor 与脱敏
+AAD 绑定 authentication configuration id、opaque method 和 security revision。API/Dashboard 只返回 descriptor 与脱敏
 configured 状态，不返回 password、token 或 custom Header value。只有 method 或 normalized config
 发生语义变化时 security revision 才递增；旧 revision credential 不再命中新请求。
 
 API 为每次 initial、continuation、cancel 和 stream/reconnect 重新解析当前 credential，并通过
-service-authenticated internal path 发送严格校验的 versioned envelope。Gateway 只在验证 service
+service-authenticated internal path 发送严格校验的 versioned envelope。Agent Gateway 只在验证 service
 token 后读取 envelope：`local-dev` 构造 loopback Host，其他方法构造 canonical Project Host，
-最后写入 credential Header。Gateway 不保存、解密或刷新 provider credential；public path 的
+最后写入 credential Header。Agent Gateway 不保存、解密或刷新 provider credential；public path 的
 Authorization、Cookie、Origin、Host、abort 与 NDJSON streaming 继续透明转发。
 
-每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。用户点击 New conversation 时，Web 必须先完成 canonical session reset，再清空本地对话；离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Eveland 私有 OTLP 信号的权威观测路径。
+每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。用户点击 New conversation 时，Dashboard 必须先完成 canonical session reset，再清空本地对话；离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录，但 Playground transport 不替代 Eveland 私有 OTLP 信号的权威观测路径。
 
 平台记录该 Session 的来源：
 
@@ -721,10 +721,10 @@ Playground 中可查看当前 Session 的：
 - HITL：确认/拒绝、选项、自由文本和外部授权提示
 - 当前 turn 的图片、PDF、文本和代码附件
 
-Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.38.x 与 0.39.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.38 的前端 binding 使用异步 `cancel()`，它会等待准确的 durable turn id，且在 settlement 前保持 stream attached；平台不得退回已移除的同步 `stop()`。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
+Playground 每次最多接受 4 个附件，单文件不超过 5 MiB、合计不超过 10 MiB；不接受压缩包或可执行文件。附件以 data URL 传给 Eve，原始文件不由 Playground transport 持久化。生成中的 turn 可以停止。所有受支持的 Eve 0.38.x 与 0.39.x 都必须使用 canonical cancel route 请求服务器协作取消，并保持当前 NDJSON stream，直到观察到 `turn.cancelled` 和后续 session boundary；不能只关闭浏览器 stream。Eve 0.38 的前端 binding 使用异步 `cancel()`，它会等待准确的 durable turn id，且在 settlement 前保持 stream attached；平台不得退回已移除的同步 `stop()`。Eve 0.26+ Client 在 transient disconnect 后从最后一个 absolute cursor 自动重连，Eveland 不依赖或暴露已移除的 `maxReconnectAttempts`。Eve 0.27.2+ Client 允许 Caller 显式关闭自动重连；Playground 保留默认重连策略。Eve 0.27.2+ NDJSON stream 打开时可能先发送空白字节，Agent Gateway 必须立即透传，API monitor 和任何平台 parser 必须忽略空行。取消 turn 时，Transcript 中仍为 pending 的 tool/subagent 调用显示为 cancelled。
 Eve 0.27.7+ Client 可以通过 `follow: false` 做有界 Catch-up Read：请求使用
-`includeTailIndex=1`，Agent 返回 `x-eve-stream-tail-index`。Web rewrite、API Playground proxy、
-内部与公开 Gateway 必须原样保留该 query、响应 header 与 NDJSON body；只有 Client 与目标 Agent
+`includeTailIndex=1`，Agent 返回 `x-eve-stream-tail-index`。Dashboard rewrite、API Playground proxy、
+内部与公开 Agent Gateway 必须原样保留该 query、响应 header 与 NDJSON body；只有 Client 与目标 Agent
 都至少为 0.27.7 时才能使用该模式，旧 Agent 缺少 tail header 时必须明确失败。Playground 自身
 继续使用默认 Live Follow，不因平台依赖升级而停止等待当前 turn 的后续事件。
 
@@ -773,7 +773,7 @@ span 级别的下钻在启用接收 Agent traces 的外部 Destination 后由该
 - Input tokens
 - Output tokens
 - Cache read / write tokens
-- Provider 或 Gateway 返回的成本（如有）
+- Provider 或 AI Gateway 返回的成本（如有）
 
 支持按以下条件筛选：
 
@@ -797,7 +797,7 @@ Project Usage 固定为单一 Project；两者复用相同的时间范围、指�
 
 - Session 数、running Session、terminal Session 完成率与失败数
 - Model step 数，以及 Input / Output / Cache read / Cache write tokens
-- Provider 或 Gateway 实际报告的成本；不得按公开价目表估算缺失成本
+- Provider 或 AI Gateway 实际报告的成本；不得按公开价目表估算缺失成本
 - Usage coverage 与 Cost coverage；两者必须分别计算和呈现
 - Sessions、Model steps、Tokens 与 Cost 的时间曲线
 - Workspace 的 Project 归因、Model 归因，以及 Eve Agent × LLM Model 归因
@@ -826,7 +826,7 @@ path 与 definition hash 校验的 build artifact；Docker 与 systemd 都不得
 root-only definitions。每次 Source Revision
 保留不可变 ScheduleVersion。Project 另有一个
 显式 scheduler target，未来 cron/manual run 固定到该 Deployment、Release 和
-ScheduleVersion，不通过 Gateway 或 stable route 重新选流量目标。
+ScheduleVersion，不通过 Agent Gateway 或 stable route 重新选流量目标。
 
 Worker 以 Postgres 为权威状态，使用有界、可多 Worker 并发的 planner 原子创建
 ScheduleRun、排入 `trigger_schedule` job、推进 `nextRunAt` 并记录合并的 missed tick。
@@ -1008,15 +1008,15 @@ Session Log，但额外参与 Release build（见下方 Build 可见的 Variable
 
 系统只有一套 operator-owned Shared Agent Environment，主要保存多个 Agent 共用的 LLM Key 和运行时默认值。
 它不是用户可命名、创建或选择的 Profile 集合。Entry 明确区分 `variable` 与 `secret`，但两者的 Value 都使用
-`APP_SECRET_KEY` 加密；API/Web 只返回 key、kind、configured 状态和单调 revision，不能返回密文、明文、
+`APP_SECRET_KEY` 加密；API/Dashboard 只返回 key、kind、configured 状态和单调 revision，不能返回密文、明文、
 长度或可恢复片段。只有 Admin 可以查看或维护共享环境。
-Web 以 Type、Name、Value 状态和行级操作组成的表格展示 Entry；新增和编辑使用弹框，删除需要明确确认。
+Dashboard 以 Type、Name、Value 状态和行级操作组成的表格展示 Entry；新增和编辑使用弹框，删除需要明确确认。
 
 共享环境自动应用到所有 Project 的每个 Agent Deployment，不存在 Project/Deployment binding。确定性优先级为
 Shared Agent Environment < Project Secret < Eveland 保留变量，因此 Project 可以用自己的 Key 覆盖同名共享默认。
 共享 `secret` 只在 deploy、restart、cold activation
 或 schedule activation 的进程启动边界解密；不得进入 Source snapshot、Release、Docker build layer、
-generated Dockerfile、OTLP signal、日志或 Web payload。解密后的值只能经由 root-owned 0600 的
+generated Dockerfile、OTLP signal、日志或 Dashboard payload。解密后的值只能经由 root-owned 0600 的
 环境文件交给 runtime（systemd 的 `EnvironmentFile`、Docker 的 `--env-file`），不得出现在进程
 argv 上——argv 通过 `/proc/<pid>/cmdline` 对同主机任意用户可读，且会被 `docker inspect` 永久
 保留。该文件在进程停止或启动失败时必须删除。完整 Project/Shared Environment 值集合必须
@@ -1079,18 +1079,18 @@ Logs 页面默认按时间倒序展示最新记录，在固定高度的滚动区
 
 ## 5. 最小运行架构
 
-`apps/docs` 是独立于 self-hosted 控制面的公共网站。生产站点发布在
+`apps/docs` 是独立于 self-hosted 平台的公共网站。生产站点发布在
 `https://eveland.ai`，由 Cloudflare Workers 承载 Next.js/Fumadocs 应用；它不与
-API、Gateway、worker 或 Agent Deployment 共享运行权限。合入 `main` 且变更包含
+API、Agent Gateway、worker 或 Agent Deployment 共享运行权限。合入 `main` 且变更包含
 `apps/docs/**` 时，仓库 CI 自动构建并发布该公共网站。这个仓库自身的文档发布流程
 不改变“导入的 Eve Project 不支持 Git push 自动部署”的产品边界。
 
 ```text
 Browser
   ↓
-Eve Runtime Web App
+Eveland Dashboard
   ↓
-Control API
+Platform API
   ├─ Source import
   ├─ Build
   ├─ Secret injection
@@ -1120,16 +1120,16 @@ http://<deploymentKey>--<projectSlug>.agent.localhost:4080
 仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个
 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
-底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Web 通过单一 `Create deployment` Dialog 组合 Source（当前 Revision 或先同步 Git）与结果（保留 preview 或健康后 promote）；任何选择 promote 的组合都必须显式 promote 该次任务创建的确切 Deployment，不能通过查询“最新 Deployment”猜测 target。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；双 target policy 中一个 target 不可用（failed/starting/draining/stopped）时，Gateway 必须把新 Session 降级路由到仅存的健康 target——即使其权重为 0——而不是对未 pinned 请求返回错误；两个 target 都不可用才返回 503。Eve 返回 sessionId 后持久化 `SessionBinding`。continuation、cancel、stream 与 ID 寻址的 session reset 在 binding 未过期时，即使 promote、rollback 或 weight 归零也仍回到原 Deployment；每次成功使用前刷新 binding 的 `updatedAt`。Playground binding 默认 idle 24 小时过期，公开 API binding 默认 idle 7 天过期；已知但过期的 binding 必须返回 `410` 与稳定的 `session_expired` code，不能重跑路由权重或落到另一 Deployment。reset 成功后平台把对应平台 Session 标记完成；下一次新建 Session 重新按当前 route policy 选择 Deployment。
+底层 Build/deploy 默认创建并发运行的 preview，不停止 production Deployment，也不复用其端口。Dashboard 通过单一 `Create deployment` Dialog 组合 Source（当前 Revision 或先同步 Git）与结果（保留 preview 或健康后 promote）；任何选择 promote 的组合都必须显式 promote 该次任务创建的确切 Deployment，不能通过查询“最新 Deployment”猜测 target。stable route 与 named alias 可原子地指向一个 100% target 或最多两个总计 10,000 basis points 的 weighted targets。新 Session 使用 deterministic affinity bucket；双 target policy 中一个 target 不可用（failed/starting/draining/stopped）时，Agent Gateway 必须把新 Session 降级路由到仅存的健康 target——即使其权重为 0——而不是对未 pinned 请求返回错误；两个 target 都不可用才返回 503。Eve 返回 sessionId 后持久化 `SessionBinding`。continuation、cancel、stream 与 ID 寻址的 session reset 在 binding 未过期时，即使 promote、rollback 或 weight 归零也仍回到原 Deployment；每次成功使用前刷新 binding 的 `updatedAt`。Playground binding 默认 idle 24 小时过期，公开 API binding 默认 idle 7 天过期；已知但过期的 binding 必须返回 `410` 与稳定的 `session_expired` code，不能重跑路由权重或落到另一 Deployment。reset 成功后平台把对应平台 Session 标记完成；下一次新建 Session 重新按当前 route policy 选择 Deployment。
 
-Eve 的 durable route（create-once、task-input、MCP invocation）使用同一固定目标规则。initial create 携带非空 `operationId` 时，Gateway 必须先以独立 Gateway secret 做 HMAC，按 `(projectId, operationKey)` 首写胜出地持久化 `OperationBinding`，且不得保存或记录原始 operation ID；重复 create 即使遇到 promote、rollback、weight 归零或 dormant target 也回到首次目标。该绑定只决定 Deployment，不解释 Eve 基于 Agent principal 的幂等/授权语义；不同 principal 的同名 ID 最多共享目标，仍由 Agent 自己隔离结果。MCP `agent_start` 成功后把 response `structuredContent.invocationId` 写为 SessionBinding，`agent_get`、`agent_update` 与 `agent_cancel` 按该 invocation ID 回到原 Deployment。`POST /eve/v1/task-input/:token` 的 token 对 Gateway 完全 opaque，不得落库；同一 Project 的 Deployment 共享其 durable workflow world，因此 callback 可在 route targets 中任一窗口内的 Deployment 恢复，并通过正常 ActivationLease 唤醒 dormant target。当前窗口内的每条线都支持这些 durable route，不再维护按操作区分的版本下限；选定 target 不在支持窗口内时返回 409，不能降级成普通不持久的转发。
+Eve 的 durable route（create-once、task-input、MCP invocation）使用同一固定目标规则。initial create 携带非空 `operationId` 时，Agent Gateway 必须先以独立 Agent Gateway secret 做 HMAC，按 `(projectId, operationKey)` 首写胜出地持久化 `OperationBinding`，且不得保存或记录原始 operation ID；重复 create 即使遇到 promote、rollback、weight 归零或 dormant target 也回到首次目标。该绑定只决定 Deployment，不解释 Eve 基于 Agent principal 的幂等/授权语义；不同 principal 的同名 ID 最多共享目标，仍由 Agent 自己隔离结果。MCP `agent_start` 成功后把 response `structuredContent.invocationId` 写为 SessionBinding，`agent_get`、`agent_update` 与 `agent_cancel` 按该 invocation ID 回到原 Deployment。`POST /eve/v1/task-input/:token` 的 token 对 Agent Gateway 完全 opaque，不得落库；同一 Project 的 Deployment 共享其 durable workflow world，因此 callback 可在 route targets 中任一窗口内的 Deployment 恢复，并通过正常 ActivationLease 唤醒 dormant target。当前窗口内的每条线都支持这些 durable route，不再维护按操作区分的版本下限；选定 target 不在支持窗口内时返回 409，不能降级成普通不持久的转发。
 
 Deployment 生命周期为 running、draining、stopped、archiving、archived；最近三个 artifact、可变 route target、未过期 SessionBinding、未过期 OperationBinding 和活跃 ActivationLease 都受 retention protection。Worker 周期性扫描不受保护且已经 `stopped` 的旧 Deployment，幂等排入 archive job；archive 必须先原子地把目标置为 `archiving`（claim）——持有期间激活与 restart 都必须拒绝该 Deployment——claim 之后复查 retention protection，才按 Deployment 保存的 `runtimeKind` 删除 runtime artifact 和对应的 build directory，成功后置 `archived`，任何失败都回退到 claim 前的状态。构建或启动在 Deployment 落库前失败时也必须删除已准备的 build directory 和已创建的 runtime artifact，不能留下数据库无法寻址的 Release。
 
 cron、public request、turn 和 stream 在访问进程前获取有期限的 ActivationLease。同一
 dormant Deployment 的并发唤醒只允许一个 starter；API 只持久化/等待状态，不获得
 Docker 或 systemd 权限，Worker 按 Deployment 保存的 `runtimeKind` 启动 exact Release。
-Gateway 默认最多等待 30 秒冷启动，并保留 Agent 自有 auth、cookie、Host 语义、body
+Agent Gateway 默认最多等待 30 秒冷启动，并保留 Agent 自有 auth、cookie、Host 语义、body
 limit、abort 和 NDJSON streaming。continuation 与 session reset 必须按 SessionBinding 唤醒原
 Deployment，不能重新执行 route weighting。最后一个 lease 释放或过期后默认 idle
 5 分钟再停进程；停机前必须事务式复查是否出现新 lease。Worker 启动后的 recovery 与
@@ -1138,23 +1138,23 @@ reconciliation 会重排中断的 activation job，并把实际已消失的 tran
 Deployment 端口上的监听 socket 属于它自己的进程：端口被其他进程持有时激活立刻失败，
 不得依据别的进程的 HTTP 响应把 Deployment 标记为 ready；reconciliation 对 ready
 RuntimeInstance 同样执行该归属核查，发现端口被外来进程持有即把实例与 Deployment 纠正为
-failed，防止 Gateway 继续把流量代理给错误的 Agent。
+failed，防止 Agent Gateway 继续把流量代理给错误的 Agent。
 
 监听端口是 RuntimeInstance 的属性：激活的 starter 在任何进程 bind 之前先把端口预留写入
 实例行，数据库以活跃状态（starting/ready/draining）上的唯一约束保证同一端口至多一个
 活实例；实例离开活跃状态即自动释放预留。systemd 唤醒优先收养仍被自己 unit 持有的上一代
 端口，收养不成则重新分配；Docker 的发布端口在容器创建时固定，预留失败必须大声失败而非
-换端口。`deployments.host_port` 从此是首次部署的偏好提示，不是权威端口——Gateway 与
+换端口。`deployments.host_port` 从此是首次部署的偏好提示，不是权威端口——Agent Gateway 与
 内部激活路由以 activation 返回的 `endpointPort` 为准，仅在无激活数据时回退到
 `host_port`。build_deploy 的端口分配发生在 build 之后、启动之前，并在 worker 进程内
 维持 in-flight 预留直到 Deployment 记录落库。
 
 Worker 还按独立周期执行 orphan sweep，把主机上实际运行的 `eveland-*-dep_*` 进程与
-控制面对账：持有活跃 lease 或 live RuntimeInstance 的进程不受影响；属于合法
+平台对账：持有活跃 lease 或 live RuntimeInstance 的进程不受影响；属于合法
 Deployment 但失管的进程（早于 RuntimeInstance 机制部署、restart 后未激活等）仅当
 Deployment 处于 running/draining 时被收养为 ready RuntimeInstance，从此由 idle 生命周期
 接管；没有 Deployment 记录、Deployment 已 archived/stopped/failed、或运行在非 Deployment
-所属 runtimeKind 下的进程在宽限期后被停止——控制面已决定停止的进程只能收割，不得复活。
+所属 runtimeKind 下的进程在宽限期后被停止——平台已决定停止的进程只能收割，不得复活。
 清扫视野包含 systemd 处于 activating（auto-restart 翻滚中）的 unit；transient unit 配置
 显式 StartLimit，起不来的进程在限额后放弃而不是无限翻滚。清扫只
 匹配完整的 Deployment 命名形态，平台自身的 Compose 容器（`eveland-postgres-1` 等）
@@ -1275,7 +1275,7 @@ host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。新空库可
 bootstrap；已有 schema 的 pending migration 同样由 worker startup 或 tenant provisioning
 直接幂等执行。`runMigrations` 使用 PostgreSQL advisory lock 串行化并发启动，不要求单独的
 maintenance-window gate 或预先执行 `workflow-world-setup`。
-外部 workflow dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Control API 的
+外部 workflow dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Platform API 的
 公开 `/health` 成功，不能用 Graphile job 的首次失败承担并行进程启动顺序；健康门打开后
 的 activation、executor dispatch 与重试语义仍由 dispatcher 持有。
 
@@ -1295,7 +1295,7 @@ capability 为 `per_run_queue_v1`、dispatch protocol 落在 registration 声明
 `workflow_unavailable` 前缀的 503。activation response 对 `workflow_step` 附带协商结果
 （selected protocol 与 enqueue capability）。cutover 期间 dispatcher 以
 `recover-paused` 启动：ownership、migration 与 boot recovery 完成后进入 `ready_paused`，
-不 claim 任何 job；只有 Control API 上受认证的显式 resume（经 heartbeat 回复送达）才进入
+不 claim 任何 job；只有 Platform API 上受认证的显式 resume（经 heartbeat 回复送达）才进入
 `ready`。dispatcher 启动前的 preflight 在仍存在可 claim 的 unscoped early-external job 时
 fail closed；设置了 cutover operation id 时还要求 World 内存在该 operation 的 **passed**
 cutover proof（`workflow.cutover_proofs`，由 `cutover postcondition --operation-id` 写入；

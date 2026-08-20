@@ -11,7 +11,7 @@ Before changing code:
 2. Read `README.md` for the current repository shape and local workflow.
 3. For Linux, systemd, sandbox, or host-worker work, also read
    `docs/deploy/linux.md`.
-4. For Gateway, routing, or versioned Deployment work, read the relevant
+4. For Agent Gateway, routing, or versioned Deployment work, read the relevant
    decisions in
    `docs/superpowers/plans/2026-07-13-gateway-observability-handoff.md`.
 5. For observability work, read `docs/observability.md`.
@@ -81,13 +81,13 @@ do not merge it on your own.
 
 The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
 
-- `apps/web`: authenticated Next.js App Router control panel.
+- `apps/web`: the Dashboard — authenticated Next.js App Router console.
 - `apps/docs`: bilingual public website and Fumadocs documentation, separate
   from the authenticated control panel.
-- `apps/api`: Hono control-plane API, Better Auth/team host, and Built-in OTLP
+- `apps/api`: Hono platform API, Better Auth/team host, and Built-in OTLP
   ingest. `app.ts` composes focused route, schema, and support
   modules.
-- `apps/gateway`: public Agent data plane and internal privileged Playground
+- `apps/gateway`: the Agent Gateway — public Agent data plane and internal privileged Playground
   path. Request lifecycle orchestration is separate from pure routing rules.
 - `apps/worker`: import, build, deployment, restart, scheduling, health, and
   runtime-controller jobs, split between queue orchestration, concrete job
@@ -168,29 +168,29 @@ instead of copying fixtures between test files.
 Preserve these unless the product contract is deliberately changed and the
 corresponding tests and docs are updated.
 
-### Control-plane authentication
+### Platform authentication
 
-- The control plane is invite-only. Better Auth owns users, credential
+- The platform is invite-only. Better Auth owns users, credential
   accounts, and sessions; its Organization plugin backs the single Team's
   members, roles, and invitations behind Eveland-owned endpoints.
 - Except for explicitly public health and invitation-acceptance paths,
-  control-plane APIs require a valid Team member session. Do not weaken this
+  platform APIs require a valid Team member session. Do not weaken this
   boundary when adding routes.
 - Preserve the `admin`/`member` role boundary, last-admin protection,
   single-use seven-day invitation behavior, and immediate session revocation
   when a member is removed.
-- Keep `BETTER_AUTH_SECRET`, `APP_SECRET_KEY`, and Gateway secrets independent.
+- Keep `BETTER_AUTH_SECRET`, `APP_SECRET_KEY`, and Agent Gateway secrets independent.
   `BETTER_AUTH_URL` is the browser-visible API origin; only set
-  `EVELAND_COOKIE_DOMAIN` when Web and API intentionally share a parent domain.
-- Public Agent traffic remains on Gateway's separate Agent-owned
-  authentication boundary. A control-plane login must not become an Agent
-  credential or a reason to relax Gateway forwarding rules.
+  `EVELAND_COOKIE_DOMAIN` when the Dashboard and API intentionally share a parent domain.
+- Public Agent traffic remains on Agent Gateway's separate Agent-owned
+  authentication boundary. A Dashboard login must not become an Agent
+  credential or a reason to relax Agent Gateway forwarding rules.
 
-### Gateway and routing
+### Agent Gateway and routing
 
-- Gateway is not the Agent's identity provider. Preserve Agent-owned
+- Agent Gateway is not the Agent's identity provider. Preserve Agent-owned
   `Authorization`, cookies, origin semantics, and NDJSON response streaming.
-  The single exception is the open-access platform mode, where the Gateway
+  The single exception is the open-access platform mode, where the Agent Gateway
   injects a Caller Token into requests that carry **no** `Authorization` at
   all; it still never inspects or replaces one the caller sent. See
   `docs/spec.md` for the constraints that exception carries.
@@ -205,7 +205,7 @@ corresponding tests and docs are updated.
   into Eve local-development identity. The privileged `/internal/*` path must
   remain service-authenticated and unreachable through the public proxy.
 - Raw Agent ports are private loopback upstreams, not product URLs. Stable,
-  preview, and alias URLs resolve through Gateway.
+  preview, and alias URLs resolve through Agent Gateway.
 - Route policies have at most two targets and use basis-point weights totaling
   10,000. A root Eve session is pinned to a Deployment; continuation and stream
   requests must keep using that binding after promote, rollback, or weight
@@ -221,7 +221,7 @@ corresponding tests and docs are updated.
   use the adapter that owns that Deployment, not merely the worker's current
   default.
 - Docker remains the local-development runtime. The current Linux production
-  topology uses Docker Compose for API/Gateway/Web/Postgres and a host systemd
+  topology uses Docker Compose for API/Agent Gateway/Dashboard/Postgres and a host systemd
   worker with a shared absolute data root. Do not globally flip runtime or path
   defaults without updating preflight, Compose, env examples, and deployment
   docs.
@@ -256,7 +256,7 @@ corresponding tests and docs are updated.
 - Never put secrets in source snapshots, releases, logs, telemetry signals,
   events, fixtures, or client responses. Do not log raw API keys or affinity
   material.
-- Gateway must not receive the Docker socket, source tree, telemetry policy data, or
+- Agent Gateway must not receive the Docker socket, source tree, telemetry policy data, or
   decrypted project secrets.
 - API/collector must not receive host runtime-controller privileges. Worker is
   the only Docker/systemd controller and is not a public service.
@@ -299,9 +299,9 @@ Or run the complete development stack:
 docker compose up
 ```
 
-Web, API, Gateway, worker, and Postgres participate in the normal end-to-end
+The Dashboard, API, Agent Gateway, worker, and Postgres participate in the normal end-to-end
 path. A pending import/deploy usually means the worker is absent or failing;
-Playground/public Agent failures can involve Gateway even when API and web are
+Playground/public Agent failures can involve the Agent Gateway even when API and the Dashboard are
 healthy. When a Compose worker controls the host Docker daemon,
 `EVELAND_HOST_DATA_DIR` must be the host-absolute view of `.eveland-data`.
 
@@ -326,7 +326,7 @@ healthy. When a Compose worker controls the host Docker daemon,
   `jobs/process.ts`; put concrete import/build or runtime job behavior in the
   corresponding `process-*` module. Test state transitions, retries, and
   idempotency through PGlite, plus real Postgres assumptions where relevant.
-- Gateway changes: test Host parsing, header sanitization, auth/cookie
+- Agent Gateway changes: test Host parsing, header sanitization, auth/cookie
   transparency, body limits, abort propagation, streaming, affinity, and
   internal/public route separation. Pure Host/header/affinity/target rules
   belong in `gateway-routing.ts`; socket and response lifecycle orchestration
@@ -336,8 +336,8 @@ healthy. When a Compose worker controls the host Docker daemon,
   health, and real Eve event coverage when the protocol surface changes.
 - Runtime/sandbox changes: cover runtime selection and startup preflight, then
   use the real Lima/systemd/bwrap smoke path when behavior depends on Linux.
-- Web changes: preserve App Router conventions and existing shadcn/Tailwind
-  patterns in `apps/web`. Keep the authenticated control panel distinct from
+- Dashboard changes: preserve App Router conventions and existing shadcn/Tailwind
+  patterns in `apps/web`. Keep the authenticated Dashboard distinct from
   the bilingual Fumadocs site in `apps/docs`. Test data transforms, auth, and
   navigation contracts; run the relevant production Next build for meaningful
   UI/configuration changes.
@@ -374,14 +374,14 @@ git status --short
 
 Additional expectations:
 
-- Run `pnpm --filter @evelandhq/web build` for web, Next configuration, or
+- Run `pnpm --filter @evelandhq/web build` for Dashboard, Next configuration, or
   browser/server-boundary changes.
 - Run `pnpm --filter @evelandhq/docs build` for public-site, Fumadocs, MDX,
   search, sitemap, or localization changes.
 - Validate the merged Compose configuration after Compose/env changes.
 - Run `bash -n infra/integration/run.sh` after editing the integration harness.
 - Run `bash infra/integration/run.sh` for systemd, bwrap, build isolation,
-  observability, private-port, or Gateway behavior that requires the real Linux
+  observability, private-port, or Agent Gateway behavior that requires the real Linux
   topology. It is intentionally heavier than unit tests and requires Lima.
 - For multi-connection locking, driver behavior, and migration compatibility,
   exercise the relevant real Postgres integration path; single-connection

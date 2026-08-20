@@ -22,12 +22,12 @@ Built-in 读模型，不定义私有遥测协议。
 
 Eveland 自有遥测分为四个稳定 domain：
 
-| Domain     | Producer                        | 内容                                                      |
-| ---------- | ------------------------------- | --------------------------------------------------------- |
-| `agent`    | 注入 Eve hook 的私有 provider   | Session、Turn、Model、Tool、Subagent、provider usage      |
-| `platform` | API、Gateway、Worker、Collector | HTTP、DB、job、组件和进程信号                             |
-| `runtime`  | Worker 私有 logger              | build、deploy、runtime lifecycle 日志                     |
-| `capacity` | Worker 私有 meter               | CPU、memory、load、filesystem、inode、workload、heartbeat |
+| Domain     | Producer                              | 内容                                                      |
+| ---------- | ------------------------------------- | --------------------------------------------------------- |
+| `agent`    | 注入 Eve hook 的私有 provider         | Session、Turn、Model、Tool、Subagent、provider usage      |
+| `platform` | API、Agent Gateway、Worker、Collector | HTTP、DB、job、组件和进程信号                             |
+| `runtime`  | Worker 私有 logger                    | build、deploy、runtime lifecycle 日志                     |
+| `capacity` | Worker 私有 meter                     | CPU、memory、load、filesystem、inode、workload、heartbeat |
 
 ## 最终数据流
 
@@ -46,7 +46,7 @@ flowchart LR
 
     subgraph Platform["Eveland 平台"]
       API["API OTel SDK"]
-      GW["Gateway OTel SDK"]
+      GW["Agent Gateway OTel SDK"]
       WORKER["Worker OTel SDK"]
       HOST["Worker capacity meter"]
       RUNTIME["Worker runtime logger"]
@@ -79,7 +79,7 @@ flowchart LR
     ROUTING --> CUSTOM
 ```
 
-Managed Collector 是唯一 fan-out 组件。Agent、API、Gateway 和 Worker
+Managed Collector 是唯一 fan-out 组件。Agent、API、Agent Gateway 和 Worker
 只向平台管理的 receiver 发送，不持有外部产品凭据，也不知道启用了哪些外部目的地。
 
 ## Provider 所有权
@@ -113,12 +113,12 @@ correlation identifiers，但由三个独立 provider 管理。
 
 ### 平台组件
 
-API、Gateway 和 Worker 是 Eveland 完全拥有的进程，由
+API、Agent Gateway 和 Worker 是 Eveland 完全拥有的进程，由
 `packages/platform-observability` 启动标准 NodeSDK。Worker 另外使用私有
 LoggerProvider 和 MeterProvider 标记 `runtime` 与 `capacity` domain，避免把不同
 信号来源混为一个 Resource。
 
-API 和 Gateway 都是纯 ESM HTTP 服务。它们的启动命令必须在应用入口之前预加载
+API 和 Agent Gateway 都是纯 ESM HTTP 服务。它们的启动命令必须在应用入口之前预加载
 `@evelandhq/platform-observability/register`，注册 OpenTelemetry ESM module hook；
 否则 Node 会先完成 `node:http` 等静态依赖的模块链接，HTTP instrumentation 无法
 生成 server span 和 `http.server.request.duration`。启动器在支持的 Node 版本上
@@ -152,10 +152,10 @@ Agent turn 继续执行。
 
 Collector 使用两个 receiver：
 
-| Receiver | 端口                      | 调用方               | 信任方式                           |
-| -------- | ------------------------- | -------------------- | ---------------------------------- |
-| Platform | gRPC `4317` / HTTP `4318` | API、Gateway、Worker | `EVELAND_OTLP_SERVICE_TOKEN`       |
-| Agent    | gRPC `4327` / HTTP `4328` | Eve Deployments      | 私有网络与每 Deployment credential |
+| Receiver | 端口                      | 调用方                     | 信任方式                           |
+| -------- | ------------------------- | -------------------------- | ---------------------------------- |
+| Platform | gRPC `4317` / HTTP `4318` | API、Agent Gateway、Worker | `EVELAND_OTLP_SERVICE_TOKEN`       |
+| Agent    | gRPC `4327` / HTTP `4328` | Eve Deployments            | 私有网络与每 Deployment credential |
 
 Receiver 不公开到 Internet。
 
@@ -269,7 +269,7 @@ hostname/IP allowlist 放行，不支持通配符。
 
 ## 可靠性和隐私
 
-- 遥测失败不得使 Agent turn、Gateway request 或 Worker control loop 失败。
+- 遥测失败不得使 Agent turn、Agent Gateway request 或 Worker control loop 失败。
 - Agent operation 结束、policy revision 切换和 shutdown 使用最多两秒的 bounded
   flush/shutdown。
 - Collector 接收后的 delivery 是 at-least-once；Built-in projection 和 usage
@@ -298,7 +298,7 @@ hostname/IP allowlist 放行，不支持通配符。
 | 位置                                           | 职责                                                                                 |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `packages/agent-observer`                      | Eve hook 注入、私有 providers、event/GenAI 映射、动态 policy                         |
-| `packages/platform-observability`              | API、Gateway、Worker OTel SDK 与 capacity/runtime providers                          |
+| `packages/platform-observability`              | API、Agent Gateway、Worker OTel SDK 与 capacity/runtime providers                    |
 | `packages/session-collector`                   | 标准 OTLP JSON/protobuf 解码和 Built-in 投影                                         |
 | `packages/core/src/observability`              | policy、destination、runtime 和 signal contracts                                     |
 | `packages/db`                                  | policy、destination health、batch receipt、Session/Usage/Instance Health persistence |

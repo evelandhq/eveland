@@ -5,7 +5,7 @@ description: Upgrade an exact Eveland release while keeping migrations, componen
 
 Treat an Eveland upgrade as a coordinated product change, not an independent restart of four applications.
 
-For the latest release-specific production procedure, use [Upgrade from 0.34 to 0.35](/docs/operations/upgrade-0-34-to-0-35). Older procedures remain available for [0.15 to 0.16](/docs/operations/upgrade-0-15-to-0-16), [0.14 to 0.15](/docs/operations/upgrade-0-14-to-0-15), [0.13 to 0.14](/docs/operations/upgrade-0-13-to-0-14), [0.12 to 0.13](/docs/operations/upgrade-0-12-to-0-13), and [0.11 to 0.12](/docs/operations/upgrade-0-11-to-0-12).
+Release-specific steps and compatibility notes live in the [GitHub Release notes](https://github.com/evelandhq/eveland/releases). Read the notes for every release between your current version and the target before you begin.
 
 ## Before upgrading
 
@@ -16,7 +16,7 @@ For the latest release-specific production procedure, use [Upgrade from 0.34 to 
 
 ## Apply the release
 
-Fetch tags, check out the selected stable tag, install the frozen lockfile, and apply versioned database migrations. Set the same release channel and revision for Web, API, Gateway, and Worker, then restart them from that checkout.
+Fetch tags, check out the selected stable tag, install the frozen lockfile, and apply versioned database migrations. Set the same release channel and revision for the Dashboard, API, Agent Gateway, and Worker, then restart them from that checkout.
 
 Do not call the upgrade complete until public health, Worker startup identity, and **Settings → About** agree.
 

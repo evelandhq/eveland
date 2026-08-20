@@ -62,7 +62,7 @@ export async function collectInstanceHealth(
       key: "api",
       label: "API",
       status: "healthy",
-      message: "Control-plane API is serving this report.",
+      message: "The Eveland API is serving this report.",
       observedAt: now.toISOString(),
     },
     {
@@ -72,7 +72,7 @@ export async function collectInstanceHealth(
       message: "Health and workload queries succeeded.",
       observedAt: now.toISOString(),
     },
-    { key: "gateway", label: "Gateway", ...gateway },
+    { key: "gateway", label: "Agent Gateway", ...gateway },
     { key: "worker", label: "Worker", ...worker },
     { key: "collector", label: "OpenTelemetry", ...collectorObservation },
   ];
@@ -107,22 +107,22 @@ export async function probeGatewayHealth(
       cache: "no-store",
       signal: AbortSignal.timeout(5_000),
     });
-    if (!response.ok) throw new Error("Gateway returned an unhealthy response.");
+    if (!response.ok) throw new Error("Agent Gateway returned an unhealthy response.");
     const body = (await response.json().catch(() => null)) as {
       ok?: unknown;
       component?: unknown;
     } | null;
     if (body?.ok !== true || body.component !== "gateway")
-      throw new Error("Gateway returned invalid health data.");
+      throw new Error("Agent Gateway returned invalid health data.");
     return {
       status: "healthy",
-      message: "Gateway health endpoint is reachable.",
+      message: "Agent Gateway health endpoint is reachable.",
       observedAt: now().toISOString(),
     };
   } catch {
     return {
       status: "unavailable",
-      message: "Gateway health endpoint is unavailable.",
+      message: "Agent Gateway health endpoint is unavailable.",
       observedAt: null,
     };
   }

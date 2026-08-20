@@ -5,7 +5,7 @@ description: 在明确 Migration、组件 Identity 与 Runtime Ownership 的前�
 
 将 Eveland Upgrade 视为协调一致的产品变更，而不是四个应用各自重启。
 
-最新版本的生产操作步骤请阅读[从 0.34 升级到 0.35](/zh/docs/operations/upgrade-0-34-to-0-35)。旧版专项指南仍可查阅：[从 0.15 升级到 0.16](/zh/docs/operations/upgrade-0-15-to-0-16)、[从 0.14 升级到 0.15](/zh/docs/operations/upgrade-0-14-to-0-15)、[从 0.13 升级到 0.14](/zh/docs/operations/upgrade-0-13-to-0-14)、[从 0.12 升级到 0.13](/zh/docs/operations/upgrade-0-12-to-0-13)与[从 0.11 升级到 0.12](/zh/docs/operations/upgrade-0-11-to-0-12)。
+各版本的专属升级步骤与兼容性说明见 [GitHub Release Note](https://github.com/evelandhq/eveland/releases)。开始前请阅读当前版本到目标版本之间每个 Release 的说明。
 
 ## 升级前
 
@@ -16,7 +16,7 @@ description: 在明确 Migration、组件 Identity 与 Runtime Ownership 的前�
 
 ## 应用 Release
 
-获取 Tag，Checkout 目标 Stable Tag，安装 Frozen Lockfile 并应用版本化数据库 Migration。为 Web、API、Gateway 与 Worker 设置相同 Release Channel 和 Revision，再从同一 Checkout 重启。
+获取 Tag，Checkout 目标 Stable Tag，安装 Frozen Lockfile 并应用版本化数据库 Migration。为 Dashboard、API、Agent Gateway 与 Worker 设置相同 Release Channel 和 Revision，再从同一 Checkout 重启。
 
 只有 Public Health、Worker Startup Identity 与 **Settings → About** 全部一致后，升级才算完成。
 

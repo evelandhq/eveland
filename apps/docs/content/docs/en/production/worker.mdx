@@ -1,9 +1,9 @@
 ---
 title: Install the host Worker
-description: Install the privileged Worker as a systemd service and connect it to the control plane.
+description: Install the privileged Worker as a systemd service and connect it to the core services.
 ---
 
-Worker is the only runtime controller. Production keeps it on the host so API and Gateway never receive systemd or Docker-controller privilege.
+Worker is the only runtime controller. Production keeps it on the host so API and the Agent Gateway never receive systemd or Docker-controller privilege.
 
 ## Install the service
 
@@ -13,7 +13,7 @@ sudo cp infra/systemd/eveland-worker.env.example /etc/eveland/eveland-worker.env
 sudo cp infra/systemd/eveland-worker.service /etc/systemd/system/
 ```
 
-Configure the environment file before starting the service. At minimum, align database access, `/var/lib/eveland`, application encryption, Agent domains, Gateway service authentication, workflow Postgres, scheduler secrets, release identity, and `EVELAND_RUNTIME=systemd` with the control plane.
+Configure the environment file before starting the service. At minimum, align database access, `/var/lib/eveland`, application encryption, Agent domains, Agent Gateway service authentication, workflow Postgres, scheduler secrets, release identity, and `EVELAND_RUNTIME=systemd` with the core services.
 
 ```bash
 sudo systemctl daemon-reload

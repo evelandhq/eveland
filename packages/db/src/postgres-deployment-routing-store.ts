@@ -830,7 +830,7 @@ export function createPostgresDeploymentRoutingStore({
                 ),
               )
               .limit(1);
-        if (!binding) throw new Error("Failed to persist the Gateway OperationBinding.");
+        if (!binding) throw new Error("Failed to persist the Agent Gateway OperationBinding.");
         return operationBindingRowToOperationBinding(binding);
       });
     },
@@ -859,7 +859,7 @@ export function createPostgresDeploymentRoutingStore({
             set: { ...input, updatedAt: new Date() },
           })
           .returning();
-        if (!binding) throw new Error("Failed to persist the Gateway SessionBinding.");
+        if (!binding) throw new Error("Failed to persist the Agent Gateway SessionBinding.");
         await tx
           .update(sessions)
           .set({

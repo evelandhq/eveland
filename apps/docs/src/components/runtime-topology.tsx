@@ -6,7 +6,7 @@ const topologyCopy = {
     edge: "Public edge",
     hosts: "wildcard agent hosts",
     compose: "Docker Compose",
-    services: "Web · API · Gateway",
+    services: "Dashboard · API · Agent Gateway",
     data: "Postgres + shared data",
     bridge: (
       <>
@@ -26,8 +26,8 @@ const topologyCopy = {
     label: "Eveland 生产拓扑",
     edge: "公开入口",
     hosts: "Wildcard Agent Host",
-    compose: "生产 Compose 控制面",
-    services: "Web · API · Gateway",
+    compose: "生产 Compose 核心服务",
+    services: "Dashboard · API · Agent Gateway",
     data: "Postgres + 共享数据目录",
     bridge: (
       <>

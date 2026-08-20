@@ -116,7 +116,8 @@ export async function invalidateGateway(
       },
       body: JSON.stringify({ hostname }),
     });
-    if (!response.ok) throw new Error(`Gateway cache invalidation failed with ${response.status}.`);
+    if (!response.ok)
+      throw new Error(`Agent Gateway cache invalidation failed with ${response.status}.`);
   }
 }
 

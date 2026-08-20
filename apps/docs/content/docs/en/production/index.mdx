@@ -1,15 +1,15 @@
 ---
 title: Production architecture
-description: Understand the supported control-plane, host Worker, Gateway, and systemd runtime topology.
+description: Understand the supported core services, host Worker, Agent Gateway, and systemd runtime topology.
 ---
 
 Eveland's production boundary is intentionally different from its local development stack. Production Eve deployments do not run through the development Docker runtime.
 
 <RuntimeTopology lang="en" />
 
-## Control plane
+## Core services
 
-Web, API, Gateway, Postgres, and the managed OpenTelemetry Collector run with the production Compose overlay. API owns authenticated team workflows and persistence. Gateway is the only public Agent data plane and has neither the Docker socket nor access to source, releases, secrets, or Collector configuration.
+The Dashboard, API, Agent Gateway, Postgres, and the managed OpenTelemetry Collector run with the production Compose overlay. API owns authenticated team workflows and persistence. The Agent Gateway is the only public Agent data plane and has neither the Docker socket nor access to source, releases, secrets, or Collector configuration.
 
 ## Host runtime controller
 

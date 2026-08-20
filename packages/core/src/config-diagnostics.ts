@@ -128,7 +128,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     name: "EVELAND_GATEWAY_SERVICE_TOKEN",
     components: ["api", "gateway"],
     sensitivity: "secret",
-    purpose: "Authenticates API and Gateway calls across their privileged /internal routes.",
+    purpose: "Authenticates API and Agent Gateway calls across their privileged /internal routes.",
     fallback: developmentSecret,
     required: production,
     warning: productionSecretWarning,
@@ -137,28 +137,28 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     name: "EVELAND_GATEWAY_SERVICE_TOKEN",
     components: ["worker"],
     sensitivity: "secret",
-    purpose: "Authenticates Worker route-cache invalidation requests to Gateway.",
+    purpose: "Authenticates Worker route-cache invalidation requests to the Agent Gateway.",
     required: production,
   },
   {
     name: "API_URL",
     components: ["web"],
     sensitivity: "url",
-    purpose: "Server-side API origin used by the Web process.",
+    purpose: "Server-side API origin used by the Dashboard process.",
     fallback: (env) => derivedValue(env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"),
   },
   urlEntry(
     "NEXT_PUBLIC_API_URL",
     ["web"],
-    "Browser-visible control-plane API origin.",
+    "Browser-visible platform API origin.",
     "http://localhost:4000",
   ),
-  entry("PORT", ["api"], "TCP port used by the control-plane API.", "4000"),
+  entry("PORT", ["api"], "TCP port used by the platform API.", "4000"),
   {
     ...urlEntry(
       "WEB_ORIGIN",
       ["api"],
-      "Allowed browser origin for authenticated control-plane CORS.",
+      "Allowed browser origin for authenticated platform CORS.",
       "http://localhost:3000",
     ),
     emptyUsesFallback: true,
@@ -168,7 +168,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     components: ["api"],
     sensitivity: "secret",
     purpose:
-      "Signs and encrypts Better Auth sessions; independent from application and Gateway secrets.",
+      "Signs and encrypts Better Auth sessions; independent from application and Agent Gateway secrets.",
     required: true,
   },
   {
@@ -208,7 +208,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     ...entry(
       "EVELAND_COOKIE_DOMAIN",
       ["api"],
-      "Optional shared parent domain for the control-plane session cookie.",
+      "Optional shared parent domain for the platform session cookie.",
     ),
     emptyUsesFallback: true,
   },
@@ -373,14 +373,14 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   urlEntry(
     "EVELAND_GATEWAY_INTERNAL_URL",
     ["api"],
-    "Private Gateway origin used for Playground and diagnostics.",
+    "Private Agent Gateway origin used for Playground and diagnostics.",
     "http://127.0.0.1:4080",
   ),
   {
     ...urlEntry(
       "EVELAND_GATEWAY_INTERNAL_URL",
       ["worker"],
-      "Private Gateway origin used for route-cache invalidation.",
+      "Private Agent Gateway origin used for route-cache invalidation.",
     ),
     required: production,
   },
@@ -403,7 +403,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   entry(
     "EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES",
     ["gateway"],
-    "Maximum buffered public request body accepted by Gateway.",
+    "Maximum buffered public request body accepted by the Agent Gateway.",
     "10485760",
   ),
   entry(
@@ -451,7 +451,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   entry(
     "EVELAND_COLD_START_TIMEOUT_MS",
     ["api"],
-    "Maximum time Gateway may wait for a dormant Deployment to become ready.",
+    "Maximum time the Agent Gateway may wait for a dormant Deployment to become ready.",
     "30000",
   ),
   entry(
@@ -571,7 +571,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   entry(
     "EVELAND_WEB_PROXY_MARGIN_MS",
     ["web"],
-    "Transport margin added on top of cold activation and the upstream idle timeout when computing the Web proxy budget.",
+    "Transport margin added on top of cold activation and the upstream idle timeout when computing the Dashboard proxy budget.",
     "15000",
   ),
   entry(
@@ -583,7 +583,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   entry(
     "WORKFLOW_DISPATCHER_ACTIVATION_API_URL",
     ["workflow-dispatcher"],
-    "Control API base URL the dispatcher activates deployments through, exactly as the Gateway's cold start does.",
+    "Control API base URL the dispatcher activates deployments through, exactly as the Agent Gateway's cold start does.",
   ),
   {
     name: "WORKFLOW_DISPATCHER_ACTIVATION_TOKEN",

@@ -75,8 +75,8 @@ export default async function AboutSettingsPage() {
           <TriangleAlertIcon />
           <AlertTitle>Component version mismatch</AlertTitle>
           <AlertDescription>
-            Web and API were not deployed from the same build. Finish upgrading the instance before
-            testing.
+            The Dashboard and API were not deployed from the same build. Finish upgrading the
+            instance before testing.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -86,7 +86,7 @@ export default async function AboutSettingsPage() {
           <TriangleAlertIcon />
           <AlertTitle>API build information unavailable</AlertTitle>
           <AlertDescription>
-            The Web build is shown below, but the API health endpoint could not be reached.
+            The Dashboard build is shown below, but the API health endpoint could not be reached.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -94,7 +94,9 @@ export default async function AboutSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Eveland</CardTitle>
-          <CardDescription>Self-hosted eve runtime control plane</CardDescription>
+          <CardDescription>
+            Self-hosted deployment and operations platform for Eve agents
+          </CardDescription>
           <CardAction>
             <Badge variant="secondary">{webBuild.channel}</Badge>
           </CardAction>
@@ -192,7 +194,7 @@ export default async function AboutSettingsPage() {
                 <TriangleAlertIcon />
                 <AlertTitle>System configuration unavailable</AlertTitle>
                 <AlertDescription>
-                  The Web configuration is shown, but API diagnostics could not be loaded.
+                  The Dashboard configuration is shown, but API diagnostics could not be loaded.
                 </AlertDescription>
               </Alert>
             ) : null}

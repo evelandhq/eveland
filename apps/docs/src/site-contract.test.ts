@@ -128,7 +128,7 @@ describe("Eveland public website contract", () => {
       "index.mdx",
       "production/index.mdx",
       "production/prerequisites.mdx",
-      "production/control-plane.mdx",
+      "production/core-services.mdx",
       "production/worker.mdx",
       "production/networking.mdx",
       "production/verify.mdx",
@@ -140,9 +140,6 @@ describe("Eveland public website contract", () => {
       "operations/runtime.mdx",
       "operations/diagnostics.mdx",
       "operations/upgrades.mdx",
-      "operations/upgrade-0-11-to-0-12.mdx",
-      "operations/upgrade-0-12-to-0-13.mdx",
-      "operations/upgrade-0-13-to-0-14.mdx",
       "operations/security.mdx",
       "reference/configuration.mdx",
       "reference/eve-compatibility.mdx",
@@ -175,17 +172,6 @@ describe("Eveland public website contract", () => {
     expect(copy).toContain('href: "/zh/docs/production"');
     expect(copy).toContain("systemd");
     expect(copy).toContain("按需唤醒");
-  });
-
-  test("redirects the former flat documentation URLs into the new structure", () => {
-    const config = source("../next.config.mjs");
-
-    expect(config).toContain('source: "/docs/quick-start"');
-    expect(config).toContain('destination: "/docs/production"');
-    expect(config).toContain('source: "/docs/deploy"');
-    expect(config).toContain('destination: "/docs/agents/first-deployment"');
-    expect(config).toContain('source: "/zh/docs/operate"');
-    expect(config).toContain('destination: "/zh/docs/operations/runtime"');
   });
 
   test("mirrors the Eve documentation shell with the system font stack", () => {

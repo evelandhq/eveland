@@ -430,7 +430,7 @@ export function IdentitySettings({
             />
             <ProviderOption
               title="Eveland Internal"
-              description="Maps a verified control-plane login into a separate Agent-user identity session."
+              description="Maps a verified Dashboard login into a separate Agent-user identity session."
               selected={activeType === "internal"}
               pending={pending === "select-internal"}
               disabled={pending !== null || !internalProvider}

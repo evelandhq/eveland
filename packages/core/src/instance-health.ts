@@ -286,7 +286,7 @@ export function analyzeHostCapacity(samples: HostMetricSample[]): HostCapacityAn
 
 const pgRoleLabels: Record<PgInstanceConnectionSample["role"], string> = {
   shared: "Postgres",
-  control: "Control-plane Postgres",
+  control: "Platform Postgres",
   workflow: "Workflow Postgres",
 };
 

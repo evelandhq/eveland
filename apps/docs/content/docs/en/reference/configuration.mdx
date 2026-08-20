@@ -5,13 +5,13 @@ description: Find the production configuration families and the component that o
 
 Use the checked-in `.env.example`, production Compose overlay, and `infra/systemd/eveland-worker.env.example` as the exact configuration surface for your release. This page organizes ownership; it does not replace release-specific defaults.
 
-## Control plane
+## Core services
 
-Configure public origins, Better Auth, Team bootstrap, Postgres, the shared data root, application encryption, and release identity. Set a cookie domain only when Web and API intentionally share a parent domain.
+Configure public origins, Better Auth, Team bootstrap, Postgres, the shared data root, application encryption, and release identity. Set a cookie domain only when the Dashboard and API intentionally share a parent domain.
 
-## Gateway
+## Agent Gateway
 
-Configure Agent base domains, service authentication, affinity signing, the private API origin, and cold-start timeout. Keep Gateway service and affinity secrets independent.
+Configure Agent base domains, service authentication, affinity signing, the private API origin, and cold-start timeout. Keep Agent Gateway service and affinity secrets independent.
 
 ## Worker and runtime
 

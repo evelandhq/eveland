@@ -1,9 +1,9 @@
 ---
 title: 配置 Agent 流量
-description: 配置 Wildcard DNS、TLS、Traefik、Gateway 与私有 Deployment 端口。
+description: 配置 Wildcard DNS、TLS、Traefik、Agent Gateway 与私有 Deployment 端口。
 ---
 
-Gateway 是 Agent 流量唯一公开入口。原始 Deployment 端口只是私有实现细节。
+Agent Gateway 是 Agent 流量唯一公开入口。原始 Deployment 端口只是私有实现细节。
 
 ## Hostname
 
@@ -15,10 +15,10 @@ Preview 分隔符保持在一个 DNS Label 内，因此一张 Wildcard Certifica
 
 ## Reverse Proxy
 
-从 `infra/traefik/agents.yml` 开始配置。将 Wildcard Agent Host 转发到 Gateway `4080` 端口，保留 `/internal` 排除规则，并且永远不要公开 `127.0.0.1:41xxx` Deployment 端口范围。
+从 `infra/traefik/agents.yml` 开始配置。将 Wildcard Agent Host 转发到 Agent Gateway `4080` 端口，保留 `/internal` 排除规则，并且永远不要公开 `127.0.0.1:41xxx` Deployment 端口范围。
 
-## Gateway 边界
+## Agent Gateway 边界
 
-Gateway 验证完整 Canonical Host，移除不受信任的 Forwarding Header 与保留的 Eveland Header，再重建可信平台 Header。它保留 Agent 自己的 Authorization、Cookie、Origin 语义、请求流与 NDJSON 响应流。
+Agent Gateway 验证完整 Canonical Host，移除不受信任的 Forwarding Header 与保留的 Eveland Header，再重建可信平台 Header。它保留 Agent 自己的 Authorization、Cookie、Origin 语义、请求流与 NDJSON 响应流。
 
 `/internal/*` 下由 Service Authentication 保护的 Playground 与 Activation Route 必须对公开代理保持不可达。
