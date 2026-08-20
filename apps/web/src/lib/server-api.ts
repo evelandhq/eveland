@@ -5,6 +5,7 @@ import type { InstanceHealthReport } from "@evelandhq/core/instance-health";
 import type { SystemConfigurationDiagnostics } from "@evelandhq/core/config-diagnostics";
 import type { PublicObservabilityPolicy } from "@evelandhq/core/observability";
 import type {
+  ProjectActivity,
   PublicGitCredential,
   SharedAgentEnvironment,
   UsageAnalytics,
@@ -39,7 +40,10 @@ import type {
 const apiBaseUrl =
   process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export type ProjectListItem = Project & { eveVersion: EveVersionInfo };
+export type ProjectListItem = Project & {
+  eveVersion: EveVersionInfo;
+  activity: ProjectActivity;
+};
 
 export const getProjects = () =>
   apiGet<{ projects: ProjectListItem[] }>("/projects").then((data) => data.projects);

@@ -21,8 +21,11 @@ describe("schedule history surfaces", () => {
     expect(sessions).toContain("sessionPage.sessions.map");
     expect(sessions).toContain("scheduleId: query.schedule");
     expect(sessions).toContain("<Table");
-    expect(sessions).toContain(
-      '<TableCell className="text-xs">\n                    <span>{triggerLabel(session.trigger)}</span>',
+    // Whitespace-insensitive on purpose: pinning exact indentation makes this
+    // fail on any reformat or change of nesting depth without catching a single
+    // real regression. What matters is that Sessions renders the trigger label.
+    expect(sessions.replace(/\s+/g, " ")).toContain(
+      '<TableCell className="text-xs"> <span>{triggerLabel(session.trigger)}</span>',
     );
     expect(schedules).toContain("getScheduleRuns");
     expect(schedules).toContain("Recent runs");
@@ -31,7 +34,6 @@ describe("schedule history surfaces", () => {
     expect(schedules).toContain("href={`/projects/${projectId}/schedules#recent-runs`}");
     expect(schedules).toContain("Markdown and TypeScript schedules");
     expect(schedules).toContain("<RunScheduleAction");
-    expect(schedules).toContain("<Card");
     expect(sessionDetail).toContain("getScheduleRun");
     expect(sessionDetail).toContain("describeScheduleCron");
     expect(sessionDetail).toContain("Run details");

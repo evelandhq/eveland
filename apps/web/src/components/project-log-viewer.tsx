@@ -156,7 +156,12 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
             </EmptyHeader>
           </Empty>
         ) : (
-          <ScrollArea className="h-[calc(100svh-19rem)] min-h-96">
+          // Fill the page. The offset is everything above the scroll area plus
+          // the container's bottom padding, measured rather than guessed:
+          // project header + PageContainer py-6 + this card's own header =
+          // 158px, plus 24px of breathing room below = 182px. Mobile adds back
+          // the 3rem app header the desktop layout hides.
+          <ScrollArea className="h-[calc(100svh-14.375rem)] min-h-96 md:h-[calc(100svh-11.375rem)]">
             <ol className="divide-y font-mono text-xs">
               {visibleLogs.map((log) => (
                 <ProjectLogRow key={log.id} log={log} />

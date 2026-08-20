@@ -72,6 +72,27 @@ export type Project = {
   updatedAt: string;
 };
 
+/**
+ * One day's worst outcome across a project's sessions, for the run-history
+ * strip on the projects list. "none" means the project ran nothing that day,
+ * which is normal for weekly and on-demand agents.
+ */
+export type ProjectActivityDay = "none" | "ok" | "attention" | "failed";
+
+export type ProjectActivity = {
+  /** Oldest day first; the last entry is today. */
+  days: ProjectActivityDay[];
+  sessions: number;
+  succeeded: number;
+  failed: number;
+  awaiting: number;
+  /** Null until the window holds a settled session. */
+  successRate: number | null;
+  p95DurationMs: number | null;
+};
+
+export type ProjectActivitySummary = ProjectActivity & { projectId: string };
+
 export type EnvironmentEntryKind = "variable" | "secret";
 
 export type SecretRecord = {

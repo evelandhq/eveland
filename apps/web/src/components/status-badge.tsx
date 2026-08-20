@@ -1,10 +1,14 @@
 import { Badge } from "@/components/ui/badge";
 
+// Nothing healthy uses `default`: that variant fills with `--primary`, which is
+// ink — the colour of an action, not of a state. A black "deployed" chip reads
+// as louder than the failure it sits next to, which is backwards. Normal states
+// stay neutral so the destructive ones are the only thing that carries colour.
 const variantByStatus: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  running: "default",
-  deployed: "default",
+  running: "secondary",
+  deployed: "secondary",
   completed: "secondary",
-  succeeded: "default",
+  succeeded: "secondary",
   queued: "secondary",
   activating: "secondary",
   dispatching: "secondary",

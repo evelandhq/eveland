@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProjectDeletionNotice } from "@/components/project-deletion-notice";
 import { ProjectDeletionPoller } from "@/components/project-deletion-poller";
+import { PAGE_INSET, PageContainer } from "@/components/page-container";
+import { ProjectBreadcrumb } from "@/components/project-breadcrumb";
 import { StatusBadge } from "@/components/status-badge";
+import { cn } from "@/lib/utils";
 import { getProject } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
@@ -43,31 +46,37 @@ export default async function ProjectLayout({
 
   return (
     <div className="min-h-[calc(100svh-3rem)] bg-background">
-      <header className="flex h-14 items-center justify-between border-b border-border px-5">
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">{project.name}</h1>
-          <div className="truncate text-xs text-muted-foreground">
-            {project.description ?? project.gitUrl ?? project.id}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <StatusBadge
+      {/* No rule under this bar. It is not sticky, so a hairline here would not
+          be marking a scroll boundary — just re-stating a separation the gap
+          and the page heading below already make. */}
+      <header>
+        <div className={cn(PAGE_INSET, "pt-5")}>
+          <ProjectBreadcrumb
+            projectDescription={project.description ?? null}
+            projectId={project.id}
+            projectName={project.name}
             status={
-              project.deletionStatus === "failed"
-                ? "delete_failed"
-                : (project.deletionStatus ?? project.status)
+              <>
+                <StatusBadge
+                  status={
+                    project.deletionStatus === "failed"
+                      ? "delete_failed"
+                      : (project.deletionStatus ?? project.status)
+                  }
+                />
+                <StatusBadge status={project.deploymentStatus} />
+              </>
             }
           />
-          <StatusBadge status={project.deploymentStatus} />
         </div>
       </header>
-      <section className="flex flex-col gap-4 px-5 py-5">
+      <PageContainer className="gap-4">
         <ProjectDeletionPoller active={project.deletionStatus === "deleting"} />
         <ProjectDeletionNotice status={project.deletionStatus} error={project.deletionError} />
         <fieldset disabled={project.deletionStatus === "deleting"} className="contents">
           {children}
         </fieldset>
-      </section>
+      </PageContainer>
     </div>
   );
 }

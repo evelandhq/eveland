@@ -17,6 +17,7 @@ import type {
   ModelUsageEvent,
   OperationBinding,
   Project,
+  ProjectActivitySummary,
   ProjectImportKind,
   ProjectSchedule,
   ProjectSchedulerTarget,
@@ -184,6 +185,7 @@ export type AgentAuthCredentialKey = Pick<
 
 export interface ProjectStore {
   listProjects(): Promise<Project[]>;
+  listProjectActivity(input: { days: number; now?: Date }): Promise<ProjectActivitySummary[]>;
   isProjectSlugAvailable(slug: string): Promise<boolean>;
   createProject(input: CreateProjectInput): Promise<Project>;
   getProject(projectId: string): Promise<Project | null>;

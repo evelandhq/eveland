@@ -38,13 +38,11 @@ export default async function ProjectDeploymentsPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">Deployments</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Build releases, test previews, and control production traffic.
-          </p>
-        </div>
+      {/* The heading stays for screen readers only — sighted readers already
+          have it in the breadcrumb, and the description restated what the
+          buttons beside it do. */}
+      <header className="flex flex-wrap items-end justify-end gap-4">
+        <h2 className="sr-only">Deployments</h2>
         <DeploymentActions
           projectId={projectId}
           canSync={project?.importKind === "git" && Boolean(project?.gitUrl)}

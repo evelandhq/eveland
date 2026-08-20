@@ -79,7 +79,7 @@ export function EveVersionStatus({
     <div className={cn("flex min-w-0 flex-wrap items-center gap-2", className)}>
       {status === "current" ? (
         <Badge
-          className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          className="border-success/30 bg-success/10 text-success-foreground"
           variant="outline"
         >
           <CircleCheckIcon data-icon="inline-start" />
@@ -95,7 +95,7 @@ export function EveVersionStatus({
         <span
           className={cn(
             "text-xs",
-            status === "current" ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+            status === "current" ? "text-success-foreground" : "text-destructive-foreground",
           )}
         >
           {message}

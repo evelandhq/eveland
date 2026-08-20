@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { ArrowRightIcon, PlayIcon } from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
 import { DateTime } from "@/components/date-time";
 import { EveVersionStatus } from "@/components/eve-version-status";
 import { ProjectOverviewTrend } from "@/components/project-overview-trend";
+import { CopyValue } from "@/components/copy-value";
+import { describeProjectSource } from "@/lib/project-source";
 import { StatusBadge } from "@/components/status-badge";
-import { buttonVariants } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -50,63 +51,66 @@ export default async function ProjectOverviewPage({
 
   return (
     <div className="flex min-w-0 flex-col gap-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-xs text-muted-foreground">Last 7 days</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Overview</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Execution volume, reliability, and the latest activity for this Agent.
-          </p>
+      {/* Weight follows use, not tidiness. Four equal cells said everything was
+          equally important, which is the same as saying nothing is. The endpoint
+          is the one value you actually paste somewhere, so it gets the size;
+          when the agent next acts on its own is the one thing that changes; and
+          provenance is small print you read only when something is wrong. */}
+      <section aria-label="Current project context" className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-xs text-muted-foreground">Stable endpoint</p>
+          {endpoints.stable ? (
+            <CopyValue
+              className="font-mono text-base font-medium"
+              icon="always"
+              label="stable endpoint"
+              value={endpoints.stable}
+            />
+          ) : (
+            <p className="text-base font-medium text-muted-foreground">Not available</p>
+          )}
         </div>
-        <Link href={`/projects/${projectId}/playground`} className={buttonVariants()}>
-          <PlayIcon data-icon="inline-start" />
-          Open Playground
-        </Link>
-      </header>
 
-      <section
-        className="grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 xl:grid-cols-4"
-        aria-label="Current project context"
-      >
-        <OverviewContext
-          label="Production"
-          value={<StatusBadge status={project?.deploymentStatus ?? null} />}
-          detail={project?.releaseId ?? "No release"}
-        />
-        <OverviewContext
-          label="Eve Agent"
-          value={<EveVersionStatus eveVersion={eveVersion} />}
-          detail={eveVersion.supported ? "Compatible with Eveland" : "Action required"}
-        />
-        <OverviewContext
-          label="Stable endpoint"
-          value={
-            endpoints.stable ? (
-              <a
-                href={endpoints.stable}
-                target="_blank"
-                rel="noreferrer"
-                className="block truncate underline-offset-4 hover:underline"
-              >
-                {endpoints.stable}
-              </a>
-            ) : (
-              "Not available"
-            )
-          }
-          detail={project?.slug ?? projectId}
-        />
-        <OverviewContext
-          label="Next schedule"
-          value={
-            nextSchedule?.schedule.nextRunAt ? (
-              <DateTime value={nextSchedule.schedule.nextRunAt} />
-            ) : (
-              "None scheduled"
-            )
-          }
-          detail={nextSchedule?.schedule.key ?? `${schedules.length} discovered`}
-        />
+        <dl className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-xs">
+          <OverviewFact
+            label="Next run"
+            value={
+              nextSchedule?.schedule.nextRunAt ? (
+                <DateTime value={nextSchedule.schedule.nextRunAt} />
+              ) : (
+                `None scheduled · ${schedules.length} discovered`
+              )
+            }
+          />
+          <OverviewFact
+            label="Release"
+            value={
+              project?.releaseId ? (
+                <CopyValue className="font-mono" label="release id" value={project.releaseId} />
+              ) : (
+                "None"
+              )
+            }
+          />
+          <OverviewFact
+            label="Source"
+            value={
+              project ? describeProjectSource(project.importKind, project.gitUrl).label : "None"
+            }
+          />
+          {/* Normal is quiet: a supported runtime is a version number, not a
+              badge. The badge is what an unsupported one earns. */}
+          <OverviewFact
+            label="Eve Agent"
+            value={
+              eveVersion.supported ? (
+                <span className="font-mono">{eveVersion.version ?? "Unknown"}</span>
+              ) : (
+                <EveVersionStatus eveVersion={eveVersion} />
+              )
+            }
+          />
+        </dl>
       </section>
 
       <section aria-labelledby="execution-summary-heading">
@@ -149,7 +153,9 @@ export default async function ProjectOverviewPage({
             detail="Provider-reported only"
           />
         </dl>
-        <div className="mt-5 border-t border-border pt-4">
+        {/* Same rule as the identity bar above: two stacked blocks inside one
+            section are separated by space, not a hairline. */}
+        <div className="mt-6">
           <ProjectOverviewTrend series={analytics.series} />
         </div>
       </section>
@@ -223,20 +229,11 @@ export default async function ProjectOverviewPage({
   );
 }
 
-function OverviewContext({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: React.ReactNode;
-  detail: string;
-}) {
+function OverviewFact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="min-w-0 bg-background p-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <div className="mt-2 min-w-0 text-sm font-medium">{value}</div>
-      <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p>
+    <div className="flex min-w-0 items-baseline gap-2">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 font-medium break-words">{value}</dd>
     </div>
   );
 }

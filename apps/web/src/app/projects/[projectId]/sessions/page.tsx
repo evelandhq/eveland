@@ -3,7 +3,6 @@ import { DateTime } from "@/components/date-time";
 import { getSchedules, getSessionsPage } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Table,
@@ -59,95 +58,88 @@ export default async function SessionsPage({
   const usage = summarizeTokenUsage(sessionPage.sessions.map((session) => session.usage));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Sessions</CardTitle>
-        <CardDescription>
-          Eve Sessions are ordered by start time. Schedule execution history is available under
-          Schedules.
-        </CardDescription>
-        <dl className="flex flex-wrap items-center gap-6 pt-2">
-          <div>
-            <dt className="text-xs text-muted-foreground">Tokens on this page</dt>
-            <dd className="font-mono font-medium">
-              {usage.status === "none" || usage.status === "missing"
-                ? "—"
-                : formatTokenCount(usage.totalTokens)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Input / output</dt>
-            <dd className="font-mono font-medium">
-              {formatTokenCount(usage.inputTokens)} / {formatTokenCount(usage.outputTokens)}
-            </dd>
-          </div>
-        </dl>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {sessionPage.sessions.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>No matching Sessions</EmptyTitle>
-              <EmptyDescription>No Eve Sessions match the current filters.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Session</TableHead>
-                <TableHead>Trigger</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Tokens</TableHead>
-                <TableHead>Started</TableHead>
+    // A full-width table is not an object that needs a container, and the card
+    // title only repeated the page name. The breadcrumb says where you are.
+    <div className="flex flex-col gap-4">
+      <dl className="flex flex-wrap items-center gap-6">
+        <div>
+          <dt className="text-xs text-muted-foreground">Tokens on this page</dt>
+          <dd className="font-mono font-medium">
+            {usage.status === "none" || usage.status === "missing"
+              ? "—"
+              : formatTokenCount(usage.totalTokens)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Input / output</dt>
+          <dd className="font-mono font-medium">
+            {formatTokenCount(usage.inputTokens)} / {formatTokenCount(usage.outputTokens)}
+          </dd>
+        </div>
+      </dl>
+      {sessionPage.sessions.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>No matching Sessions</EmptyTitle>
+            <EmptyDescription>No Eve Sessions match the current filters.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Session</TableHead>
+              <TableHead>Trigger</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Tokens</TableHead>
+              <TableHead>Started</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sessionPage.sessions.map((session) => (
+              <TableRow key={session.id}>
+                <TableCell>
+                  <Link
+                    href={`/projects/${projectId}/sessions/${session.id}`}
+                    className="font-mono text-xs font-medium hover:underline"
+                  >
+                    {session.id}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-xs">
+                  <span>{triggerLabel(session.trigger)}</span>
+                  {session.scheduleId && scheduleKeys.has(session.scheduleId) ? (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {scheduleKeys.get(session.scheduleId)}
+                    </span>
+                  ) : null}
+                </TableCell>
+                <TableCell>
+                  <StatusBadge status={session.status} />
+                </TableCell>
+                <TableCell className="text-right font-mono text-xs">
+                  {tokenTotal(session.usage)}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  <DateTime value={session.startedAt} />
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sessionPage.sessions.map((session) => (
-                <TableRow key={session.id}>
-                  <TableCell>
-                    <Link
-                      href={`/projects/${projectId}/sessions/${session.id}`}
-                      className="font-mono text-xs font-medium hover:underline"
-                    >
-                      {session.id}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <span>{triggerLabel(session.trigger)}</span>
-                    {session.scheduleId && scheduleKeys.has(session.scheduleId) ? (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · {scheduleKeys.get(session.scheduleId)}
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={session.status} />
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-xs">
-                    {tokenTotal(session.usage)}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    <DateTime value={session.startedAt} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-        {sessionPage.nextCursor ? (
-          <div className="flex justify-end">
-            <Link
-              href={historyHref(query, sessionPage.nextCursor)}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Older Sessions
-            </Link>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      {sessionPage.nextCursor ? (
+        <div className="flex justify-end">
+          <Link
+            href={historyHref(query, sessionPage.nextCursor)}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            Older Sessions
+          </Link>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

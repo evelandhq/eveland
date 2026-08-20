@@ -75,7 +75,10 @@ export function AppSidebar() {
   const memberInitials = memberLabel.slice(0, 2).toUpperCase();
 
   return (
-    <Sidebar collapsible="icon">
+    // The sidebar shares the canvas background, so a divider would be a second
+    // separator for a boundary the layout already makes obvious. The variant
+    // prefix has to match the one Sidebar sets, or tailwind-merge keeps both.
+    <Sidebar className="group-data-[side=left]:border-r-0" collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -183,7 +186,7 @@ export function AppSidebar() {
                 </span>
                 <ChevronsUpDownIcon />
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="end" sideOffset={8} className="w-56">
+              <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-56">
                 <DropdownMenuGroup>
                   <DropdownMenuItem render={<Link href="/settings/profile" />}>
                     <SettingsIcon />

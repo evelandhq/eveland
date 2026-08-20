@@ -62,7 +62,7 @@ export default async function AboutSettingsPage() {
   const warningConfiguration = configurationIssues.length - missingConfiguration;
 
   return (
-    <div className="flex max-w-5xl flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h2 className="text-xl font-semibold tracking-tight">About</h2>
         <p className="text-sm text-muted-foreground">

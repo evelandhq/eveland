@@ -38,27 +38,29 @@ export default async function SourcePage({
   const selectedLanguage = selectedFile ? getSourceLanguage(selectedFile.path) : null;
 
   return (
-    <div className="grid -m-5 min-h-[calc(100svh-6.5625rem)] min-w-0 overflow-hidden bg-background md:min-h-[calc(100svh-3.5rem)] lg:h-[calc(100svh-3.5rem)] lg:min-h-0 lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="flex min-h-80 min-w-0 flex-col border-b lg:h-full lg:min-h-0 lg:border-r lg:border-b-0">
-        <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
+    // The file tree sits directly on the canvas; only the file itself is raised
+    // onto a sheet, because the file is what this page is about.
+    <div className="grid min-h-[calc(100svh-9.0625rem)] min-w-0 gap-4 md:min-h-[calc(100svh-6rem)] lg:h-[calc(100svh-6rem)] lg:min-h-0 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <aside className="flex min-h-72 min-w-0 flex-col gap-2 lg:h-full lg:min-h-0">
+        <header className="flex shrink-0 items-baseline justify-between gap-3 px-2">
           <h2 className="text-sm font-medium">Source files</h2>
           <span className="text-xs tabular-nums text-muted-foreground">
             {files.length} {files.length === 1 ? "file" : "files"}
           </span>
         </header>
-        <div className="min-h-0 flex-1 p-1.5">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <SourceFileTree
             paths={files.map((file) => file.path)}
             projectId={projectId}
             selectedPath={selectedPath}
           />
         </div>
-        <footer className="border-t px-4 py-2.5">
+        <footer className="shrink-0 px-2 pt-1">
           <EveVersionStatus className="items-start" eveVersion={eveVersion} showMessage={false} />
         </footer>
       </aside>
 
-      <section className="flex min-h-[30rem] min-w-0 flex-col lg:min-h-0">
+      <section className="flex min-h-[30rem] min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xs lg:min-h-0">
         <header className="flex h-12 shrink-0 min-w-0 items-center justify-between gap-4 border-b px-4">
           <div className="flex min-w-0 items-center gap-2">
             <FileCodeIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />

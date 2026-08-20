@@ -483,10 +483,10 @@ function TraceSummary({ row }: { row: TraceRow }) {
               <span
                 className={cn(
                   "size-1.5 rounded-full",
-                  row.status === "completed" && "bg-emerald-500",
+                  row.status === "completed" && "bg-success",
                   row.status === "failed" && "bg-destructive",
                   row.status === "cancelled" && "bg-muted-foreground",
-                  row.status === "pending" && "bg-amber-500",
+                  row.status === "pending" && "bg-warning",
                 )}
               />
               {row.status}

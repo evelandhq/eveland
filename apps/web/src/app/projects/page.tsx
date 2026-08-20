@@ -1,22 +1,12 @@
 import Link from "next/link";
 import { SiGit, SiGithub, SiGitlab } from "@icons-pack/react-simple-icons";
-import { ArrowUpRightIcon, FolderArchiveIcon, FolderPlusIcon, PlusIcon } from "lucide-react";
+import { FolderArchiveIcon, FolderPlusIcon, PlusIcon } from "lucide-react";
 import { ProjectDeletionPoller } from "@/components/project-deletion-poller";
 import { CompactDateTime } from "@/components/compact-date-time";
 import { DateTime } from "@/components/date-time";
-import { EveVersionCardStatus } from "@/components/eve-version-status";
-import { StatusBadge } from "@/components/status-badge";
-import { Badge } from "@/components/ui/badge";
+import { PageContainer } from "@/components/page-container";
+import { RunHistoryBar } from "@/components/run-history-bar";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Empty,
   EmptyContent,
@@ -25,7 +15,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { getProjects } from "@/lib/server-api";
+import { getProjects, type ProjectListItem } from "@/lib/server-api";
 import { describeProjectSource } from "@/lib/project-source";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -42,36 +32,200 @@ const projectSourceIconByKind = {
   zip: FolderArchiveIcon,
 };
 
-export default async function ProjectsPage() {
-  const projects = await getProjects();
+type ProjectTone = "running" | "attention" | "scheduled" | "idle" | "stopped" | "failed";
+
+// Colour is a channel, not a coat of paint: only the states a human has to do
+// something about spend it. Running and scheduled are ordinary, so they read as
+// ink and grey — which is what makes the two warm pills findable in a wall of
+// twelve cards.
+const TONE_PILL: Record<ProjectTone, string> = {
+  running: "bg-secondary text-foreground",
+  attention: "bg-warning-subtle text-warning-foreground",
+  scheduled: "bg-muted text-muted-foreground",
+  idle: "bg-muted text-muted-foreground",
+  stopped: "bg-muted text-muted-foreground",
+  failed: "bg-destructive-subtle text-destructive-foreground",
+};
+
+const TONE_ACTIVITY: Record<ProjectTone, string> = {
+  running: "text-foreground",
+  attention: "text-warning-foreground",
+  scheduled: "text-muted-foreground",
+  idle: "text-muted-foreground",
+  stopped: "text-muted-foreground",
+  failed: "text-destructive-foreground",
+};
+
+type ProjectState = { tone: ProjectTone; label: string; activity: string };
+
+/**
+ * Coarse state for the pill, plus the one line that says what the agent is
+ * actually doing. Deployment health outranks session state: an agent whose
+ * deployment failed is not "idle" just because no session is running.
+ */
+function describeProjectState(project: ProjectListItem): ProjectState {
+  if (project.deletionStatus === "failed")
+    return {
+      tone: "failed",
+      label: "Delete failed",
+      activity: project.deletionError ?? "Deletion did not finish",
+    };
+  if (project.deploymentStatus === "failed")
+    return { tone: "failed", label: "Failed", activity: "Latest deployment failed" };
+  if (project.latestSessionStatus === "waiting_approval")
+    return { tone: "attention", label: "Needs review", activity: "Paused for your approval" };
+  if (project.latestSessionStatus === "waiting")
+    return { tone: "attention", label: "Needs input", activity: "Waiting on input" };
+  if (project.latestSessionStatus === "running")
+    return { tone: "running", label: "Running", activity: "Session in progress" };
+  if (project.deploymentStatus === "building" || project.deploymentStatus === "starting")
+    return { tone: "scheduled", label: "Deploying", activity: "Build in progress" };
+  if (
+    project.deploymentStatus === "stopped" ||
+    project.deploymentStatus === "archiving" ||
+    project.deploymentStatus === "archived"
+  )
+    return { tone: "stopped", label: "Stopped", activity: "Deployment retained, not serving" };
+  if (project.deploymentStatus === "not_deployed")
+    return { tone: "idle", label: "Not deployed", activity: "No deployment yet" };
+
+  const lastRun =
+    project.latestSessionStatus === "failed"
+      ? "Last session failed"
+      : project.latestSessionStatus === "completed"
+        ? "Last session completed"
+        : "No sessions yet";
+  return project.nextScheduleAt
+    ? { tone: "scheduled", label: "Scheduled", activity: lastRun }
+    : { tone: "idle", label: "Idle", activity: lastRun };
+}
+
+function formatDuration(ms: number | null): string | null {
+  if (ms === null) return null;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    const rest = seconds % 60;
+    return rest === 0 ? `${minutes}m` : `${minutes}m${String(rest).padStart(2, "0")}s`;
+  }
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+function formatRate(rate: number | null): string | null {
+  if (rate === null) return null;
+  const percent = rate * 100;
+  return `${percent >= 99.95 ? "100" : percent.toFixed(1)}%`;
+}
+
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "attention", label: "Needs review" },
+  { key: "running", label: "Running" },
+  { key: "scheduled", label: "Scheduled" },
+] as const;
+
+type FilterKey = (typeof FILTERS)[number]["key"];
+
+function isFilterKey(value: string | undefined): value is FilterKey {
+  return FILTERS.some((filter) => filter.key === value);
+}
+
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ state?: string }>;
+}) {
+  const [projects, { state }] = await Promise.all([getProjects(), searchParams]);
+  const activeFilter: FilterKey = isFilterKey(state) ? state : "all";
+
+  const described = projects.map((project) => ({
+    project,
+    state: describeProjectState(project),
+    deleting: project.deletionStatus === "deleting",
+  }));
+
+  const counts = {
+    all: described.length,
+    attention: described.filter((entry) => entry.state.tone === "attention").length,
+    running: described.filter((entry) => entry.state.tone === "running").length,
+    scheduled: described.filter((entry) => entry.state.tone === "scheduled").length,
+  } satisfies Record<FilterKey, number>;
+
+  const visible =
+    activeFilter === "all"
+      ? described
+      : described.filter((entry) => entry.state.tone === activeFilter);
+
+  const settled = projects.reduce(
+    (total, project) => total + project.activity.succeeded + project.activity.failed,
+    0,
+  );
+  const succeeded = projects.reduce((total, project) => total + project.activity.succeeded, 0);
+  const runs = projects.reduce((total, project) => total + project.activity.sessions, 0);
+  const fleetRate = settled === 0 ? null : formatRate(succeeded / settled);
 
   return (
     <div className="min-h-[calc(100svh-3rem)] bg-background">
-      <ProjectDeletionPoller
-        active={projects.some((project) => project.deletionStatus === "deleting")}
-      />
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-5 py-6 md:px-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-normal">Projects</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Imported eve agents, deployments, schedules, and recent runtime state.
+      <ProjectDeletionPoller active={described.some((entry) => entry.deleting)} />
+      <PageContainer className="gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
+            <p className="text-sm text-muted-foreground">
+              {counts.all} total
+              {runs > 0 ? (
+                <>
+                  {" · "}
+                  <span className="font-mono">{runs}</span> runs in 30d
+                  {fleetRate ? (
+                    <>
+                      {" · "}
+                      <span className="font-mono text-success-foreground">{fleetRate}</span> ok
+                    </>
+                  ) : null}
+                </>
+              ) : null}
             </p>
           </div>
-          <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
-            <span className="text-xs text-muted-foreground">{projects.length} total</span>
-            <Link
-              href="/new"
-              className={cn(buttonVariants({ variant: "link" }), "text-foreground")}
-            >
-              <PlusIcon data-icon="inline-start" />
-              New project
-            </Link>
-          </div>
+          <Link
+            href="/new"
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <PlusIcon className="size-4" />
+            New project
+          </Link>
         </div>
 
+        {projects.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {FILTERS.map((filter) => {
+              const active = filter.key === activeFilter;
+              const count = counts[filter.key];
+              return (
+                <Link
+                  key={filter.key}
+                  href={filter.key === "all" ? "/projects" : `/projects?state=${filter.key}`}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                    active
+                      ? "border-transparent bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:border-input",
+                    !active && filter.key === "attention" && count > 0
+                      ? "border-warning/40 text-warning-foreground"
+                      : undefined,
+                  )}
+                >
+                  {filter.label} · {count}
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
+
         {projects.length === 0 ? (
-          <div className="flex min-h-80 rounded-md border bg-card">
+          <div className="flex min-h-80 rounded-xl border bg-card">
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -90,101 +244,132 @@ export default async function ProjectsPage() {
               </EmptyContent>
             </Empty>
           </div>
+        ) : visible.length === 0 ? (
+          <p className="rounded-xl border border-dashed bg-card px-5 py-10 text-center text-sm text-muted-foreground">
+            No projects are {FILTERS.find((filter) => filter.key === activeFilter)?.label} right
+            now.
+          </p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {projects.map((project) => {
-              const deleting = project.deletionStatus === "deleting";
-              const projectStatus =
-                project.deletionStatus === "failed" ? "delete_failed" : project.deploymentStatus;
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {visible.map(({ project, state: projectState, deleting }) => {
               const source = describeProjectSource(project.importKind, project.gitUrl);
               const ProjectSourceIcon = projectSourceIconByKind[source.kind];
+              const { activity } = project;
+              const rate = formatRate(activity.successRate);
+              const p95 = formatDuration(activity.p95DurationMs);
               return (
-                <Card key={project.id} size="sm" className="h-full" aria-busy={deleting}>
-                  <CardHeader>
-                    <CardTitle>
-                      {deleting ? (
-                        project.name
-                      ) : (
-                        <Link href={`/projects/${project.id}`} className="hover:underline">
-                          {project.name}
-                        </Link>
-                      )}
-                    </CardTitle>
-                    <CardDescription className="flex min-w-0 items-center gap-1.5">
-                      <ProjectSourceIcon aria-hidden="true" className="size-3.5 shrink-0" />
-                      <span className="truncate" title={project.gitUrl ?? source.label}>
-                        {source.label}
+                <div
+                  key={project.id}
+                  aria-busy={deleting}
+                  className={cn(
+                    // The one sunken surface in the app: twelve discrete
+                    // objects in a grid, where the tone step is what makes each
+                    // one read as a thing. A project that needs a human changes
+                    // that tone rather than gaining a border — one device.
+                    "flex flex-col gap-2.5 rounded-xl p-4",
+                    projectState.tone === "attention" ? "bg-warning-subtle" : "bg-surface-sunken",
+                    deleting && "opacity-70",
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    {deleting ? (
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                        {project.name}
                       </span>
-                    </CardDescription>
-                    <CardAction>
-                      {deleting ? (
-                        <Badge variant="secondary">
-                          <Spinner />
-                          Deleting…
-                        </Badge>
-                      ) : (
-                        <StatusBadge
-                          status={projectStatus}
-                          variant={projectStatus === "running" ? "secondary" : undefined}
-                        />
-                      )}
-                    </CardAction>
-                  </CardHeader>
-                  <CardContent>
-                    {project.description ? (
-                      <p className="mb-4 line-clamp-2 text-sm text-muted-foreground">
-                        {project.description}
-                      </p>
-                    ) : null}
-                    <dl className="grid grid-cols-3 gap-3">
-                      <div className="min-w-0">
-                        <dt className="text-xs text-muted-foreground">Eve version</dt>
-                        <dd className="mt-2">
-                          <EveVersionCardStatus eveVersion={project.eveVersion} />
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-muted-foreground">Latest session</dt>
-                        <dd className="mt-2">
-                          <StatusBadge status={project.latestSessionStatus} />
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-muted-foreground">Next schedule</dt>
-                        <dd className="mt-2 whitespace-nowrap text-xs font-medium">
-                          {project.nextScheduleAt ? (
-                            <CompactDateTime value={project.nextScheduleAt} />
-                          ) : (
-                            "None"
-                          )}
-                        </dd>
-                      </div>
-                    </dl>
-                  </CardContent>
-                  <CardFooter className="justify-between border-t">
-                    <span className="text-xs text-muted-foreground">
-                      Updated <DateTime value={project.updatedAt} />
-                    </span>
-
-                    {!deleting ? (
+                    ) : (
                       <Link
                         href={`/projects/${project.id}`}
-                        aria-label={`Open ${project.name}`}
+                        className="min-w-0 flex-1 truncate text-sm font-semibold hover:underline"
+                      >
+                        {project.name}
+                      </Link>
+                    )}
+                    {deleting ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                        <Spinner className="size-3" />
+                        Deleting
+                      </span>
+                    ) : (
+                      <span
                         className={cn(
-                          buttonVariants({ variant: "ghost", size: "icon-sm" }),
-                          "text-foreground",
+                          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
+                          TONE_PILL[projectState.tone],
                         )}
                       >
-                        <ArrowUpRightIcon />
-                      </Link>
-                    ) : null}
-                  </CardFooter>
-                </Card>
+                        {projectState.label}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    <ProjectSourceIcon aria-hidden="true" className="size-3 shrink-0" />
+                    <span className="truncate" title={project.description ?? source.label}>
+                      {project.description ?? source.label}
+                    </span>
+                  </div>
+
+                  <p className={cn("truncate text-xs", TONE_ACTIVITY[projectState.tone])}>
+                    {projectState.activity}
+                  </p>
+
+                  <div className="flex flex-col gap-1">
+                    <RunHistoryBar days={activity.days} />
+                    <div className="flex items-baseline justify-between font-mono text-[10px] text-muted-foreground/70">
+                      <span>30d</span>
+                      <span className="text-muted-foreground">
+                        {activity.sessions > 0 ? (
+                          <>
+                            <span className="text-foreground">{activity.sessions}</span> runs
+                            {rate ? (
+                              <>
+                                {" · "}
+                                <span className="text-success-foreground">{rate}</span> ok
+                              </>
+                            ) : null}
+                            {p95 ? ` · p95 ${p95}` : null}
+                          </>
+                        ) : (
+                          "no runs"
+                        )}
+                      </span>
+                      <span>today</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-auto flex items-center justify-between pt-2.5 text-[11px] text-muted-foreground">
+                    <span
+                      className={cn(
+                        "truncate font-mono",
+                        project.eveVersion.supported
+                          ? "text-muted-foreground/70"
+                          : "text-destructive-foreground",
+                      )}
+                      title={
+                        project.eveVersion.supported
+                          ? undefined
+                          : `Unsupported Eve version. Upgrade to Eve ${project.eveVersion.expected}.`
+                      }
+                    >
+                      eve {project.eveVersion.version ?? "unknown"}
+                    </span>
+                    <span className="truncate">
+                      {project.nextScheduleAt ? (
+                        <>
+                          Next <CompactDateTime value={project.nextScheduleAt} />
+                        </>
+                      ) : (
+                        <>
+                          Updated <DateTime value={project.updatedAt} />
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </div>
               );
             })}
           </div>
         )}
-      </section>
+      </PageContainer>
     </div>
   );
 }

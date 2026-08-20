@@ -2,12 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarSeparator,
-} from "@/components/ui/sidebar";
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { getProjectNavigationItems, isNavigationItemActive } from "@/lib/navigation";
 
 export function ProjectNav({ projectId }: { projectId: string }) {
@@ -19,21 +14,24 @@ export function ProjectNav({ projectId }: { projectId: string }) {
   return (
     <>
       <ProjectNavigationMenu items={dailyItems} pathname={pathname} />
-      <SidebarSeparator className="my-2" />
-      <ProjectNavigationMenu items={manageItems} pathname={pathname} />
+      {/* The two groups are separated by space, not a rule. A hairline here
+          would be a second device for a boundary the gap already makes. */}
+      <ProjectNavigationMenu className="mt-4" items={manageItems} pathname={pathname} />
     </>
   );
 }
 
 function ProjectNavigationMenu({
+  className,
   items,
   pathname,
 }: {
+  className?: string;
   items: ReadonlyArray<ReturnType<typeof getProjectNavigationItems>[number]>;
   pathname: string;
 }) {
   return (
-    <SidebarMenu>
+    <SidebarMenu className={className}>
       {items.map((item) => {
         const Icon = item.icon;
         return (
