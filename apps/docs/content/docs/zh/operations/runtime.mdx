@@ -7,13 +7,13 @@ Eveland 将持久化 Deployment Identity 与进程生命周期分开。即使 Ru
 
 ## Activation 生命周期
 
-Public Request、Continuation、Stream 与 Schedule 在访问进程前获取 ActivationLease。目标 Dormant 时，API 合并为一个 Activation Job，Worker 使用持久化 Runtime Adapter 启动精确 Release。Gateway 只等待配置的 Cold Start 时间。
+Public Request、Continuation、Stream 与 Schedule 在访问进程前获取 ActivationLease。目标 Dormant 时，API 合并为一个 Activation Job，Worker 使用持久化 Runtime Adapter 启动精确 Release。Agent Gateway 只等待配置的 Cold Start 时间。
 
 最后一个 Lease 结束后，Worker 等待 `EVELAND_ACTIVATION_IDLE_TTL_MS`，再次检查是否出现新保护，然后只停止进程。Upcoming 或 Non-terminal ScheduleRun 会保护其固定 Target。
 
 ## 每 Deployment 限制
 
-两种 Runtime Adapter 都会把 `EVELAND_MEMORY_MAX`、`EVELAND_CPU_QUOTA` 与 `EVELAND_TASKS_MAX` 应用到每个 Deployment cgroup：Docker 对应 `--memory`、`--cpus` 与 `--pids-limit`，systemd 对应 `MemoryMax`、`CPUQuota` 与 `TasksMax`。注入的 bwrap `run()` 命令还会在 `EVELAND_SANDBOX_RUN_TIMEOUT_MS` 后停止（默认 10 分钟）；需要长期存活的 authored process 必须使用 `spawn()`。设置时需要为 Build、Postgres、控制面与并发 Cold Start 留出余量。
+两种 Runtime Adapter 都会把 `EVELAND_MEMORY_MAX`、`EVELAND_CPU_QUOTA` 与 `EVELAND_TASKS_MAX` 应用到每个 Deployment cgroup：Docker 对应 `--memory`、`--cpus` 与 `--pids-limit`，systemd 对应 `MemoryMax`、`CPUQuota` 与 `TasksMax`。注入的 bwrap `run()` 命令还会在 `EVELAND_SANDBOX_RUN_TIMEOUT_MS` 后停止（默认 10 分钟）；需要长期存活的 authored process 必须使用 `spawn()`。设置时需要为 Build、Postgres、核心服务与并发 Cold Start 留出余量。
 
 ## Recovery 与 Reconciliation
 

@@ -13,7 +13,7 @@ export function createStoreFromEnv(): StoreFactoryResult {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error(
-      "DATABASE_URL is not set. The API, Gateway, and Worker must share a Postgres store — set DATABASE_URL (e.g. in .env) so they use the same database.",
+      "DATABASE_URL is not set. The API, Agent Gateway, and Worker must share a Postgres store — set DATABASE_URL (e.g. in .env) so they use the same database.",
     );
   }
 

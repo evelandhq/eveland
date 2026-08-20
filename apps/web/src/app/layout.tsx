@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     default: "Eveland",
     template: "%s | Eveland",
   },
-  description: "Self-hosted eve runtime control plane",
+  description: "Self-hosted deployment and operations platform for Eve agents",
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

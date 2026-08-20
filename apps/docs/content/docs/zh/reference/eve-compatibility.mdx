@@ -3,7 +3,7 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.38.x` 与 `0.39.x`，验证版本为 `0.38.3` 与 `0.39.3`。Eve 0.37 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Gateway 或 Schedule Execution。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.38.x` 与 `0.39.x`，验证版本为 `0.38.3` 与 `0.39.3`。Eve 0.37 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
 UI 仅将最新支持线 `0.39.x` 标为绿色。Eve 0.38.x 保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
@@ -17,9 +17,9 @@ UI 仅将最新支持线 `0.39.x` 标为绿色。Eve 0.38.x 保持可运行，�
 - 自定义 Sandbox Backend Handle 必须实现保留 Durable Session 的 `stop()`；Eveland 会用受管的 bwrap Backend（`@evelandhq/sandbox-bwrap`）替换 Agent 自带的 Backend。
 - 受支持的构建只产出 Discovery Manifest v13；投影器不再接受 v12。
 - Eve 的隐式默认 Model 是 `zai/glm-5.2`；请显式钉住 `model` 以控制 Provider、行为与成本。
-- Durable 后台工作与 Invocation Channel 属于基线：远端子 Session 流经父 Agent 在 `GET /eve/v1/session/:parentSessionId/subagents/:callId/:childSessionId/stream` 跟随、`operationId` 幂等建 Session、`POST /eve/v1/task-input/:token` 回调，以及 `mcpChannel()` 的 Durable Agent 工具都运行在 Eveland 的 Durable Deployment Routing 边界上。由于每条受支持的线都支持这些 Route，Gateway 不再维护按操作区分的 Eve 版本下限——窗口本身就是门禁。
+- Durable 后台工作与 Invocation Channel 属于基线：远端子 Session 流经父 Agent 在 `GET /eve/v1/session/:parentSessionId/subagents/:callId/:childSessionId/stream` 跟随、`operationId` 幂等建 Session、`POST /eve/v1/task-input/:token` 回调，以及 `mcpChannel()` 的 Durable Agent 工具都运行在 Eveland 的 Durable Deployment Routing 边界上。由于每条受支持的线都支持这些 Route，Agent Gateway 不再维护按操作区分的 Eve 版本下限——窗口本身就是门禁。
 
-**Eve 0.38 用 Durable `cancel()` 取代前端 `stop()`，并把 Workflow 移到 Spec v6。** Eveland 的 Playground 会等待 Hook 持有的 `cancel()` 命令（包括第一条事件确定 Durable Turn 之前的窗口），并在 Settlement 完成前保持 Stream Attached。平台注入 `@workflow/world-postgres@5.0.0-beta.34` 或 `@evelandhq/workflow-world@0.9.0`；更老的 Spec v5 World 会在启动门禁处失败。共享 World 还通过 Snapshot 剥离、Block 打包、Checkpoint 与截止期驱动的 Retention 约束物理 Stream 存储。MCP Channel 默认 `/eve/v1/mcp` 且可声明其他 `route`；Eveland 的路径透明 Gateway 会保留任一路径及对应的 OAuth Protected-resource Metadata Route。Eve 0.38 还引入了 Extension 提供的 Channel、Schedule 与带命名空间的 Subagent；其完整的平台调度与观察集成作为单独的兼容性跟进交付。
+**Eve 0.38 用 Durable `cancel()` 取代前端 `stop()`，并把 Workflow 移到 Spec v6。** Eveland 的 Playground 会等待 Hook 持有的 `cancel()` 命令（包括第一条事件确定 Durable Turn 之前的窗口），并在 Settlement 完成前保持 Stream Attached。平台注入 `@workflow/world-postgres@5.0.0-beta.34` 或 `@evelandhq/workflow-world@0.9.0`；更老的 Spec v5 World 会在启动门禁处失败。共享 World 还通过 Snapshot 剥离、Block 打包、Checkpoint 与截止期驱动的 Retention 约束物理 Stream 存储。MCP Channel 默认 `/eve/v1/mcp` 且可声明其他 `route`；Eveland 的路径透明 Agent Gateway 会保留任一路径及对应的 OAuth Protected-resource Metadata Route。Eve 0.38 还引入了 Extension 提供的 Channel、Schedule 与带命名空间的 Subagent；其完整的平台调度与观察集成作为单独的兼容性跟进交付。
 
 **Eve 0.39 将 ChatGPT 订阅模型转正，并把 Sandbox 搜索工具改为 Opt-in。** `chatgpt()` 进入稳定 API，由 Codex 负责认证——但 ChatGPT 订阅模型在设计上仅限本地：Eveland Deployment 内没有 Codex 登录，钉住 `chatgpt()` 的 Agent 可以部署成功但会在运行期失败。部署的 Agent 请使用 AI Gateway 或服务端认证的 Model。Eve 0.39 还把 `glob` 与 `grep` 移出默认 Agent 工具集；依赖它们的 Agent 必须在对应 Tool 文件导出 `defineGlobTool()` / `defineGrepTool()`。子 Agent 现在可以在 `defineSandbox` 回调中返回 `parent.sandbox` 以共享发起调用的父 Agent 的活 Sandbox；这样的子 Agent 不能再声明受管 Workspace 或 Skill 资源，Eveland 的受管 Backend 替换照常作用于父定义。
 
@@ -37,7 +37,7 @@ npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelo
 - Playground 流量
 - 公开 Session 的 Create、Continue、Cancel 与 Stream
 - 公开 Session Reset
-- 到达所选 Deployment 的其余全部公开 Gateway 请求，包括自定义 Channel Route 与 Webhook（休眠的窗口外 Deployment 直接回答 409，而不会被唤醒）
+- 到达所选 Deployment 的其余全部公开 Agent Gateway 请求，包括自定义 Channel Route 与 Webhook（休眠的窗口外 Deployment 直接回答 409，而不会被唤醒）
 - Schedule Execution
 
 诊断信息会请项目所有者升级，而不是猜测旧协议。在生产环境升级 Eve 或 Eveland 之前，请先阅读对应 Release Notes。

@@ -50,7 +50,7 @@ unterminated, or blocking readiness. Never infer state from logs.
 
 1. **Choose the operation id** (e.g. `cut_2026_08_18`) and record the live
    Docker/systemd runtime inventory as audit evidence. This is not the backup.
-2. **Stop everything**: public Web/Gateway ingress, API, Worker, scheduler,
+2. **Stop everything**: public Dashboard/Agent Gateway ingress, API, Worker, scheduler,
    Collector ingest, the dispatcher, and every Agent deployment. Verify
    quiescence from the control plane, the workflow databases, and the process
    manager. Partial stops are not a maintenance boundary.
@@ -202,7 +202,7 @@ db:migrate`; the shared World migrates itself on the next start). Historical
    `control_plane_converged` and the command exits non-zero.
 
 9. **Restart API/Worker in normal mode** (drop `EVELAND_PROCESS_MODE`), keep
-   ingress closed until readiness passes, then reopen Gateway/Web. When the
+   ingress closed until readiness passes, then reopen the Agent Gateway and Dashboard. When the
    Collector resumes, verify a replayed batch does not project a running
    Session (the tombstones/fences hold).
 

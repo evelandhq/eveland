@@ -64,7 +64,7 @@ console.log(`${formatBuildInfo(buildInfo)} listening on http://0.0.0.0:${port}`)
 platformObservability.emitLog({
   severity: "info",
   eventName: "eveland.gateway.ready",
-  body: "Eveland Gateway is ready.",
+  body: "Eveland Agent Gateway is ready.",
   attributes: { "server.port": port },
 });
 

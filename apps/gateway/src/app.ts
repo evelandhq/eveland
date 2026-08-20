@@ -50,12 +50,12 @@ import {
 } from "./gateway-routing.js";
 
 export function createGatewayApp(repository: GatewayRepository, options: GatewayAppOptions): Hono {
-  if (!options.affinitySecret) throw new Error("Gateway affinity secret is required.");
+  if (!options.affinitySecret) throw new Error("Agent Gateway affinity secret is required.");
   if (
     options.maxRequestBodyBytes !== undefined &&
     (!Number.isSafeInteger(options.maxRequestBodyBytes) || options.maxRequestBodyBytes < 0)
   ) {
-    throw new Error("Gateway request body limit must be a non-negative safe integer.");
+    throw new Error("Agent Gateway request body limit must be a non-negative safe integer.");
   }
   const app = new Hono();
   const buildInfo = options.buildInfo ?? createBuildInfoFromEnv("gateway", process.env);

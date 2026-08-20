@@ -317,7 +317,7 @@ export async function handleBuildDeployJob(
         projectId: project.id,
         deploymentId: deployment.id,
         type: "deploy",
-        line: `Gateway cache invalidation deferred to TTL: ${error instanceof Error ? error.message : String(error)}`,
+        line: `Agent Gateway cache invalidation deferred to TTL: ${error instanceof Error ? error.message : String(error)}`,
       });
     });
     await store.updateProjectState(job.projectId, {

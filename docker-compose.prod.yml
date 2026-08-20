@@ -1,4 +1,4 @@
-# Production overlay for a single-box (Linux) deployment. API/Web/Postgres run in Docker
+# Production overlay for a single-box (Linux) deployment. API/Dashboard/Postgres run in Docker
 # Compose; the worker runs on the host as a systemd service (infra/systemd/eveland-worker.service,
 # see docs/deploy/linux.md). For legacy Docker-runtime installs, the containerized worker is
 # available via `--profile docker-worker`.
@@ -18,7 +18,7 @@
 # same absolute path so database sourcePath values are valid in both places.
 #
 # Why host networking: deployed agent containers publish on the host's 127.0.0.1:PORT (loopback,
-# not public); the worker (health check) and Gateway (public proxy + internal Playground) reach them on that same
+# not public); the worker (health check) and Agent Gateway (public proxy + internal Playground) reach them on that same
 # loopback only if they share the host's network. On host network the compose service DNS
 # (postgres/api) is gone, so services talk over localhost; postgres stays bridged but publishes
 # 5432 to the host. `ports: !override []` clears base published ports (incompatible with host net).

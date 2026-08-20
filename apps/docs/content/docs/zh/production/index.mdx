@@ -1,15 +1,15 @@
 ---
 title: 生产架构
-description: 理解受支持的控制面、宿主机 Worker、Gateway 与 systemd Runtime 拓扑。
+description: 理解受支持的核心服务、宿主机 Worker、Agent Gateway 与 systemd Runtime 拓扑。
 ---
 
 Eveland 的生产边界刻意不同于本地开发栈。生产 Eve Deployment 不通过开发阶段的 Docker Runtime 运行。
 
 <RuntimeTopology lang="zh" />
 
-## 控制面
+## 核心服务
 
-Web、API、Gateway、Postgres 与托管 OpenTelemetry Collector 使用生产 Compose Overlay。API 负责需要团队认证的操作和持久化。Gateway 是唯一公开的 Agent 数据面，既不持有 Docker Socket，也不能访问 Source、Release、Secrets 或 Collector 配置。
+Dashboard、API、Agent Gateway、Postgres 与托管 OpenTelemetry Collector 使用生产 Compose Overlay。API 负责需要团队认证的操作和持久化。Agent Gateway 是唯一公开的 Agent 数据面，既不持有 Docker Socket，也不能访问 Source、Release、Secrets 或 Collector 配置。
 
 ## 宿主机运行控制器
 

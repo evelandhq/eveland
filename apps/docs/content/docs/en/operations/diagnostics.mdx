@@ -7,24 +7,24 @@ Start with the state that actually failed. Eveland keeps component health, async
 
 ## Component health
 
-- API and Gateway public `/health` report product version, revision, channel, and component.
+- API and Agent Gateway public `/health` report product version, revision, channel, and component.
 - Worker reports startup identity and writes an already-masked configuration snapshot.
-- Built-in OTLP receive health is separate from control-plane health; Collector exporter queues retry independently.
-- **Settings → About** compares Web/API identity and shows allowlisted masked configuration to admins.
-- **Settings → Instance health** uses a continuous Worker heartbeat, a live Gateway probe, and Postgres queries to show component availability plus Worker-host CPU, memory, data-filesystem, and workload trends. An old Worker configuration snapshot is never treated as liveness evidence.
+- Built-in OTLP receive health is separate from core-service health; Collector exporter queues retry independently.
+- **Settings → About** compares Dashboard and API identity and shows allowlisted masked configuration to admins.
+- **Settings → Instance health** uses a continuous Worker heartbeat, a live Agent Gateway probe, and Postgres queries to show component availability plus Worker-host CPU, memory, data-filesystem, and workload trends. An old Worker configuration snapshot is never treated as liveness evidence.
 
-Instance Health stores one host sample per minute by default and provides 24-hour and 7-day views. Disk exhaustion is forecast only after at least one day of measurable growth; insufficient history stays explicit. A host that has completely lost power cannot report its own failure, so external monitoring should still poll the public API and Gateway `/health` endpoints.
+Instance Health stores one host sample per minute by default and provides 24-hour and 7-day views. Disk exhaustion is forecast only after at least one day of measurable growth; insufficient history stays explicit. A host that has completely lost power cannot report its own failure, so external monitoring should still poll the public API and Agent Gateway `/health` endpoints.
 
 ## Choose the right evidence
 
-| Failure                               | Start here                                               |
-| ------------------------------------- | -------------------------------------------------------- |
-| Import or source validation           | Import job and Source Preflight log                      |
-| Dependency install or `eve build`     | Build log                                                |
-| Unit startup or health timeout        | Deploy diagnostic and systemd journal                    |
-| Agent process output                  | Runtime stdout/stderr                                    |
-| Model, tool, subagent, or usage issue | Session timeline                                         |
-| Stable or preview Host failure        | Gateway health, route policy, and target RuntimeInstance |
+| Failure                               | Start here                                                     |
+| ------------------------------------- | -------------------------------------------------------------- |
+| Import or source validation           | Import job and Source Preflight log                            |
+| Dependency install or `eve build`     | Build log                                                      |
+| Unit startup or health timeout        | Deploy diagnostic and systemd journal                          |
+| Agent process output                  | Runtime stdout/stderr                                          |
+| Model, tool, subagent, or usage issue | Session timeline                                               |
+| Stable or preview Host failure        | Agent Gateway health, route policy, and target RuntimeInstance |
 
 Initial health failures capture bounded recent unit state and journal output before cleanup. Project Secret values are masked, and a diagnostic or cleanup failure never replaces the original deployment error.
 

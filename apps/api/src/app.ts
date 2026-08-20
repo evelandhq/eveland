@@ -62,7 +62,7 @@ export function createApp(
     "source preflight TTL",
   );
   if (!options.auth && process.env.NODE_ENV !== "test") {
-    throw new Error("Control-plane authentication is required outside tests.");
+    throw new Error("Platform authentication is required outside tests.");
   }
   const appSecretKey = options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
   assertValidSecretKey(appSecretKey);

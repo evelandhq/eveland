@@ -14,14 +14,14 @@ const copy = {
     hero: {
       eyebrow: "Production runtime for Eve",
       title: "Run your team's Eve agents.\nOn your infrastructure.",
-      body: "Install one self-hosted control plane, deploy immutable previews, route stable traffic, and run every Agent inside an isolated systemd service.",
+      body: "Install one self-hosted platform, deploy immutable previews, route stable traffic, and run every Agent inside an isolated systemd service.",
       primary: "Deploy Eveland",
       secondary: "Production architecture",
     },
     system: {
       edge: "Public edge",
-      plane: "Control plane",
-      planeServices: "Web · API · Gateway · Postgres",
+      plane: "Core services",
+      planeServices: "Dashboard · API · Agent Gateway · Postgres",
       host: "Linux host",
       worker: "Host Worker",
       runtime: "systemd Agent runtime",
@@ -33,7 +33,7 @@ const copy = {
     proof: {
       label: "A deliberate production boundary",
       title: "Public traffic never becomes host control.",
-      body: "Gateway routes Agent requests without the Docker socket, source tree, decrypted secrets, or telemetry policy data. Only the host Worker can build releases and control systemd deployments.",
+      body: "The Agent Gateway routes Agent requests without the Docker socket, source tree, decrypted secrets, or telemetry policy data. Only the host Worker can build releases and control systemd deployments.",
     },
     foundations: {
       label: "Built for a team-owned platform",
@@ -117,14 +117,14 @@ const copy = {
     hero: {
       eyebrow: "面向 Eve 的生产运行时",
       title: "运行团队自己的 Eve Agents。\n就在你的基础设施上。",
-      body: "部署一套自托管控制面，构建不可变 Preview，路由稳定流量，并让每个 Agent 在隔离的 systemd Service 中运行。",
+      body: "部署一套自托管平台，构建不可变 Preview，路由稳定流量，并让每个 Agent 在隔离的 systemd Service 中运行。",
       primary: "部署 Eveland",
       secondary: "查看生产架构",
     },
     system: {
       edge: "公开入口",
-      plane: "控制面",
-      planeServices: "Web · API · Gateway · Postgres",
+      plane: "核心服务",
+      planeServices: "Dashboard · API · Agent Gateway · Postgres",
       host: "Linux 宿主机",
       worker: "宿主机 Worker",
       runtime: "systemd Agent Runtime",
@@ -136,7 +136,7 @@ const copy = {
     proof: {
       label: "刻意设计的生产边界",
       title: "公开流量永远不会变成宿主机控制权。",
-      body: "Gateway 在没有 Docker Socket、源码、解密 Secrets 或 Telemetry Policy 数据的情况下路由 Agent 请求。只有宿主机 Worker 能构建 Release 并控制 systemd Deployment。",
+      body: "Agent Gateway 在没有 Docker Socket、源码、解密 Secrets 或 Telemetry Policy 数据的情况下路由 Agent 请求。只有宿主机 Worker 能构建 Release 并控制 systemd Deployment。",
     },
     foundations: {
       label: "为团队自有平台而构建",

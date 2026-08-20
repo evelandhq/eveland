@@ -520,6 +520,8 @@ export async function invalidateGatewayRouteCache(
       body: JSON.stringify({ hostname: route.hostname }),
     });
     if (!response.ok)
-      throw new Error(`Gateway returned ${response.status} while invalidating ${route.hostname}.`);
+      throw new Error(
+        `Agent Gateway returned ${response.status} while invalidating ${route.hostname}.`,
+      );
   }
 }

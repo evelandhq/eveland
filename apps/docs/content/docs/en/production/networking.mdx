@@ -1,9 +1,9 @@
 ---
 title: Configure Agent traffic
-description: Configure wildcard DNS, TLS, Traefik, Gateway, and private deployment ports.
+description: Configure wildcard DNS, TLS, Traefik, the Agent Gateway, and private deployment ports.
 ---
 
-Gateway is the only public entry point for Agent traffic. Raw deployment ports are private implementation details.
+The Agent Gateway is the only public entry point for Agent traffic. Raw deployment ports are private implementation details.
 
 ## Hostnames
 
@@ -15,10 +15,10 @@ The preview separator remains within one DNS label, so one wildcard certificate 
 
 ## Reverse proxy
 
-Start from `infra/traefik/agents.yml`. Route wildcard Agent hosts to Gateway on port `4080`, retain the `/internal` exclusion, and never publish the deployment range `127.0.0.1:41xxx`.
+Start from `infra/traefik/agents.yml`. Route wildcard Agent hosts to the Agent Gateway on port `4080`, retain the `/internal` exclusion, and never publish the deployment range `127.0.0.1:41xxx`.
 
-## Gateway boundary
+## Agent Gateway boundary
 
-Gateway validates the complete canonical Host, strips untrusted forwarding and reserved Eveland headers, then rebuilds trusted platform headers. It preserves the Agent's own Authorization, cookies, origin semantics, request streaming, and NDJSON response streaming.
+The Agent Gateway validates the complete canonical Host, strips untrusted forwarding and reserved Eveland headers, then rebuilds trusted platform headers. It preserves the Agent's own Authorization, cookies, origin semantics, request streaming, and NDJSON response streaming.
 
 The service-authenticated Playground and activation routes under `/internal/*` must remain unreachable through the public proxy.

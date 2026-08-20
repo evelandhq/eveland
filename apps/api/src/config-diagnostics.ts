@@ -39,7 +39,7 @@ async function readGatewaySnapshot(env: Environment, fetchDiagnostics: Fetch) {
     "eveland-dev-gateway-token",
   );
   if (!serviceToken)
-    return unavailable("gateway", "Gateway diagnostics credentials are not configured.");
+    return unavailable("gateway", "Agent Gateway diagnostics credentials are not configured.");
 
   try {
     const response = await fetchDiagnostics(`${gatewayUrl}/internal/diagnostics/config`, {
@@ -47,13 +47,13 @@ async function readGatewaySnapshot(env: Environment, fetchDiagnostics: Fetch) {
       headers: { authorization: `Bearer ${serviceToken}` },
       signal: AbortSignal.timeout(5_000),
     });
-    if (!response.ok) return unavailable("gateway", "Gateway diagnostics are unavailable.");
+    if (!response.ok) return unavailable("gateway", "Agent Gateway diagnostics are unavailable.");
     const snapshot = (await response.json()) as unknown;
     return isSnapshot(snapshot, "gateway")
       ? snapshot
-      : unavailable("gateway", "Gateway returned invalid diagnostics.");
+      : unavailable("gateway", "Agent Gateway returned invalid diagnostics.");
   } catch {
-    return unavailable("gateway", "Gateway diagnostics are unavailable.");
+    return unavailable("gateway", "Agent Gateway diagnostics are unavailable.");
   }
 }
 

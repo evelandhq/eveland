@@ -18,7 +18,7 @@ describe("instance health diagnostics", () => {
 
     expect(health).toEqual({
       status: "healthy",
-      message: "Gateway health endpoint is reachable.",
+      message: "Agent Gateway health endpoint is reachable.",
       observedAt: "2026-07-18T10:00:00.000Z",
     });
   });

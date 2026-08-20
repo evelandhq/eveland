@@ -20,13 +20,13 @@ Eveland does not replace Eve's filesystem-first authoring model or the Agent's o
 
 ## Production by design
 
-The supported production topology separates the control plane from privileged runtime control. Web, API, Gateway, and Postgres form the control plane; a host Worker starts Eve deployments as isolated systemd services. Agent ports stay on private loopback, while Gateway owns the stable and preview hosts.
+The supported production topology separates the core services from privileged runtime control. The Dashboard, API, Agent Gateway, and Postgres form the core services; a host Worker starts Eve deployments as isolated systemd services. Agent ports stay on private loopback, while the Agent Gateway owns the stable and preview hosts.
 
 This boundary keeps the Docker controller, source tree, decrypted secrets, and telemetry policy data away from public Agent traffic. Per-deployment CPU and memory limits, idle stopping, and on-demand activation keep runtime capacity intentional.
 
 ## Choose your path
 
-- **Platform administrators:** start with [Production architecture](/docs/production), prepare a Linux host, install the control plane and Worker, then verify the complete path.
+- **Platform administrators:** start with [Production architecture](/docs/production), prepare a Linux host, install the core services and Worker, then verify the complete path.
 - **Team members:** if Eveland is already installed, follow [Deploy your first agent](/docs/agents/first-deployment).
 - **Operators:** use [Runtime and resources](/docs/operations/runtime) and [Health and diagnostics](/docs/operations/diagnostics) for day-two work.
 

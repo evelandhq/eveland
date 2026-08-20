@@ -1,9 +1,9 @@
 ---
 title: 安装宿主机 Worker
-description: 将特权 Worker 安装为 systemd Service，并连接到控制面。
+description: 将特权 Worker 安装为 systemd Service，并连接到核心服务。
 ---
 
-Worker 是唯一的 Runtime Controller。生产环境将它放在宿主机上，从而避免 API 与 Gateway 获得 systemd 或 Docker Controller 权限。
+Worker 是唯一的 Runtime Controller。生产环境将它放在宿主机上，从而避免 API 与 Agent Gateway 获得 systemd 或 Docker Controller 权限。
 
 ## 安装 Service
 
@@ -13,7 +13,7 @@ sudo cp infra/systemd/eveland-worker.env.example /etc/eveland/eveland-worker.env
 sudo cp infra/systemd/eveland-worker.service /etc/systemd/system/
 ```
 
-启动前配置 Environment File。至少应与控制面对齐数据库访问、`/var/lib/eveland`、应用加密、Agent Domain、Gateway Service Authentication、Workflow Postgres、Scheduler Secrets、Release Identity 与 `EVELAND_RUNTIME=systemd`。
+启动前配置 Environment File。至少应与核心服务对齐数据库访问、`/var/lib/eveland`、应用加密、Agent Domain、Agent Gateway Service Authentication、Workflow Postgres、Scheduler Secrets、Release Identity 与 `EVELAND_RUNTIME=systemd`。
 
 ```bash
 sudo systemctl daemon-reload

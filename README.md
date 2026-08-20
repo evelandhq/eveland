@@ -1,8 +1,8 @@
 # Eveland
 
-Self-hosted control plane for importing, deploying, and observing [eve](https://eve.dev)
+Self-hosted platform for importing, deploying, and observing [eve](https://eve.dev)
 projects: import an Eve project from a Git repo or Zip upload, configure its runtime
-environment, deploy it behind a public Agent gateway, and observe its Sessions, usage,
+environment, deploy it behind a public Agent Gateway, and observe its Sessions, usage,
 schedules, and logs.
 
 Product behavior is specified in [`docs/spec.md`](docs/spec.md). This README covers the
@@ -25,22 +25,22 @@ repository shape and how to run it.
 - `packages/agent-scheduler`: release-time injection of the private Scheduler Channel,
   including namespaced schedules contributed or overridden by Eve Extensions.
 - `packages/platform-observability`: shared OpenTelemetry SDK bootstrap for API,
-  Gateway, and Worker.
+  Agent Gateway, and Worker.
 - `packages/session-collector`: standard OTLP decoding and projection into the built-in
   Session, usage, and instance-health read models.
 - `packages/sdk`: the published `eveland` npm package (`eveland/auth`).
 - `packages/architecture-tests`: executable ratchets for the workspace's dependency
   direction, import cycles, full-Store consumers, browser-safe core exports, and
   environment-variable coverage.
-- `apps/api`: Hono control-plane API with Better Auth sessions, team membership, and
+- `apps/api`: Hono platform API with Better Auth sessions, team membership, and
   the authenticated built-in OTLP ingest endpoint.
-- `apps/gateway`: host-routed public Agent data plane. Preserves Agent auth/cookies and
+- `apps/gateway`: the Agent Gateway — host-routed public Agent data plane. Preserves Agent auth/cookies and
   streaming bodies, pins Eve sessions to deployments, keeps raw Agent ports private.
 - `apps/worker`: Docker and systemd runtime adapters plus the Postgres job consumer for
   import, build, restart, and schedule jobs. Both runtimes enforce per-Deployment
   memory, CPU, and task limits; injected bwrap `run()` commands also have a hard
   wall-clock deadline.
-- `apps/web`: Next.js App Router control panel (shadcn preset, Tailwind v4).
+- `apps/web`: the Dashboard — Next.js App Router console (shadcn preset, Tailwind v4).
 - `apps/docs`: bilingual public website and documentation for `eveland.ai` (Next.js +
   Fumadocs), separate from the authenticated control panel.
 
@@ -62,7 +62,7 @@ The main entrypoints are composers rather than homes for every implementation:
   sandbox, and observability inputs while each job handler retains its own
   build/stop/start/health/state lifecycle. Lower-level secret, filesystem, and
   networking helpers live in `process-support.ts`.
-- Gateway request/response lifecycle handling lives in
+- Agent Gateway request/response lifecycle handling lives in
   `apps/gateway/src/gateway-request-lifecycle.ts`; canonical Host validation,
   trusted forwarding headers, affinity cookies, and target selection live in
   `gateway-routing.ts`, while create-once and MCP durable keys live in
@@ -93,7 +93,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env                  # set BETTER_AUTH_SECRET and EVELAND_ADMIN_PASSWORD
 docker compose up -d postgres otel-collector # database and platform OTLP receiver
 pnpm --filter @evelandhq/api db:migrate  # required on first run and after schema changes
-pnpm dev                               # start API, Gateway, web, worker, and docs
+pnpm dev                               # start the API, Agent Gateway, Dashboard, worker, and docs
 ```
 
 Open the control panel at `http://localhost:3000` and the public documentation site at
@@ -103,8 +103,8 @@ Open the control panel at `http://localhost:3000` and the public documentation s
   `EVELAND_ADMIN_PASSWORD` and must contain at least 12 characters.
   `BETTER_AUTH_SECRET` is a separate random secret of at least 32 characters, and
   `BETTER_AUTH_URL` must be the browser-visible API origin.
-- All four processes are required: the web form posts to the API, Playground/public
-  Agent traffic goes through Gateway, and imports, builds, and deploys are executed by
+- All four processes are required: the Dashboard posts to the API, Playground/public
+  Agent traffic goes through Agent Gateway, and imports, builds, and deploys are executed by
   the worker's job polling — without it, projects stay pending after upload.
 - The workflow dispatcher waits for the API health endpoint before claiming durable
   jobs, so parallel `pnpm dev` startup does not spend a Graphile retry while the API is
@@ -149,13 +149,13 @@ Connection marketplace remains out of scope.
 ### Full stack in Docker Compose
 
 Docker Compose runs the complete stack (Postgres + OpenTelemetry Collector + API +
-Gateway + web + worker) in **development mode**:
+Agent Gateway + Dashboard + worker) in **development mode**:
 
 ```bash
 docker compose up
 ```
 
-- Only the worker receives the Docker controller socket; Gateway masks `.eveland-data`
+- Only the worker receives the Docker controller socket; Agent Gateway masks `.eveland-data`
   so the public proxy cannot read imported sources, Collector configuration, or
   encrypted project secrets.
 - When the worker runs in Compose, `EVELAND_HOST_DATA_DIR` must be the host-absolute
@@ -184,19 +184,19 @@ edits for the account and zone that own `eveland.ai`).
 
 ## Production (single-box Linux deploy)
 
-The production topology separates the control plane from the privileged runtime
+The production topology separates the core services from the privileged runtime
 controller:
 
-- Postgres, OpenTelemetry Collector, API, Gateway, and web run through Docker Compose.
+- Postgres, OpenTelemetry Collector, API, Agent Gateway, and the Dashboard run through Docker Compose.
 - Worker runs directly on the host as a systemd service and starts Agent
   deployments through the systemd runtime.
-- Traefik forwards wildcard public Agent hosts to Gateway on port 4080. Agent
+- Traefik forwards wildcard public Agent hosts to Agent Gateway on port 4080. Agent
   processes remain private on `127.0.0.1:41xxx`.
 - API and the host worker share `/var/lib/eveland` at the same absolute path for
   sources, releases, Collector configuration, and runtime state.
 
 Complete the Linux host prerequisites in [`docs/deploy/linux.md`](docs/deploy/linux.md),
-then set the public origins, Agent domain, and independent Gateway secrets in a
+then set the public origins, Agent domain, and independent Agent Gateway secrets in a
 local `.env`:
 
 ```bash
@@ -221,7 +221,7 @@ EVELAND_COOKIE_DOMAIN=.example.com
 EVELAND_RELEASE_CHANNEL=stable
 EVELAND_REVISION=<git-rev-parse-short-12-output>
 
-# Start only the unprivileged control-plane services.
+# Start only the unprivileged core services.
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
@@ -230,14 +230,14 @@ Before a real production deploy, replace it for the API through a site-specific
 Compose override with a private 32-byte value, and configure that exact value in
 the host worker. Do not use the checked-in development fallback in production.
 
-The production overlay uses host networking so Gateway can reach systemd Agent
-processes on host loopback. It runs the web production build and configures the
+The production overlay uses host networking so Agent Gateway can reach systemd Agent
+processes on host loopback. It runs the Dashboard production build and configures the
 Compose services with `restart: unless-stopped`; it does **not** start the
 containerized worker by default.
 
 After configuring `infra/systemd/eveland-worker.env.example` for the same
-database, data root, Agent domain, Gateway service token, and application secret
-as the control plane, install and start the host worker:
+database, data root, Agent domain, Agent Gateway service token, and application secret
+as the core services, install and start the host worker:
 
 ```bash
 sudo install -d -m 0750 /etc/eveland
@@ -255,8 +255,8 @@ runtime, the old containerized worker is available only through the explicit
 [`docs/deploy/linux.md`](docs/deploy/linux.md) for host users, bubblewrap/AppArmor,
 preflight, secrets, reverse-proxy, and smoke-test details.
 
-When Web and API use sibling hosts, set `EVELAND_COOKIE_DOMAIN` to their shared parent
-domain so the HttpOnly control-plane Session cookie reaches both services. Leave it
+When the Dashboard and API use sibling hosts, set `EVELAND_COOKIE_DOMAIN` to their shared parent
+domain so the HttpOnly platform Session cookie reaches both services. Leave it
 unset for localhost.
 
 Agent projects accept Eveland Caller Tokens with `evelandIdentity()` from the
@@ -265,9 +265,9 @@ versioned `eveland/auth` SDK entry point under `packages/sdk`; see its
 
 ## Versioning and releases
 
-Eveland is a single SemVer-versioned product. API and Gateway `GET /health` report
+Eveland is a single SemVer-versioned product. API and Agent Gateway `GET /health` report
 `service: eveland`, their `component`, the product `version`, exact Git `revision`,
-and release `channel`; Web compares its build with the API build in Settings > About.
+and release `channel`; the Dashboard compares its build with the API build in Settings > About.
 Only `vX.Y.Z` tags are stable releases; `main` is the `edge` channel. Release Please
 maintains the release PR, `CHANGELOG.md`, Git tag, and GitHub Release from
 Conventional Commit history. The bubblewrap sandbox backend

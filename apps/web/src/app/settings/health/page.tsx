@@ -151,7 +151,7 @@ export default async function InstanceHealthPage({
             Components
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Current evidence from the control plane and runtime path.
+            Current evidence from the core services and runtime path.
           </p>
         </div>
         <div className="overflow-hidden rounded-md border">
@@ -361,8 +361,8 @@ function WorkloadValue({ label, value }: { label: string; value: number | string
 }
 
 const pgRoleLabels = {
-  shared: "Postgres (control plane + workflows)",
-  control: "Control-plane Postgres",
+  shared: "Postgres (platform + workflows)",
+  control: "Platform Postgres",
   workflow: "Workflow Postgres",
 } as const;
 
