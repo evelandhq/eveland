@@ -9,7 +9,7 @@ function machine(totalGib: number, cpuCoreCount: number) {
 
 describe("deriveMaxConcurrentHeavyJobs", () => {
   test.each([
-    // Mirrors the reference table in docs/deploy/linux.md "Capacity planning".
+    // Mirrors the reference table in docs/en/operations/capacity.md.
     { totalGib: 4, cores: 4, expected: 1 },
     { totalGib: 8, cores: 4, expected: 2 },
     { totalGib: 16, cores: 8, expected: 4 },

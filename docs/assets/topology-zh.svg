@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 384" role="img" aria-label="Eveland 生产拓扑">
+  <style>
+    .card { fill: #ffffff; stroke: #d9dde3; stroke-width: 1; }
+    .box { fill: #f6f7f9; stroke: #c9ced6; stroke-width: 1; }
+    .box-edge { fill: #eef2f7; stroke: #b7c2d0; }
+    .box-agents { fill: #f4f7f4; stroke: #bccabc; }
+    .label { font: 600 11px -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; letter-spacing: 0.06em; }
+    .name { font: 700 15px -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #1f2328; }
+    .sub { font: 400 11.5px -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; }
+    .edge-label { font: 400 11px -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; }
+    .line { stroke: #9aa2ad; stroke-width: 1.2; fill: none; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0.5 L7.5,4 L0,7.5" fill="none" stroke="#9aa2ad" stroke-width="1.2"/>
+    </marker>
+  </defs>
+  <rect class="card" x="0.5" y="0.5" width="719" height="383" rx="12"/>
+
+  <rect class="box box-edge" x="210" y="24" width="300" height="76" rx="8"/>
+  <text class="label" x="360" y="44" text-anchor="middle">公开入口</text>
+  <text class="name" x="360" y="66" text-anchor="middle">Traefik</text>
+  <text class="sub" x="360" y="86" text-anchor="middle">Wildcard Agent Host</text>
+
+  <line class="line" x1="360" y1="100" x2="360" y2="134" marker-end="url(#arrow)"/>
+
+  <rect class="box" x="40" y="140" width="310" height="94" rx="8"/>
+  <text class="label" x="195" y="162" text-anchor="middle">生产 Compose 核心服务</text>
+  <text class="name" x="195" y="186" text-anchor="middle">Dashboard · API · Agent Gateway</text>
+  <text class="sub" x="195" y="208" text-anchor="middle">Postgres + 共享数据目录</text>
+
+  <line class="line" x1="356" y1="176" x2="464" y2="176" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text class="edge-label" x="410" y="168" text-anchor="middle">Job · Event</text>
+
+  <rect class="box" x="470" y="140" width="210" height="94" rx="8"/>
+  <text class="label" x="575" y="162" text-anchor="middle">Linux 宿主机</text>
+  <text class="name" x="575" y="186" text-anchor="middle">Worker</text>
+  <text class="sub" x="575" y="208" text-anchor="middle">systemd Controller</text>
+
+  <line class="line" x1="195" y1="234" x2="195" y2="272" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="205" y="257">Agent 流量</text>
+  <line class="line" x1="575" y1="234" x2="575" y2="272" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="565" y="257" text-anchor="end">启动 · 控制</text>
+
+  <rect class="box box-agents" x="150" y="278" width="440" height="80" rx="8"/>
+  <text class="label" x="370" y="300" text-anchor="middle">私有 Loopback</text>
+  <text class="name" x="370" y="322" text-anchor="middle">Eve Deployments</text>
+  <text class="sub" x="370" y="344" text-anchor="middle">127.0.0.1:41xxx · 隔离 Service User</text>
+</svg>

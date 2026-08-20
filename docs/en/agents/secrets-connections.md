@@ -1,0 +1,33 @@
+---
+title: Secrets, Connections, and Playground authentication
+description: Separate Eve Connections and runtime values from credentials Eveland uses to call a protected Agent.
+---
+
+Eveland keeps Eve Connections, values injected into the Agent process, and credentials used by Playground to call the Agent's protected Eve route conceptually separate.
+
+## Runtime secrets
+
+Project Secrets are encrypted at rest and materialized only for the target process. Saving, replacing, or deleting one queues a targeted restart for every running or draining Deployment so no route keeps a stale environment.
+
+Mutations apply asynchronously: each change queues one `restart_deployment` job per running or draining Deployment — stable, preview, and A/B targets alike. Each restart reuses the immutable Release and rebuilds only the process environment. Wait for those jobs to finish before testing a new value; the operational detail lives in the [security model](/docs/operations/security).
+
+Administrators maintain one revisioned Shared Agent Environment for common LLM keys and runtime defaults. It applies automatically to every Agent Deployment. Effective precedence is Shared Agent Environment, Project Secrets, then Eveland-reserved values, so a Project can override a shared key.
+
+## Eve Connections
+
+A Connection has Eve's official meaning: a definition under `agent/connections/` that lets the Agent access an external MCP or OpenAPI server. Static Connection tokens and API keys can read Project Secrets from the Agent runtime environment; they are not Playground credentials.
+
+## Playground authentication
+
+From Playground, explicitly choose local development, no credential, Eveland Identity, Basic, Bearer, Vercel OIDC, custom headers, or generic OIDC Authorization Code. Eveland never infers the method from source, provider name, or an authentication challenge.
+
+Eveland Identity sends an Eveland-issued Caller Token, so an Agent's `evelandIdentity()` AuthFn sees the same identity a real caller would. It has no fields: which Principal the token names follows the instance's Identity Provider. Open access names its one shared Principal; Eveland Internal names your own signed-in user, so two members of the same Project do not share a credential. With an OIDC provider, callers signed in through OIDC mint their own Caller Tokens from their identity session; the Playground method itself stays unavailable because a platform user has no trusted mapping to an IdP user.
+
+Secret-bearing authentication fields select a Project Secret. API resolves the current reference for each create, continue, cancel, and stream request; the credential never enters Dashboard or Agent Gateway storage. The Shared Agent Environment cannot be used as a Playground authentication credential.
+
+## Rotation behavior
+
+- Project Secret changes restart that Project's live Deployments; Shared Agent Environment changes restart every live Deployment.
+- Playground-authentication Project Secret changes resolve per request and do not restart the Agent.
+- Deleted values fail closed instead of falling back to an older plaintext copy.
+- Secret values are added to diagnostic masking and never returned through client APIs.

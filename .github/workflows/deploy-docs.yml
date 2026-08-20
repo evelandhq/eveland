@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - apps/docs/**
+      - docs/**
   workflow_dispatch:
 
 permissions:
@@ -37,7 +38,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: apps/docs/.next/cache
-          key: ${{ runner.os }}-next-docs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/docs/**/*.js', 'apps/docs/**/*.mjs', 'apps/docs/**/*.ts', 'apps/docs/**/*.tsx', 'apps/docs/**/*.css', 'apps/docs/**/*.json', 'apps/docs/**/*.mdx') }}
+          key: ${{ runner.os }}-next-docs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/docs/**/*.js', 'apps/docs/**/*.mjs', 'apps/docs/**/*.ts', 'apps/docs/**/*.tsx', 'apps/docs/**/*.css', 'apps/docs/**/*.json', 'docs/**/*.md', 'docs/**/*.json', 'docs/**/*.svg') }}
           restore-keys: |
             ${{ runner.os }}-next-docs-${{ hashFiles('pnpm-lock.yaml') }}-
 

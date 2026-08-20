@@ -1,0 +1,11 @@
+{
+  "title": "Reference",
+  "pages": [
+    "configuration",
+    "environment-variables",
+    "eve-compatibility",
+    "architecture",
+    "observability",
+    "troubleshooting"
+  ]
+}

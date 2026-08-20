@@ -185,7 +185,10 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     ).not.toBeNull();
     expect(postgresInjected![1]).toBe(postgresWorldManifest.version);
 
-    for (const documentation of [readSource("docs/spec.md"), readSource("docs/deploy/linux.md")]) {
+    for (const documentation of [
+      readSource("spec.md"),
+      readSource("docs/en/operations/runtime.md"),
+    ]) {
       expect(documentation).toContain(`@evelandhq/workflow-world@${worldManifest.version}`);
       expect(documentation).toContain(`@workflow/world-postgres@${postgresWorldManifest.version}`);
     }

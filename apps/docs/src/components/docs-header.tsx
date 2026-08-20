@@ -30,7 +30,7 @@ export function DocsHeader({ lang }: { lang: Language }) {
         </div>
 
         <nav className="eve-docs-header-nav" aria-label="Documentation navigation">
-          <Link href={localizedHref(lang)}>{lang === "zh" ? "首页" : "Overview"}</Link>
+          <Link href={localizedHref(lang)}>{lang === "zh" ? "首页" : "Home"}</Link>
           <Link aria-current="page" href={localizedHref(lang, "/docs")}>
             {t.nav.docs}
           </Link>

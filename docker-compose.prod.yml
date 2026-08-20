@@ -1,6 +1,6 @@
 # Production overlay for a single-box (Linux) deployment. API/Dashboard/Postgres run in Docker
 # Compose; the worker runs on the host as a systemd service (infra/systemd/eveland-worker.service,
-# see docs/deploy/linux.md). For legacy Docker-runtime installs, the containerized worker is
+# see docs/en/production/core-services.md). For legacy Docker-runtime installs, the containerized worker is
 # available via `--profile docker-worker`.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d

@@ -1,0 +1,33 @@
+---
+title: 概览
+description: 在自己的基础设施上为团队部署和运营 Eve Agents。
+---
+
+Eveland 是面向团队的自托管部署与运营平台，服务于已经使用 [Eve](https://eve.dev) 构建 Agent 的团队。Eve 定义 Agent；Eveland 为 Agent 提供由 Release、Preview、稳定路由、运行时隔离、Schedules 与 Session 可观测性组成的生产运行环境。
+
+## Eveland 负责什么
+
+```text
+Eve Project
+  → Source Revision
+  → 不可变 Release
+  → Preview Deployment
+  → Stable Route
+  → Sessions、Usage 与 Schedules
+```
+
+Eveland 不替代 Eve 的文件系统优先编写方式，也不接管 Agent 自己的应用认证。它管理的是项目准备好运行之后的部分。
+
+## 为生产环境而设计
+
+受支持的生产拓扑将核心服务与宿主机运行权限分开。Dashboard、API、Agent Gateway、Postgres 与托管 OpenTelemetry Collector 组成核心服务；宿主机 Worker 将 Eve Deployment 启动为隔离的 systemd Service，再由恰好一个 Workflow Dispatcher 补齐生产拓扑。Agent 端口只监听私有 Loopback，Agent Gateway 负责稳定与预览 Host。
+
+该边界使 Docker Controller、源码、解密后的 Secrets 和 Telemetry Policy 数据远离公开 Agent 流量。每个 Deployment 的 CPU/内存限制、空闲停止与按需唤醒让资源使用保持可控。
+
+## 选择你的路径
+
+- **平台管理员：** 从[生产架构](/zh/docs/production)开始，准备 Linux 主机，安装核心服务和 Worker，再验收完整链路。
+- **团队成员：** 如果 Eveland 已安装，直接[部署第一个 Agent](/zh/docs/agents/first-deployment)。
+- **平台运维：** 使用[运行时与资源](/zh/docs/operations/runtime)和[健康与诊断](/zh/docs/operations/diagnostics)处理日常运营；[容量](/zh/docs/operations/capacity)、[备份与恢复](/zh/docs/operations/backup-restore)与[环境变量参考](/zh/docs/reference/environment-variables)覆盖更深入的场景。
+
+本地 Docker 开发和仓库贡献流程继续由仓库 README 承载，不属于生产部署主路径。

@@ -83,7 +83,7 @@ export function createRuntimeAdapterForKind(
 /**
  * Explicit `EVELAND_RUNTIME` always wins, so a legacy Docker production host opts
  * out with one env var. Absent that, `NODE_ENV=production` resolves to `systemd`
- * -- it's the supported production shape (see docs/deploy/linux.md) -- while dev
+ * -- it's the supported production shape (see docs/en/production/index.md) -- while dev
  * and CI (no `NODE_ENV=production`) keep the `docker` default they already rely on.
  */
 export function resolveRuntimeKind(env: NodeJS.ProcessEnv): string {

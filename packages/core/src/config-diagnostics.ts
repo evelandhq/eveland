@@ -69,7 +69,7 @@ const allComponents: EvelandComponent[] = ["web", "api", "gateway", "worker"];
 
 /**
  * Every environment variable the platform reads, with the component that reads
- * it and what it is for. Exported so `docs/environment-variables.md` can be
+ * it and what it is for. Exported so `docs/en/reference/environment-variables.md` can be
  * checked against it: that reference drifted to 22 undocumented variables
  * because nothing tied the two together.
  */

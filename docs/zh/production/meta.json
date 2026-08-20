@@ -1,0 +1,12 @@
+{
+  "title": "部署 Eveland",
+  "pages": [
+    "index",
+    "prerequisites",
+    "core-services",
+    "worker",
+    "workflow-dispatcher",
+    "networking",
+    "verify"
+  ]
+}

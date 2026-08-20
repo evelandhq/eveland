@@ -292,7 +292,7 @@ export async function assertWorkerPreflight(
     if (networkPoolIssue) {
       throw new Error(
         "docker runtime preflight failed: Docker could not allocate and release an Agent bridge network. " +
-          "Configure a non-overlapping default-address-pools range in /etc/docker/daemon.json as documented in docs/deploy/linux.md. " +
+          "Configure a non-overlapping default-address-pools range in /etc/docker/daemon.json as documented at https://eveland.ai/docs/reference/troubleshooting. " +
           `Docker reported: ${networkPoolIssue}`,
       );
     }
