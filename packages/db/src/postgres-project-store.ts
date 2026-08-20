@@ -1,5 +1,5 @@
 import { claimProjectSlug, createId, slugifyProjectName } from "@evelandhq/core/ids";
-import { and, asc, desc, eq, getTableColumns, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gte, inArray, lte, or, sql } from "drizzle-orm";
 import {
   gitCredentialRowToPublic,
   gitCredentialRowToRecord,
@@ -35,6 +35,7 @@ import {
   teams,
   users,
 } from "./schema.js";
+import type { ProjectActivityDay } from "@evelandhq/core/contracts";
 import type {
   CreateProjectInput,
   GitCredentialStore,
@@ -53,6 +54,28 @@ const defaultOwner = {
   email: "admin@example.com",
   name: "Local Admin",
 };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Worst outcome wins the day: a single failure colours the whole cell. */
+const DAY_SEVERITY: Record<ProjectActivityDay, number> = {
+  none: 0,
+  ok: 1,
+  attention: 2,
+  failed: 3,
+};
+
+function sessionStatusToDay(status: string): ProjectActivityDay {
+  if (status === "failed") return "failed";
+  if (status === "waiting" || status === "waiting_approval") return "attention";
+  return "ok";
+}
+
+function percentile(sorted: number[], fraction: number): number | null {
+  if (sorted.length === 0) return null;
+  const rank = Math.ceil(fraction * sorted.length) - 1;
+  return sorted[Math.min(Math.max(rank, 0), sorted.length - 1)] ?? null;
+}
 
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 import { insertJobRowTx, isUniqueConstraint } from "./postgres-store-support.js";
@@ -105,6 +128,88 @@ export function createPostgresProjectStore(
         .groupBy(projects.id)
         .orderBy(desc(projects.createdAt), asc(projects.name), asc(projects.id));
       return rows.map(projectRowToProject);
+    },
+
+    async listProjectActivity({ days, now }) {
+      const window = Math.max(1, Math.trunc(days));
+      const reference = now ?? new Date();
+      const todayStart = Date.UTC(
+        reference.getUTCFullYear(),
+        reference.getUTCMonth(),
+        reference.getUTCDate(),
+      );
+      const from = new Date(todayStart - (window - 1) * DAY_MS);
+
+      const rows = await db
+        .select({
+          projectId: sessions.projectId,
+          status: sessions.status,
+          startedAt: sessions.startedAt,
+          completedAt: sessions.completedAt,
+        })
+        .from(sessions)
+        .where(gte(sessions.startedAt, from));
+
+      type Bucket = {
+        days: ProjectActivityDay[];
+        sessions: number;
+        succeeded: number;
+        failed: number;
+        awaiting: number;
+        durations: number[];
+      };
+      const byProject = new Map<string, Bucket>();
+      const blank = (): Bucket => ({
+        days: Array.from({ length: window }, (): ProjectActivityDay => "none"),
+        sessions: 0,
+        succeeded: 0,
+        failed: 0,
+        awaiting: 0,
+        durations: [],
+      });
+
+      for (const row of rows) {
+        const startedAt = row.startedAt?.getTime();
+        if (startedAt === undefined) continue;
+        const index = Math.floor((startedAt - from.getTime()) / DAY_MS);
+        if (index < 0 || index >= window) continue;
+
+        let entry = byProject.get(row.projectId);
+        if (!entry) {
+          entry = blank();
+          byProject.set(row.projectId, entry);
+        }
+
+        const day = sessionStatusToDay(row.status);
+        const current = entry.days[index] ?? "none";
+        if (DAY_SEVERITY[day] > DAY_SEVERITY[current]) entry.days[index] = day;
+
+        entry.sessions += 1;
+        if (row.status === "completed") entry.succeeded += 1;
+        if (row.status === "failed") entry.failed += 1;
+        if (row.status === "waiting" || row.status === "waiting_approval") entry.awaiting += 1;
+
+        const completedAt = row.completedAt?.getTime();
+        if (row.status === "completed" && completedAt !== undefined && completedAt >= startedAt)
+          entry.durations.push(completedAt - startedAt);
+      }
+
+      return [...byProject.entries()].map(([projectId, entry]) => {
+        const settled = entry.succeeded + entry.failed;
+        return {
+          projectId,
+          days: entry.days,
+          sessions: entry.sessions,
+          succeeded: entry.succeeded,
+          failed: entry.failed,
+          awaiting: entry.awaiting,
+          successRate: settled === 0 ? null : entry.succeeded / settled,
+          p95DurationMs: percentile(
+            [...entry.durations].sort((a, b) => a - b),
+            0.95,
+          ),
+        };
+      });
     },
 
     async isProjectSlugAvailable(slug) {

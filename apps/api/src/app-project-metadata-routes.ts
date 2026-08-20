@@ -6,9 +6,12 @@ import { resolveProjectEveVersion, type EveVersionStore } from "./app-support.js
 // The narrow persistence port this slice actually needs.
 export type ProjectMetadataStore = Pick<
   Store,
-  "getProject" | "listProjects" | "updateProjectMetadata"
+  "getProject" | "listProjects" | "listProjectActivity" | "updateProjectMetadata"
 > &
   EveVersionStore;
+
+/** The run-history strip on the projects list covers a rolling month. */
+const ACTIVITY_WINDOW_DAYS = 30;
 
 export function registerProjectMetadataRoutes(input: {
   app: ApiApp;
@@ -16,12 +19,26 @@ export function registerProjectMetadataRoutes(input: {
 }): void {
   const { app, store } = input;
   app.get("/projects", async (c) => {
-    const projects = await store.listProjects();
+    const [projects, activity] = await Promise.all([
+      store.listProjects(),
+      store.listProjectActivity({ days: ACTIVITY_WINDOW_DAYS }),
+    ]);
+    const activityByProject = new Map(activity.map(({ projectId, ...rest }) => [projectId, rest]));
+    const quietProject = {
+      days: Array.from({ length: ACTIVITY_WINDOW_DAYS }, () => "none" as const),
+      sessions: 0,
+      succeeded: 0,
+      failed: 0,
+      awaiting: 0,
+      successRate: null,
+      p95DurationMs: null,
+    };
     return c.json({
       projects: await Promise.all(
         projects.map(async (project) => ({
           ...project,
           eveVersion: await resolveProjectEveVersion(store, project.id),
+          activity: activityByProject.get(project.id) ?? quietProject,
         })),
       ),
     });
