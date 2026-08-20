@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FolderIcon, RocketIcon } from "lucide-react";
 import { DateTime } from "@/components/date-time";
+import { PageContainer } from "@/components/page-container";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -40,7 +41,7 @@ export default async function DeploymentsPage() {
   );
 
   return (
-    <section className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-5 py-6 md:px-8">
+    <PageContainer className="gap-5">
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Deployments</h1>
@@ -119,6 +120,6 @@ export default async function DeploymentsPage() {
           </Table>
         </div>
       )}
-    </section>
+    </PageContainer>
   );
 }

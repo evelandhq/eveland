@@ -10,7 +10,7 @@ export default async function ProfileSettingsPage() {
   const member = await getCurrentMember();
 
   return (
-    <div className="flex max-w-2xl flex-col gap-8">
+    <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1">
         <h2 className="text-xl font-semibold tracking-tight">Profile</h2>
         <p className="text-sm text-muted-foreground">
