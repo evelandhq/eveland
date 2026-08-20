@@ -1,6 +1,6 @@
 # Eveland 产品规格
 
-> 适用窗口：eve 0.38/0.39、eveland ≥0.37（external workflow world）。最后校订日期：2026-08-20。
+> 适用窗口：eve 0.39/0.40、eveland ≥0.37（external workflow world）。最后校订日期：2026-08-20。
 
 ## 1. 定位
 
@@ -462,7 +462,7 @@ Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使�
 
 - 拉取或解压源码
 - 检查是否为合法 Eve 项目
-- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.38.x 或 0.39.x
+- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.39.x 或 0.40.x
 - 识别项目配置、agent、tools、skills、schedules，以及标准 Eve Channel 的
   `capabilities.eveChat`
 - 创建 Source Revision
@@ -498,9 +498,9 @@ Project 页面展示最近 Git import job 的 queued/running/failed 状态，在
 失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 
 Eveland 在 Eve 达到稳定产品兼容承诺前，只支持已经完成完整兼容验证的 minor line；每次扩展或
-收缩窗口都是显式产品变更。当前窗口是 0.38.x 与 0.39.x。允许精确的 0.38/0.39
+收缩窗口都是显式产品变更。当前窗口是 0.39.x 与 0.40.x。允许精确的 0.39/0.40
 patch、锚定在对应 minor patch 上的 `~`/`^` range，以及
-`0.38` / `0.38.x` / `0.38.*`、`0.39` / `0.39.x` / `0.39.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
+`0.39` / `0.39.x` / `0.39.*`、`0.40` / `0.40.x` / `0.40.*`。缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
 当前窗口之外的声明都必须 fail closed，并明确提醒
 开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
 Playground，以及公开 Agent Gateway 到达所选 Deployment 的全部流量——Eve session 新建、继续、取消、
@@ -509,7 +509,7 @@ reset、stream，以及自定义 Channel route 与 webhook 等未分类请求—
 后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
 Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
 无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。
-UI 仅将当前最新支持线 0.39.x 标为绿色；仍受支持但较旧的 0.38.x 使用红色状态与
+UI 仅将当前最新支持线 0.40.x 标为绿色；仍受支持但较旧的 0.39.x 使用红色状态与
 “尽快升级”提醒，但不阻断运行。窗口外或无法识别的版本同样使用红色状态，并继续阻断操作。
 
 用户随后确认自动猜测的项目名称并点击 `Deploy`。Project 与初始 import job 在同一数据库
@@ -1143,7 +1143,7 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
 不得被修改。Eve 0.38 起要求 workflow spec v6；共享 world 固定为
 `@evelandhq/workflow-world@0.12.0`，必须通过当前窗口各支持线已验证 patch 版本（当前为
-0.38.3 与 0.39.3）的 World contract 门禁——门禁随窗口的 verified patch 滑动，不锚定在
+0.39.3 与 0.40.0）的 World contract 门禁——门禁随窗口的 verified patch 滑动，不锚定在
 历史 patch 上（legacy `@workflow/world-postgres@5.0.0-beta.34` 仅作为历史 Deployment
 的既有事实保留同一门禁）。
 runner mode 只支持 `external`：`EVELAND_WORKFLOW_RUNNER` 未设置时解析为 `external`，显式
