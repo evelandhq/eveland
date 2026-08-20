@@ -1,4 +1,0 @@
-{
-  "title": "Deploy Eveland",
-  "pages": ["index", "prerequisites", "core-services", "worker", "networking", "verify"]
-}

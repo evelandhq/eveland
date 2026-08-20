@@ -1,0 +1,1665 @@
+# Gateway、Session Observability 与版本化 Deployment 实现交接
+
+> 面向后续实现者（Claude Code）的工程交接文件。
+>
+> 基线：`a21fd74`（`Merge pull request #18 from evelandhq/worktree-feat-systemd-default`）
+>
+> 本文件记录 2026-07-10 至 2026-07-13 的架构讨论结论。除“Required investigation”明确标出的项目外，不要重新发散已确定的产品和架构边界。
+
+## 0. 先读这些文件
+
+开始实现前，按顺序阅读：
+
+1. `spec.md`
+2. 本文件
+3. `docs/en/production/` 与 `docs/en/operations/`（原 docs/deploy/linux.md，已拆分）
+4. `apps/api/src/app.ts`
+5. `apps/api/src/db/schema.ts`
+6. `apps/worker/src/jobs/process.ts`
+7. `apps/worker/src/runtime/{types,docker,systemd}.ts`
+8. `apps/worker/src/runtime/sandbox-inject.ts`
+9. 安装的 Eve 0.22.1 文档：
+   - `eve/docs/guides/auth-and-route-protection.md`
+   - `eve/docs/guides/hooks.md`
+   - `eve/docs/concepts/sessions-runs-and-streaming.md`
+
+`spec.md` 仍是产品真相源。本文件补充 Gateway、全链路 Session 观测和版本化 Deployment 的实现设计；若两者发生冲突，先更新 spec 并说明原因，不要静默偏离。
+
+---
+
+## 1. 为什么要做这次重构
+
+当前 token/session 采集只存在于 Playground 路径：
+
+```text
+POST /projects/:projectId/playground
+  -> API 创建 Eveland Session
+  -> API 请求 Eve POST /eve/v1/session
+  -> API 消费 Eve NDJSON stream
+  -> API 解析 step.completed usage
+  -> API 写 Session/Event/Usage
+```
+
+因此以下入口完全绕过 Eveland 的 Session 记录：
+
+- 直接访问受管 Agent 的 loopback 端口，例如 `http://127.0.0.1:41001`；
+- Eve schedule；
+- Slack、Discord 等 Channel；
+- custom webhook/channel；
+- Agent 内部触发和 subagent；
+- 未来通过公开 Agent URL 直接调用 Eve API 的客户端。
+
+这违反 `spec.md` 中 Sessions 应覆盖 Playground、Cron、Webhook、Channel、API 的约定。
+
+当前代码还存在几个会阻碍后续演进的结构问题：
+
+- `apps/api/src/app.ts` 同时承担控制 API、Playground proxy、Eve protocol client、stream collector 和 usage projector；
+- `apps/worker` 直接依赖 `@evelandhq/api/store` / `@evelandhq/api/types`，形成 App -> App 依赖；
+- 当前 worker 启动新 Deployment 前会停止旧 Deployment，并复用旧 host port，无法同时保留 preview/candidate/production Deployment；
+- 当前 Playground 将 `turn.completed` 当作 terminal，并在一次回复后把平台 Session 标记为 completed；Eve 的真正当前-turn边界是 `session.waiting | session.completed | session.failed`；
+- 当前 `sessions` / `session_events` 模型无法自然表达 root Agent + 多个 subagent session tree。
+
+---
+
+## 2. 已确定的架构决策（Do not reopen）
+
+### 2.1 继续使用一个 monorepo
+
+不拆仓库，不引入 Kubernetes，不引入消息中间件。目标仍是 single-box self-hosted。
+
+### 2.2 最终 App 结构
+
+```text
+apps/
+  web/                 管理界面
+  api/                 控制面 API，并在当前阶段启动 embedded collector
+  gateway/             公共 Agent 数据面：Host 路由、限流、透明流式代理
+  worker/              Source、Build、Deploy、Restart、Health reconcile
+```
+
+Collector 是独立的逻辑组件，但当前阶段不单独运行 `apps/collector`。它以独立 package 实现，由 API 进程启动。未来需要独立扩容时，再添加一个只调用同一 package 的 `apps/collector/src/main.ts`。
+
+### 2.3 最终 Package 结构
+
+```text
+packages/
+  core/                contracts + Eve wire protocol + 通用领域逻辑
+  db/                  Drizzle schema、migrations、Store/Repository、mappers
+  session-collector/   outbox、ingest、projector、claim/lease、health
+  agent-observer/      构建时注入 Eve observer Hook
+  sandbox-bwrap/       保持独立、可发布的 Eve SandboxBackend
+```
+
+`contracts/`、`eve-protocol/`、现有 `shared/` 合并为 `packages/core/`，但必须使用显式 subpath exports，不能提供一个把 browser-safe 与 Node-only 模块全部 re-export 的根 barrel。
+
+建议 exports：
+
+```text
+@evelandhq/core/contracts
+@evelandhq/core/eve
+@evelandhq/core/ids
+@evelandhq/core/schedules
+@evelandhq/core/source
+@evelandhq/core/server/archive
+@evelandhq/core/server/secrets
+@evelandhq/core/server/runtime-command
+```
+
+依赖方向固定为：
+
+```text
+apps -> packages
+session-collector -> core + db
+db -> core
+agent-observer -> core/contracts（只在构建/生成阶段）
+core -> 不依赖其他 Eveland package
+apps -X-> apps
+```
+
+### 2.4 Gateway 与 Agent auth 的边界
+
+Gateway **不是应用级 Identity Provider**。Eve Agent 自己的 `agent/channels/eve.ts` 继续拥有 route auth；Gateway 必须透明保留：
+
+- `Authorization`
+- `Cookie`
+- `Origin`
+- Eve request/response headers
+- NDJSON response body，不得缓冲成完整 body
+
+Gateway 只负责：
+
+- canonical Host 校验和 Project/Deployment 路由；
+- endpoint 是否启用；
+- TLS 后的可信代理边界；
+- request size、基础 rate limit、审计；
+- 删除外部调用者伪造的 `Forwarded` / `X-Forwarded-*`，再从可信连接重建；
+- 删除所有保留的 `X-Eveland-*` 外部输入，仅由平台重新签发。
+
+**绝不能**因为 upstream 是 `127.0.0.1:<port>` 就把转发后的 Host 改成 `127.0.0.1` 或 `localhost`。Eve `localDev()` 根据请求 URL hostname 接受 `localhost`、`*.localhost`、`127.0.0.0/8` 和 `::1`；错误重写 Host 会把公网请求变成 local-dev 身份，形成认证绕过。
+
+对公网请求，Gateway 必须把经过验证的 canonical public Host 传给 Eve。对内部 Playground 调用，允许一个单独的、经过 Eveland 管理员认证的 privileged path 使用 loopback Host，从而获得 Eve local-dev 身份；该路径不得从公开 Gateway 到达。
+
+### 2.5 Agent 原始端口是 private upstream
+
+生产环境只公开 Traefik 的 80/443。Agent 继续绑定 `127.0.0.1:<dynamicPort>`，但端口不显示为产品 URL，也不由 Traefik 直接暴露。
+
+```text
+Internet
+  -> Traefik
+  -> Gateway
+  -> 127.0.0.1:<agentPort>
+```
+
+Traefik 只配置一条 wildcard route 到 Gateway，不为每个 Project/Deployment 动态生成 Traefik 配置。
+
+### 2.6 开发环境使用 `*.localhost`
+
+Gateway 默认监听一个固定开发端口（建议 `4080`）：
+
+```text
+<projectSlug>.agent.localhost:4080
+<deploymentKey>--<projectSlug>.agent.localhost:4080
+```
+
+内部 Project ID 包含 `_`，不能直接作为 DNS-safe hostname。Project 使用不可变、全局唯一、最长 53 字符且只包含 `[a-z0-9-]` 的语义 `slug`。Git 导入从 Repo 名称推导 slug，冲突时在数据库唯一性边界内追加 `-1`、`-2`。Deployment 使用 Project 内唯一的 8 位小写字母数字 `deploymentKey`。
+
+开发阶段不要求运行 Traefik。Gateway 直接根据 Host 查数据库。生产环境对应：
+
+```text
+<projectSlug>.agents.example.com
+<deploymentKey>--<projectSlug>.agents.example.com
+```
+
+使用单层 hostname 是为了让一个 `*.agents.example.com` wildcard certificate 覆盖稳定地址、Deployment preview 地址和命名 alias。
+
+### 2.7 Observer/Collector 采用 push-first，不依赖 Eve route auth
+
+Collector 的主链路不是“发现 sessionId 后 GET Eve stream”。如果 Agent 自定义 route auth 且没有 `localDev()`，平台无法安全地读取 stream；保存最终用户 Authorization 也不可接受，且 Cron/Channel/subagent 没有对应 HTTP credential。
+
+权威链路为：
+
+```text
+Eve accepted event
+  -> platform-injected Hook
+  -> durable local filesystem outbox
+  -> embedded Collector
+  -> PostgreSQL
+```
+
+Eve stream pull 可以作为在内部认证可用时的 optional reconciliation，但不能成为正确性前提，第一阶段也不需要实现它。
+
+### 2.8 Observer 不得影响 Agent 可用性
+
+Eve Hook 抛错会使 turn/session 失败。因此 observer Hook 的所有 I/O 错误必须捕获并限频记录；默认策略是 Agent 可用性优先，观测进入 degraded 状态。不得 fail closed。
+
+### 2.9 Session 是 root conversation，subagent 是 node
+
+平台数据模型分两层：
+
+```text
+Session
+  root conversation，UI、A/B variant、总 usage 的聚合单位
+
+SessionNode
+  每个 Eve sessionId 一个节点：root Agent 和每个 subagent 各一条
+```
+
+`SessionNode` 的身份约束是 `unique(projectId, eveSessionId)`，不是 `unique(deploymentId, eveSessionId)`。Durable Eve Session 可能跨 redeploy 延续；每条 event 另行记录 `observedDeploymentId`。
+
+### 2.10 版本化 Deployment：immutable target + mutable route
+
+借鉴 Vercel/Cloudflare 的语义，但不复制其基础设施：
+
+- Release 是不可变构建产物；
+- Deployment 是一个可独立启动/停止、拥有 preview URL 的版本目标；
+- stable Project route / named alias 是可变路由；
+- route target 可以是一个 Deployment 100%，或两个 Deployment 的 A/B 权重；
+- 不考虑 replicas；每个 Deployment 最多一个运行进程；
+- DNS/CNAME 永远只到 Gateway，不直接选择 Deployment；
+- 指定版本测试使用 Deployment preview URL。
+
+A/B 必须按 root Session 固定版本，不能逐请求随机：
+
+```text
+first POST /eve/v1/session
+  -> affinity bucket 选择 Deployment
+  -> Eve 返回 eveSessionId
+  -> Gateway 持久化 SessionBinding(eveSessionId -> deploymentId)
+
+POST /eve/v1/session/:sessionId
+GET  /eve/v1/session/:sessionId/stream
+  -> 永远按 SessionBinding 回到同一 Deployment
+```
+
+### 2.11 Deployment 保留策略
+
+“最近 3 个 Deployment”是默认 artifact/rollback 保证，不等于三个进程永久运行：
+
+- Deployment metadata/history：长期保留；
+- Release artifact：至少保留最近 3 个，可配置；
+- running process：只保留 route target、draining session 或短期 warm rollback 需要的 Deployment；
+- production + active candidate + previous production 是常见的最多三个 warm target；
+- 仍有非终态 SessionBinding 的 Deployment 不得直接删除 artifact；可保持运行、drain，或在 continuation 时 cold start；
+- 删除/归档需要明确的 session retention/drain policy，不能仅按“不是最近三个”判断。
+
+---
+
+## 3. 目标运行拓扑
+
+```text
+                            +----------------------+
+Browser / API Client -----> | Traefik (production) |
+                            +----------+-----------+
+                                       |
+                                       v
+                            +----------------------+
+                            | apps/gateway         |
+                            | public data plane    |
+                            +----------+-----------+
+                                       |
+                         Host/Route/Binding lookup
+                                       |
+                                       v
+                            +----------------------+
+                            | Eve Deployment       |
+                            | 127.0.0.1:41xxx      |
+                            +----------+-----------+
+                                       |
+                              injected observer hook
+                                       |
+                                       v
+                        /var/lib/eveland/observer/...
+                                       |
+                                       v
+                     +----------------------------------+
+                     | apps/api                         |
+                     | control API + embedded collector |
+                     +----------------+-----------------+
+                                      |
+                                      v
+                                  PostgreSQL
+
+apps/worker (host/root under systemd)
+  -> source import
+  -> release preparation
+  -> observer/sandbox injection
+  -> build/start/stop/reconcile
+  -> never serves public traffic
+```
+
+---
+
+## 4. Gateway 详细契约
+
+### 4.1 Route kinds
+
+统一建模为 Agent Route：
+
+```text
+project route
+  <projectSlug>.agents.example.com
+  stable production/A-B endpoint
+
+deployment route
+  <deploymentKey>--<projectSlug>.agents.example.com
+  immutable preview endpoint, exactly one deployment at weight 100%
+
+named alias
+  canary--<projectSlug>.agents.example.com
+  staging--<projectSlug>.agents.example.com
+  mutable route, one or two targets
+```
+
+未知 Host 返回 404；disabled route 返回 404；route 存在但没有 running target 返回 503。不要通过错误响应泄露 disabled/private Project 的存在。
+
+### 4.2 Host resolution
+
+Gateway 必须：
+
+1. 去掉端口并 lowercase hostname；
+2. 拒绝不属于允许 base domain 的 hostname；
+3. 从完整 hostname 查 `agent_routes`，不要接受客户端传入 projectId/deploymentId header；
+4. 解析 route target；
+5. 按 SessionBinding 或 affinity 选择 Deployment；
+6. 检查 Deployment status / runtime address；
+7. 透明代理全部 method/path，包括 custom channel routes；
+8. 原样覆盖 `/eve/*` 与 `/.well-known/workflow/*`，不得只代理 `/eve/*`。
+
+### 4.3 Proxy header rules
+
+Forward：
+
+- `Authorization`
+- `Cookie`
+- `Content-Type`
+- `Accept`
+- `Origin`
+- Eve protocol headers
+- 其他 end-to-end headers
+
+Strip：
+
+- `Connection`
+- `Keep-Alive`
+- `Proxy-Authenticate`
+- `Proxy-Authorization`
+- `TE`
+- `Trailer`
+- `Transfer-Encoding`
+- `Upgrade`（除非后续明确支持 WebSocket）
+- 外部 `Forwarded` / `X-Forwarded-*`
+- 外部 `X-Eveland-*`
+
+Rebuild：
+
+- validated canonical `Host`
+- `Forwarded` / `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Forwarded-Host`
+- internal correlation/trace headers
+
+Node fetch 代理 request body 时不能先 `.text()` / `.json()`；保留 streaming body，并处理 Node `duplex: "half"` 要求。Response 直接返回 upstream Web `ReadableStream`，不要缓冲 NDJSON。
+
+### 4.4 Application auth invariants
+
+必须有集成测试证明：
+
+1. `foo.agent.localhost` 能被 Eve `localDev()` 接受；
+2. production hostname 在 Agent 没有接受对应 credential 时得到 401；
+3. 外部请求伪造 `Host: localhost` / `X-Forwarded-Host: localhost` 无法绕过；
+4. Gateway 没有消费或替换 Agent 的 `Authorization`；
+5. Cookie/Set-Cookie 正常穿透；
+6. public Host 经过 upstream `127.0.0.1` 后，Eve 看到的仍是 canonical public Host。
+
+### 4.5 Internal Playground mode
+
+Playground 是管理员开发工具，不等同于真实终端用户调用。当前 Web 以 `/projects/:projectId/playground/eve/*` 代理 Eve canonical session protocol；API 在一个页面会话中只创建一个平台 Session，Gateway 再通过仅 private network 可达且需要 service credential 的 `/internal/projects/:projectId/playground/eve/*` 路径转发 initial、continuation、cancel 和 stream 请求。Gateway 使用 loopback Host 获得 Eve local-dev principal，并用 SessionBinding 固定后续请求的 Deployment。
+
+每次打开或刷新页面都从一个新的空白会话开始；页面内连续 turn、HITL 回答和外部授权恢复保留同一个 Eve Session。UI 实时展示 conversation、reasoning、tool state 和 input request，允许停止生成，并接受最多 4 个、单个 5 MiB、合计 10 MiB 的图片/PDF/文本/代码附件。Eve 0.25.x 与 0.24.5+ 的停止操作调用 canonical cancel route，并继续消费 stream 直到 `turn.cancelled` 与后续 session boundary；旧 0.24 patch 对 cancel 返回 404 时只回退为本地 stream abort，不能将平台 Session 标记为 failed。Playground 不持久化 raw reasoning 或上传文件，Sessions/usage 的权威采集仍由 Observer/Collector 完成。
+
+后续可增加“Test with real auth”模式，允许管理员显式传入测试 Authorization，并使用 canonical public Host；不要伪造最终用户身份。
+
+### 4.6 Gateway discovery/provenance
+
+Gateway 对 canonical Eve route 的 initial session POST：
+
+1. 选择 target Deployment；
+2. 代理请求；
+3. 从 `x-eve-session-id` 或 response JSON 读取 `eveSessionId`；
+4. 在返回客户端前写入 SessionBinding；
+5. 记录 route、deployment、experiment、variant、remote IP、request ID、平台 affinity source；
+6. Hook/Collector 随后用同一 `(projectId, eveSessionId)` 幂等合并 runtime metadata。
+
+continuation、cancel 和 stream path 已包含 sessionId，优先查 SessionBinding，不再重新按权重选择。
+
+直接访问 private port 的 HTTP Session 没有 Gateway provenance。Observer 仍会采集，平台将其标记为 `direct_http` / `unattributed_http`，而不是丢弃。
+
+### 4.7 A/B affinity
+
+Route target weights 使用整数总和 10000，当前只支持最多两个 target。
+
+默认 affinity：
+
+- Browser：Gateway 签发的 HttpOnly/signed version-affinity cookie；
+- API：可选 `X-Eveland-Version-Key`，只用于 bucket，转发前删除；
+- 无 key：为新 root session 生成随机 affinity value；
+- Deployment preview route：无权重选择，固定 100% target。
+
+Bucket 使用稳定 hash：
+
+```text
+bucket = hash(routeId + policyRevision + affinityKey) % 10000
+```
+
+一旦拿到 Eve sessionId，SessionBinding 高于 cookie/header/当前权重。权重调整不能移动已存在 Session。
+
+---
+
+## 5. Observer 与 filesystem outbox
+
+### 5.1 注入位置
+
+构建 Release 时注入保留文件：
+
+```text
+agent/hooks/__eveland_observer.js
+```
+
+并递归处理每个拥有独立 Agent root 的 directory-form subagent。不要修改 source repository；只修改 prepared release tree。若用户源码已经包含同名保留文件，构建失败并给出 actionable error，不要静默覆盖。
+
+Observer module 必须自包含，只依赖 Node built-ins 和用户项目已经拥有的 `eve/hooks`。部署时不能要求用户 package.json 添加 `@evelandhq/*` 依赖。
+
+### 5.2 Required investigation: subagent coverage
+
+在实现注入器前，先用 Eve 0.22.1 建立 fixture 并验证：
+
+- root Agent hook 能看到哪些 root events；
+- directory-form subagent 独立 hook 能看到哪些 events；
+- file-form subagent 是否拥有可注入 hook slot；
+- parent stream 的 `subagent.child_event` 是否足以覆盖 file-form subagent；
+- local 与 remote subagent 的 metadata/parent relationship。
+
+测试结果必须写进代码注释/测试名称。如果 Eve public extension surface 无法覆盖 file-form subagent，不要 patch Eve compiled internals；明确记录限制，或先向 Eve 增加支持。不得在没有真实 fixture 证明时宣称“全部 subagent 已覆盖”。
+
+### 5.3 事件过滤
+
+默认采集 finalized/lifecycle events：
+
+- `session.started`
+- `turn.started`
+- `message.received`
+- `message.completed`
+- `reasoning.completed`（默认可关闭，见 privacy）
+- `actions.requested`
+- `action.result`
+- `input.requested`
+- `authorization.required/completed`
+- `subagent.*`
+- `step.started/completed/failed`
+- `turn.completed/failed`
+- `session.waiting/completed/failed`
+- compaction lifecycle
+
+默认忽略高频 delta：
+
+- `message.appended`
+- `reasoning.appended`
+
+不要把 Secret 注入 observer envelope。Tool input/result 和消息内容可能包含敏感数据，必须为后续 retention/redaction 留出字段；默认不保存 reasoning 内容是推荐产品策略。
+
+### 5.4 Envelope schema
+
+`@evelandhq/core/contracts` 定义 versioned Zod schema。最少包含：
+
+```ts
+type ObserverEnvelopeV1 = {
+  schemaVersion: 1;
+  observerEventId: string;
+  eventFingerprint: string;
+  deploymentId: string;
+  eveSessionId: string;
+  parentEveSessionId: string | null;
+  sourceSequence: number;
+  agent: {
+    id: string | null;
+    name: string | null;
+    nodeId: string | null;
+  };
+  channelKind: string | null;
+  eventAt: string;
+  event: unknown;
+};
+```
+
+Project identity由 Collector 根据 deploymentId 从数据库获得；即使 envelope 带 projectId 也不能信任它。
+
+- `observerEventId`：一个具体 outbox record 的稳定 ID，用于文件重放幂等；
+- `eventFingerprint`：基于 `eveSessionId + event.meta.at + canonical event JSON` 的稳定 hash，用于识别 runtime replay 的语义重复；
+- `sourceSequence`：仅用于同一个 `(deploymentId, eveSessionId)` 的排序；允许出现 gap。
+
+Usage 另有语义唯一键 `(sessionNodeId, turnId, stepIndex)`，不得因为 envelope 重放重复累计 token。
+
+### 5.5 Outbox layout
+
+生产默认：
+
+```text
+/var/lib/eveland/observer/
+  <projectId>/
+    <deploymentId>/
+      sessions/
+        <safeSessionDigest>/
+          next-sequence
+          000000000001-<observerEventId>.ready.json
+          000000000002-<observerEventId>.ready.json
+```
+
+不要把原始 eveSessionId 直接用作目录名；使用 digest，真实 ID 保存在 envelope。
+
+每个 session 的 Hook 写入通过进程内 Promise queue 串行化：
+
+1. 读取/初始化 `next-sequence`；
+2. 先原子预留下一个 sequence（允许 crash 留 gap）；
+3. 将 envelope 写到同目录临时文件；
+4. fsync/close（实现按性能测试决定是否每条 fsync，但 rename 必须同 filesystem）；
+5. rename 为 `.ready.json`；
+6. 捕获全部异常并 rate-limit log，绝不向 Eve 抛出。
+
+Collector claim：
+
+```text
+*.ready.json
+  -> atomic rename *.processing.<collectorId>.json
+  -> validate
+  -> DB transaction
+  -> delete
+```
+
+进程崩溃后，超过 lease age 的 `.processing.*` 文件恢复为 ready。坏文件移动到 quarantine，并把 collector 标记 degraded；不要无限 hot-loop 同一个坏文件。
+
+### 5.6 systemd permissions
+
+Worker 在 start 前创建 deployment outbox dir，授予 Deployment service user 对自己的目录读写，并把该目录加入 transient unit 的 `ReadWritePaths=`。不要给 Deployment 写整个 `/var/lib/eveland/observer` 的权限。
+
+添加 build/deploy self-check：以实际 deployment user 写入、rename、删除 probe envelope。仅 `/eve/v1/health` 成功不足以证明 observer outbox 可用。
+
+### 5.7 Docker dev path mapping
+
+Docker runtime 也必须验证，不得只实现 systemd。当前 containerized worker 通过 host Docker socket 创建 Agent container；Docker bind source 路径由 host daemon 解析，不能盲目把 worker container 内部的 `/workspace/...` 当作 host path。
+
+实现时引入清晰的 host data dir 配置（名称可采用 `EVELAND_HOST_DATA_DIR`）：
+
+- native/systemd：默认等于 `EVELAND_DATA_DIR`；
+- containerized Docker worker：显式配置为 workspace 在 Docker host 上的绝对路径；
+- Agent container 将 deployment outbox host dir bind 到固定内部路径；
+- API/embedded collector 必须看到同一宿主目录；
+- compose、README、deploy docs 必须同步更新。
+
+不要在没有真实 Docker smoke 的情况下声称 dev outbox 已工作。
+
+---
+
+## 6. Embedded Collector 契约
+
+### 6.1 Package 与启动方式
+
+```text
+packages/session-collector/
+  src/runner.ts
+  src/outbox.ts
+  src/ingest.ts
+  src/projector.ts
+  src/claims.ts
+  src/health.ts
+```
+
+API `server.ts` 启动 HTTP server 与 collector runtime，但两者生命周期和健康状态分开：
+
+```text
+EVELAND_COLLECTOR_MODE=embedded | disabled
+```
+
+Collector 循环的顶层必须 catch/backoff，不能产生 unhandled rejection 使公开控制 API 退出。
+
+### 6.2 At-least-once
+
+Collector 以 at-least-once 为基础：
+
+- claim 文件；
+- transaction 内 upsert Session/Node、insert Event、project usage/status；
+- commit 后删除；
+- commit 后删除前 crash 会重放，由 unique keys 消除重复。
+
+必须限制：
+
+- 单文件最大尺寸；
+- 单 batch 事件数/字节数；
+- 单轮处理时间；
+- 并发 Session 数；
+- backlog 总字节与最老事件年龄。
+
+### 6.3 Discovery 与 parent linking
+
+任意合法 envelope 都能隐式发现 Session，不要求第一条一定是 `session.started`：
+
+1. `deploymentId` -> Project；
+2. upsert `SessionNode(projectId, eveSessionId)`；
+3. root node 没有 parent，创建/连接 root Session；
+4. child node 有 parent Eve ID，upsert parent placeholder 并链接；
+5. child 比 parent 先到达也必须最终一致；
+6. `session.started.data.runtime` 更新 agentId/name/model/eveVersion；
+7. `session.started.data.invocation` / `subagent.called` 补充 parent/call relationship；
+8. remote subagent 暂时记录 remote URL 和 unresolved mapping，不直接抓取任意外部 URL。
+
+### 6.4 Provenance merge
+
+Gateway 与 Observer 各自掌握不同信息：
+
+```text
+Gateway:
+  playground/api
+  routeId
+  experiment/variant
+  deployment choice
+  request ID / remote IP / affinity source
+
+Observer:
+  channelKind
+  root/subagent identity
+  parent session
+  runtime model/version
+  actual events/usage
+```
+
+按 `(projectId, eveSessionId)` 幂等合并。更具体的 provenance 不得被后到的模糊值覆盖。例如 Gateway 明确写入 `playground` 后，Observer 的 `channelKind=http` 不能把 trigger 改回 generic API。
+
+建议映射：
+
+```text
+Gateway internal playground -> playground
+Gateway canonical Eve HTTP   -> api
+Observer schedule            -> cron
+Observer channel:<name>      -> channel
+Observer custom route        -> webhook/channel（按实际 kind）
+Observer http without Gateway provenance -> direct_http
+Observer subagent            -> child node，不创建新的 root trigger
+```
+
+### 6.5 Session state machine
+
+不要复用当前 Playground 的 terminal set。权威边界：
+
+```text
+session.started / turn.started -> running
+input.requested                -> waiting_approval
+session.waiting                -> waiting（若仍有未解决 input，则 waiting_approval）
+session.completed              -> completed
+session.failed                 -> failed
+```
+
+`turn.completed` 只表示一轮结束，不表示 durable Session completed。新的 turn 可以在数小时/数天后继续同一个 Eve Session。
+
+### 6.6 Usage projection
+
+继续使用 Eve `step.completed.data.usage` 的 provider-reported 值：
+
+- input tokens
+- output tokens
+- cache read/write tokens
+- optional cost
+- usage completeness
+
+按 SessionNode 保存 step usage，root Session 汇总所有 local child nodes。Unique key 至少包含 `(sessionNodeId, turnId, stepIndex)`。Remote child 只有在映射到受管 Deployment 后才纳入精确 aggregate；否则记录 coverage gap。
+
+控制面 Usage Explorer 在此 projection 之上按完整时间范围做服务端聚合，不读取分页 Session
+列表充当总量。Workspace 与 Project scope 共享 24 小时、7 天、30 天趋势及上一周期语义，
+支持 Project、Model、Eve Agent × Model 归因和单 Model 曲线。Usage coverage 与 Cost
+coverage 分开报告；成本只累计 provider/Gateway 实际返回值，不估算缺失值。root Session
+包含多个 node 或 Model 时，Model 归因保持在 step/node 边界，不把单一 Model 标签提升为整条
+Session 的身份。
+
+### 6.7 Collector health
+
+API liveness 与 Collector health 分开：
+
+```text
+GET /health
+  control API liveness
+
+GET /internal/collector/health
+  status: healthy | delayed | degraded
+  lastProcessedAt
+  backlogEvents
+  backlogBytes
+  oldestEventAge
+  quarantinedEvents
+  lastError
+```
+
+Collector degraded 不应让 `/health` 失败，否则 proxy/systemd 会反复重启仍然可服务的控制 API。Web Overview 应显示 collector degraded。
+
+### 6.8 何时拆成独立进程
+
+出现以下任一条件再增加 `apps/collector`：
+
+- API 多副本；
+- collector backlog 影响 API latency/memory；
+- Agent 分布到多台机器；
+- 需要独立发布或扩容；
+- 大量 stream reconciliation；
+- API 与 collector 需要不同权限/SLO。
+
+---
+
+## 7. 数据模型不变量
+
+实际表名可以调整，但必须满足以下语义。
+
+### 7.1 Routing
+
+```text
+projects
+  + slug unique, immutable, DNS-safe, max 53 chars
+
+agent_routes
+  id
+  projectId
+  hostname unique
+  kind: project | deployment | alias
+  enabled
+  policyRevision
+
+route_targets
+  routeId
+  deploymentId
+  weight 0..10000
+  variantName nullable
+  unique(routeId, deploymentId)
+```
+
+一个 route 的 active target 最多两个，权重总和必须为 10000。Deployment preview route 恰好一个 10000 target。
+
+### 7.2 Session tree
+
+```text
+sessions
+  id
+  projectId
+  rootNodeId
+  trigger
+  routeId nullable
+  experimentId/variant nullable
+  status
+  aggregate usage
+  startedAt/completedAt
+
+session_nodes
+  id
+  rootSessionId
+  projectId
+  eveSessionId
+  parentNodeId nullable
+  parentEveSessionId nullable
+  startedDeploymentId
+  lastObservedDeploymentId
+  agentId/name/nodeId
+  channelKind
+  modelId/eveVersion
+  status
+  unique(projectId, eveSessionId)
+
+session_events
+  sessionNodeId
+  observerEventId
+  eventFingerprint
+  observedDeploymentId
+  sourceSequence
+  type
+  payload
+  eventAt
+  unique(sessionNodeId, observerEventId)
+
+session_bindings
+  projectId
+  eveSessionId
+  routeId
+  deploymentId
+  experiment/variant
+  affinity fingerprint（不要保存原始敏感 affinity key）
+  unique(projectId, eveSessionId)
+```
+
+如果迁移过程中暂时保留现有 `sessions.eveSessionId` / `session_events.sessionId`，必须提供清晰 backfill 和兼容层；不要双写两套模型却没有权威来源。
+
+### 7.3 Deployment semantics
+
+后续 scheduler/scale-to-zero phase 已将逻辑 Deployment 与运行进程拆开：
+`deployments` 保存不可变目标与 adapter ownership，`runtime_instances` 保存可停止、
+重建和递增 generation 的实际进程。以下原始约束继续成立：
+
+- release/config identity 创建后不可变；
+- hostPort/processName 是 Deployment 的固定私有 endpoint/process identity；运行状态、
+  ready/error/timing 属于 RuntimeInstance，可因 restart/cold-start 产生新 generation；
+- 一个 Project 可以同时有多个 running Deployment；
+- `projects.currentDeploymentId` 只是过渡兼容字段，最终 production project route 才是权威；
+- build+deploy 不再默认停止旧 Deployment；新 Deployment 首先是 preview target；
+- promote/rollback/traffic split 通过 route target transaction 完成。
+- 当前 Web 通过单一 `Create deployment` Dialog 组合两个显式维度：Source 选择当前不可变 Revision（默认）或先同步 Git，结果选择健康后 promote（默认）或保留 preview。四种组合复用相同的 preview-first `build_deploy` 语义；选择 promote 时必须切换该次 build 创建的确切 target，不能通过查询“最新 Deployment”来选择。
+- Project Secrets 是可变运行时凭据，不属于 Release 内容；Secret 新增、替换或删除后必须为每个 `running` / `draining` Deployment 排入带 `deploymentId` 的 restart，不能只刷新 `projects.currentDeploymentId`，否则 stable、preview 或 A/B target 会继续持有旧进程环境。
+- Scheduler scale-to-zero 使用持久化 `nextRunAt`：进入 `EVELAND_SCHEDULER_PREWARM_MS` 窗口的 target 保持 warm，已停止的 target 提前排入 coalesced activation；non-terminal ScheduleRun 提供硬性回收保护，`draining` 在 dispatch credential 兑换前有界重试。
+
+---
+
+## 8. 实现顺序（必须分阶段，不做一个巨型 PR）
+
+### Phase 1 — Package boundaries，零行为变化
+
+目标：先清理依赖方向，为后续并行演进建立稳定边界。
+
+#### Files / moves
+
+- 创建 `packages/core`；
+- 将 `packages/shared` 内容迁入 `core` explicit subpaths；
+- 将 `apps/api/src/types.ts` 的跨 App domain/contracts 迁入 `core/contracts`；
+- 将 Eve request/event/usage parsing 迁入 `core/eve`；
+- 创建 `packages/db`，迁移 Drizzle schema、migrations、mappers、Postgres Store 和 memory Store；
+- 更新 Drizzle scripts/config；
+- worker 改为依赖 `@evelandhq/db` / `@evelandhq/core`，移除 `@evelandhq/api` 依赖；
+- 更新所有 tests/imports；
+- 删除无用 exports，不保留 App -> App compatibility shim。
+
+#### Constraints
+
+- API routes、worker behavior、DB schema 在本 phase 不变；
+- 不创建 Gateway；
+- 不创建 observer/collector；
+- 不顺便重写 UI；
+- 保持所有已有 tests 绿色。
+
+#### Acceptance
+
+- `rg '@evelandhq/api' apps/worker packages` 无结果；
+- `core` 不依赖 `db`；
+- Web 只从 browser-safe core subpaths import；
+- `pnpm test`、`pnpm typecheck`、`pnpm build` 通过。
+
+### Phase 2 — Observer + outbox + embedded collector vertical slice
+
+目标：先解决原始问题——即使绕过 Playground/未来 Gateway，受管 Agent 的 Session 仍会进入平台。
+
+#### Tasks
+
+1. 完成 subagent coverage investigation 和 fixture tests；
+2. 创建 `packages/agent-observer` generator/injector；
+3. 创建 common prepared-release step，让 Docker/systemd 都从注入后的 release tree 构建，绝不修改 source repo；
+4. systemd/Docker 注入 outbox path 和权限/mount；
+5. 创建 ObserverEnvelope V1 schema；
+6. 创建 `packages/session-collector`；
+7. API embedded 启动 collector；
+8. 增加 Session/SessionNode/Event/Usage migration；
+9. 移除 Playground route 内的同步 usage collector，Playground transport 与 collector 分离；
+10. 更新 Session UI 以读取新 root/node aggregate（保持视觉改动最小）。
+
+#### Required proof
+
+- 直接请求受管 Agent private port 创建 Session，不经过 `/playground`，DB 中仍出现 root Session、events 和 usage；
+- root Agent 调用 directory-form subagent，DB 中形成 parent/child tree，usage 正确聚合；
+- Collector 停止期间事件落盘，恢复后补齐；
+- Collector 在 DB commit 后、删除 outbox 前 crash，重放不会重复累计 usage；
+- invalid envelope 被 quarantine，不阻断其他事件；
+- Observer outbox 写失败不会使 Eve turn 失败；
+- systemd VM smoke 和 Docker dev smoke 都有真实证据。
+
+### Phase 3 — Gateway baseline + stable/preview host routing
+
+目标：公开 Agent 入口只经过 Gateway；先实现单 target，不做 A/B。
+
+#### Tasks
+
+1. 创建 `apps/gateway` Hono/Node app；
+2. Project semantic `slug` migration + backfill；
+3. `agent_routes` / one-target `route_targets`；
+4. stable project host 与 immutable deployment preview host；
+5. Host validation/cache/invalidation；
+6. transparent streaming proxy；
+7. auth/Host spoofing regression tests；
+8. Gateway discovery 写 SessionBinding/provenance；
+9. Playground transport 最终改走 internal Gateway path；
+10. Traefik production example、Compose、README、Linux deploy docs；
+11. UI 显示 stable endpoint 与 preview endpoint，不显示 raw port。
+
+#### Required proof
+
+- `sample-office-assistant.agent.localhost:4080` 正确路由 current project target；
+- `<8-char-key>--sample-office-assistant.agent.localhost:4080` 固定路由指定 Deployment；
+- unknown/disabled/no-running-target 的状态码符合契约；
+- `Authorization` / Cookie / canonical Host 透传；
+- production Host 不会触发 Eve localDev；
+- NDJSON 首个 chunk 不等待完整 Session 结束即可到达 client；
+- `/.well-known/workflow/v1/flow` 正确转发；
+- public Agent port 未直接暴露。
+
+### Phase 4 — Concurrent Deployments、Alias、A/B、drain/retention
+
+目标：完成 Vercel-style preview/promote/rollback 和 Cloudflare-style session-affine traffic split。
+
+#### Tasks
+
+1. worker build/deploy 不再停止 current Deployment，不再复用 running Deployment port；
+2. 支持一个 Project 多个 running Deployment；
+3. named aliases 和最多两个 weighted targets；
+4. deterministic affinity；
+5. initial SessionBinding 与 continuation/stream pinning；
+6. atomic promote/rollback/weight update + Gateway cache invalidation；
+7. Deployment state：running/draining/stopped/archived；
+8. 保留最近 3 个 artifact 的 GC policy；
+9. active SessionBinding protection / drain policy；
+10. Collector 按 deployment/experiment/variant 聚合 metrics；
+11. Web Deployment 页面：preview、promote、rollback、traffic split、draining、retention。
+
+#### Required proof
+
+- A=90/B=10 时，新 Session 按 deterministic bucket 分配；
+- 权重从 90/10 改成 50/50 后，已有 Session continuation/stream 仍回原 Deployment；
+- preview URL 永远固定一个 Deployment，不受 production route 变化影响；
+- promote/rollback 不改 DNS、不重启 Gateway；
+- B 降为 0 后不再接收新 Session，但已有非终态 binding 能继续；
+- protected Deployment 不会被 GC；
+- variant metrics 能比较 success/failure/latency/token/cost。
+
+---
+
+## 9. 测试矩阵
+
+### Unit
+
+- DNS-safe Project slug 推导、backfill、数字后缀 collision retry；
+- 8 位 Project-local Deployment key 生成与 collision retry；
+- Host parser 与 base-domain validation；
+- header strip/rebuild；
+- weight validation 与 deterministic bucket；
+- ObserverEnvelope schema；
+- canonical event fingerprint；
+- outbox filename/path containment；
+- Session state projector；
+- usage idempotency；
+- provenance precedence；
+- retention/protection predicate。
+
+### API/DB integration
+
+- Gateway/Observer discovery race；
+- child-before-parent arrival；
+- at-least-once replay；
+- transaction rollback leaves outbox recoverable；
+- duplicate usage step does not increment aggregate；
+- SessionBinding lookup；
+- promote/rollback transaction；
+- route target weight constraints。
+
+### Gateway integration
+
+- fake upstream echoes Host/Auth/Cookie；
+- request streaming 与 NDJSON response streaming；
+- large body limit；
+- aborted client cancels upstream；
+- unknown host / spoofed forwarding headers；
+- local-dev vs production auth behavior；
+- workflow callback route；
+- custom channel path passthrough。
+
+### Real Eve fixtures
+
+- root session；
+- continuation after `session.waiting`；
+- HITL `input.requested`；
+- local directory subagent；
+- file-form subagent coverage investigation；
+- remote subagent unresolved behavior；
+- provider-reported and missing usage；
+- direct private-port request；
+- Gateway request。
+
+### Runtime smoke
+
+- Docker dev；
+- systemd Lima VM；
+- collector downtime/recovery；
+- deployment restart；
+- two concurrent Deployments for one Project；
+- promote/rollback；
+- A/B Session pinning。
+
+---
+
+## 10. Operational/security constraints
+
+- Gateway 不挂 Docker socket，不读取 source tree，不解密 Project Secrets；
+- API/Collector 不拥有 systemd/root 权限；
+- Worker 保持不公开，继续是唯一 root/systemd controller；
+- Observer outbox directory 只授权单 Deployment；
+- 外部调用者不能通过 `X-Eveland-*` 影响 route、deployment、trace parent 或 affinity override；
+- 不记录原始 API key/affinity key，只记录 hash/fingerprint；
+- 不在 logs、events、outbox filenames 中暴露 Secret；
+- raw reasoning 默认不采集；
+- collector backlog/disk usage 必须可见并报警；
+- public Gateway 与 internal privileged Gateway path 必须有明确网络或 service credential 隔离；
+- CORS 仍是 Agent 应用策略，Gateway 透明转发，不擅自放宽为 `*`。
+
+---
+
+## 11. Non-goals
+
+本轮明确不做：
+
+- Deployment replicas / load balancing replicas；
+- multi-region；
+- Kubernetes；
+- Kafka/NATS/Redis stream；
+- 自动 custom-domain certificate/CNAME 管理；
+- 任意外部 remote Agent 的直接 stream 抓取；
+- Gateway 替 Agent 实现用户认证；
+- 在线代码编辑；
+- 保存完整 reasoning delta；
+- 在一个 PR 中完成全部 phase。
+
+---
+
+## 12. 文档同步要求
+
+每个 phase 完成时同步更新：
+
+- `spec.md`：产品行为与核心对象；
+- `README.md`：开发启动方式、Gateway URL、collector mode；
+- `docs/en/production/` 与 `docs/en/operations/`（原 docs/deploy/linux.md，已拆分）：端口、Traefik、outbox、permissions、retention；
+- Compose/env examples；
+- 若新增运维限制，加入 Known limits；
+- 若 runtime behavior 与本文件不同，更新本文件并在 PR 中解释，不要让 handoff 静默过时。
+
+---
+
+## 13. 每个 Phase 的统一 Verification
+
+至少运行：
+
+```bash
+pnpm test
+pnpm typecheck
+pnpm build
+```
+
+并运行 touched package 的 focused tests。涉及 Compose 时验证 merged config；涉及 systemd/Docker/observer 时必须运行相应真实 smoke，不得只靠 mocked unit tests。
+
+提交前：
+
+```bash
+git status --short
+git diff --check
+```
+
+保持无关 worktree 变化不进入本任务。
+
+---
+
+## 14. 从哪里开始
+
+第一步只实施 **Phase 1 — Package boundaries**。
+
+不要先创建 Traefik 配置，也不要先创建空的 Gateway/Collector scaffold。Phase 1 的完成标准是：
+
+```text
+apps/worker 不再依赖 apps/api
+core/db 边界落地
+现有行为与测试不变
+```
+
+随后 Phase 2 做一个真实 vertical slice：
+
+```text
+受管 Eve Agent 直接通过 private port 运行
+  -> injected Hook 写 outbox
+  -> embedded Collector 入库
+  -> Web Sessions 可见 root/subagent usage
+```
+
+只有这条链路通过真实 Docker + systemd smoke 后，才进入 Gateway。这样每个阶段都有独立价值，也避免同时调试 package move、Eve hook、filesystem permissions、proxy auth 和 A/B routing。
+
+---
+
+## 15. 2026-07-14 follow-up：本地 Docker exec sandbox
+
+完成 Phase 后发现一处 runtime parity 缺口：systemd Release 会注入
+`@evelandhq/sandbox-bwrap`，而本地 Docker Release 只注入 observer，导致生产式
+`eve start` 落到缺少 optional peer 的 `just-bash`，内置 file/bash tools 在第一次
+调用时失败。后续实现将 sandbox injection 移到两个 runtime 都会执行的 Release
+准备路径，并保留以下边界：
+
+- Agent container 永远不挂 Docker socket；
+- local Docker image 安装 `bash`/`bubblewrap` 并预建 `/workspace`；
+- outer container 先 drop 全部默认 capability，只为 nested bwrap 增加
+  `SYS_ADMIN` 与 `NET_ADMIN`，同时设置 `no-new-privileges`；该放宽只属于本地
+  Docker runtime，production 继续使用 unprivileged systemd+bwrap；
+- sandbox cache 使用 `EVELAND_HOST_DATA_DIR` 映射并按 Project 持久化，redeploy
+  不丢 durable Eve Session 的 workspace；
+- Release 注入平台 backend 时保留 `agent/sandbox/workspace/**`，目录形式生成
+  `agent/sandbox/sandbox.js`；只替换 authored `backend`，继续执行 `bootstrap()` 与
+  `onSession()`，并保留 `description`、`revalidationKey` 及 Eve 应在新 Session 中初始化到
+  `/workspace/**` 的 seed files；
+- bwrap template 按不可变 Release revision 隔离，针对新 Deployment 创建的 Session 使用该
+  Release 更新后的 seeds；session cache 仍按 durable Eve session key 复用，已有 `/workspace` 不被覆盖；
+- Docker 与 systemd build self-check 都必须在真实 bwrap 中写入并用 Node 24
+  执行带类型标注的 `.ts` probe，不能用 `/eve/v1/health` 代替。
+
+---
+
+## 16. 2026-07-14 follow-up：Project 删除生命周期
+
+原有 `delete_project` job 已能停止 live Deployment 并删除数据库记录，但 Web 没有
+入口，异步期间也没有持久化状态；同时旧实现不删除 runtime Release 或
+`EVELAND_DATA_DIR` 下的 Project 文件。后续实现收敛为以下契约：
+
+- 删除请求原子地写入 `deletion_status = 'deleting'` 并创建唯一删除 job；重复请求
+  返回 `409`，其他 Project mutation 在删除期间也返回 `409`；
+- Projects 列表和详情页展示 `Deleting…`，详情内容保持可读但所有变更控件禁用；
+  删除失败写入独立的 `failed` 状态和错误，不覆盖导入/构建状态，并允许重试；
+- 删除 job 只有在同 Project 没有其他 running job 时才可 claim，从而保证已启动的
+  build 在清理前完成 Deployment 落库，不再留下并发构建孤儿进程；
+- Worker 停止所有 live Deployment，按 `runtimeKind` 删除 Release，清理受控的
+  source/build/observer/sandbox 目录，再把数据库级联删除作为最后一步；
+- 仅删除 `EVELAND_DATA_DIR` 内且通过 containment/realpath 检查的 source 路径，
+  外部源码目录必须保留；外部资源清理失败保留 Project 记录以支持幂等重试。
+
+本节是完成 Phase 后的增量产品行为；前文已完成的 Phase checklist 仍只作为历史。
+
+---
+
+## 17. 2026-07-14 follow-up：Eve sandbox command baseline
+
+对 Eve 0.23.0 的 framework tool 实现与两种实际 runtime 做完逐项核对后，确认
+Docker image 缺少 `rg` 时，Eve 会回退到带 `--exclude-dir=.git` 的 GNU-style
+`grep` 命令；Alpine BusyBox `grep` 不支持该选项，因此 `grep` tool 会在读取文件前
+直接失败。修复收敛为平台契约，而不是只补一个二进制：
+
+- Docker 与 systemd Sandbox 都提供 `bash`、Node 24/`npm`、`pnpm`、`rg`、GNU
+  `grep`/`find`、`git`、`curl`、`jq`、Python 3/`pip`、`unzip`、`zstd`；
+- Docker generated image 安装真实 Alpine packages，systemd host 由 provision
+  安装、worker startup preflight 一次列出所有缺项；
+- Release self-check 在真实 bwrap 中逐项验证命令，并执行 Eve 的 `rg` 首选路径和
+  GNU `grep --exclude-dir` 回退路径，部署成功后不再等到某次 Agent turn 才发现缺项；
+- `git` 在 baseline 中只代表本地 CLI 可用，不改变 bwrap 的 structured network
+  policy，也不为 GitHub channel 注入凭据；GitHub credential/network broker 仍是独立
+  后续能力，本次不放宽 sandbox 边界。
+
+本节是完成 Phase 后的增量 runtime 行为；前文已完成的 Phase checklist 仍只作为历史。
+
+---
+
+## 18. 2026-07-14 follow-up：Eveland 产品版本与发布身份
+
+Eveland 产品版本不能复用 Project `Release`/`Deployment` 语义，也不能让 API、Web、
+Gateway、Worker 看起来像四个独立发布的软件。增量契约收敛为：
+
+- 整个 Eveland 使用一个从 `0.1.0` 开始的 SemVer 产品版本；
+- build identity 固定包含 `service=eveland`、`component`、`version`、Git `revision`
+  与 `channel`，API/Gateway `/health`、组件启动日志和 Web About 使用同一契约；
+- Web sidebar 显示紧凑版本，Settings > About 比较 Web/API build；不一致时阻止测试者
+  误以为实例已完成升级；Worker 暂不增加公开 HTTP 服务；
+- `main` 是带 SHA 的 `edge` build，只有 `vX.Y.Z` tag 是 stable release；Release Please
+  维护 Release PR、CHANGELOG、tag 与 GitHub Release；
+- 当前 tag 只保证可复现源码 checkout，不宣称已存在不可变 Eveland OCI/Worker 制品；
+- `@evelandhq/sandbox-bwrap` 保持独立 MIT package 版本，不跟随产品版本。
+
+本节是产品运维版本，不修改前文不可变 Agent Release、preview Deployment、stable route
+与 SessionBinding 的任何语义。
+
+---
+
+## 19. 2026-07-15 follow-up：平台托管 durable workflow world
+
+Eve 0.24.0 不再允许 self-hosted build 通过 `WORKFLOW_TARGET_WORLD` 环境变量选择
+默认 world，因此仅在 build 环境设置变量无法同时兼容 0.23/0.24。平台契约收敛为：
+
+- Agent source、`agent.ts`、`package.json` 与 lockfile 不负责 durable world；
+- worker 启动时使用固定兼容版本的 `@workflow/world-postgres` 幂等 bootstrap schema，
+  production 缺少 `WORKFLOW_POSTGRES_URL` 时在接收 job 前失败；
+- prepared Release wrapper 保留 authored root config，并强制 Postgres world；无 root
+  config 时生成包含 Eve 当前默认 model 的完整配置；
+- Docker/systemd 在 project install 后用 no-save/no-lock/ignore-scripts 安装平台 world，
+  再执行 `eve build`；
+- `WORKFLOW_POSTGRES_URL` 是平台保留运行时值，Project Secret 不能覆盖；worker 与
+  deployment 需要不同网络地址时仅为 bootstrap 设置
+  `WORKFLOW_POSTGRES_BOOTSTRAP_URL`；
+- 若 Deployment URL 使用 `host.docker.internal` 且数据库身份除 host 外与
+  `DATABASE_URL` 完全一致，未显式设置 bootstrap URL 时复用 worker 已可达的
+  `DATABASE_URL`，避免 native worker 因容器专用 hostname 在接收 job 前退出；
+- 真实 sample Agent 已分别用 Eve 0.23.0 与 0.24.0 构建，生成的 compiled manifest
+  与 workflow-world module 都明确选择 `@workflow/world-postgres`。
+
+本节是完成 Phase 后的增量 runtime 行为；前文已完成的 Phase checklist 仍只作为历史。
+
+---
+
+## 20. 2026-07-15 follow-up：Admin runtime configuration diagnostics
+
+随着 API、Gateway、Web、Worker 和两种 runtime 的环境变量增加，About 增加只读诊断能力，
+但不能把方便排障变成新的 Secret 泄露面。增量契约收敛为：
+
+- 只有 Team Admin 可以通过 authenticated control-plane route 读取 runtime configuration；
+  Member 仍可查看 build identity，但不能读取配置诊断；
+- 共享显式 allowlist 描述变量名、组件、实际生效值、来源与用途，不遍历完整
+  `process.env`；默认值和 `NODE_ENV` 驱动的派生值必须按当前 runtime 规则显示；
+- Secret 永远只返回固定 mask，URL 删除 credentials、query value 与 fragment；不提供
+  reveal/copy，也不把原值、长度或可识别前后缀写入响应、文件或日志；
+- Gateway snapshot 只经已有 service-authenticated `/internal/*` 边界返回，公开
+  `/health` 保持原 build identity contract；
+- Worker 不新增 HTTP 服务，在 preflight 成功后将已经脱敏的 snapshot 以 `0600` 权限
+  原子写入共享 `EVELAND_DATA_DIR/diagnostics`，API 只读该 snapshot，不读取 systemd env 文件；
+- Web About 合并自身的 server-side snapshot 与 API 聚合结果，按组件展示 missing、warning
+  和 unavailable；组件不可达时不猜测或回退到其他组件的环境。
+
+本节不改变 Gateway public Agent auth/header/streaming boundary，也不扩大 API 或 Gateway 的
+host privilege；诊断数据仍属于 Admin-only control plane。
+
+---
+
+## 21. 2026-07-17 follow-up：GitLab PAT source import
+
+企业自建 GitLab 的 hostname 不一定包含 `gitlab`，且控制面额外探测任意内网 URL 会扩大
+SSRF 与网络权限边界，因此 source import credential 收敛为显式、host-scoped 行为：
+
+- HTTPS Git import 可显式提交 GitLab PAT，推荐只授予 `read_repository`；不靠 hostname
+  猜测 provider，也不新增 API 对 Repo host 的预检请求；
+- API 以 `APP_SECRET_KEY` 加密 PAT，job payload 只持有密文；worker 使用与 Repo URL 完全
+  匹配的规范化 host 作用域 Git HTTP 配置，不把 token 写入 URL、argv、源码或日志；
+- clone、Eve 扫描和 Source Revision 记录成功后，密文才按 `(userId, host)` 保存；失败不保存，
+  显式新 PAT 也只在成功后替换旧值；
+- 同一用户后续 import/sync 自动复用，同 Team 其他用户不可读取或使用；Settings 只列 host
+  和更新时间并允许删除，永不 reveal/copy；
+- 该能力只服务 Eveland source import，不改变前文 GitHub Channel credential/network broker
+  的独立边界，也不向 Agent sandbox 或 Gateway 注入 GitLab 凭据。
+
+---
+
+## 22. 2026-07-17 follow-up：首次创建与部署闭环
+
+新建 Project 不再把“创建记录”和“第一次部署”拆成两个需要用户发现的操作。增量契约为：
+
+- `/new` 是没有 Workspace Sidebar 的全屏三阶段流程；旧 `/projects/new` 兼容重定向；
+- Git URL/Zip 先在 Web 解析出候选名称，第二屏即时校验格式与全实例可用性；
+- Project 创建必须在数据库唯一约束内精确占用已确认 slug，并发冲突返回 `409`，不静默追加
+  数字后缀；
+- 初始 import job 显式携带 `deployAfterImport`，只有 Source Revision 验证成功才排入
+  `build_deploy`；
+- 创建页轮询脱敏后的 import/build job、Project 状态、持久化日志和 endpoint；用户可在后台
+  继续运行时进入详情，完成后可复制 stable Agent URL；
+- 页面离开不取消 job，失败日志与 Project 状态保留供详情页排障。
+
+本节只收敛控制面创建体验，不改变 worker fencing、Release/Deployment 不可变性、Gateway
+route 或公开 Agent auth/streaming 边界。
+
+---
+
+## 23. 2026-07-17 follow-up：Project 前置 Source Preflight
+
+首次创建在命名之前增加独立的 Source Preflight，不以 Draft Project 模拟临时生命周期：
+
+- `source_preflights` 是用户隔离的短期队列；Git 使用 shallow clone，Zip 使用安全解压后的
+  快照，worker 在没有 Project 的情况下扫描真实文件树、Eve layout 与当前受支持的版本窗口；
+- Preflight 使用 heartbeat、stale recovery 与 attempt fencing；公开 API 永不返回 sourcePath、
+  commit、worker lease 或加密 Git credential；
+- Project 与 initial import job 通过数据库事务精确占用 slug 并消费 completed Preflight；冲突
+  回滚且保留快照，成功后同一 Preflight 不能再次创建 Project；
+- import job 直接复用已验证的 sourcePath，不再次 clone/上传，并在写入 Source Revision 前重新
+  扫描同一快照以守住持久化边界；
+- 未消费 Preflight 默认一小时过期。Worker 不清理 running 项，只在共享 data root containment
+  内删除 expired snapshot；consumed source 继续服从 Project 删除生命周期。
+
+---
+
+## 24. 2026-07-17 follow-up：首次部署 Environment Variables
+
+命名屏幕在 `Deploy` 前增加可选的 Environment Variables 折叠区，支持多组 Key/Value、密码态
+显隐、删除和重复/格式/缺值的就地校验。完全空白行不阻止部署，部分填写的行必须修正或删除。
+
+API 不通过 Project 创建后的第二个 Secrets 请求补写初始配置。明文 Value 先用 `APP_SECRET_KEY`
+加密，再由 Store 在同一原子边界内创建 Project、插入初始 Secrets、排入 initial import job 并
+消费 completed Preflight；Postgres 使用单个 transaction，memory store 保持相同行为。这样 worker
+能 claim import/deploy job 时，常见的 `OPENAI_API_KEY` 等首次运行依赖已经存在。任何失败整体回滚，
+明文 Value 不进入响应、job payload 或日志。
+
+---
+
+## 25. 2026-07-17 follow-up：健康检查失败的启动诊断
+
+`build_deploy` 与 `restart_deployment` 在进程启动后健康检查失败时，必须在清理前通过
+Deployment 所属 runtime adapter 采集诊断。Docker 读取不含 env 的 state/exit/OOM/restart
+摘要与最后 200 行 container logs；systemd 读取 unit state/result/restart 摘要与最后 200 行
+journal。worker 使用本次注入的完整 Secret value 集合脱敏，最多持久化 32,000 字符，并保留
+头部状态与尾部最近日志。诊断采集或 stop 失败各自追加 runtime log，但不能替换触发清理的
+原始 health error。
+
+---
+
+## 26. 2026-07-18 follow-up：Eve sliding compatibility window
+
+在 Eve 提供稳定产品兼容承诺前，Eveland 支持“最新一个已完成验证的 minor 与其前一个 minor”
+的滑动窗口。当前窗口为 0.24.x 与 0.25.x，精确测试 patch 为 0.24.6 与 0.25.1；仓库默认开发
+依赖仍使用最新 patch。Eve 0.26 只有在 changelog、源码与真实 fixtures 完成验证后才进入窗口，
+届时 0.24.x 才退出。导入、build、restart、冷启动、Playground、Gateway 与 scheduler adapter
+继续共享 fail-closed 门禁，跨 minor 宽泛 range 与窗口外版本都不接受。
+
+升级判断基于 0.25.0、0.25.1 changelog 与 `eve@0.24.6..eve@0.25.1` 源码 diff：本次 minor
+主要增加可发布 extension distribution、tool input schema validation、stale HITL response
+处理与 portable hook declarations。Eveland 使用的 canonical session/cancel/stream route、
+Vercel OIDC header、schedule/channel surface、observer stream events 与 `SandboxBackend` public
+types 没有发生需要 adapter 分叉的变化。兼容矩阵同时运行 0.24.6/0.25.1 observer discovery、
+schedule discovery/dev dispatch、scheduler adapter build/start 与 sandbox public type checks；Linux
+basic systemd smoke 使用 0.24.6，其余完整 observer/Gateway/schedule/sandbox 链路使用 0.25.1。
+后续 Eve minor 仍必须重复源码核对与真实 fixture 验证，不能因为 npm 发布而自动扩宽窗口。
+
+---
+
+## 27. 2026-07-21 follow-up：Eve 0.26 compatibility window
+
+为避免 Eveland 升级直接中断仍在线的 0.24 Agent，本节将前一节的双 minor 策略调整为最近三个
+已完整验证 minor 的滑动窗口：当前支持 Eve 0.24.x、0.25.x 与 0.26.x，精确矩阵 patch 为
+0.24.6、0.25.3 与 0.26.2。默认开发、Web Client、Agent Auth 与完整 Linux fixture 使用
+0.26.2，basic systemd smoke 使用窗口最旧端的 0.24.6。三个 minor 共享 import、build、restart、
+cold activation、Playground、Gateway 与 scheduler adapter 的 fail-closed 门禁。
+
+升级判断覆盖 0.25.2、0.25.3、0.26.0、0.26.1、0.26.2 的 release notes，并直接核对
+`eve@0.25.3..eve@0.26.2` 源码：
+
+- 唯一影响 Eveland 直接使用 API 的 minor 变化是 Eve Client 移除 `maxReconnectAttempts`，改为
+  从最后 absolute cursor 内部重连 durable stream；Eveland 从未设置该选项，因此无需兼容分支，
+  Playground 直接继承新重连行为；
+- canonical session/continuation/cancel/stream route、`eve/channels/auth` 的 Vercel OIDC
+  header、Hook、Schedule、Channel 与 `SandboxBackend` 公共定义未变；
+- dynamic tool auth、sandbox bridge 并发、semantic errors、静态 Skill 无 sandbox 读取及 `eve info`
+  的 subagent/schedule 输出属于兼容增强，不改变 Observer/Collector、scheduler adapter 或 runtime
+  privilege 边界。
+
+真实发布包矩阵覆盖 0.24.6/0.25.3/0.26.2 observer hook 与 packaged skill discovery、schedule
+discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox public type
+compatibility。UI 只把最新支持线 0.26.x 显示为绿色；0.24.x/0.25.x 保持可运行，但以红色提醒
+尽快升级；窗口外版本为红色并继续阻断。后续 0.27 仍需重复 release/source/fixture 验证，进入后
+窗口移动为 0.25.x/0.26.x/0.27.x。
+
+---
+
+## 28. 2026-07-22 follow-up：Eve 0.27 compatibility window
+
+Eve 0.27.0 已完成 release notes、`eve@0.26.2..eve@0.27.0` 源码和实际发布包核对，三 minor
+滑动窗口因此移动到 Eve 0.25.x、0.26.x 与 0.27.x；精确矩阵 patch 为 0.25.3、0.26.2 与
+0.27.0。默认开发、Web Client、Agent Auth 和完整 Linux fixture 使用 0.27.0，basic systemd
+smoke 使用窗口最旧端的 0.25.3。0.24.x 退出 import、build、restart、cold activation、
+Playground、Gateway 与 scheduler adapter 的共享 fail-closed 门禁；旧 0.24 cancel-route 404
+本地中止兼容路径随之删除。
+
+源码核对得到以下兼容结论：
+
+- Client session/continuation/cancel/stream 实现与类型、Vercel OIDC client headers、Eve Channel、
+  Hook、Schedule 与 `SandboxBackend` 公共定义在 0.26.2 和 0.27.0 发布包中保持一致；
+- Eve 0.27 的 Route Auth 会按实际策略声明 `WWW-Authenticate`，HTTP Basic 增加 realm/UTF-8
+  challenge 并对 credential 做 Unicode NFC 规范化；Eveland 不根据 challenge 推断 Connection，
+  现有 UTF-8 Basic 客户端无需分叉；
+- Nuxt stable services、compaction checkpoint/full-fidelity context 和 Bedrock prompt-cache 修复属于
+  Eve host/runtime 内部增强，不改变 Eveland 的 standalone Release、Observer/Collector、scheduler
+  adapter 或 privilege boundary。
+
+真实发布包矩阵覆盖 0.25.3/0.26.2/0.27.0 observer hook 与 packaged skill discovery、schedule
+discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox public type
+compatibility。UI 只把最新支持线 0.27.x 显示为绿色；0.25.x/0.26.x 保持可运行但提醒升级，窗口外
+版本继续阻断。
+
+---
+
+## 29. 2026-07-24 follow-up：Eve 0.27.3 verified patch baseline
+
+Eve 0.27.1、0.27.2 与 0.27.3 已完成 release notes、`eve@0.27.0..eve@0.27.3` 源码和实际发布包
+核对。三 minor 支持窗口保持 0.25.x、0.26.x 与 0.27.x；精确矩阵 patch 更新为 0.25.3、
+0.26.2 与 0.27.3。默认开发、Web Client、Agent Auth 和完整 Linux fixture 使用 0.27.3，
+basic systemd smoke 继续使用窗口最旧端的 0.25.3。
+
+源码与发布包核对得到以下兼容结论：
+
+- 0.27.1 增加 Workflow 乐观并发保护、完整保留队列化 delivery payload，并改善整棵 turn tree
+  的预算拒绝/取消与 Slack/Teams routing；
+- 0.27.2 在 NDJSON stream 打开时先发送空白字节，并在 Client 增加显式 reconnect opt-out；
+  Eveland API monitor 已忽略空行，Gateway 保持无缓冲透传，Playground 保留默认 durable
+  reconnect，因此无需 adapter 分支；
+- 0.27.3 修复带 prefix 的 callback route、Vercel multi-agent callback、ESM bundling 与
+  Linear image input，并在 deployment 变化时刷新 dynamic tools；sandbox workspace seed 现在
+  在 bootstrap 前写入；
+- canonical session/continuation/cancel/stream protocol message、Vercel OIDC headers、Hook event
+  schema、Schedule public definitions 与 `SandboxBackend` public contract 未变。Eveland 的平台
+  backend 只替换 authored `backend`；workspace seed 会先写入 template，随后继续执行 authored
+  `bootstrap()`，每个 durable Session 还会执行 `onSession()`。
+
+Agent 项目即使声明 `^0.27.0`，也必须刷新 lockfile 并重新部署才能确定获得 0.27.3；Eve
+0.27.3 的 AI SDK peer 下限已提高到 `ai@^7.0.34`，项目与平台 workspace 中单独锁定的旧版本
+必须一并升级。自定义 NDJSON consumer 必须忽略空行；仅当 relay/proxy 自己拥有重连策略时
+才应使用新的 reconnect opt-out。0.25.x/0.26.x 继续受支持但 UI 提醒升级，窗口外版本仍 fail
+closed。
+---
+
+## 30. 2026-07-24 follow-up：Release 自动回收
+
+`EVELAND_RELEASE_RETENTION` 不再只作为手动 Archive 的保护谓词。Worker 启动时以及每个
+`EVELAND_RELEASE_SWEEP_INTERVAL_MS` 周期扫描 Project retention state，对超过最近 N 个、
+不被 mutable route 或非终态 SessionBinding 引用、且已经 `stopped` 的 Deployment 幂等排入
+`archive_deployment`；单轮最多新增 `EVELAND_RELEASE_SWEEP_BATCH_SIZE` 个 job。按 Deployment
+行串行化的 Store 操作保证重叠 tick 或多 Worker 不会为同一 Deployment 创建重复 active job。
+
+Archive 继续按持久化的 `runtimeKind` 删除 systemd Release 或 Docker image，同时无条件删除
+`EVELAND_DATA_DIR/builds/<projectId>/<releaseId>`，因此 Docker build context 也受同一 retention
+上限约束。`build_deploy` 在 Deployment 落库前失败时同样删除 partial build directory；若 runtime
+artifact 已经创建，则先通过对应 adapter 删除。已成功落库的 Deployment 不走该失败清理路径，
+仍由正常 retention、route 与 SessionBinding 保护规则管理。
+
+---
+
+## 31. 2026-07-27 follow-up：Eve 0.27.6 verified patch baseline
+
+Eve 0.27.4、0.27.5 与 0.27.6 已完成 GitHub release notes、`eve@0.27.3..eve@0.27.6`
+源码 diff 和实际发布包核对。三 minor 支持窗口保持 0.25.x、0.26.x 与 0.27.x；精确矩阵
+patch 更新为 0.25.3、0.26.2 与 0.27.6。默认开发、Web Client、Agent Auth 和完整 Linux
+fixture 使用 0.27.6，basic systemd smoke 继续使用窗口最旧端的 0.25.3。
+
+本次 patch baseline 的直接协议变化与 Eveland 对策：
+
+- 0.27.4 新增 `POST /eve/v1/session/reset`，只使用 continuation token 寻址 durable owner。
+  Gateway 不能把路径中的 `reset` 当作 session id，也不能在 promote/rollback 后重新执行
+  route weighting；`SessionBinding` 因此新增 nullable continuation token 与 project-scoped
+  partial unique index。create response、continuation response 和 token-only create/resume 会更新
+  owner binding；公开与内部 Playground reset 按该 binding 激活原 Deployment，成功后只释放
+  token，保留历史 Eve session binding。迁移 0029 从 `sessions.continuation_token` 回填已知 owner；
+- 0.27.6 的 remote principal forwarding 使用 create-session body 中的 metadata，并要求发送端
+  `forwardPrincipal: true` 与接收端精确 `trustedForwarders` 双向 opt-in。Gateway 保持 body 与
+  Agent-owned Authorization 透明传输，不自动开启 trust、不解释 principal，也不转发 credential；
+- remote empty `outputSchema`、base-path create/cancel、portable channel scaffold、dev TUI、
+  shutdown 和 Slack reset helper 属于 Eve runtime/authoring 改进，不需要 Eveland adapter 分支；
+- Vercel OIDC headers、Hook event schema、Schedule public definitions、现有 create/continue/cancel/
+  stream message 与 `SandboxBackend` contract 未变；AI SDK peer 下限仍为 `ai@^7.0.34`。
+
+实际发布包矩阵继续覆盖 0.25.3/0.26.2/0.27.6 observer hook 与 packaged skill discovery、
+schedule discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox
+public type compatibility。Agent 项目需要刷新 lockfile 并重新部署才能确定取得 0.27.6。只有两端
+Deployment 都升级且接收端能精确识别可信 transport forwarder 时，才应启用 remote principal
+forwarding；不得使用 `trustedForwarders: () => true` 作为平台兼容手段。
+
+---
+
+## 32. 2026-07-28 follow-up：SessionBinding idle retention（#148）
+
+非终态 Session 不再无限期保护其 Deployment。平台按 `SessionBinding.updatedAt` 应用
+trigger-specific idle deadline：Playground 默认 24 小时，公开 API 默认 7 天；API、Gateway
+与 Worker 必须分别使用相同的 `EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS` 和
+`EVELAND_API_SESSION_IDLE_TTL_MS`。Gateway 在激活 pinned Deployment 前刷新仍然有效的
+binding；已知但过期的 session/token 返回 `410` 与 `session_expired`，不能重新执行 route
+weighting 或静默落到另一 Deployment。
+
+Retention 只把未过期 binding 计为 `active_session`，并新增 `active_request`，以活跃且未释放的
+ActivationLease 保护正在唤醒或处理请求的 Deployment。Worker 的周期 sweep、archive job 二次
+检查、API Deployment overview 与手动 Archive 使用同一时间和 TTL 规则；超过最近 N 个且无 route、
+binding 或 lease 保护的 stopped Deployment 会恢复进入正常 archive 流程。
+
+Playground 保持临时工具语义：显式 New conversation 先完成 canonical reset 再清空浏览器状态；
+route unmount 或非 bfcache `pagehide` 使用 same-origin keepalive request best-effort reset。页面退出
+不等待网络结果，因此服务端 TTL 仍是浏览器崩溃、断网或强制结束时的最终兜底。
+
+---
+
+## 33. 2026-07-28 follow-up：Eve 0.27.8 verified patch baseline
+
+Eve 0.27.7 与 0.27.8 已完成 GitHub release notes、`eve@0.27.6..eve@0.27.8` 源码 diff 和
+实际发布包核对。三 minor 支持窗口保持 0.25.x、0.26.x 与 0.27.x；精确矩阵 patch 更新为
+0.25.3、0.26.2 与 0.27.8。默认开发、Web Client、Agent Auth 和完整 Linux fixture 使用
+0.27.8，basic systemd smoke 继续使用窗口最旧端的 0.25.3。
+
+本次 patch baseline 的直接协议变化与 Eveland 对策：
+
+- 0.27.7 的 `ClientSession.stream()` 新增 `follow: false` 有界读取。Client 首次请求会附带
+  `includeTailIndex=1`，Eve Channel 以 `x-eve-stream-tail-index` 返回打开时的 durable tail。
+  Eveland 的 Web rewrite、API Playground proxy、内部 Gateway 路径与公开 Gateway 都保持 query、
+  响应 header 和 NDJSON body 透明，因此不新增 adapter 分支；Gateway/API 回归测试固定该透传。
+  旧 Agent 不返回 tail header，0.27.7+ Client 会明确报错，所以只有 Client 与目标 Agent 都升级
+  到 0.27.7+ 时才能使用 bounded catch-up。Playground 继续使用默认 live follow；
+- 0.27.7 会解析 provider-executed tool call 的 raw JSON string，并把 malformed arguments 转成
+  failed tool result，而不是使整个 turn 失败。Observer Hook event surface 没有改变，Collector
+  无需 schema 分支；
+- 0.27.7 的单 Nitro build 只影响 Eve 的 Vercel Build Output。Eveland 使用 standalone Release
+  build/runtime，不复制 Vercel functionRules，也不改变 Worker 或 sandbox privilege boundary；
+- 0.27.8 的 `eve add` / `eve registry` 是 authoring-time CLI。Eveland import/build/deploy 不运行
+  这些命令，Release preparation 不因此访问 registry 或修改 immutable Source Revision；
+- create/continue/cancel/reset route、continuation token、Vercel OIDC headers、Route Auth、
+  Hook、Schedule、principal forwarding 和 `SandboxBackend` 公共定义均未变化；AI SDK peer 下限
+  仍为 `ai@^7.0.34`。
+
+实际发布包矩阵继续覆盖 0.25.3/0.26.2/0.27.8 observer hook 与 packaged skill discovery、
+schedule discovery/dev dispatch、scheduler adapter build/start、Vercel OIDC header 和 sandbox
+public type compatibility。Agent 项目需刷新 lockfile 并重新部署才能确定取得 0.27.8；仅改
+`package.json` range 不会改变现有 immutable Release。
+
+---
+
+## 34. 2026-07-30 follow-up：Session 与 ScheduleRun 历史归属
+
+Web 的 Sessions 列表只展示实际 Eve Session，并按 `startedAt` 倒序分页；ScheduleRun
+execution envelope 不再作为同级行混入，也不再用独立 cursor 与 Session 结果拼接伪造全局
+顺序。cron/manual Session 详情在 replay 标题下方显示紧凑 ScheduleRun provenance，包括
+Schedule key、run 状态/时间，以及 cron 的人类可读 UTC 周期和原始五字段表达式；完整
+Release、Deployment、missed tick、错误与多 Session 关系仍由 ScheduleRun 详情承载。
+
+Schedules 页面在定义表下方拥有最近 50 条、可分页且可按 Schedule 筛选的 ScheduleRun
+历史。恰好一个关联 Session 的 run 直接链接该 Session；零 Session 与多 Session run 进入
+ScheduleRun 详情，不能隐藏合法的零 Session 执行，也不能任意选择多个 Session 中的一个。
+
+---
+
+## 35. 2026-08-01 follow-up：Worker Deployment Launch Context
+
+Worker 的 deploy、restart、cold activation 与 ScheduleRun activation 共用分阶段的
+Deployment Launch Context：第一阶段一次性解析当前 Project/Shared Environment、平台保留值、
+完整 secret masking 集合与 package-manager command context；第二阶段按 adapter 物化 sandbox
+目录和 Deployment observability policy。四条 job handler 继续分别拥有 build、stop、端口、
+RuntimeInstance、健康检查、lease 与持久化状态机，Launch Context 不接管这些生命周期。
+
+所有启动输入显式使用同一份 Worker environment 与 `ProcessJobOptions.appSecretKey`，避免 Secret
+解密和 telemetry credential 分别隐式读取不同的 `process.env`。cold/schedule activation 在源码
+目录消失后可从 SourceRevision 持久化的 `package.json`/lockfile 元数据恢复 command context；
+restart 仍要求 live source，并在停止当前进程之前 fail closed。
+
+---
+
+## 36. 2026-08-14 follow-up：Eve 0.34–0.37 temporary compatibility window
+
+Eve 0.35.0、0.36.0 与 0.37.0 在同一轮兼容审查中连续发布。为避免接纳三条新线时立即淘汰
+仍在线的 0.34 Agent，本轮把通常的三 minor 滑动窗口临时扩大为四条：0.34.x、0.35.x、
+0.36.x 与 0.37.x；精确矩阵 patch 为 0.34.0、0.35.0、0.36.0 与 0.37.0。import、build、
+restart、cold activation、Playground、Gateway 与 scheduler adapter 继续共享同一 fail-closed
+门禁，0.33.x 及以下和 0.38.x 及以上均不放行。之后缩回三条线必须作为分阶段兼容变更，
+不能由依赖更新隐式完成。
+
+本轮源码、发布包和真实 Eve compiler 核对得到以下边界：
+
+- 0.35 把 discovery manifest 从 v12 升到 v13；平台在重叠窗口同时投影 v12/v13，未知 schema
+  仍返回 null 并保留静态 Source summary。v13 的 role-aware instruction entry 继续按
+  `logicalPath` 投影，不把 `system`/`user` role 猜成新的平台实体；
+- message stream 从 21 升到 22，只在 `session.started` 与 `turn.started` 增加可选 portable
+  trace context。Gateway 继续逐字节透传 NDJSON，Collector 对未知字段保持兼容，usage 仍来自
+  `step.completed.data.usage`；本轮不新增数据库字段；
+- Hook、Channel、Channel Auth 与 Schedule 公共定义在四个发布包中保持兼容。Observer 仍是
+  Eveland 注入的私有 Hook/OTel provider，不受 Eve 0.35 将 authored instrumentation content
+  改为 opt-in 的开关影响；AI SDK global integration 仍可达。Scheduler 的所有受支持线都已拥有
+  `turnPolicy`，注入 adapter 继续显式使用 `queue`，避免 schedule 抢占用户 turn；
+- 0.36 把隐式默认模型改为 `zai/glm-5.2`，项目升级前应显式固定 `model`；旧
+  `eve/sveltekit` 的 `configureVercelJson`、`servicePrefix` 与对应环境变量需要项目侧迁移；
+- 0.37 的 Vercel Sandbox Drives 不穿过 Eveland runtime boundary。Release preparation 继续用
+  受管 bwrap backend 替换 authored backend，同时保留并执行 `bootstrap()`、`onSession()`，保留
+  `description`、`revalidationKey` 与 workspace seeds；`eve init`/`eve dev` 的 authoring-time
+  变化不改变 Worker 明确执行的 build/start 路径。
+
+---
+
+## 37. 2026-08-14 follow-up：Eve 0.37.1 durable Gateway routes
+
+Eve 0.37.1 新增 create-once `operationId`、durable MCP invocation 与 task-input callback。
+Gateway 的落地边界如下：
+
+- initial create 的 `operationId` 只以 `EVELAND_GATEWAY_AFFINITY_SECRET` HMAC 后写入
+  project-scoped `OperationBinding`；数据库不保存 raw ID。唯一索引和 `ON CONFLICT DO NOTHING`
+  使并发请求首写胜出，重试按首次 Deployment 冷启动，不受后续 promote/rollback/weight 影响；
+- MCP `agent_start` 从 bounded JSON 或 SSE response metadata 取得 `structuredContent.invocationId`，沿用
+  SessionBinding 保存目标；`agent_get`、`agent_update`、`agent_cancel` 用 invocation ID 查回原目标；
+- `POST /eve/v1/task-input/:token` 只验证 canonical path 并原样转发，token 不落库。Project 的旧
+  per-project workflow database 与 rollout shared world 都让同 Project Deployment 看到同一 durable
+  hook，因此 Gateway 在当前 route targets 中选择 Eve >=0.37.1 的可激活目标即可；
+- 三条能力均设置 0.37.1 feature floor。普通 Eve session 仍服从 0.34.x–0.37.x 临时窗口；feature
+  request 不会选中 0.37.0，若 binding 指向旧版本或没有兼容 target 则返回 409；
+- OperationBinding 沿用 API 7 天 / Playground 24 小时 idle TTL；有效 binding 以
+  `active_operation` 保护 Release，过期重试与 SessionBinding 一样返回稳定 410，不能漂移。
+
+迁移 `0050_regular_lenny_balinger` 必须先于 Gateway rollout。Gateway 仍只决定 target，不解析
+task-input capability、不替代 MCP/Agent auth，也不把同名 operation ID 当成平台身份；Agent 是
+principal 隔离与 create-once 结果的最终权威。
+
+---
+
+## 38. 2026-08-15 follow-up：Eve 0.38.3 compatibility foundation
+
+本轮把平台窗口显式收缩为 Eve 0.37.x–0.38.x，精确矩阵 patch 为 0.37.1 与 0.38.3；0.34–0.36
+在 import、build、restart、cold activation、Playground、Gateway 与 scheduler execution 的共享
+门禁中一起淘汰。workspace 只保留 `eve-oldest` 与 `eve` 两个位置别名，SDK peer floor 同步提高到
+0.37.0。
+
+Eve 0.38 的 frontend binding 删除同步 `stop()`。Playground 在 session 已知时通过独立
+ClientSession handle 发 durable `cancel()`，首个 response 尚未返回时则 abort 本地请求，避免
+hook-owned `cancel()` 永久等待 response resolver；单次 in-flight guard 阻止重复取消。MCP 默认
+route 改为 `/eve/v1/mcp` 且可由 Agent 配置，Gateway 继续 path-transparent，
+不把默认路径或 OAuth protected-resource metadata path 写死。
+
+Eve 0.38.3 只接受 workflow spec v6。legacy topology 固定升级到
+`@workflow/world-postgres@5.0.0-beta.34`，shared topology 升级到
+`@evelandhq/workflow-world@0.8.1`；architecture contract 会从已安装包读取 spec version、Eve runtime
+guard、注入常量与文档 pin，防止任一路径在 Deploy 后才暴露不兼容。已有 shared schema 若尚未执行
+会重建 workflow_events 主键的 `0006_event_slots.sql`，worker startup/tenant provisioning fail closed，
+要求 operator 在停流量的 maintenance window 显式运行 `workflow-world-setup`；空库仍自动 bootstrap。
+
+2026-08-17 的 0.7 follow-up 把 shared topology 的存储边界移入 World/dispatcher：写侧默认
+strip 可重建 snapshot 并写 checkpoint/bounded block，dispatcher 在启动和每分钟执行 bounded
+block packing、deadline stream/run retention 与 per-run queue GC。worker 不再对 shared database
+调用固定 24 小时的旧 cleanup primitive，以免绕过 scheduled/interactive/persistent retention class；
+它只保留 legacy per-project sweep。`EVELAND_WORKFLOW_STREAM_COMPACTION` 由平台保留并注入，
+`WORKFLOW_DISPATCHER_MAINTENANCE_*` 控制 shared maintenance 单次上限。
+
+同日的 0.7.1 follow-up 为无法解析 Deployment 的 dispatch failure 增加 unresolved dead-letter
+quarantine。dead letter 保留 run 与显式 replay/cancel 语义，但 Worker 的 Release retention 不再把它
+视为可路由 active run；resolved dead letter 重新进入普通 pending/running 保护。这样已永久失去
+目标的 run 不会无限 pin 旧 Deployment，同时不会把 quarantine 偷换成隐式完成或删除。
+
+Eve 0.38 新增 Extension Schedule、Channel 与 Subagent，但本兼容 foundation 不把 Extension
+Schedule 当作 root Schedule，也不把 Extension Subagent 当作已注入 Observer 的节点。完整的
+Scheduler/Observer/Discovery 支持在独立的 stacked follow-up 中落地，避免把新能力与兼容窗口、
+Workflow protocol 升级混在同一审查单元。
+
+---
+
+## 39. 2026-08-15 follow-up：Extension Schedule/Subagent integration
+
+stacked follow-up 在 dependency install 与正式 `eve build` 之间先运行 `eve info`，读取 v13
+`resolvedExtensions`，再执行 Release 内自包含的 integrator。Extension Schedule 按 Eve 的
+`<mount>__<name>` 命名、遵循 consumer override 优先级，与 root Schedule 一起写入持久化定义和
+私有 Scheduler Channel；Extension distribution 的 native cron export 被改为 no-op，真正 handler
+继续只从单次 credential 保护的 Channel 执行。对 pnpm hardlink 的模块改写使用临时文件加 rename，
+不写 content-addressed store。
+
+有效的 directory-form Extension Subagent 及其嵌套后代获得 private observer hook；override
+Subagent 替代原贡献，Extension 内的 fallback runtime 作为无副作用 lazy loader 放在其 `lib/`
+保留文件并被静态 bundle，避免 Eve authored-module cache 改变相对 import 基准，同时确保健康的
+platform mount 不会求值烘焙副本。file-form Subagent 仍没有 Eve hooks slot，和本地 file-form 一样
+记录结构化 coverage gap 到 Release artifact，不 patch compiled internals。最终 discovery summary 以稳定的
+`agent/extensions/<namespace>/...` 路径和 namespaced Subagent ID 展示有效贡献。
+Release observer contract 升到 3，使旧 Release 在 activation 时明确提示需要 rebuild 才能获得
+Extension Subagent 覆盖。
+
+Review 加固要求 Extension schedule key 冲突在任何 no-op 改写前 fail closed，最终 scheduler
+definitions 必须存在并通过 cron/key/path/hash 校验，Docker/systemd 不得回退到 root-only 快照。
+注入器对 manifest 路径同时做词法与 realpath containment；无 Extension mount 的存量 Release
+跳过预发现和约 11 MiB integrator。真实兼容矩阵覆盖 Eve 0.37.1 的 v13 Extension manifest no-op
+路径与 Eve 0.38.3 的 Schedule/Subagent 完整路径。
+
+---
+
+## 40. 2026-08-17 follow-up：Sandbox lifecycle 与资源边界
+
+平台升级到 `@evelandhq/sandbox-bwrap@0.2.0`，把高频短命命令造成的进程残留与无界资源占用
+收敛为 Docker/systemd 共用的 backend 契约：`run()` 的 timeout 或 Abort 会终止完整进程组，
+session stop/shutdown 会回收所有受管进程；每个 compute generation 默认最多接纳 64 个 live
+command，每个 `run()` 默认最多保留 16 MiB 合并 stdout/stderr。三个限制均由 Worker 解析为
+Project 不可覆盖的保留环境，非法值在启动路径 fail closed；长期进程继续使用受生命周期管理的
+`spawn()`。
+
+Docker Deployment 显式启用 `--init`，让 PID 1 作为 subreaper 回收孤儿 bwrap helper；真实 Docker
+smoke 连续执行 500 次短命命令和一次递归后台超时，并要求 PID/zombie 数回到基线。systemd 不需要
+Docker init，但使用同一 backend timeout、并发与输出上限，并继续由 systemd 管理进程树。两种
+runtime 都保留现有的 2 GiB memory、200% CPU 与 512 tasks 默认 cgroup 边界；本次没有放宽 bwrap
+security boundary，也没有把 Docker socket 暴露给 Agent。

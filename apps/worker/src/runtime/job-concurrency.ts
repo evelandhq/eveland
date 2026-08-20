@@ -9,7 +9,7 @@ export type MachineSpec = {
 
 /**
  * How many builds this host can absorb at once, from the sizing model in
- * docs/deploy/linux.md "Capacity planning (single host)": one build peaks at
+ * docs/en/operations/capacity.md: one build peaks at
  * 1-2 GB and bursts ~2 cores, so budget one build per 4 GiB of RAM while
  * leaving two cores for the control plane and running Agents. Never below one,
  * or deploys would deadlock on small hosts.

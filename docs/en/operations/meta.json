@@ -1,0 +1,4 @@
+{
+  "title": "Operate",
+  "pages": ["runtime", "capacity", "diagnostics", "upgrades", "backup-restore", "security"]
+}

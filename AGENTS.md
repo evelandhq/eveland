@@ -7,18 +7,23 @@ agents; product behavior still belongs in the product and deployment docs.
 
 Before changing code:
 
-1. Read `docs/spec.md` for the product contract.
+1. Read `spec.md` for the product contract.
 2. Read `README.md` for the current repository shape and local workflow.
 3. For Linux, systemd, sandbox, or host-worker work, also read
-   `docs/deploy/linux.md`.
+   `docs/en/production/`.
 4. For Agent Gateway, routing, or versioned Deployment work, read the relevant
    decisions in
-   `docs/superpowers/plans/2026-07-13-gateway-observability-handoff.md`.
-5. For observability work, read `docs/observability.md`.
+   `.plans/2026-07-13-gateway-observability-handoff.md`.
+5. For observability work, read `docs/en/reference/observability.md` and the Observation path in
+   `docs/en/reference/architecture.md`.
 6. Inspect the implementation, nearby tests, and `git status` before proposing
    or making changes.
 
-`docs/spec.md` is the product truth source. Tests and current code are the truth
+The `docs/en` and `docs/zh` trees are the published documentation-site content
+(single source, rendered at `eveland.ai`); edit both languages together.
+`.plans/` is historical plans and handoffs, not current guidance.
+
+`spec.md` is the product truth source. Tests and current code are the truth
 for implemented behavior. If they conflict, identify the conflict explicitly;
 do not silently make the implementation, spec, and operational docs disagree.
 
@@ -92,6 +97,8 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
 - `apps/worker`: import, build, deployment, restart, scheduling, health, and
   runtime-controller jobs, split between queue orchestration, concrete job
   families, and shared runtime helpers.
+- `apps/workflow-dispatcher`: external dispatcher for durable workflow timers
+  and wake; exactly one instance runs per installation.
 - `packages/core`: shared contracts and domain logic, split into explicit
   browser-safe and Node-only subpath exports.
 - `packages/db`: Drizzle schema, migrations, repositories, mappers, and one
@@ -119,6 +126,7 @@ Keep the dependency direction:
 
 ```text
 apps -> packages
+worker, workflow-dispatcher -> @evelandhq/workflow-world (external npm)
 session-collector -> core + db
 agent-auth, identity-broker -> core + db
 agent-observer, agent-scheduler -> core
@@ -193,7 +201,7 @@ corresponding tests and docs are updated.
   The single exception is the open-access platform mode, where the Agent Gateway
   injects a Caller Token into requests that carry **no** `Authorization` at
   all; it still never inspects or replaces one the caller sent. See
-  `docs/spec.md` for the constraints that exception carries.
+  `spec.md` for the constraints that exception carries.
   Request bodies are buffered up to the configured body limit before
   forwarding (routing must inspect initial/reset bodies); upstream response
   bodies stream through, and any response tee (session metadata) must stay
@@ -280,18 +288,20 @@ Choose exactly one development mode. Do not alternate a native macOS install
 and full Compose in the same working tree: Compose installs Linux dependencies
 into the mounted workspace and can clobber native `node_modules`.
 
-Native apps with only Postgres in Compose:
+Native apps with only Postgres and the OTLP Collector in Compose:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres otel-collector
 pnpm --filter @evelandhq/api db:migrate
 pnpm dev
 ```
 
-Use the individual `pnpm dev:api`, `dev:gateway`, `dev:web`, and `dev:worker`
-scripts in separate terminals when isolated logs are more useful. `pnpm dev`
-also starts the optional public docs site; use `pnpm dev:docs` alone when only
-that site is needed.
+Use the individual `pnpm dev:api`, `dev:gateway`, `dev:web`, `dev:worker`, and
+`dev:workflow-dispatcher` scripts in separate terminals when isolated logs are
+more useful. `dev:worker` does not start the dispatcher; durable wake and
+continuation need the API, the worker, and exactly one workflow dispatcher all
+running. `pnpm dev` also starts the optional public docs site; use
+`pnpm dev:docs` alone when only that site is needed.
 
 Or run the complete development stack:
 
@@ -299,7 +309,8 @@ Or run the complete development stack:
 docker compose up
 ```
 
-The Dashboard, API, Agent Gateway, worker, and Postgres participate in the normal end-to-end
+The Dashboard, API, Agent Gateway, worker, workflow dispatcher, Postgres, and
+OpenTelemetry Collector participate in the normal end-to-end
 path. A pending import/deploy usually means the worker is absent or failing;
 Playground/public Agent failures can involve the Agent Gateway even when API and the Dashboard are
 healthy. When a Compose worker controls the host Docker daemon,
@@ -349,8 +360,9 @@ healthy. When a Compose worker controls the host Docker daemon,
   Treat `apps/web/src/components/ui` as upstream shadcn source and do not modify
   it for these fixes; correct call sites or higher-level wrappers instead.
 - Behavior, topology, environment, public URL, or operational-limit changes
-  must update the relevant `docs/spec.md`, `README.md`, `docs/deploy/linux.md`,
-  Compose/env examples, and current handoff notes in the same change.
+  must update the relevant `spec.md`, `README.md`, `docs/en` and `docs/zh`
+  site pages, Compose/env examples, and current handoff notes in the same
+  change.
 
 ## Verification
 

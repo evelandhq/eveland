@@ -446,7 +446,7 @@ export function createSystemdAdapter(
         config.buildSandbox === "bwrap"
           ? // Running bwrap as the unprivileged build user relies on the same
             // AppArmor grant the deployed agent's own sandbox already requires
-            // (/etc/apparmor.d/bwrap, userns) -- see docs/deploy/linux.md for
+            // (/etc/apparmor.d/bwrap, userns) -- see docs/en/production/prerequisites.md for
             // the host provisioning that grants it; not re-documented here.
             await execa(
               "runuser",

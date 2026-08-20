@@ -50,7 +50,7 @@ export async function ensureAgentTelemetryNetwork(
       throw new Error(
         `Could not create Docker network "${networkName}": ${
           create.all?.trim() || "docker network create failed"
-        }. If Docker reports that all predefined address pools are subnetted, configure a larger default-address-pools range as documented in docs/deploy/linux.md.`,
+        }. If Docker reports that all predefined address pools are subnetted, configure a larger default-address-pools range as documented at https://eveland.ai/docs/reference/troubleshooting.`,
       );
     }
   }

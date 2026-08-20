@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { configurationDefinitions } from "@evelandhq/core/config-diagnostics";
 
 /**
- * `docs/environment-variables.md` is the operator-facing reference, and the
+ * `docs/en/reference/environment-variables.md` is the operator-facing reference, and the
  * configuration registry is what the platform actually reads. Nothing tied the
  * two together, so the reference silently fell 24 variables behind -- including
  * every activation and scheduler tunable, and the admin bootstrap credentials.
@@ -15,7 +15,7 @@ import { configurationDefinitions } from "@evelandhq/core/config-diagnostics";
  */
 describe("environment variable reference", () => {
   const reference = readFileSync(
-    path.resolve(import.meta.dirname, "../../../docs/environment-variables.md"),
+    path.resolve(import.meta.dirname, "../../../docs/en/reference/environment-variables.md"),
     "utf8",
   );
 

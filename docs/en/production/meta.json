@@ -1,0 +1,12 @@
+{
+  "title": "Deploy Eveland",
+  "pages": [
+    "index",
+    "prerequisites",
+    "core-services",
+    "worker",
+    "workflow-dispatcher",
+    "networking",
+    "verify"
+  ]
+}

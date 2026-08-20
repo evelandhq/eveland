@@ -18,6 +18,7 @@ describe("Eveland public website contract", () => {
     expect(packageJson).toContain('"name": "@evelandhq/docs"');
     expect(packageJson).toContain('"build": "next build"');
     expect(source("../next.config.mjs")).toContain("createMDX");
+    expect(source("../source.config.ts")).toContain('dir: "../../docs"');
   });
 
   test("targets the eveland.ai Cloudflare Worker", () => {
@@ -45,6 +46,7 @@ describe("Eveland public website contract", () => {
 
     expect(workflow).toContain("branches: [main]");
     expect(workflow).toContain("- apps/docs/**");
+    expect(workflow).toContain("- docs/**");
     expect(workflow).toContain("pnpm --filter @evelandhq/docs build:cloudflare");
     expect(workflow).toContain("cloudflare/wrangler-action@v3");
     expect(workflow).toContain("CLOUDFLARE_API_TOKEN");
@@ -98,17 +100,17 @@ describe("Eveland public website contract", () => {
 
   test("localizes the documentation chrome and production diagrams", () => {
     const layout = source("./lib/layout.shared.tsx");
-    const topology = source("./components/runtime-topology.tsx");
 
     expect(layout).toContain('search: "搜索"');
     expect(layout).toContain('toc: "本页内容"');
     expect(layout).toContain('nextPage: "下一页"');
-    expect(topology).toContain("lang?: Language");
-    expect(source("../content/docs/en/production/index.mdx")).toContain(
-      '<RuntimeTopology lang="en" />',
+    expect(existsSync(path("../../../docs/assets/topology-en.svg"))).toBe(true);
+    expect(existsSync(path("../../../docs/assets/topology-zh.svg"))).toBe(true);
+    expect(source("../../../docs/en/production/index.md")).toContain(
+      "](../../assets/topology-en.svg)",
     );
-    expect(source("../content/docs/zh/production/index.mdx")).toContain(
-      '<RuntimeTopology lang="zh" />',
+    expect(source("../../../docs/zh/production/index.md")).toContain(
+      "](../../assets/topology-zh.svg)",
     );
   });
 
@@ -118,40 +120,44 @@ describe("Eveland public website contract", () => {
       'return lang === "en" ? normalizedPath : `/zh${normalizedPath}`',
     );
     expect(source("./lib/site-copy.ts")).not.toContain('"/en/');
-    expect(source("../content/docs/en/index.mdx")).not.toContain("/en/");
-    expect(source("../content/docs/en/quick-start.mdx")).not.toContain("/en/");
+    expect(source("../../../docs/en/index.md")).not.toContain("/en/");
     expect(source("./app/sitemap.ts")).not.toContain("${siteUrl}/en");
   });
 
   test("publishes the production-first documentation architecture in both languages", () => {
     const requiredPages = [
-      "index.mdx",
-      "production/index.mdx",
-      "production/prerequisites.mdx",
-      "production/core-services.mdx",
-      "production/worker.mdx",
-      "production/networking.mdx",
-      "production/verify.mdx",
-      "agents/first-deployment.mdx",
-      "agents/secrets-connections.mdx",
-      "agents/releases-routing.mdx",
-      "observe/sessions.mdx",
-      "observe/schedules.mdx",
-      "operations/runtime.mdx",
-      "operations/diagnostics.mdx",
-      "operations/upgrades.mdx",
-      "operations/security.mdx",
-      "reference/configuration.mdx",
-      "reference/eve-compatibility.mdx",
-      "reference/architecture.mdx",
-      "reference/troubleshooting.mdx",
+      "index.md",
+      "production/index.md",
+      "production/prerequisites.md",
+      "production/core-services.md",
+      "production/worker.md",
+      "production/workflow-dispatcher.md",
+      "production/networking.md",
+      "production/verify.md",
+      "agents/first-deployment.md",
+      "agents/secrets-connections.md",
+      "agents/releases-routing.md",
+      "observe/sessions.md",
+      "observe/schedules.md",
+      "operations/runtime.md",
+      "operations/capacity.md",
+      "operations/diagnostics.md",
+      "operations/upgrades.md",
+      "operations/backup-restore.md",
+      "operations/security.md",
+      "reference/configuration.md",
+      "reference/environment-variables.md",
+      "reference/eve-compatibility.md",
+      "reference/architecture.md",
+      "reference/observability.md",
+      "reference/troubleshooting.md",
     ];
 
     for (const locale of ["en", "zh"]) {
       for (const page of requiredPages) {
-        expect(existsSync(path(`../content/docs/${locale}/${page}`))).toBe(true);
+        expect(existsSync(path(`../../../docs/${locale}/${page}`))).toBe(true);
       }
-      const navigation = source(`../content/docs/${locale}/meta.json`);
+      const navigation = source(`../../../docs/${locale}/meta.json`);
       expect(navigation).toContain('"production"');
       expect(navigation).toContain('"agents"');
       expect(navigation).toContain('"observe"');

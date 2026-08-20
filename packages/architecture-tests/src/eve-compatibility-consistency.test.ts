@@ -233,10 +233,10 @@ describe("Eve compatibility repository contract", () => {
     const quotedVerifiedVersionsChinese = VERIFIED_EVE_VERSIONS.map((version) => `\`${version}\``);
     const verifiedChinese = chineseList(quotedVerifiedVersionsChinese);
     const englishDocs = normalizedWhitespace(
-      repositoryFile("apps/docs/content/docs/en/reference/eve-compatibility.mdx"),
+      repositoryFile("docs/en/reference/eve-compatibility.md"),
     );
     const chineseDocs = normalizedWhitespace(
-      repositoryFile("apps/docs/content/docs/zh/reference/eve-compatibility.mdx"),
+      repositoryFile("docs/zh/reference/eve-compatibility.md"),
     );
 
     expect(englishDocs).toContain(`verified at ${verifiedEnglish}`);
@@ -259,12 +259,12 @@ describe("Eve compatibility repository contract", () => {
     const exactMinors = SUPPORTED_EVE_VERSION_RANGES.map((range) => range.replace(/\.x$/, "")).join(
       "/",
     );
-    const spec = normalizedWhitespace(repositoryFile("docs/spec.md"));
+    const spec = normalizedWhitespace(repositoryFile("spec.md"));
     const englishDocs = normalizedWhitespace(
-      repositoryFile("apps/docs/content/docs/en/reference/eve-compatibility.mdx"),
+      repositoryFile("docs/en/reference/eve-compatibility.md"),
     );
     const chineseDocs = normalizedWhitespace(
-      repositoryFile("apps/docs/content/docs/zh/reference/eve-compatibility.mdx"),
+      repositoryFile("docs/zh/reference/eve-compatibility.md"),
     );
 
     expect(spec).toContain(`当前窗口是 ${specRanges}。允许精确的 ${exactMinors} patch`);

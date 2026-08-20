@@ -5,87 +5,16 @@ projects: import an Eve project from a Git repo or Zip upload, configure its run
 environment, deploy it behind a public Agent Gateway, and observe its Sessions, usage,
 schedules, and logs.
 
-Product behavior is specified in [`docs/spec.md`](docs/spec.md). This README covers the
-repository shape and how to run it.
+Eveland is a pnpm monorepo. The authenticated Dashboard, platform API, Agent
+Gateway, worker, and workflow dispatcher ship together as one SemVer-versioned
+product; the bilingual documentation site is built from the same repository.
 
-## Repository layout
+Production installation and operations are documented at
+[eveland.ai/docs](https://eveland.ai/docs), whose content is single-sourced from the
+[`docs/`](docs/) tree in this repository. Product behavior is specified in
+[`spec.md`](spec.md). This README covers local development and contribution.
 
-- `packages/core`: dependency-free contracts plus explicit Eve protocol, ID, source,
-  schedule, archive, secret, and runtime-command subpaths. No root barrel, so
-  browser-safe imports cannot pull in Node-only code.
-- `packages/db`: Drizzle schema and migrations, and the one domain-oriented SQL Store
-  shared by production Postgres and PGlite tests.
-- `packages/agent-observer`: release-time Eve hook injection for root, local, and mounted
-  Extension directory-form subagents, with private OpenTelemetry providers that never
-  register or mutate a user's global providers.
-- `packages/agent-auth`: Playground authentication registry, OIDC acquisition
-  (Authorization Code + PKCE), and credential materialization.
-- `packages/identity-broker`: Agent-user identity finalization, Identity Sessions,
-  short-lived project-audience Caller Tokens, signing-key rotation, and public JWKS.
-- `packages/agent-scheduler`: release-time injection of the private Scheduler Channel,
-  including namespaced schedules contributed or overridden by Eve Extensions.
-- `packages/platform-observability`: shared OpenTelemetry SDK bootstrap for API,
-  Agent Gateway, and Worker.
-- `packages/session-collector`: standard OTLP decoding and projection into the built-in
-  Session, usage, and instance-health read models.
-- `packages/sdk`: the published `eveland` npm package (`eveland/auth`).
-- `packages/architecture-tests`: executable ratchets for the workspace's dependency
-  direction, import cycles, full-Store consumers, browser-safe core exports, and
-  environment-variable coverage.
-- `apps/api`: Hono platform API with Better Auth sessions, team membership, and
-  the authenticated built-in OTLP ingest endpoint.
-- `apps/gateway`: the Agent Gateway — host-routed public Agent data plane. Preserves Agent auth/cookies and
-  streaming bodies, pins Eve sessions to deployments, keeps raw Agent ports private.
-- `apps/worker`: Docker and systemd runtime adapters plus the Postgres job consumer for
-  import, build, restart, and schedule jobs. Both runtimes enforce per-Deployment
-  memory, CPU, and task limits; injected bwrap `run()` commands also have a hard
-  wall-clock deadline.
-- `apps/web`: the Dashboard — Next.js App Router console (shadcn preset, Tailwind v4).
-- `apps/docs`: bilingual public website and documentation for `eveland.ai` (Next.js +
-  Fumadocs), separate from the authenticated control panel.
-
-## Contributor code map
-
-The main entrypoints are composers rather than homes for every implementation:
-
-- Database contracts live in `packages/db/src/store-domains.ts`. Add behavior
-  to the matching `postgres-*-store.ts` domain module; `postgres-store.ts`
-  composes the public Store. Vitest uses the same Store through the PGlite
-  helper exported by `@evelandhq/db/vitest`.
-- API route families live in `apps/api/src/app-*-routes.ts`, request schemas in
-  `app-schemas.ts`, and reusable protocol/request helpers in `app-support.ts`.
-  `app.ts` owns cross-cutting auth services, middleware, and composition.
-- Worker queue claiming, heartbeats, and terminal fencing live in
-  `apps/worker/src/jobs/process.ts`. Import/build and runtime job execution are
-  split across `process-job.ts` and `process-runtime-job.ts`;
-  `deployment-launch-context.ts` owns the shared environment, command,
-  sandbox, and observability inputs while each job handler retains its own
-  build/stop/start/health/state lifecycle. Lower-level secret, filesystem, and
-  networking helpers live in `process-support.ts`.
-- Agent Gateway request/response lifecycle handling lives in
-  `apps/gateway/src/gateway-request-lifecycle.ts`; canonical Host validation,
-  trusted forwarding headers, affinity cookies, and target selection live in
-  `gateway-routing.ts`, while create-once and MCP durable keys live in
-  `gateway-durable-routing.ts`. `app.ts` composes the public and privileged
-  paths.
-- The new-project screen keeps orchestration in
-  `apps/web/src/components/new-project-flow.tsx`, with presentation and browser
-  request helpers in adjacent `new-project-flow-*` modules.
-
-Large test suites are split by behavior. Reuse colocated `*.test-support.ts`
-fixtures rather than duplicating setup when adding coverage.
-
-Eve compatibility has one semantic owner:
-`packages/core/src/eve-compatibility.ts`. Workspace consumers reference the
-matching pnpm catalogs instead of copying patch versions into package
-manifests. The current two-line matrix uses stable positional aliases
-(`eve-oldest` and `eve`) so sliding the supported minor window does not rename
-consumer dependencies. Standalone integration
-fixtures keep the `catalog:` marker in source and are materialized into
-temporary directories through `@evelandhq/core/server/eve-fixture` before
-import, so an Eve patch upgrade does not require editing every fixture.
-
-## Local development
+## Quickstart (local development)
 
 ```bash
 corepack enable
@@ -93,195 +22,91 @@ pnpm install --frozen-lockfile
 cp .env.example .env                  # set BETTER_AUTH_SECRET and EVELAND_ADMIN_PASSWORD
 docker compose up -d postgres otel-collector # database and platform OTLP receiver
 pnpm --filter @evelandhq/api db:migrate  # required on first run and after schema changes
-pnpm dev                               # start the API, Agent Gateway, Dashboard, worker, and docs
+pnpm dev                               # start all six dev processes
 ```
 
-Open the control panel at `http://localhost:3000` and the public documentation site at
+Open the Dashboard at `http://localhost:3000` and the public documentation site at
 `http://localhost:3001`.
 
 - The initial Admin email defaults to `admin@example.com`; its password comes only from
   `EVELAND_ADMIN_PASSWORD` and must contain at least 12 characters.
   `BETTER_AUTH_SECRET` is a separate random secret of at least 32 characters, and
   `BETTER_AUTH_URL` must be the browser-visible API origin.
-- All four processes are required: the Dashboard posts to the API, Playground/public
-  Agent traffic goes through Agent Gateway, and imports, builds, and deploys are executed by
-  the worker's job polling — without it, projects stay pending after upload.
-- The workflow dispatcher waits for the API health endpoint before claiming durable
-  jobs, so parallel `pnpm dev` startup does not spend a Graphile retry while the API is
-  still binding its port.
-- The worker migrates the configured shared workflow database before use and keeps
-  the hourly 24-hour terminal-stream sweep for legacy per-project worlds. Shared
-  `@evelandhq/workflow-world@0.11.0` storage is bounded by write-time compaction plus
-  the dispatcher's per-minute block packing and deadline-driven stream/run retention;
-  EOF markers are retained. Worker startup and tenant provisioning apply all pending
-  shared-World migrations directly under the package's migration advisory lock.
-- Prepared Scheduler Channels mark every newly created Markdown or handler Session as
-  `scheduled` at the platform boundary. Workflow SDK lineage carries that class to turns,
-  timeouts, tasks, subagents, and custom descendants; delivery to an existing Session
-  preserves its stored root class. Eve itself remains unmodified, and legacy Worlds
-  safely ignore the marker.
+- `pnpm dev` starts six processes — API, Agent Gateway, Dashboard, worker, workflow
+  dispatcher, and docs — and all but docs are required: the Dashboard posts to the
+  API, Playground/public Agent traffic goes through Agent Gateway, imports, builds,
+  and deploys are executed by the worker's job polling, and durable workflow wake
+  and continuation need exactly one workflow dispatcher.
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`,
   `pnpm dev:workflow-dispatcher`, and `pnpm dev:docs` in separate terminals when
-  isolated logs are more useful. `dev:worker` does not start the dispatcher:
-  durable wake and continuation need the API, the worker, and exactly one
-  workflow dispatcher all running (root `pnpm dev` starts all of them).
+  isolated logs are more useful. `dev:worker` does not start the dispatcher.
 - Public development endpoints use `http://<projectSlug>.agent.localhost:4080`;
   immutable previews use
   `http://<eightCharacterDeploymentKey>--<projectSlug>.agent.localhost:4080`.
   Deployment ports stay bound to `127.0.0.1` and are not product URLs.
 
-Product behavior — the import/preflight flow, the supported Eve version window,
-Playground authentication, Agent-user identity and the Agent Catalog, schedules,
-deployments, routing, and retention — is specified in [`docs/spec.md`](docs/spec.md).
-Operational tunables such as Git clone timeouts and preflight TTLs are listed in
-[`docs/environment-variables.md`](docs/environment-variables.md).
+## Documentation map
 
-### Eve Connections
+| Looking for                                   | Go to                                                                      |
+| --------------------------------------------- | -------------------------------------------------------------------------- |
+| Production install, operations, and reference | [eveland.ai/docs](https://eveland.ai/docs) — sourced from [`docs/`](docs/) |
+| Product contract (behavior spec)              | [`spec.md`](spec.md)                                                       |
+| Working conventions for coding agents         | [`AGENTS.md`](AGENTS.md)                                                   |
+| Historical plans and handoffs                 | [`.plans/`](.plans/)                                                       |
 
-Eveland deploys source-authored Eve Connections without a separate Connections
-configuration page. Managed integration covers MCP and OpenAPI Connections on root
-Agents and directory-form subagents, with app-scoped Bearer tokens read from Project
-Secrets at runtime. Vercel Connect remains an optional project-level credential helper;
-a Vercel account is not required for MCP/OpenAPI Connections on Eveland. Interactive
-self-hosted user authorization is not yet in the end-to-end support matrix, and a
-Connection marketplace remains out of scope.
+The `docs/en` and `docs/zh` trees are the published site content and must stay in
+sync — edit both languages together.
 
-### Full stack in Docker Compose
+## Production installation
 
-Docker Compose runs the complete stack (Postgres + OpenTelemetry Collector + API +
-Agent Gateway + Dashboard + worker) in **development mode**:
+The production topology (Docker Compose core services, host systemd worker and
+workflow dispatcher, Traefik wildcard routing) is documented at
+[eveland.ai/docs/production](https://eveland.ai/docs/production), sourced from
+[`docs/en/production/`](docs/en/production/).
+
+## Contributing
+
+### Repository layout
+
+| Path                              | What it is                                                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`                        | Hono platform API with Better Auth sessions, team membership, and the authenticated Built-in OTLP ingest endpoint                     |
+| `apps/gateway`                    | The Agent Gateway — host-routed public Agent data plane; preserves Agent auth/cookies and streaming, pins Eve sessions to deployments |
+| `apps/web`                        | The Dashboard — Next.js App Router console (shadcn preset, Tailwind v4)                                                               |
+| `apps/worker`                     | Docker and systemd runtime adapters plus the Postgres job consumer for import, build, restart, and schedule jobs                      |
+| `apps/workflow-dispatcher`        | External dispatcher for durable workflow timers and wake, running exactly once per installation                                       |
+| `apps/docs`                       | Bilingual public website and documentation for `eveland.ai` (Next.js + Fumadocs), rendering the repo-root `docs/` tree                |
+| `packages/core`                   | Dependency-free contracts plus explicit Eve protocol, ID, source, schedule, archive, secret, and runtime-command subpaths             |
+| `packages/db`                     | Drizzle schema and migrations, and the one domain-oriented SQL Store shared by production Postgres and PGlite tests                   |
+| `packages/agent-observer`         | Release-time Eve hook injection with private OpenTelemetry providers that never mutate a user's global providers                      |
+| `packages/agent-auth`             | Playground authentication registry, OIDC acquisition (Authorization Code + PKCE), and credential materialization                      |
+| `packages/identity-broker`        | Agent-user identity finalization, Identity Sessions, project-audience Caller Tokens, signing-key rotation, and public JWKS            |
+| `packages/agent-scheduler`        | Release-time injection of the private Scheduler Channel, including Extension-contributed schedules                                    |
+| `packages/platform-observability` | Shared OpenTelemetry SDK bootstrap for Eveland services                                                                               |
+| `packages/session-collector`      | Standard OTLP decoding and projection into the built-in Session, usage, and instance-health read models                               |
+| `packages/sdk`                    | The published `eveland` npm package (`eveland/auth`, `evelandIdentity()`); see its [README](packages/sdk/README.md)                   |
+| `packages/architecture-tests`     | Executable ratchets for dependency direction, import cycles, browser-safe core exports, and environment-variable coverage             |
+| `infra`                           | Compose, Traefik, systemd, Lima, and real integration-smoke assets                                                                    |
+
+### Development modes
+
+Pick one mode per working tree: either the native quickstart above with only
+`postgres`/`otel-collector` in Compose, or everything in Compose:
 
 ```bash
 docker compose up
 ```
 
-- Only the worker receives the Docker controller socket; Agent Gateway masks `.eveland-data`
-  so the public proxy cannot read imported sources, Collector configuration, or
-  encrypted project secrets.
-- When the worker runs in Compose, `EVELAND_HOST_DATA_DIR` must be the host-absolute
-  path to the workspace's `.eveland-data`.
-- Pick one mode: either everything in Compose, or only `postgres`/`otel-collector` in
-  Compose and the rest natively. The Compose services run `pnpm install` inside Linux
-  containers against the mounted workspace, which clobbers a macOS-built
-  `node_modules`.
+Compose runs the complete stack (Postgres, OpenTelemetry Collector, API, Agent
+Gateway, Dashboard, worker, workflow dispatcher) in **development mode**. Only the
+worker receives the Docker controller socket; Agent Gateway and the dispatcher mask
+`.eveland-data` so they cannot read imported sources or encrypted project secrets.
+When the worker runs in Compose, `EVELAND_HOST_DATA_DIR` must be the host-absolute
+path to the workspace's `.eveland-data`. Do not alternate modes: the Compose
+services run `pnpm install` inside Linux containers against the mounted workspace,
+which clobbers a macOS-built `node_modules`.
 
-## Public docs deployment
-
-`apps/docs` is deployed as the `eveland-docs` Cloudflare Worker at
-`https://eveland.ai` through the OpenNext adapter. Build or preview the Worker
-runtime locally with:
-
-```bash
-pnpm --filter @evelandhq/docs build:cloudflare
-pnpm --filter @evelandhq/docs preview:cloudflare
-```
-
-The `Deploy docs` GitHub Actions workflow deploys after a push to `main` only
-when the pushed changes include `apps/docs/**`. It requires the repository
-secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (scoped to Workers
-edits for the account and zone that own `eveland.ai`).
-`apps/docs/wrangler.jsonc` owns the Worker name and custom-domain binding.
-
-## Production (single-box Linux deploy)
-
-The production topology separates the core services from the privileged runtime
-controller:
-
-- Postgres, OpenTelemetry Collector, API, Agent Gateway, and the Dashboard run through Docker Compose.
-- Worker runs directly on the host as a systemd service and starts Agent
-  deployments through the systemd runtime.
-- Traefik forwards wildcard public Agent hosts to Agent Gateway on port 4080. Agent
-  processes remain private on `127.0.0.1:41xxx`.
-- API and the host worker share `/var/lib/eveland` at the same absolute path for
-  sources, releases, Collector configuration, and runtime state.
-
-Complete the Linux host prerequisites in [`docs/deploy/linux.md`](docs/deploy/linux.md),
-then set the public origins, Agent domain, and independent Agent Gateway secrets in a
-local `.env`:
-
-```bash
-# .env
-WEB_ORIGIN=https://your-web-host
-NEXT_PUBLIC_API_URL=https://your-api-host
-BETTER_AUTH_URL=https://your-api-host
-BETTER_AUTH_SECRET=<independent-long-random-auth-secret>
-EVELAND_IDENTITY_ISSUER=https://your-api-host
-EVELAND_IDENTITY_ALLOWED_ORIGINS=https://your-chat-host
-EVELAND_IDENTITY_JWKS_URL=http://127.0.0.1:4000/.well-known/jwks.json
-EVELAND_AGENT_BASE_DOMAINS=agents.example.com
-EVELAND_GATEWAY_SERVICE_TOKEN=<long-random-service-secret>
-EVELAND_GATEWAY_AFFINITY_SECRET=<independent-long-random-cookie-secret>
-EVELAND_OTLP_SERVICE_TOKEN=<independent-long-random-collector-secret>
-EVELAND_SCHEDULER_RUNTIME_SECRET=<independent-long-random-runtime-secret>
-EVELAND_SCHEDULER_DISPATCH_SECRET=<independent-long-random-dispatch-secret>
-EVELAND_SCHEDULER_REDEEM_URL=http://127.0.0.1:4000/internal/scheduler/dispatch
-EVELAND_ADMIN_EMAIL=admin@example.com
-EVELAND_ADMIN_PASSWORD=<strong-initial-password>
-EVELAND_COOKIE_DOMAIN=.example.com
-EVELAND_RELEASE_CHANNEL=stable
-EVELAND_REVISION=<git-rev-parse-short-12-output>
-
-# Start only the unprivileged core services.
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-```
-
-The base development Compose file contains a development `APP_SECRET_KEY`.
-Before a real production deploy, replace it for the API through a site-specific
-Compose override with a private 32-byte value, and configure that exact value in
-the host worker. Do not use the checked-in development fallback in production.
-
-The production overlay uses host networking so Agent Gateway can reach systemd Agent
-processes on host loopback. It runs the Dashboard production build and configures the
-Compose services with `restart: unless-stopped`; it does **not** start the
-containerized worker by default.
-
-After configuring `infra/systemd/eveland-worker.env.example` for the same
-database, data root, Agent domain, Agent Gateway service token, and application secret
-as the core services, install and start the host worker:
-
-```bash
-sudo install -d -m 0750 /etc/eveland
-sudo cp infra/systemd/eveland-worker.env.example /etc/eveland/eveland-worker.env
-sudo cp infra/systemd/eveland-worker.service /etc/systemd/system/
-# Edit /etc/eveland/eveland-worker.env before starting the service.
-sudo systemctl daemon-reload
-sudo systemctl enable --now eveland-worker
-```
-
-Use `infra/traefik/agents.yml` as the public wildcard routing template and keep
-its `/internal` exclusion. For a legacy installation that still uses the Docker
-runtime, the old containerized worker is available only through the explicit
-`--profile docker-worker` Compose profile. See
-[`docs/deploy/linux.md`](docs/deploy/linux.md) for host users, bubblewrap/AppArmor,
-preflight, secrets, reverse-proxy, and smoke-test details.
-
-When the Dashboard and API use sibling hosts, set `EVELAND_COOKIE_DOMAIN` to their shared parent
-domain so the HttpOnly platform Session cookie reaches both services. Leave it
-unset for localhost.
-
-Agent projects accept Eveland Caller Tokens with `evelandIdentity()` from the
-versioned `eveland/auth` SDK entry point under `packages/sdk`; see its
-[README](packages/sdk/README.md).
-
-## Versioning and releases
-
-Eveland is a single SemVer-versioned product. API and Agent Gateway `GET /health` report
-`service: eveland`, their `component`, the product `version`, exact Git `revision`,
-and release `channel`; the Dashboard compares its build with the API build in Settings > About.
-Only `vX.Y.Z` tags are stable releases; `main` is the `edge` channel. Release Please
-maintains the release PR, `CHANGELOG.md`, Git tag, and GitHub Release from
-Conventional Commit history. The bubblewrap sandbox backend
-[`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap) ships from
-its own repository on its own version line; the worker depends on it from npm and
-vendors its built output into each release. Release preparation overrides only an
-Agent's authored Sandbox backend: `bootstrap()`, `onSession()`, `description`,
-`revalidationKey`, and `sandbox/workspace/**` remain part of the deployed definition.
-
-See [`docs/releases.md`](docs/releases.md) for the release policy, checklist, and
-current artifact boundary, and [`docs/observability.md`](docs/observability.md) for
-the observability architecture.
-
-## Verification
+### Verification
 
 ```bash
 pnpm test
@@ -300,7 +125,57 @@ EVELAND_RUNTIME=docker pnpm --filter @evelandhq/worker smoke:connections
 bash infra/integration/run.sh
 ```
 
-## License
+### Release process
+
+Releases are automated by [Release Please](https://github.com/googleapis/release-please):
+
+1. Feature PRs merge to `main` with Conventional Commit titles (`fix:`, `feat:`,
+   `feat!:`). Non-conventional messages are silently skipped — they never appear
+   in the changelog and do not influence the version.
+2. `.github/workflows/release.yml` maintains a single Release PR with the next
+   version and `CHANGELOG.md` entries.
+3. A maintainer merges that Release PR only after CI and the checklist below are
+   green. Release Please then creates the `vX.Y.Z` tag and GitHub Release. Only
+   `vX.Y.Z` tags are stable releases; `main` is the `edge` channel.
+
+`RELEASE_PLEASE_TOKEN` should be a repository-scoped or GitHub App token that can
+write contents and pull requests. The workflow falls back to `GITHUB_TOKEN`, but
+GitHub does not trigger follow-on workflows for resources created by that token,
+so CI on an automatically opened Release PR may require the dedicated token.
+
+Before merging a Release PR:
+
+- `pnpm test`, `pnpm typecheck`, and `pnpm build` pass;
+- migration changes include an additive/staged upgrade path and real Postgres
+  verification;
+- `spec.md`, `README.md`, the `docs/` tree, examples, and environment templates
+  match the shipped behavior;
+- the Release PR describes operator actions, compatibility changes, known limits,
+  and rollback constraints;
+- the version constant and root manifest still match;
+- the target commit is clean and `git diff --check` passes.
+
+The bubblewrap sandbox backend
+[`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap) is not
+versioned with the Eveland product: it lives in its own repository, releases on
+its own line, and is consumed here as a published npm dependency of the worker.
+Upgrading it is an ordinary dependency bump; nothing in this repository builds it.
+
+The operator-facing versioning policy and upgrade/rollback procedure live in
+[`docs/en/operations/upgrades.md`](docs/en/operations/upgrades.md).
+
+### Public docs deployment
+
+`apps/docs` is deployed as the `eveland-docs` Cloudflare Worker at
+`https://eveland.ai` through the OpenNext adapter. Build or preview the Worker
+runtime locally with `pnpm --filter @evelandhq/docs build:cloudflare` and
+`preview:cloudflare`. The `Deploy docs` GitHub Actions workflow deploys after a
+push to `main` when the pushed changes include `apps/docs/**` or `docs/**`; it
+requires the `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` repository
+secrets. `apps/docs/wrangler.jsonc` owns the Worker name and custom-domain
+binding.
+
+### License
 
 Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE).
 The bubblewrap sandbox backend it depends on,
