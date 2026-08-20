@@ -160,7 +160,10 @@ export function UsageExplorer({ analytics, projects, scope }: UsageExplorerProps
   const chartConfig = {
     value: {
       label: metricLabels[metric],
-      color: "var(--chart-2)",
+      // chart-1 is the single-series default. chart-2..5 exist only to tell
+      // several series apart, and borrowing one here is what made this chart
+      // disagree with the identical one on a project overview.
+      color: "var(--chart-1)",
     },
   } satisfies ChartConfig;
   const selectedSeries = chartData.map((point) => ({

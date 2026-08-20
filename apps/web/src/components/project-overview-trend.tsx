@@ -14,7 +14,8 @@ import { formatDate } from "@/lib/date-time";
 const chartConfig = {
   sessions: {
     label: "Sessions",
-    color: "var(--chart-2)",
+    // chart-1 is the single-series colour; 2-5 exist to separate multiple series.
+    color: "var(--chart-1)",
   },
 } satisfies ChartConfig;
 
