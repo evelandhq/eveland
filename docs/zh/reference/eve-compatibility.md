@@ -3,9 +3,11 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.39.x` 与 `0.40.x`，验证版本为 `0.39.3` 与 `0.40.0`。Eve 0.38 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.39.x` 与 `0.42.x`，验证版本为 `0.39.3` 与 `0.42.0`。Eve 0.38 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
-UI 仅将最新支持线 `0.40.x` 标为绿色。Eve 0.39.x 保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
+窗口是一组已验证的 Line，而非连续区间：Eve 0.40 与 0.41 在发布后 48 小时内即被 0.42 取代，因此被有意跳过——声明 `0.40.x` 或 `0.41.x` 的项目会收到与其他不受支持版本相同的升级诊断。跳过是安全的，因为从 0.39.3 到 0.42.0 的所有 Wire Format（Message Stream、Manifest、Workflow 存储 Spec）逐字节相同。
+
+UI 仅将最新支持线 `0.42.x` 标为绿色。Eve 0.39.x 保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
 ## 窗口基线
 
@@ -25,9 +27,9 @@ UI 仅将最新支持线 `0.40.x` 标为绿色。Eve 0.39.x 保持可运行，�
 
 **Eve 0.39 将 ChatGPT 订阅模型转正，并把 Sandbox 搜索工具改为 Opt-in。** `chatgpt()` 进入稳定 API，由 Codex 负责认证——但 ChatGPT 订阅模型在设计上仅限本地：Eveland Deployment 内没有 Codex 登录，钉住 `chatgpt()` 的 Agent 可以部署成功但会在运行期失败。部署的 Agent 请使用 AI Gateway 或服务端认证的 Model。Eve 0.39 还把 `glob` 与 `grep` 移出默认 Agent 工具集；依赖它们的 Agent 必须在对应 Tool 文件导出 `defineGlobTool()` / `defineGrepTool()`。子 Agent 现在可以在 `defineSandbox` 回调中返回 `parent.sandbox` 以共享发起调用的父 Agent 的活 Sandbox；这样的子 Agent 不能再声明受管 Workspace 或 Skill 资源，Eveland 的受管 Backend 替换照常作用于父定义。
 
-**Eve 0.40 从实验性后台任务中移除 `task_peek`。** 任务通知现在直接携带完成结果与失败，被指示去 Peek 的 Agent 需改为依赖通知本身；当结果已被更早的响应覆盖时，按条件投递的任务唤醒可以保持静默。捆绑的 Workflow SDK 新增可选的批量事件写入（`WORKFLOW_BATCH_TRANSITIONS`，默认开启）——平台注入的 World 保持单事件写入路径，运行行为不变——并修复了并发 Replay 下分支唤醒顺序的确定性。`eve info --json` 现在输出不含 CLI Banner 的合法 JSON，Sandbox Bootstrap 日志会对 Brokered Credential Transform 做脱敏。
+**Eve 0.42 吸收了被跳过的 0.40 与 0.41。** 来自 0.40：`task_peek` 从实验性后台任务中移除——任务通知现在直接携带完成结果与失败，被指示去 Peek 的 Agent 需改为依赖通知本身；当结果已被更早的响应覆盖时，按条件投递的任务唤醒可以保持静默。捆绑的 Workflow SDK 新增可选的批量事件写入（`WORKFLOW_BATCH_TRANSITIONS`，默认开启）——平台注入的 World 保持单事件写入路径，运行行为不变。`eve info --json` 现在输出不含 CLI Banner 的合法 JSON。来自 0.41：新增一等的 Linq iMessage/SMS Channel——注意其受管 Vercel Connect 设置路径在 Eveland Deployment 内不可用（与 `chatgpt()` 同理，容器内没有 Vercel Connect 会话），请改用便携的 Partner API Token 路径。来自 0.42 本身：Channel 与 Session 的 `respond()` 只接受精确的响应字面量或经 `parseInputResponses()` 证明的值，Channel 本地元数据无法再泄漏进 Durable Session-inbox Payload；`task_sleep` 框架工具被移除——Task 模式的父 Agent 改为依赖生命周期通知，而非由模型节奏控制的等待。
 
-对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.40.0`，即便 `^0.40.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
+对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.42.0`，即便 `^0.42.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
 
 npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelog 与源码审阅加上完整兼容矩阵之后才会进入；移除旧 Minor 同样是显式的产品变更。
 

@@ -116,11 +116,11 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(false);
     expect(result.eveVersion).toBe("0.22.6");
     expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.39.x or 0.40.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.39.x or 0.42.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
     );
   });
 
-  test("accepts dependency declarations contained inside the 0.39-0.40 compatibility window", () => {
+  test("accepts dependency declarations contained inside the 0.39/0.42 compatibility window", () => {
     for (const version of [
       "0.39.0",
       "0.39.3",
@@ -129,15 +129,18 @@ describe("inspectEveProject", () => {
       "0.39",
       "0.39.x",
       "0.39.*",
-      "0.40.0",
-      "~0.40.0",
-      "^0.40.0",
-      "0.40",
-      "0.40.x",
-      "0.40.*",
+      "0.42.0",
+      "~0.42.0",
+      "^0.42.0",
+      "0.42",
+      "0.42.x",
+      "0.42.*",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }
+    // 0.40.x and 0.41.x sit inside the window's bounds but are deliberately
+    // unsupported: the window is a set of verified lines, not a contiguous
+    // range, and these two lines were skipped.
     for (const version of [
       "0.30.8",
       "0.31.3",
@@ -149,7 +152,11 @@ describe("inspectEveProject", () => {
       "0.37.1",
       "0.38.3",
       ">=0.39.0",
+      "0.40.0",
+      "^0.40.0",
+      "0.40.x",
       "0.41.0",
+      "0.43.0",
       "*",
       "latest",
     ]) {
@@ -173,8 +180,8 @@ describe("inspectEveProject", () => {
   test("reports the sliding compatibility window as structured ranges", () => {
     expect(createEveVersionInfo("0.39.3", "src_1")).toEqual({
       version: "0.39.3",
-      expected: "0.39.x or 0.40.x",
-      supportedRanges: ["0.39.x", "0.40.x"],
+      expected: "0.39.x or 0.42.x",
+      supportedRanges: ["0.39.x", "0.42.x"],
       supported: true,
       sourceRevisionId: "src_1",
     });
