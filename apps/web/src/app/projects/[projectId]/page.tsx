@@ -4,6 +4,7 @@ import { DateTime } from "@/components/date-time";
 import { EveVersionStatus } from "@/components/eve-version-status";
 import { ProjectOverviewTrend } from "@/components/project-overview-trend";
 import { CopyValue } from "@/components/copy-value";
+import { getEveVersionStatus } from "@/lib/eve-version";
 import { describeProjectSource } from "@/lib/project-source";
 import { StatusBadge } from "@/components/status-badge";
 import {
@@ -51,12 +52,13 @@ export default async function ProjectOverviewPage({
 
   return (
     <div className="flex min-w-0 flex-col gap-8">
-      {/* Weight follows use, not tidiness. Four equal cells said everything was
-          equally important, which is the same as saying nothing is. The endpoint
-          is the one value you actually paste somewhere, so it gets the size;
-          when the agent next acts on its own is the one thing that changes; and
-          provenance is small print you read only when something is wrong. */}
-      <section aria-label="Current project context" className="flex flex-col gap-4">
+      {/* One bordered card for the project's current context: the endpoint —
+          the one value you actually paste somewhere — gets the size on top, and
+          the provenance facts sit below a hairline as a quiet four-up grid. */}
+      <section
+        aria-label="Current project context"
+        className="flex flex-col gap-4 rounded-xl border p-5"
+      >
         <div className="flex min-w-0 flex-col gap-1">
           <p className="text-xs text-muted-foreground">Stable endpoint</p>
           {endpoints.stable ? (
@@ -71,7 +73,7 @@ export default async function ProjectOverviewPage({
           )}
         </div>
 
-        <dl className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-xs">
+        <dl className="grid gap-4 border-t pt-4 text-xs sm:grid-cols-2 xl:grid-cols-4">
           <OverviewFact
             label="Next run"
             value={
@@ -98,15 +100,16 @@ export default async function ProjectOverviewPage({
               project ? describeProjectSource(project.importKind, project.gitUrl).label : "None"
             }
           />
-          {/* Normal is quiet: a supported runtime is a version number, not a
-              badge. The badge is what an unsupported one earns. */}
+          {/* Normal is quiet: a current runtime is a version number, not a
+              badge. The badge is what upgrade-pending (amber) and unsupported
+              (red) earn. */}
           <OverviewFact
             label="Eve Agent"
             value={
-              eveVersion.supported ? (
+              getEveVersionStatus(eveVersion) === "current" ? (
                 <span className="font-mono">{eveVersion.version ?? "Unknown"}</span>
               ) : (
-                <EveVersionStatus eveVersion={eveVersion} />
+                <EveVersionStatus eveVersion={eveVersion} showMessage={false} />
               )
             }
           />
@@ -131,16 +134,18 @@ export default async function ProjectOverviewPage({
             <ArrowRightIcon className="size-4" />
           </Link>
         </div>
-        <dl className="mt-5 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <OverviewStat
             label="Sessions"
             value={analytics.summary.sessions.toLocaleString()}
             detail={`${analytics.summary.runningSessions} running`}
+            detailTone={analytics.summary.runningSessions > 0 ? "info" : "muted"}
           />
           <OverviewStat
             label="Completed"
             value={completion === null ? "—" : `${completion.toFixed(1)}%`}
             detail={`${analytics.summary.failedSessions} failed`}
+            detailTone={analytics.summary.failedSessions > 0 ? "destructive" : "muted"}
           />
           <OverviewStat
             label="Model tokens"
@@ -153,9 +158,11 @@ export default async function ProjectOverviewPage({
             detail="Provider-reported only"
           />
         </dl>
-        {/* Same rule as the identity bar above: two stacked blocks inside one
-            section are separated by space, not a hairline. */}
-        <div className="mt-6">
+        <div className="mt-3 rounded-xl border p-4 pb-2">
+          <p className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-chart-1" />
+            Sessions per day
+          </p>
           <ProjectOverviewTrend series={analytics.series} />
         </div>
       </section>
@@ -164,7 +171,7 @@ export default async function ProjectOverviewPage({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 id="recent-sessions-heading" className="text-base font-semibold">
-              Recent Sessions
+              Recent sessions
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Latest observed executions from the same seven-day window.
@@ -178,7 +185,7 @@ export default async function ProjectOverviewPage({
             <ArrowRightIcon className="size-4" />
           </Link>
         </div>
-        <div className="mt-3 overflow-x-auto border-y border-border">
+        <div className="mt-3 overflow-x-auto rounded-xl border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -231,19 +238,35 @@ export default async function ProjectOverviewPage({
 
 function OverviewFact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 items-baseline gap-2">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 font-medium break-words">{value}</dd>
+    <div className="flex min-w-0 flex-col gap-1">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-sm font-medium break-words">{value}</dd>
     </div>
   );
 }
 
-function OverviewStat({ label, value, detail }: { label: string; value: string; detail: string }) {
+const STAT_DETAIL_TONE = {
+  muted: "text-muted-foreground",
+  info: "text-info-foreground",
+  destructive: "text-destructive-foreground",
+} as const;
+
+function OverviewStat({
+  label,
+  value,
+  detail,
+  detailTone = "muted",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  detailTone?: keyof typeof STAT_DETAIL_TONE;
+}) {
   return (
-    <div>
+    <div className="rounded-xl border p-4">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-2 font-mono text-xl font-semibold">{value}</dd>
-      <dd className="mt-1 text-xs text-muted-foreground">{detail}</dd>
+      <dd className="mt-1 text-[22px] font-semibold tracking-tight">{value}</dd>
+      <dd className={`mt-0.5 text-xs ${STAT_DETAIL_TONE[detailTone]}`}>{detail}</dd>
     </div>
   );
 }

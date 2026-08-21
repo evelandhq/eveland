@@ -111,6 +111,12 @@ export async function getCurrentMember(): Promise<CurrentMember> {
   );
 }
 
+export async function listProjects(): Promise<Project[]> {
+  return clientRequest<{ projects: Project[] }>("/projects", { method: "GET" }).then(
+    (data) => data.projects,
+  );
+}
+
 export async function updateProfile(input: {
   name: string;
   image: string | null;

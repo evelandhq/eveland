@@ -21,7 +21,7 @@ export default async function ProjectGeneralSettingsPage({
   return (
     <div className="flex flex-col gap-9">
       <section aria-labelledby="project-details-heading">
-        <h3 id="project-details-heading" className="font-medium">
+        <h3 id="project-details-heading" className="text-base font-semibold">
           Project details
         </h3>
         <p className="mt-1 text-sm text-muted-foreground">

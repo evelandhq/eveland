@@ -5,26 +5,14 @@ import type { EveVersionInfo } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  type EveVersionStatusKind,
+  getEveVersionMessage,
+  getEveVersionStatus,
+} from "@/lib/eve-version";
 import { cn } from "@/lib/utils";
 
-export type EveVersionStatusKind = "current" | "upgrade" | "unsupported";
-
-export function getEveVersionStatus(eveVersion: EveVersionInfo): EveVersionStatusKind {
-  if (!eveVersion.supported) return "unsupported";
-  const latestRange = eveVersion.supportedRanges.at(-1);
-  const latestMinor = latestRange?.replace(/\.x$/, "");
-  const declaredMinor = eveVersion.version?.trim().match(/^[~^]?(0\.\d+)/)?.[1];
-  return latestMinor && declaredMinor === latestMinor ? "current" : "upgrade";
-}
-
-function getEveVersionMessage(eveVersion: EveVersionInfo, status: EveVersionStatusKind): string {
-  const latestRange = eveVersion.supportedRanges.at(-1) ?? "the latest supported version";
-  return status === "current"
-    ? "Latest supported version"
-    : status === "upgrade"
-      ? `A newer supported Eve version is available. Upgrade to Eve ${latestRange} as soon as possible.`
-      : `Unsupported Eve version. Upgrade to Eve ${eveVersion.expected}.`;
-}
+export { type EveVersionStatusKind, getEveVersionStatus };
 
 export function EveVersionCardStatus({ eveVersion }: { eveVersion: EveVersionInfo }) {
   const status = getEveVersionStatus(eveVersion);
@@ -35,7 +23,11 @@ export function EveVersionCardStatus({ eveVersion }: { eveVersion: EveVersionInf
       <span
         className={cn(
           "truncate text-xs font-medium",
-          status === "current" ? "text-foreground" : "text-destructive",
+          status === "current"
+            ? "text-foreground"
+            : status === "upgrade"
+              ? "text-warning-foreground"
+              : "text-destructive",
         )}
       >
         {eveVersion.version ?? "Unknown"}
@@ -50,7 +42,8 @@ export function EveVersionCardStatus({ eveVersion }: { eveVersion: EveVersionInf
               aria-label={`Eve version details: ${message}`}
               className={cn(
                 "-my-1 text-muted-foreground",
-                status !== "current" && "text-destructive",
+                status === "upgrade" && "text-warning-foreground",
+                status === "unsupported" && "text-destructive",
               )}
             />
           }
@@ -75,27 +68,45 @@ export function EveVersionStatus({
   const status = getEveVersionStatus(eveVersion);
   const message = getEveVersionMessage(eveVersion, status);
 
+  const badge =
+    status === "current" ? (
+      <Badge className="border-success/30 bg-success/10 text-success-foreground" variant="outline">
+        <CircleCheckIcon data-icon="inline-start" />
+        Eve {eveVersion.version ?? "Unknown"}
+      </Badge>
+    ) : status === "upgrade" ? (
+      <Badge className="border-warning/40 bg-warning/10 text-warning-foreground" variant="outline">
+        <InfoIcon data-icon="inline-start" />
+        Eve {eveVersion.version ?? "Unknown"}
+      </Badge>
+    ) : (
+      <Badge variant="destructive">
+        <TriangleAlertIcon data-icon="inline-start" />
+        Eve {eveVersion.version ?? "Unknown"}
+      </Badge>
+    );
+
   return (
     <div className={cn("flex min-w-0 flex-wrap items-center gap-2", className)}>
-      {status === "current" ? (
-        <Badge
-          className="border-success/30 bg-success/10 text-success-foreground"
-          variant="outline"
-        >
-          <CircleCheckIcon data-icon="inline-start" />
-          Eve {eveVersion.version ?? "Unknown"}
-        </Badge>
+      {showMessage ? (
+        badge
       ) : (
-        <Badge variant="destructive">
-          <TriangleAlertIcon data-icon="inline-start" />
-          Eve {eveVersion.version ?? "Unknown"}
-        </Badge>
+        // The inline message is hidden, so the reminder moves onto the badge
+        // itself — an amber or red pill with no explanation is a dead end.
+        <Tooltip>
+          <TooltipTrigger render={badge} />
+          <TooltipContent>{message}</TooltipContent>
+        </Tooltip>
       )}
       {showMessage ? (
         <span
           className={cn(
             "text-xs",
-            status === "current" ? "text-success-foreground" : "text-destructive-foreground",
+            status === "current"
+              ? "text-success-foreground"
+              : status === "upgrade"
+                ? "text-warning-foreground"
+                : "text-destructive-foreground",
           )}
         >
           {message}

@@ -57,7 +57,7 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
 
   if (logs.length === 0) {
     return (
-      <Empty className="min-h-96 border bg-card">
+      <Empty className="min-h-96 rounded-xl border bg-card">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <TerminalIcon />
@@ -98,19 +98,22 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
         </InputGroup>
 
         <div className="flex flex-wrap items-center justify-between gap-2 xl:ml-auto xl:justify-end">
+          {/* Filter chips: the pressed chip is the primary fill, the rest stay
+              quiet outlines. */}
           <ToggleGroup
             value={[filter]}
             onValueChange={(values) => {
               const value = values[0] as ProjectLogFilter | undefined;
               if (value) setFilter(value);
             }}
-            variant="outline"
-            size="sm"
-            spacing={0}
             aria-label="Filter project logs"
           >
             {LOG_FILTERS.map((option) => (
-              <ToggleGroupItem key={option.value} value={option.value}>
+              <ToggleGroupItem
+                key={option.value}
+                value={option.value}
+                className="h-auto min-w-0 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-input hover:bg-transparent hover:text-muted-foreground aria-pressed:border-transparent aria-pressed:bg-primary aria-pressed:text-primary-foreground hover:aria-pressed:bg-primary hover:aria-pressed:text-primary-foreground"
+              >
                 {option.label} <span className="tabular-nums">{counts[option.value]}</span>
               </ToggleGroupItem>
             ))}
@@ -119,6 +122,7 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
           <Button
             variant="outline"
             size="sm"
+            className="rounded-full"
             aria-label={
               order === "desc"
                 ? "Newest first. Switch to oldest first"
@@ -133,7 +137,7 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
       </div>
 
       <section
-        className="overflow-hidden rounded-xl border bg-card shadow-xs"
+        className="overflow-hidden rounded-xl border bg-card"
         aria-label="Project log stream"
       >
         <header className="grid grid-cols-[6.5rem_4.75rem_minmax(0,1fr)] items-center gap-3 border-b bg-muted/40 px-4 py-2 text-xs text-muted-foreground sm:grid-cols-[9.5rem_5.5rem_minmax(0,1fr)]">

@@ -37,14 +37,18 @@ export function AgentActivity({
   const countLabel = `${count} ${count === 1 ? "action" : "actions"}`;
 
   return (
-    <Collapsible className="group/activity" onOpenChange={setOpen} open={open}>
-      <CollapsibleTrigger className="flex w-full items-center gap-2 py-1 text-left text-sm text-muted-foreground transition-colors hover:text-foreground">
+    <Collapsible
+      className="group/activity overflow-hidden rounded-xl border"
+      onOpenChange={setOpen}
+      open={open}
+    >
+      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:text-foreground">
         <AgentActivityStatusIcon status={status} />
         <span className="font-medium text-foreground">{title}</span>
         <span>· {countLabel}</span>
         <ChevronDownIcon className="ml-auto size-4 transition-transform group-data-[panel-open]/activity:rotate-180" />
       </CollapsibleTrigger>
-      <CollapsibleContent className="ml-2 mt-2 flex flex-col gap-2 border-l border-border pl-4 data-[ending-style]:animate-out data-[starting-style]:animate-in">
+      <CollapsibleContent className="flex flex-col gap-2 border-t border-border px-3 py-2.5 data-[ending-style]:animate-out data-[starting-style]:animate-in">
         {children}
       </CollapsibleContent>
     </Collapsible>

@@ -5,7 +5,6 @@ import { CapacityTrend } from "@/components/capacity-trend";
 import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -71,23 +70,22 @@ export default async function InstanceHealthPage({
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold tracking-tight">Instance health</h2>
+            <h2 className="text-[17px] font-semibold tracking-tight">Instance health</h2>
             <HealthBadge status={report.status} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Service availability, host headroom, and workload pressure.
           </p>
         </div>
-        <div className="flex items-center gap-1" aria-label="History range">
+        <div className="inline-flex rounded-lg bg-muted p-0.5" aria-label="History range">
           {[24, 168].map((hours) => (
             <Link
               key={hours}
               href={`/settings/health?hours=${hours}`}
+              aria-current={historyHours === hours ? "page" : undefined}
               className={cn(
-                buttonVariants({
-                  variant: historyHours === hours ? "secondary" : "ghost",
-                  size: "sm",
-                }),
+                "rounded-md px-3 py-1 text-xs font-medium text-muted-foreground transition-colors",
+                historyHours === hours && "bg-background text-foreground shadow-sm",
               )}
             >
               {hours === 24 ? "24 hours" : "7 days"}
@@ -98,10 +96,10 @@ export default async function InstanceHealthPage({
 
       <section aria-labelledby="risks-heading" className="flex flex-col gap-3">
         <div>
-          <h3 id="risks-heading" className="text-sm font-semibold">
+          <h3 id="risks-heading" className="text-base font-semibold">
             Current risks
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Issues that can interrupt deploys, traffic, or observation.
           </p>
         </div>
@@ -147,14 +145,14 @@ export default async function InstanceHealthPage({
 
       <section aria-labelledby="components-heading" className="flex flex-col gap-3">
         <div>
-          <h3 id="components-heading" className="text-sm font-semibold">
+          <h3 id="components-heading" className="text-base font-semibold">
             Components
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Current evidence from the core services and runtime path.
           </p>
         </div>
-        <div className="overflow-hidden rounded-md border">
+        <div className="overflow-x-auto rounded-xl border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -192,18 +190,18 @@ export default async function InstanceHealthPage({
 
       <section aria-labelledby="capacity-heading" className="flex flex-col gap-4">
         <div>
-          <h3 id="capacity-heading" className="text-sm font-semibold">
+          <h3 id="capacity-heading" className="text-base font-semibold">
             Capacity
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Filesystem, memory, and CPU measurements published by the Worker host.
           </p>
           {hostSpec(report.capacity) ? (
             <p className="mt-1 text-xs text-muted-foreground">Host: {hostSpec(report.capacity)}</p>
           ) : null}
         </div>
-        <div className="grid divide-y border-y lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-          <div className="lg:pr-5">
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-xl border p-4">
             <CapacityTrend
               label="Disk used"
               value={percentLabel(report.capacity.disk.usedPercent)}
@@ -215,7 +213,7 @@ export default async function InstanceHealthPage({
               )}
             />
           </div>
-          <div className="lg:px-5">
+          <div className="rounded-xl border p-4">
             <CapacityTrend
               label="Memory used"
               value={percentLabel(report.capacity.memory.usedPercent)}
@@ -227,7 +225,7 @@ export default async function InstanceHealthPage({
               )}
             />
           </div>
-          <div className="lg:pl-5">
+          <div className="rounded-xl border p-4">
             <CapacityTrend
               label="CPU"
               value={percentLabel(report.capacity.cpu.percent)}
@@ -252,19 +250,19 @@ export default async function InstanceHealthPage({
 
           <section aria-labelledby="connections-heading" className="flex flex-col gap-3">
             <div>
-              <h3 id="connections-heading" className="text-sm font-semibold">
+              <h3 id="connections-heading" className="text-base font-semibold">
                 Postgres connection budget
               </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Every running Agent holds a connection pool; when max_connections is exhausted, new
                 deployments fail at startup.
               </p>
             </div>
-            <dl className="grid gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-2">
+            <dl className="grid gap-3 sm:grid-cols-2">
               {report.capacity.postgres.instances.map((instance) => (
-                <div key={instance.role} className="bg-background p-4">
+                <div key={instance.role} className="rounded-xl border p-4">
                   <dt className="text-xs text-muted-foreground">{pgRoleLabels[instance.role]}</dt>
-                  <dd className="mt-2 text-2xl font-semibold tabular-nums">
+                  <dd className="mt-1 text-[22px] font-semibold tracking-tight">
                     {instance.usedConnections}
                     <span className="text-sm font-normal text-muted-foreground">
                       {" "}
@@ -290,14 +288,14 @@ export default async function InstanceHealthPage({
 
       <section aria-labelledby="workload-heading" className="flex flex-col gap-3">
         <div>
-          <h3 id="workload-heading" className="text-sm font-semibold">
+          <h3 id="workload-heading" className="text-base font-semibold">
             Workload
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Current queue pressure and RuntimeInstance lifecycle distribution.
           </p>
         </div>
-        <dl className="grid gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-5">
+        <dl className="grid gap-3 sm:grid-cols-5">
           <WorkloadValue label="Queued jobs" value={report.workload.queuedJobs} />
           <WorkloadValue label="Running jobs" value={report.workload.runningJobs} />
           <WorkloadValue
@@ -353,9 +351,9 @@ function HealthBadge({ status }: { status: InstanceHealthStatus }) {
 
 function WorkloadValue({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="bg-background p-4">
+    <div className="rounded-xl border p-4">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-2 text-2xl font-semibold tabular-nums">{value}</dd>
+      <dd className="mt-1 text-[22px] font-semibold tracking-tight">{value}</dd>
     </div>
   );
 }

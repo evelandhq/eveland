@@ -190,6 +190,7 @@ export function SharedAgentEnvironmentSettings({
             <Button
               type="button"
               size="sm"
+              className="rounded-full"
               onClick={openAddDialog}
               disabled={pending || entries.length >= 50}
             >
@@ -215,7 +216,7 @@ export function SharedAgentEnvironmentSettings({
               {environment ? `Revision r${environment.revision}` : "Not configured"}
             </span>
           </div>
-          <div className="overflow-hidden rounded-lg border">
+          <div className="overflow-x-auto rounded-xl border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -302,12 +303,17 @@ export function SharedAgentEnvironmentSettings({
                               </AlertDialogHeader>
                               <form onSubmit={deleteEntry}>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel type="button" disabled={pending}>
+                                  <AlertDialogCancel
+                                    type="button"
+                                    className="rounded-full"
+                                    disabled={pending}
+                                  >
                                     Cancel
                                   </AlertDialogCancel>
                                   <AlertDialogAction
                                     type="submit"
                                     variant="destructive"
+                                    className="rounded-full"
                                     disabled={pending}
                                   >
                                     {pending ? (
@@ -422,12 +428,13 @@ export function SharedAgentEnvironmentSettings({
               <Button
                 type="button"
                 variant="outline"
+                className="rounded-full"
                 disabled={pending}
                 onClick={() => setDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending}>
+              <Button type="submit" className="rounded-full" disabled={pending}>
                 {pending ? <Spinner data-icon="inline-start" /> : null}
                 {pending ? "Saving…" : editingIndex === null ? "Add entry" : "Save changes"}
               </Button>

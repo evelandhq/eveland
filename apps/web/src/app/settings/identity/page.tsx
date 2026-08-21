@@ -37,7 +37,7 @@ export default async function IdentitySettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold tracking-tight">Identity</h2>
+        <h2 className="text-[17px] font-semibold tracking-tight">Identity</h2>
         <p className="text-sm text-muted-foreground">Configure how people sign in to Agents.</p>
       </header>
       <IdentitySettings

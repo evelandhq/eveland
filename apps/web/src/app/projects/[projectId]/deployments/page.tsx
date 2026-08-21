@@ -54,53 +54,63 @@ export default async function ProjectDeploymentsPage({
         />
       </header>
 
+      {/* One bordered card for production context, mirroring the overview:
+          the stable endpoint — the value you actually paste somewhere — gets
+          the size on top, and the release facts sit below a hairline as a
+          quiet grid. */}
       <section
-        className="overflow-hidden rounded-md border border-border"
         aria-labelledby="production-deployment-heading"
+        className="flex flex-col gap-4 rounded-xl border p-5"
       >
-        <div className="border-b border-border px-4 py-3">
-          <h3 id="production-deployment-heading" className="text-sm font-semibold">
-            Production
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Current release, source revision, and canonical endpoints.
-          </p>
+        <h3 id="production-deployment-heading" className="sr-only">
+          Production
+        </h3>
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-xs text-muted-foreground">Stable endpoint</p>
+          {endpoints.stable ? (
+            <a
+              href={endpoints.stable}
+              target="_blank"
+              rel="noreferrer"
+              className="break-all font-mono text-base font-medium underline-offset-4 hover:underline"
+            >
+              {endpoints.stable}
+            </a>
+          ) : (
+            <p className="text-base font-medium text-muted-foreground">None</p>
+          )}
         </div>
-        <dl className="grid gap-px bg-border text-sm sm:grid-cols-2 lg:grid-cols-3">
-          {(
-            [
-              ["Deployment", project?.deploymentStatus ?? "unknown"],
-              ["Eve Agent", eveVersion.version ?? "Unknown"],
-              ["Source revision", project?.sourceRevisionId ?? "None"],
-              ["Release", project?.releaseId ?? "None"],
-              ["Stable endpoint", endpoints.stable ?? "None"],
-              ["Latest preview", endpoints.previews.at(-1) ?? "None"],
-            ] satisfies Array<[string, string]>
-          ).map(([label, value]) => (
-            <div key={label} className="min-w-0 bg-background p-4">
-              <dt className="text-xs text-muted-foreground">{label}</dt>
-              <dd className="mt-2 break-all font-medium">
-                {label === "Eve Agent" ? (
-                  <EveVersionStatus eveVersion={eveVersion} />
-                ) : label.endsWith("endpoint") || label === "Latest preview" ? (
-                  value === "None" ? (
-                    value
-                  ) : (
-                    <a
-                      href={value}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline-offset-4 hover:underline"
-                    >
-                      {value}
-                    </a>
-                  )
-                ) : (
-                  value
-                )}
-              </dd>
-            </div>
-          ))}
+        <dl className="grid gap-4 border-t pt-4 text-xs sm:grid-cols-2 lg:grid-cols-3">
+          <DeploymentFact
+            label="Deployment"
+            value={<StatusBadge status={project?.deploymentStatus ?? "unknown"} />}
+          />
+          <DeploymentFact label="Eve Agent" value={<EveVersionStatus eveVersion={eveVersion} />} />
+          <DeploymentFact
+            label="Source revision"
+            value={<span className="font-mono">{project?.sourceRevisionId ?? "None"}</span>}
+          />
+          <DeploymentFact
+            label="Release"
+            value={<span className="font-mono">{project?.releaseId ?? "None"}</span>}
+          />
+          <DeploymentFact
+            label="Latest preview"
+            value={
+              endpoints.previews.at(-1) ? (
+                <a
+                  href={endpoints.previews.at(-1)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline-offset-4 hover:underline"
+                >
+                  {endpoints.previews.at(-1)}
+                </a>
+              ) : (
+                "None"
+              )
+            }
+          />
         </dl>
       </section>
 
@@ -114,7 +124,7 @@ export default async function ProjectDeploymentsPage({
             splits, drain, and retention.
           </p>
         </div>
-        <div className="mt-3 divide-y divide-border border-y border-border">
+        <div className="mt-3 divide-y overflow-hidden rounded-xl border">
           {overview.deployments.map((deployment) => {
             const stableTarget =
               stableRoute?.targets.find((target) => target.deploymentId === deployment.id) ?? null;
@@ -124,7 +134,7 @@ export default async function ProjectDeploymentsPage({
             return (
               <div
                 key={deployment.id}
-                className="grid gap-3 py-4 text-sm md:grid-cols-[1fr_auto] md:items-center"
+                className="grid gap-3 p-4 text-sm md:grid-cols-[1fr_auto] md:items-center"
               >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -159,10 +169,19 @@ export default async function ProjectDeploymentsPage({
             );
           })}
           {overview.deployments.length === 0 ? (
-            <p className="py-6 text-sm text-muted-foreground">No deployments yet.</p>
+            <p className="p-6 text-sm text-muted-foreground">No deployments yet.</p>
           ) : null}
         </div>
       </section>
+    </div>
+  );
+}
+
+function DeploymentFact({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-sm font-medium break-words">{value}</dd>
     </div>
   );
 }

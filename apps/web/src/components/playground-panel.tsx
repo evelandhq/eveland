@@ -219,34 +219,36 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           <PlaygroundAuthenticationSettings projectId={projectId} />
         </div>
       </div>
-      <Conversation className="min-h-0">
-        <ConversationContent className="mx-auto w-full max-w-3xl px-1 py-6 sm:px-6">
-          {agent.data.messages.length === 0 ? (
-            <ConversationEmptyState
-              description="Messages, live thinking, tool calls, approvals, and attachments stay together in this page."
-              icon={<MessageCircleIcon />}
-              title="Start a fresh conversation"
-            />
-          ) : (
-            agent.data.messages.map((message) => (
-              <PlaygroundMessage
-                isBusy={isBusy}
-                key={message.id}
-                message={message}
-                onInputResponse={async (response) => {
-                  setComposerError(null);
-                  try {
-                    await agent.respond([response]);
-                  } catch (responseError) {
-                    setComposerError(toErrorMessage(responseError));
-                  }
-                }}
+      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col pt-3 sm:px-6">
+        <Conversation className="min-h-0 rounded-xl border">
+          <ConversationContent className="w-full px-4 py-6">
+            {agent.data.messages.length === 0 ? (
+              <ConversationEmptyState
+                description="Messages, live thinking, tool calls, approvals, and attachments stay together in this page."
+                icon={<MessageCircleIcon />}
+                title="Start a fresh conversation"
               />
-            ))
-          )}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
+            ) : (
+              agent.data.messages.map((message) => (
+                <PlaygroundMessage
+                  isBusy={isBusy}
+                  key={message.id}
+                  message={message}
+                  onInputResponse={async (response) => {
+                    setComposerError(null);
+                    try {
+                      await agent.respond([response]);
+                    } catch (responseError) {
+                      setComposerError(toErrorMessage(responseError));
+                    }
+                  }}
+                />
+              ))
+            )}
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
+      </div>
 
       <div className="mx-auto w-full max-w-3xl shrink-0 bg-background pt-2 sm:px-6">
         {routeAuthRedirect ? (
@@ -276,6 +278,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           </Alert>
         ) : null}
         <PromptInput
+          className="[&_[data-slot=input-group]]:rounded-xl"
           accept={PLAYGROUND_ATTACHMENT_ACCEPT}
           globalDrop={eveVersion.supported}
           maxFileSize={PLAYGROUND_MAX_FILE_BYTES}
@@ -370,7 +373,7 @@ function PlaygroundMessage({
 
   return (
     <Message from={message.role}>
-      <MessageContent>
+      <MessageContent className="group-[.is-user]:rounded-2xl group-[.is-user]:rounded-br-sm group-[.is-user]:bg-muted group-[.is-user]:px-3.5 group-[.is-user]:py-2.5">
         {displayItems.map((item, index) => (
           <PlaygroundDisplayItemView
             item={item}

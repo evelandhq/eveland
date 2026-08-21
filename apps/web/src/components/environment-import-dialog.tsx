@@ -289,7 +289,7 @@ export function EnvironmentImportDialog({
                 </Alert>
               ) : null}
 
-              <div className="max-h-[45vh] overflow-auto rounded-lg border">
+              <div className="max-h-[45vh] overflow-auto rounded-xl border">
                 <Table>
                   <TableHeader>
                     <TableRow>

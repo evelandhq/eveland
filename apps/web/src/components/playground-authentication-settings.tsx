@@ -161,7 +161,7 @@ export function PlaygroundAuthenticationSettings({ projectId }: { projectId: str
               onReferenceValuesChange={setReferenceValues}
             />
             <DialogFooter>
-              <Button type="submit" disabled={saving}>
+              <Button type="submit" className="rounded-full" disabled={saving}>
                 {saving ? (
                   <Spinner data-icon="inline-start" />
                 ) : (

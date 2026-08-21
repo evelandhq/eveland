@@ -129,7 +129,7 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
     <div className="flex flex-col gap-9">
       <section className="flex flex-col gap-5" aria-labelledby="profile-details-heading">
         <div className="flex flex-col gap-1">
-          <h3 id="profile-details-heading" className="font-medium">
+          <h3 id="profile-details-heading" className="text-base font-semibold">
             Profile details
           </h3>
           <p className="text-sm text-muted-foreground">
@@ -214,6 +214,7 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
           <div>
             <Button
               type="submit"
+              className="rounded-full"
               disabled={profilePending || name.trim().length === 0 || displayTimezone.length === 0}
             >
               {profilePending ? (
@@ -231,7 +232,7 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
 
       <section className="flex flex-col gap-5" aria-labelledby="password-heading">
         <div className="flex flex-col gap-1">
-          <h3 id="password-heading" className="font-medium">
+          <h3 id="password-heading" className="text-base font-semibold">
             Password
           </h3>
           <p className="text-sm text-muted-foreground">
@@ -286,7 +287,7 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
             </Alert>
           ) : null}
           <div>
-            <Button type="submit" disabled={passwordPending}>
+            <Button type="submit" className="rounded-full" disabled={passwordPending}>
               {passwordPending ? (
                 <Spinner data-icon="inline-start" />
               ) : (

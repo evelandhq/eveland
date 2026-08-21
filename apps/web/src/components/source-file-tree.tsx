@@ -12,12 +12,15 @@ const treeStyles = {
   "--trees-bg-muted-override": "var(--muted)",
   "--trees-bg-override": "transparent",
   "--trees-border-color-override": "var(--border)",
+  // Rows are rounded-md pills; the active row is a one-step fill, not accent.
+  "--trees-border-radius-override": "var(--radius-md)",
   "--trees-fg-muted-override": "var(--muted-foreground)",
   "--trees-fg-override": "var(--foreground)",
   "--trees-focus-ring-color-override": "var(--ring)",
   "--trees-font-family-override": "var(--font-mono)",
   "--trees-font-size-override": "12px",
-  "--trees-selected-bg-override": "var(--accent)",
+  "--trees-selected-bg-override": "var(--secondary)",
+  "--trees-selected-fg-override": "var(--secondary-foreground)",
 } as CSSProperties;
 
 export function SourceFileTree({

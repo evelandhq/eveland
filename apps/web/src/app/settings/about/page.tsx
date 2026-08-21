@@ -64,7 +64,7 @@ export default async function AboutSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold tracking-tight">About</h2>
+        <h2 className="text-[17px] font-semibold tracking-tight">About</h2>
         <p className="text-sm text-muted-foreground">
           Identify the Eveland release and effective runtime configuration.
         </p>

@@ -8,17 +8,10 @@ import { getProjectNavigationItems, isNavigationItemActive } from "@/lib/navigat
 export function ProjectNav({ projectId }: { projectId: string }) {
   const pathname = usePathname();
   const items = getProjectNavigationItems(projectId);
-  const dailyItems = items.filter((item) => item.section === "daily");
-  const manageItems = items.filter((item) => item.section === "manage");
 
-  return (
-    <>
-      <ProjectNavigationMenu items={dailyItems} pathname={pathname} />
-      {/* The two groups are separated by space, not a rule. A hairline here
-          would be a second device for a boundary the gap already makes. */}
-      <ProjectNavigationMenu className="mt-4" items={manageItems} pathname={pathname} />
-    </>
-  );
+  // One flat, evenly spaced list: the daily/manage split turned out to be a
+  // boundary readers never needed — nine items scan fine as a single column.
+  return <ProjectNavigationMenu items={items} pathname={pathname} />;
 }
 
 function ProjectNavigationMenu({

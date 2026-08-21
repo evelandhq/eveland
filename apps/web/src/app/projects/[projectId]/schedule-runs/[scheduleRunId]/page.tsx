@@ -2,15 +2,6 @@ import Link from "next/link";
 import { DateTime } from "@/components/date-time";
 import { getScheduleRun } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
-import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -37,70 +28,65 @@ export default async function ScheduleRunPage({
   const run = await getScheduleRun(scheduleRunId);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          {run.trigger === "cron" ? "Cron" : "Manual"} · {run.scheduleKey}
-        </CardTitle>
-        <CardDescription>{run.id}</CardDescription>
-        <div className="pt-2">
+    <div className="flex flex-col gap-8">
+      {/* One bordered card for the run's context: what ran and how it ended on
+          top, the execution facts below a hairline as a quiet grid. */}
+      <section
+        aria-label="Schedule run context"
+        className="flex flex-col gap-4 rounded-xl border p-5"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold">
+              {run.trigger === "cron" ? "Cron" : "Manual"} · {run.scheduleKey}
+            </h2>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">{run.id}</p>
+          </div>
           <StatusBadge status={run.status} />
         </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6">
-        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <dt className="text-xs text-muted-foreground">Release</dt>
-            <dd className="mt-1 font-mono text-xs">{run.release.id}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Deployment</dt>
-            <dd className="mt-1 font-mono text-xs">{run.deployment.id}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Due</dt>
-            <dd className="mt-1 text-sm">
-              <DateTime value={run.dueAt} />
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Missed ticks</dt>
-            <dd className="mt-1 font-mono text-sm">{run.missedTicks}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Started</dt>
-            <dd className="mt-1 text-sm">
-              {run.startedAt ? <DateTime value={run.startedAt} /> : "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Completed</dt>
-            <dd className="mt-1 text-sm">
-              {run.completedAt ? <DateTime value={run.completedAt} /> : "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Sessions</dt>
-            <dd className="mt-1 font-mono text-sm">{run.sessionCount}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Tokens</dt>
-            <dd className="mt-1 font-mono text-sm">{tokenTotal(run.usage)}</dd>
-          </div>
+        <dl className="grid gap-4 border-t pt-4 text-xs sm:grid-cols-2 lg:grid-cols-4">
+          <RunFact label="Release" value={<span className="font-mono">{run.release.id}</span>} />
+          <RunFact
+            label="Deployment"
+            value={<span className="font-mono">{run.deployment.id}</span>}
+          />
+          <RunFact label="Due" value={<DateTime value={run.dueAt} />} />
+          <RunFact
+            label="Missed ticks"
+            value={<span className="font-mono">{run.missedTicks}</span>}
+          />
+          <RunFact
+            label="Started"
+            value={run.startedAt ? <DateTime value={run.startedAt} /> : "—"}
+          />
+          <RunFact
+            label="Completed"
+            value={run.completedAt ? <DateTime value={run.completedAt} /> : "—"}
+          />
+          <RunFact label="Sessions" value={<span className="font-mono">{run.sessionCount}</span>} />
+          <RunFact
+            label="Tokens"
+            value={<span className="font-mono">{tokenTotal(run.usage)}</span>}
+          />
         </dl>
         {run.error ? (
-          <div>
+          <div className="border-t pt-4">
             <h3 className="text-sm font-medium">Failure</h3>
             <p className="mt-1 text-sm text-destructive">{run.error}</p>
           </div>
         ) : null}
-        <div className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium">Linked Sessions</h3>
-          {run.sessions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              This handler completed without creating a Session.
-            </p>
-          ) : (
+      </section>
+
+      <section aria-labelledby="linked-sessions-heading">
+        <h3 id="linked-sessions-heading" className="text-base font-semibold">
+          Linked Sessions
+        </h3>
+        {run.sessions.length === 0 ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            This handler completed without creating a Session.
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto rounded-xl border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -134,18 +120,28 @@ export default async function ScheduleRunPage({
                 ))}
               </TableBody>
             </Table>
-          )}
-        </div>
-      </CardContent>
-      <CardFooter>
+          </div>
+        )}
+      </section>
+
+      <div>
         <Link
           href={`/projects/${projectId}/sessions?trigger=${run.trigger}&schedule=${run.scheduleId}`}
-          className={buttonVariants({ variant: "outline" })}
+          className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
         >
           Back to history
         </Link>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
+  );
+}
+
+function RunFact({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-sm font-medium break-words">{value}</dd>
+    </div>
   );
 }
 

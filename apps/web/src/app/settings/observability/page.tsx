@@ -28,7 +28,7 @@ export default async function ObservabilitySettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">Observability</h2>
+        <h2 className="text-[17px] font-semibold tracking-tight">Observability</h2>
         <p className="text-sm text-muted-foreground">
           Control Eveland&apos;s private telemetry independently from instrumentation owned by Agent
           source code.
