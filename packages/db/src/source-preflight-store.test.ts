@@ -9,7 +9,10 @@ describe("source preflight store", () => {
       userId: "user_a",
       kind: "git",
       gitUrl: "https://github.com/evelandhq/example.git",
-      expiresAt: new Date("2030-01-02T00:00:00.000Z"),
+      // Relative to the real clock: claimNextSourcePreflight and
+      // createProjectFromSourcePreflight compare expires_at against new Date()
+      // internally, so a fixed future date would become a time bomb.
+      expiresAt: new Date(Date.now() + 60_000),
     });
 
     await expect(store.getSourcePreflight(preflight.id, "user_b")).resolves.toBeNull();
@@ -49,7 +52,7 @@ describe("source preflight store", () => {
       userId: "user_a",
       kind: "zip",
       sourcePath: "/data/uploads/zip-1/source",
-      expiresAt: new Date("2030-01-02T00:00:00.000Z"),
+      expiresAt: new Date(Date.now() + 60_000),
     });
     const claimed = await store.claimNextSourcePreflight("worker-a");
     await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
@@ -110,7 +113,7 @@ describe("source preflight store", () => {
       userId: "user_a",
       kind: "zip",
       sourcePath: "/data/uploads/zip-2/source",
-      expiresAt: new Date("2030-01-02T00:00:00.000Z"),
+      expiresAt: new Date(Date.now() + 60_000),
     });
     const claimed = await store.claimNextSourcePreflight("worker-a");
     await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
@@ -138,7 +141,9 @@ describe("source preflight store", () => {
       userId: "user_a",
       kind: "zip",
       sourcePath: "/data/uploads/expired/source",
-      expiresAt: new Date("2029-01-01T00:00:00.000Z"),
+      // Must stay in the future for the bare claim below, so derive it from
+      // the real clock; the expiry sweep then uses a cutoff past it.
+      expiresAt: new Date(Date.now() + 60_000),
     });
     const claimed = await store.claimNextSourcePreflight("worker-a");
     await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
@@ -147,9 +152,9 @@ describe("source preflight store", () => {
       summary: {},
     });
 
-    await expect(
-      store.expireSourcePreflights(new Date("2030-01-01T00:00:00.000Z"), 25),
-    ).resolves.toEqual(["/data/uploads/expired/source"]);
+    await expect(store.expireSourcePreflights(new Date(Date.now() + 120_000), 25)).resolves.toEqual(
+      ["/data/uploads/expired/source"],
+    );
     await expect(store.getSourcePreflight(preflight.id, "user_a")).resolves.toBeNull();
   });
 });
