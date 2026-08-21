@@ -4,6 +4,18 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.38.0](https://github.com/evelandhq/eveland/compare/v0.37.0...v0.38.0) (2026-08-21)
+
+
+### Features
+
+* **db:** let callers pin the clock in createProjectFromSourcePreflight ([#352](https://github.com/evelandhq/eveland/issues/352)) ([fcdefc6](https://github.com/evelandhq/eveland/commit/fcdefc61c1792afdda06d1599e7135bbf14cfbc9))
+* refresh the Dashboard UI to the new design language ([#353](https://github.com/evelandhq/eveland/issues/353)) ([481ef2f](https://github.com/evelandhq/eveland/commit/481ef2f25752e0eee69306e4be9a4a6f5d68aa8c))
+* rename user-facing terminology to Dashboard and Agent Gateway ([#346](https://github.com/evelandhq/eveland/issues/346)) ([5db7949](https://github.com/evelandhq/eveland/commit/5db79494d0b2a1303078122c47d35b98ae8aaccb))
+* support Eve 0.39.3 ([#344](https://github.com/evelandhq/eveland/issues/344)) ([3924b70](https://github.com/evelandhq/eveland/commit/3924b7083104bd596a15271b6d212e947da274e6))
+* support Eve 0.40.0 and drop the 0.38 line ([#348](https://github.com/evelandhq/eveland/issues/348)) ([5750b70](https://github.com/evelandhq/eveland/commit/5750b70e4ee81f96d56647a17c6307829ff4f37e))
+* support Eve 0.42.0 with a gapped 0.39/0.42 window ([#350](https://github.com/evelandhq/eveland/issues/350)) ([b9d75a9](https://github.com/evelandhq/eveland/commit/b9d75a9b673122bc7b2a7b68283290a6325f062b))
+
 ## [0.37.0](https://github.com/evelandhq/eveland/compare/v0.36.0...v0.37.0) (2026-08-19)
 
 
