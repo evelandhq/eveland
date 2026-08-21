@@ -21,7 +21,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.39-0.40 compatibility window", async () => {
+  test("fails closed outside the 0.39/0.42 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -32,8 +32,11 @@ describe("injectSchedulerAdapter", () => {
       "0.36.0",
       "0.37.1",
       "0.38.3",
+      "0.40.0",
+      "~0.40.0",
       "0.41.0",
       "~0.41.0",
+      "0.43.0",
       ">=0.39.0",
       "*",
       "latest",
@@ -42,7 +45,7 @@ describe("injectSchedulerAdapter", () => {
 
       await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
         new RegExp(
-          `supports Eve 0\\.39\\.x or 0\\.40\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+          `supports Eve 0\\.39\\.x or 0\\.42\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
         ),
       );
     }
@@ -57,12 +60,12 @@ describe("injectSchedulerAdapter", () => {
       "0.39",
       "0.39.x",
       "0.39.*",
-      "0.40.0",
-      "~0.40.0",
-      "^0.40.0",
-      "0.39",
-      "0.39.x",
-      "0.39.*",
+      "0.42.0",
+      "~0.42.0",
+      "^0.42.0",
+      "0.42",
+      "0.42.x",
+      "0.42.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 

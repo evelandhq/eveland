@@ -135,6 +135,9 @@ describe("Gateway", () => {
     const app = createGatewayApp(repo, {
       allowedBaseDomains: ["agent.localhost"],
       affinitySecret,
+      // Pin the clock inside the binding's idle TTL; a wall clock here turns
+      // the fixture into a time bomb once real time drifts 7 days past it.
+      now: () => new Date("2026-08-14T12:00:00.000Z"),
     });
 
     const response = await app.request(

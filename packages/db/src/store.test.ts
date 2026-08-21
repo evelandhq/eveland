@@ -756,8 +756,8 @@ describe("SQL Store jobs", () => {
 
     await expect(store.getDeploymentEveVersion(oldDeployment.id)).resolves.toEqual({
       version: "0.22.6",
-      expected: "0.39.x or 0.40.x",
-      supportedRanges: ["0.39.x", "0.40.x"],
+      expected: "0.39.x or 0.42.x",
+      supportedRanges: ["0.39.x", "0.42.x"],
       supported: false,
       sourceRevisionId: oldRevision.id,
     });

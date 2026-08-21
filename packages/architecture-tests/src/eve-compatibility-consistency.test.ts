@@ -31,7 +31,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.40.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.42.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -74,7 +74,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.39-0.40 compatibility window", () => {
+  test("describes the supported 0.39/0.42 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-oldest", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
@@ -91,9 +91,26 @@ describe("Eve compatibility repository contract", () => {
     });
 
     expect(supportedLines).toHaveLength(2);
-    expect(new Set(minorNumbers).size).toBe(2);
-    expect(minorNumbers).toEqual(minorNumbers.map((_, index) => minorNumbers[0]! + index));
-    expect(peerDependencyRange).toBe(`>=0.${minorNumbers[0]}.0 <0.${minorNumbers.at(-1)! + 1}.0`);
+    // Lines are strictly ascending but need not be contiguous: a minor that
+    // was superseded before it could host a real deployment may be skipped
+    // (0.40/0.41 were replaced by 0.42 within 48 hours of release). Each skip
+    // must be re-justified: it is only safe when every wire format is
+    // byte-identical across the whole span, so mixed-window pairs stay
+    // trivially compatible.
+    expect(minorNumbers).toEqual([...minorNumbers].sort((a, b) => a - b));
+    expect(new Set(minorNumbers).size).toBe(minorNumbers.length);
+
+    // The peer range is the union of maximal contiguous runs of supported
+    // minors -- never their hull, which would admit skipped lines.
+    const contiguousRuns: number[][] = [];
+    for (const minor of minorNumbers) {
+      const run = contiguousRuns.at(-1);
+      if (run && minor === run.at(-1)! + 1) run.push(minor);
+      else contiguousRuns.push([minor]);
+    }
+    expect(peerDependencyRange).toBe(
+      contiguousRuns.map((run) => `>=0.${run[0]}.0 <0.${run.at(-1)! + 1}.0`).join(" || "),
+    );
   });
 
   test("derives public compatibility values from the policy", async () => {
