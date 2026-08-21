@@ -396,7 +396,7 @@ export function IdentitySettings({
                 </FieldContent>
               </Field>
               <Field>
-                <Button type="submit" disabled={pending !== null}>
+                <Button type="submit" className="rounded-full" disabled={pending !== null}>
                   {pending === "return-target" ? (
                     <Spinner data-icon="inline-start" />
                   ) : (
@@ -507,7 +507,7 @@ export function IdentitySettings({
                   </FieldDescription>
                 </Field>
                 <Field>
-                  <Button type="submit" disabled={pending !== null}>
+                  <Button type="submit" className="rounded-full" disabled={pending !== null}>
                     {pending === "provider" ? (
                       <Spinner data-icon="inline-start" />
                     ) : (
@@ -632,7 +632,7 @@ export function IdentitySettings({
                   </FieldDescription>
                 </Field>
                 <Field>
-                  <Button type="submit" disabled={pending !== null}>
+                  <Button type="submit" className="rounded-full" disabled={pending !== null}>
                     {pending === "realm" ? (
                       <Spinner data-icon="inline-start" />
                     ) : (
@@ -918,7 +918,7 @@ function OidcProviderCard({
               ) : null}
             </div>
             <Field orientation="horizontal">
-              <Button type="submit" disabled={pending !== null}>
+              <Button type="submit" className="rounded-full" disabled={pending !== null}>
                 {pending === "oidc-provider" ? (
                   <Spinner data-icon="inline-start" />
                 ) : (
@@ -1071,7 +1071,7 @@ function OidcRealmsCard({
               </Field>
             </div>
             <Field>
-              <Button type="submit" disabled={pending !== null}>
+              <Button type="submit" className="rounded-full" disabled={pending !== null}>
                 {pending === "oidc-realm" ? (
                   <Spinner data-icon="inline-start" />
                 ) : (
@@ -1112,7 +1112,7 @@ function ProviderOption({
       disabled={disabled || selected}
       onClick={onSelect}
       className={cn(
-        "flex items-start gap-3 rounded-lg border p-4 text-left transition-colors",
+        "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
         selected ? "border-primary bg-accent/40" : "hover:bg-accent/30",
         disabled && !selected ? "opacity-60" : null,
       )}

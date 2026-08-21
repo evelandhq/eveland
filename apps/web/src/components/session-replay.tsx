@@ -22,8 +22,6 @@ import {
   shortenActivityText,
   useAgentActivityAutoCollapse,
 } from "@/components/agent-activity";
-import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
@@ -40,34 +38,40 @@ export function SessionReplay({ events, nodes }: SessionReplayProps) {
   const transcript = useMemo(() => buildSessionTranscript(events, nodes), [events, nodes]);
 
   return (
-    <div>
-      <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Conversation
-        </h3>
-        <ButtonGroup>
-          <Button
+    <section className="overflow-hidden rounded-xl border">
+      <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-2.5">
+        <h3 className="text-sm font-semibold">Conversation</h3>
+        <div className="inline-flex rounded-lg bg-muted p-0.5">
+          <button
+            className={cn(
+              "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+              view === "chat" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+            )}
             onClick={() => setView("chat")}
-            size="sm"
-            variant={view === "chat" ? "secondary" : "outline"}
+            type="button"
           >
             Chat
-          </Button>
-          <Button
+          </button>
+          <button
+            className={cn(
+              "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+              view === "trace"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground",
+            )}
             onClick={() => setView("trace")}
-            size="sm"
-            variant={view === "trace" ? "secondary" : "outline"}
+            type="button"
           >
             Trace
-          </Button>
-        </ButtonGroup>
+          </button>
+        </div>
       </div>
       {view === "chat" ? (
         <ChatView transcript={transcript} />
       ) : (
         <SessionTrace events={events} nodes={nodes} />
       )}
-    </div>
+    </section>
   );
 }
 
@@ -129,7 +133,7 @@ function DisplayItemView({ item }: { item: TranscriptDisplayItem }) {
     if (!item.text) return null;
     return (
       <Message from={item.kind}>
-        <MessageContent>
+        <MessageContent className="group-[.is-user]:rounded-2xl group-[.is-user]:rounded-br-sm group-[.is-user]:bg-muted group-[.is-user]:px-3.5 group-[.is-user]:py-2.5">
           <MessageResponse>{item.text}</MessageResponse>
         </MessageContent>
       </Message>

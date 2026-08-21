@@ -101,7 +101,11 @@ export function ProjectGeneralSettings({ project }: { project: Project }) {
         </Alert>
       ) : null}
       <div>
-        <Button type="submit" disabled={pending || name.trim().length === 0}>
+        <Button
+          type="submit"
+          className="rounded-full"
+          disabled={pending || name.trim().length === 0}
+        >
           {pending ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
           {pending ? "Saving…" : "Save changes"}
         </Button>

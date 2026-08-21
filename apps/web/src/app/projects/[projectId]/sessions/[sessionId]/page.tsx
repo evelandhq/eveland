@@ -42,23 +42,67 @@ export default async function SessionTimelinePage({
   const hasDetails = agentUsage.length > 0 || nodes.length > 0;
 
   return (
-    <section className="rounded-md border border-border bg-card">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold">Session</h2>
-          <StatusBadge status={session.status} variant="outline" />
+    <div className="flex flex-col gap-4">
+      {/* One card for the session's identity — what ran, when, and what it
+          cost. The conversation below gets its own frame. */}
+      <section className="flex flex-col gap-3 rounded-xl border p-5">
+        <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold">Session</h2>
+              <StatusBadge status={session.status} />
+            </div>
+            <p className="font-mono text-xs text-muted-foreground">{sessionId}</p>
+            <p className="text-xs text-muted-foreground">
+              <DateTime value={session.startedAt} />
+              {durationMs !== null && durationMs >= 0
+                ? ` · ${formatTraceDuration(durationMs) || "<1 ms"}`
+                : null}
+              {` · ${events.length} ${events.length === 1 ? "event" : "events"}`}
+            </p>
+          </div>
+          {hasUsage ? (
+            <dl className="flex flex-wrap items-center gap-5 text-right">
+              <div>
+                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Tokens
+                </dt>
+                <dd className="font-mono text-xs font-semibold tabular-nums">
+                  {formatTokenCount(usage.inputTokens + usage.outputTokens)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  In / out
+                </dt>
+                <dd className="font-mono text-xs font-semibold tabular-nums">
+                  {formatTokenCount(usage.inputTokens)} / {formatTokenCount(usage.outputTokens)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Cache read
+                </dt>
+                <dd className="font-mono text-xs font-semibold tabular-nums">
+                  {formatTokenCount(usage.cacheReadTokens)}
+                </dd>
+              </div>
+              {usage.costUsd !== null ? (
+                <div>
+                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Cost
+                  </dt>
+                  <dd className="font-mono text-xs font-semibold tabular-nums">
+                    {formatUsd(usage.costUsd)}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : null}
         </div>
-        <p className="font-mono text-xs text-muted-foreground">{sessionId}</p>
-        <span className="text-xs text-muted-foreground">
-          <DateTime value={session.startedAt} />
-          {durationMs !== null && durationMs >= 0
-            ? ` · ${formatTraceDuration(durationMs) || "<1 ms"}`
-            : null}
-          {` · ${events.length} ${events.length === 1 ? "event" : "events"}`}
-        </span>
         {scheduleRun ? (
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-            <span className="rounded-full border border-border px-2 py-px font-medium">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 self-start rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs">
+            <span className="font-medium">
               {scheduleRun.trigger === "cron" ? "Cron" : "Manual"} · {scheduleRun.scheduleKey}
             </span>
             {scheduleRun.trigger === "cron" ? (
@@ -88,61 +132,21 @@ export default async function SessionTimelinePage({
             </Link>
           </span>
         ) : null}
-        <div className="ms-auto flex items-center gap-5">
-          {hasUsage ? (
-            <dl className="flex items-center gap-4 text-right">
-              <div>
-                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Tokens
-                </dt>
-                <dd className="font-mono text-xs font-medium tabular-nums">
-                  {formatTokenCount(usage.inputTokens + usage.outputTokens)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  In / out
-                </dt>
-                <dd className="font-mono text-xs font-medium tabular-nums">
-                  {formatTokenCount(usage.inputTokens)} / {formatTokenCount(usage.outputTokens)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Cache read
-                </dt>
-                <dd className="font-mono text-xs font-medium tabular-nums">
-                  {formatTokenCount(usage.cacheReadTokens)}
-                </dd>
-              </div>
-              {usage.costUsd !== null ? (
-                <div>
-                  <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Cost
-                  </dt>
-                  <dd className="font-mono text-xs font-medium tabular-nums">
-                    {formatUsd(usage.costUsd)}
-                  </dd>
-                </div>
-              ) : null}
-            </dl>
-          ) : null}
-        </div>
-      </div>
+      </section>
       {hasDetails ? (
         <Collapsible defaultOpen={agentUsage.length > 1 || nodes.length > 1}>
-          <CollapsibleTrigger className="group/details flex w-full items-center gap-1.5 border-b border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+          <CollapsibleTrigger className="group/details flex w-full items-center gap-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
             Details
             <ChevronDownIcon className="size-3.5 transition-transform group-data-[panel-open]/details:rotate-180" />
           </CollapsibleTrigger>
           <CollapsibleContent className="data-[ending-style]:animate-out data-[starting-style]:animate-in">
-            <div className="grid gap-x-8 gap-y-4 border-b border-border px-4 py-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <div className="grid gap-x-6 gap-y-4 pt-2 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
               {agentUsage.length > 0 ? (
                 <div>
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Usage by agent
                   </h3>
-                  <div className="mt-2 overflow-x-auto">
+                  <div className="mt-2 overflow-x-auto rounded-xl border px-3">
                     <table className="w-full text-xs">
                       <thead className="text-muted-foreground">
                         <tr>
@@ -198,7 +202,7 @@ export default async function SessionTimelinePage({
                   <div className="mt-2 grid gap-2">
                     {nodes.map((node) => (
                       <div
-                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 rounded-sm border border-border px-3 py-2 text-xs"
+                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 rounded-lg border border-border px-3 py-2 text-xs"
                         key={node.id}
                       >
                         <div className="min-w-0">
@@ -226,6 +230,6 @@ export default async function SessionTimelinePage({
         </Collapsible>
       ) : null}
       <SessionReplay events={events} nodes={nodes} />
-    </section>
+    </div>
   );
 }

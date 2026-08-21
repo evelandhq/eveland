@@ -2,7 +2,6 @@ import Link from "next/link";
 import { DateTime } from "@/components/date-time";
 import { getSchedules, getSessionsPage } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
-import { buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Table,
@@ -58,25 +57,32 @@ export default async function SessionsPage({
   const usage = summarizeTokenUsage(sessionPage.sessions.map((session) => session.usage));
 
   return (
-    // A full-width table is not an object that needs a container, and the card
-    // title only repeated the page name. The breadcrumb says where you are.
+    // The heading carries the page-level usage numbers on its right, so the
+    // table below stays purely tabular.
     <div className="flex flex-col gap-4">
-      <dl className="flex flex-wrap items-center gap-6">
-        <div>
-          <dt className="text-xs text-muted-foreground">Tokens on this page</dt>
-          <dd className="font-mono font-medium">
-            {usage.status === "none" || usage.status === "missing"
-              ? "—"
-              : formatTokenCount(usage.totalTokens)}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">Input / output</dt>
-          <dd className="font-mono font-medium">
-            {formatTokenCount(usage.inputTokens)} / {formatTokenCount(usage.outputTokens)}
-          </dd>
-        </div>
-      </dl>
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <h2 className="text-base font-semibold">Sessions</h2>
+        <dl className="flex flex-wrap items-center gap-5 text-right">
+          <div>
+            <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Tokens on this page
+            </dt>
+            <dd className="font-mono text-xs font-semibold tabular-nums">
+              {usage.status === "none" || usage.status === "missing"
+                ? "—"
+                : formatTokenCount(usage.totalTokens)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Input / output
+            </dt>
+            <dd className="font-mono text-xs font-semibold tabular-nums">
+              {formatTokenCount(usage.inputTokens)} / {formatTokenCount(usage.outputTokens)}
+            </dd>
+          </div>
+        </dl>
+      </div>
       {sessionPage.sessions.length === 0 ? (
         <Empty>
           <EmptyHeader>
@@ -85,57 +91,59 @@ export default async function SessionsPage({
           </EmptyHeader>
         </Empty>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Session</TableHead>
-              <TableHead>Trigger</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Tokens</TableHead>
-              <TableHead>Started</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sessionPage.sessions.map((session) => (
-              <TableRow key={session.id}>
-                <TableCell>
-                  <Link
-                    href={`/projects/${projectId}/sessions/${session.id}`}
-                    className="font-mono text-xs font-medium hover:underline"
-                  >
-                    {session.id}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-xs">
-                  <span>{triggerLabel(session.trigger)}</span>
-                  {session.scheduleId && scheduleKeys.has(session.scheduleId) ? (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      · {scheduleKeys.get(session.scheduleId)}
-                    </span>
-                  ) : null}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={session.status} />
-                </TableCell>
-                <TableCell className="text-right font-mono text-xs">
-                  {tokenTotal(session.usage)}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  <DateTime value={session.startedAt} />
-                </TableCell>
+        <div className="overflow-x-auto rounded-xl border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Session</TableHead>
+                <TableHead>Trigger</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Tokens</TableHead>
+                <TableHead>Started</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {sessionPage.sessions.map((session) => (
+                <TableRow key={session.id}>
+                  <TableCell>
+                    <Link
+                      href={`/projects/${projectId}/sessions/${session.id}`}
+                      className="font-mono text-xs font-medium hover:underline"
+                    >
+                      {session.id}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <span>{triggerLabel(session.trigger)}</span>
+                    {session.scheduleId && scheduleKeys.has(session.scheduleId) ? (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {scheduleKeys.get(session.scheduleId)}
+                      </span>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={session.status} />
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs">
+                    {tokenTotal(session.usage)}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    <DateTime value={session.startedAt} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
       {sessionPage.nextCursor ? (
         <div className="flex justify-end">
           <Link
             href={historyHref(query, sessionPage.nextCursor)}
-            className={buttonVariants({ variant: "outline", size: "sm" })}
+            className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
           >
-            Older Sessions
+            Older sessions
           </Link>
         </div>
       ) : null}

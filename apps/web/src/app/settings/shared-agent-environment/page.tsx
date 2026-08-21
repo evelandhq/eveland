@@ -29,7 +29,7 @@ export default async function SharedAgentEnvironmentSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">Shared Agent environment</h2>
+        <h2 className="text-[17px] font-semibold tracking-tight">Shared Agent environment</h2>
         <p className="text-sm text-muted-foreground">
           Maintain one encrypted set of fallback runtime values applied automatically to every Agent
           Deployment.

@@ -50,7 +50,7 @@ export function SourceSummary({
   const eveVersion =
     typeof preflight?.summary?.eveVersion === "string" ? preflight.summary.eveVersion : null;
   return (
-    <div className="flex items-center gap-3 rounded-lg bg-muted px-4 py-3">
+    <div className="flex items-center gap-3 rounded-xl bg-muted px-4 py-3">
       {sourceKind === "git" ? (
         <GitBranchIcon className="size-5" />
       ) : (
@@ -84,7 +84,7 @@ export function DeploymentStage({
   active: boolean;
 }) {
   return (
-    <li className="flex items-center justify-between rounded-lg border px-4 py-3">
+    <li className="flex items-center justify-between rounded-xl border px-4 py-3">
       <span className="flex items-center gap-2 text-sm font-medium">
         {failed ? (
           <XIcon className="size-4 text-destructive" />

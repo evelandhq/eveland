@@ -205,7 +205,7 @@ export function ProjectSecretsSettings({
       <section aria-labelledby="variables-secrets-heading" className="flex min-w-0 flex-col gap-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 id="variables-secrets-heading" className="font-medium">
+            <h3 id="variables-secrets-heading" className="text-base font-semibold">
               Variables and secrets
             </h3>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
@@ -224,6 +224,7 @@ export function ProjectSecretsSettings({
               type="button"
               size="sm"
               variant="outline"
+              className="rounded-full"
               onClick={() => setImportDialogOpen(true)}
               disabled={pending}
             >
@@ -233,6 +234,7 @@ export function ProjectSecretsSettings({
             <Button
               type="button"
               size="sm"
+              className="rounded-full"
               onClick={openAddDialog}
               disabled={pending || entries.length >= 50}
             >
@@ -251,7 +253,7 @@ export function ProjectSecretsSettings({
             <AlertDescription>{notice}</AlertDescription>
           </Alert>
         ) : null}
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-x-auto rounded-xl border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -338,12 +340,17 @@ export function ProjectSecretsSettings({
                             </AlertDialogHeader>
                             <form onSubmit={removeEntry}>
                               <AlertDialogFooter>
-                                <AlertDialogCancel type="button" disabled={pending}>
+                                <AlertDialogCancel
+                                  type="button"
+                                  className="rounded-full"
+                                  disabled={pending}
+                                >
                                   Cancel
                                 </AlertDialogCancel>
                                 <AlertDialogAction
                                   type="submit"
                                   variant="destructive"
+                                  className="rounded-full"
                                   disabled={pending}
                                 >
                                   {pending ? (
@@ -460,12 +467,13 @@ export function ProjectSecretsSettings({
               <Button
                 type="button"
                 variant="outline"
+                className="rounded-full"
                 disabled={pending}
                 onClick={() => setDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending}>
+              <Button type="submit" className="rounded-full" disabled={pending}>
                 {pending ? <Spinner data-icon="inline-start" /> : null}
                 {pending ? "Saving…" : editingEntry ? "Save changes" : "Add entry"}
               </Button>

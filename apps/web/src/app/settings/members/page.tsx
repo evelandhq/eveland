@@ -30,7 +30,7 @@ export default async function MembersSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold tracking-tight">Members</h2>
+        <h2 className="text-[17px] font-semibold tracking-tight">Members</h2>
         <p className="text-sm text-muted-foreground">
           Manage access to this Eveland workspace and its projects.
         </p>
@@ -58,46 +58,48 @@ export default async function MembersSettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Joined</TableHead>
-                {current.role === "admin" ? (
-                  <TableHead className="text-right">Actions</TableHead>
-                ) : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.map((member) => (
-                <TableRow key={member.userId}>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{member.name ?? member.email}</span>
-                      <span className="text-xs text-muted-foreground">{member.email}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={member.role === "admin" ? "default" : "secondary"}>
-                      {member.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <DateTime value={member.joinedAt} display="date" />
-                  </TableCell>
+          <div className="overflow-x-auto rounded-xl border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Member</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Joined</TableHead>
                   {current.role === "admin" ? (
-                    <TableCell className="text-right">
-                      <MemberActions
-                        member={member}
-                        isLastAdmin={member.role === "admin" && adminCount === 1}
-                      />
-                    </TableCell>
+                    <TableHead className="text-right">Actions</TableHead>
                   ) : null}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {members.map((member) => (
+                  <TableRow key={member.userId}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{member.name ?? member.email}</span>
+                        <span className="text-xs text-muted-foreground">{member.email}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={member.role === "admin" ? "default" : "secondary"}>
+                        {member.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <DateTime value={member.joinedAt} display="date" />
+                    </TableCell>
+                    {current.role === "admin" ? (
+                      <TableCell className="text-right">
+                        <MemberActions
+                          member={member}
+                          isLastAdmin={member.role === "admin" && adminCount === 1}
+                        />
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -110,28 +112,30 @@ export default async function MembersSettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invitations.map((invitation) => (
-                  <TableRow key={invitation.id}>
-                    <TableCell>{invitation.email}</TableCell>
-                    <TableCell>
-                      <DateTime value={invitation.expiresAt} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <InvitationActions invitationId={invitation.id} />
-                    </TableCell>
+            <div className="overflow-x-auto rounded-xl border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Expires</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {invitations.map((invitation) => (
+                    <TableRow key={invitation.id}>
+                      <TableCell>{invitation.email}</TableCell>
+                      <TableCell>
+                        <DateTime value={invitation.expiresAt} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <InvitationActions invitationId={invitation.id} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       ) : null}

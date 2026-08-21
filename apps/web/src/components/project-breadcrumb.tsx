@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { PlayIcon } from "lucide-react";
 import { getProjectNavigationItems } from "@/lib/navigation";
 
 /**
@@ -44,12 +45,21 @@ export function ProjectBreadcrumb({
     return (
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="truncate text-xl font-semibold tracking-tight">{projectName}</h1>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+            <h1 className="truncate text-[17px] font-semibold tracking-tight">{projectName}</h1>
+            {status ? <div className="flex shrink-0 items-center gap-1.5">{status}</div> : null}
+          </div>
           {projectDescription ? (
             <p className="line-clamp-2 text-sm text-muted-foreground">{projectDescription}</p>
           ) : null}
         </div>
-        {status ? <div className="flex shrink-0 items-center gap-2">{status}</div> : null}
+        <Link
+          href={`/projects/${projectId}/playground`}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+        >
+          <PlayIcon aria-hidden="true" className="size-3.5" />
+          Open playground
+        </Link>
       </div>
     );
   }
@@ -57,7 +67,7 @@ export function ProjectBreadcrumb({
   return (
     // One row: the path reads left to right at title weight, with the project
     // muted so the section still lands as the heading.
-    <div className="flex min-w-0 items-baseline gap-2 text-xl tracking-tight">
+    <div className="flex min-w-0 items-baseline gap-2 text-[17px] tracking-tight">
       <Link
         className="min-w-0 shrink truncate font-normal text-muted-foreground hover:text-foreground"
         href={overviewHref}

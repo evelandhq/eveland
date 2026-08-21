@@ -80,7 +80,7 @@
   --info-subtle: oklch(0.946 0.01 247.9);
   --neutral-subtle: oklch(0.9 0.003 85);
 
-  --chart-1: oklch(0.529 0.075 253.1);
+  --chart-1: oklch(0.67 0.155 257);
   --chart-2: oklch(0.6 0.105 152);
   --chart-3: oklch(0.681 0.129 72);
   --chart-4: oklch(0.599 0.064 195.6);
@@ -157,7 +157,7 @@ body {
   --info-subtle: oklch(0.305 0.04 251);
   --neutral-subtle: oklch(0.315 0.007 85);
 
-  --chart-1: oklch(0.68 0.085 253.1);
+  --chart-1: oklch(0.72 0.135 257);
   --chart-2: oklch(0.74 0.115 152);
   --chart-3: oklch(0.775 0.124 74);
   --chart-4: oklch(0.71 0.07 195.6);
@@ -241,5 +241,11 @@ body {
   }
   html {
     @apply font-sans;
+  }
+  /* Lucide ships stroke-width="2" as a presentation attribute; at the 14-16px
+     sizes this app uses, 1.5 is the refined weight. CSS out-ranks presentation
+     attributes, so this retunes every icon without per-site props. */
+  .lucide {
+    stroke-width: 1.5;
   }
 }

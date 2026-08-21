@@ -44,16 +44,16 @@ export default async function DeploymentsPage() {
     <PageContainer className="gap-5">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Deployments</h1>
+          <h1 className="text-[17px] font-semibold tracking-tight">Deployments</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Runtime deployments across every project, including archived and failed releases.
           </p>
         </div>
-        <span className="text-xs text-muted-foreground">{deployments.length} total</span>
+        <span className="text-sm text-muted-foreground">{deployments.length} total</span>
       </div>
 
       {deployments.length === 0 ? (
-        <div className="flex min-h-80 rounded-md border bg-card">
+        <div className="flex min-h-80 rounded-xl border bg-card">
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -73,7 +73,7 @@ export default async function DeploymentsPage() {
           </Empty>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-md border bg-card">
+        <div className="overflow-x-auto rounded-xl border">
           <Table>
             <TableHeader>
               <TableRow>

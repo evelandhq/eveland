@@ -123,7 +123,7 @@ export function GitCredentialsSettings({
             a private repository.
           </CardDescription>
           <CardAction>
-            <Button type="button" size="sm" onClick={openAddDialog}>
+            <Button type="button" size="sm" className="rounded-full" onClick={openAddDialog}>
               <PlusIcon data-icon="inline-start" />
               Add credential
             </Button>
@@ -149,47 +149,49 @@ export function GitCredentialsSettings({
               </EmptyHeader>
             </Empty>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Host</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead>
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {credentials.map((credential) => (
-                  <TableRow key={credential.id}>
-                    <TableCell className="font-medium">{credential.host}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">Encrypted</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <DateTime value={credential.updatedAt} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={deletingId === credential.id}
-                        onClick={() => void removeCredential(credential.id)}
-                      >
-                        {deletingId === credential.id ? (
-                          <Spinner data-icon="inline-start" />
-                        ) : (
-                          <Trash2Icon data-icon="inline-start" />
-                        )}
-                        Remove
-                      </Button>
-                    </TableCell>
+            <div className="overflow-x-auto rounded-xl border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Host</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Updated</TableHead>
+                    <TableHead>
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {credentials.map((credential) => (
+                    <TableRow key={credential.id}>
+                      <TableCell className="font-medium">{credential.host}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">Encrypted</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <DateTime value={credential.updatedAt} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={deletingId === credential.id}
+                          onClick={() => void removeCredential(credential.id)}
+                        >
+                          {deletingId === credential.id ? (
+                            <Spinner data-icon="inline-start" />
+                          ) : (
+                            <Trash2Icon data-icon="inline-start" />
+                          )}
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -250,12 +252,13 @@ export function GitCredentialsSettings({
               <Button
                 type="button"
                 variant="outline"
+                className="rounded-full"
                 disabled={pending}
                 onClick={() => setDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending}>
+              <Button type="submit" className="rounded-full" disabled={pending}>
                 {pending ? (
                   <Spinner data-icon="inline-start" />
                 ) : (

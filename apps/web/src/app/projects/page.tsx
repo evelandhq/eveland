@@ -16,6 +16,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { getProjects, type ProjectListItem } from "@/lib/server-api";
+import { getEveVersionMessage, getEveVersionStatus } from "@/lib/eve-version";
 import { describeProjectSource } from "@/lib/project-source";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -34,12 +35,11 @@ const projectSourceIconByKind = {
 
 type ProjectTone = "running" | "attention" | "scheduled" | "idle" | "stopped" | "failed";
 
-// Colour is a channel, not a coat of paint: only the states a human has to do
-// something about spend it. Running and scheduled are ordinary, so they read as
-// ink and grey — which is what makes the two warm pills findable in a wall of
-// twelve cards.
+// Tinted pills with a status dot: live states (running/attention/failed) get a
+// colour, everything ordinary stays grey. The dot carries the hue so the pill
+// text can stay readable at 11px.
 const TONE_PILL: Record<ProjectTone, string> = {
-  running: "bg-secondary text-foreground",
+  running: "bg-info-subtle text-info-foreground",
   attention: "bg-warning-subtle text-warning-foreground",
   scheduled: "bg-muted text-muted-foreground",
   idle: "bg-muted text-muted-foreground",
@@ -47,8 +47,17 @@ const TONE_PILL: Record<ProjectTone, string> = {
   failed: "bg-destructive-subtle text-destructive-foreground",
 };
 
+const TONE_DOT: Record<ProjectTone, string | null> = {
+  running: "bg-info",
+  attention: "bg-warning",
+  scheduled: null,
+  idle: null,
+  stopped: null,
+  failed: "bg-destructive",
+};
+
 const TONE_ACTIVITY: Record<ProjectTone, string> = {
-  running: "text-foreground",
+  running: "text-info-foreground",
   attention: "text-warning-foreground",
   scheduled: "text-muted-foreground",
   idle: "text-muted-foreground",
@@ -171,7 +180,7 @@ export default async function ProjectsPage({
       <PageContainer className="gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
+            <h1 className="text-[17px] font-semibold tracking-tight">Projects</h1>
             <p className="text-sm text-muted-foreground">
               {counts.all} total
               {runs > 0 ? (
@@ -250,24 +259,23 @@ export default async function ProjectsPage({
             now.
           </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {visible.map(({ project, state: projectState, deleting }) => {
               const source = describeProjectSource(project.importKind, project.gitUrl);
               const ProjectSourceIcon = projectSourceIconByKind[source.kind];
               const { activity } = project;
               const rate = formatRate(activity.successRate);
               const p95 = formatDuration(activity.p95DurationMs);
+              const eveStatus = getEveVersionStatus(project.eveVersion);
               return (
                 <div
                   key={project.id}
                   aria-busy={deleting}
                   className={cn(
-                    // The one sunken surface in the app: twelve discrete
-                    // objects in a grid, where the tone step is what makes each
-                    // one read as a thing. A project that needs a human changes
-                    // that tone rather than gaining a border — one device.
-                    "flex flex-col gap-2.5 rounded-xl p-4",
-                    projectState.tone === "attention" ? "bg-warning-subtle" : "bg-surface-sunken",
+                    // Discrete objects read as cards: white surface, one
+                    // hairline. State lives entirely in the pill and the
+                    // activity line, never in the card surface.
+                    "flex flex-col gap-2.5 rounded-xl border bg-card p-4",
                     deleting && "opacity-70",
                   )}
                 >
@@ -292,10 +300,16 @@ export default async function ProjectsPage({
                     ) : (
                       <span
                         className={cn(
-                          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
                           TONE_PILL[projectState.tone],
                         )}
                       >
+                        {TONE_DOT[projectState.tone] ? (
+                          <span
+                            aria-hidden="true"
+                            className={cn("size-1.5 rounded-full", TONE_DOT[projectState.tone])}
+                          />
+                        ) : null}
                         {projectState.label}
                       </span>
                     )}
@@ -312,42 +326,35 @@ export default async function ProjectsPage({
                     {projectState.activity}
                   </p>
 
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1.5">
                     <RunHistoryBar days={activity.days} />
-                    <div className="flex items-baseline justify-between font-mono text-[10px] text-muted-foreground/70">
-                      <span>30d</span>
-                      <span className="text-muted-foreground">
-                        {activity.sessions > 0 ? (
-                          <>
-                            <span className="text-foreground">{activity.sessions}</span> runs
-                            {rate ? (
-                              <>
-                                {" · "}
-                                <span className="text-success-foreground">{rate}</span> ok
-                              </>
-                            ) : null}
-                            {p95 ? ` · p95 ${p95}` : null}
-                          </>
-                        ) : (
-                          "no runs"
-                        )}
-                      </span>
-                      <span>today</span>
-                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {activity.sessions > 0 ? (
+                        <>
+                          {activity.sessions} runs
+                          {rate ? ` · ${rate} ok` : null}
+                          {p95 ? ` · p95 ${p95}` : null}
+                        </>
+                      ) : (
+                        "No runs in the last 30 days"
+                      )}
+                    </p>
                   </div>
 
-                  <div className="mt-auto flex items-center justify-between pt-2.5 text-[11px] text-muted-foreground">
+                  <div className="mt-auto flex items-center justify-between border-t pt-2.5 text-[11px] text-muted-foreground">
                     <span
                       className={cn(
                         "truncate font-mono",
-                        project.eveVersion.supported
+                        eveStatus === "current"
                           ? "text-muted-foreground/70"
-                          : "text-destructive-foreground",
+                          : eveStatus === "upgrade"
+                            ? "text-warning-foreground"
+                            : "text-destructive-foreground",
                       )}
                       title={
-                        project.eveVersion.supported
+                        eveStatus === "current"
                           ? undefined
-                          : `Unsupported Eve version. Upgrade to Eve ${project.eveVersion.expected}.`
+                          : getEveVersionMessage(project.eveVersion, eveStatus)
                       }
                     >
                       eve {project.eveVersion.version ?? "unknown"}

@@ -175,7 +175,9 @@ describe("team management web surfaces", () => {
 
     expect(sidebar).toContain('pathname.startsWith("/settings")');
     expect(sidebar).toContain("settingsNavigationGroups.map");
-    expect(sidebar).toContain("Back to workspace");
+    // The logo row is the constant way back up to the workspace from any
+    // context, settings included.
+    expect(sidebar).toContain('<Link href="/projects" />');
   });
 
   test("opens settings and sign out from one semantic account menu trigger", () => {

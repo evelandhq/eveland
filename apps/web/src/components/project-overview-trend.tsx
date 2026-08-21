@@ -51,11 +51,16 @@ export function ProjectOverviewTrend({ series }: { series: UsageSeriesPoint[] })
             />
           }
         />
+        <defs>
+          <linearGradient id="fillSessions" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-sessions)" stopOpacity={0.22} />
+            <stop offset="100%" stopColor="var(--color-sessions)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
         <Area
           dataKey="sessions"
           type="monotone"
-          fill="var(--color-sessions)"
-          fillOpacity={0.12}
+          fill="url(#fillSessions)"
           stroke="var(--color-sessions)"
           strokeWidth={2}
         />

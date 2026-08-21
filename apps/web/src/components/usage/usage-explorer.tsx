@@ -11,13 +11,7 @@ import type {
   UsageRange,
   UsageTotals,
 } from "@evelandhq/core/contracts";
-import {
-  AlertTriangleIcon,
-  ChartNoAxesColumnIcon,
-  CircleCheckIcon,
-  FolderIcon,
-  PlayIcon,
-} from "lucide-react";
+import { ChartNoAxesColumnIcon, FolderIcon, PlayIcon } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { DateTime } from "@/components/date-time";
 import { StatusBadge } from "@/components/status-badge";
@@ -54,7 +48,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Project } from "@/lib/api";
 import { formatDate, formatDateTime, formatTime } from "@/lib/date-time";
 import {
@@ -187,7 +180,7 @@ export function UsageExplorer({ analytics, projects, scope }: UsageExplorerProps
           <p className="text-xs text-muted-foreground">
             {scope.type === "workspace" ? "Workspace overview" : "Project analytics"}
           </p>
-          <Heading className="mt-1 text-xl font-semibold">Usage</Heading>
+          <Heading className="mt-1 text-[17px] font-semibold tracking-tight">Usage</Heading>
           <p className="mt-1 text-sm text-muted-foreground">
             Traffic, model consumption, reliability, and provider-reported cost.
           </p>
@@ -273,7 +266,7 @@ export function UsageExplorer({ analytics, projects, scope }: UsageExplorerProps
       </header>
 
       {!hasUsage ? (
-        <div className="flex min-h-80 rounded-md border bg-card">
+        <div className="flex min-h-80 rounded-xl border bg-card">
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -303,7 +296,7 @@ export function UsageExplorer({ analytics, projects, scope }: UsageExplorerProps
         </div>
       ) : (
         <>
-          <dl className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+          <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryStat
               label="Sessions"
               value={analytics.summary.sessions.toLocaleString()}
@@ -344,79 +337,89 @@ export function UsageExplorer({ analytics, projects, scope }: UsageExplorerProps
                   {metric === "cost" ? "reported USD" : metricLabels[metric].toLowerCase()}
                 </p>
               </div>
-              <ToggleGroup
-                value={[metric]}
-                onValueChange={(values) => {
-                  const value = values[0] as TrendMetric | undefined;
-                  if (value) setMetric(value);
-                }}
-                variant="outline"
-                size="sm"
-                spacing={0}
+              <div
+                role="group"
                 aria-label="Trend metric"
+                className="inline-flex rounded-lg bg-muted p-0.5"
               >
                 {(Object.keys(metricLabels) as TrendMetric[]).map((value) => (
-                  <ToggleGroupItem key={value} value={value}>
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={metric === value}
+                    onClick={() => setMetric(value)}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      metric === value
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground"
+                    }`}
+                  >
                     {metricLabels[value]}
-                  </ToggleGroupItem>
+                  </button>
                 ))}
-              </ToggleGroup>
+              </div>
             </div>
-            <ChartContainer config={chartConfig} className="h-72 w-full">
-              <AreaChart accessibilityLayer data={selectedSeries} margin={{ left: 4, right: 12 }}>
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="bucketStart"
-                  axisLine={false}
-                  tickLine={false}
-                  tickMargin={10}
-                  minTickGap={24}
-                  tickFormatter={(value: string) =>
-                    analytics.bucket === "hour"
-                      ? formatTime(value, timeZone, {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          second: undefined,
-                        })
-                      : formatDate(value, timeZone, {
-                          month: "short",
-                          day: "numeric",
-                          year: undefined,
-                        })
-                  }
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tickMargin={8}
-                  width={56}
-                  tickFormatter={(value: number) =>
-                    metric === "cost"
-                      ? `$${value.toFixed(value < 1 ? 2 : 0)}`
-                      : formatTokenCount(value)
-                  }
-                />
-                <ChartTooltip
-                  cursor={false}
-                  content={
-                    <ChartTooltipContent
-                      labelFormatter={(_label, payload) => {
-                        const bucketStart = payload[0]?.payload?.bucketStart;
-                        return bucketStart ? formatDateTime(bucketStart, timeZone) : "";
-                      }}
-                    />
-                  }
-                />
-                <Area
-                  dataKey="value"
-                  type="monotone"
-                  fill="var(--color-value)"
-                  fillOpacity={0.12}
-                  stroke="var(--color-value)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ChartContainer>
+            <div className="rounded-xl border p-4 pb-2">
+              <p className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-chart-1" />
+                {metricLabels[metric]}
+              </p>
+              <ChartContainer config={chartConfig} className="h-72 w-full">
+                <AreaChart accessibilityLayer data={selectedSeries} margin={{ left: 4, right: 12 }}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="bucketStart"
+                    axisLine={false}
+                    tickLine={false}
+                    tickMargin={10}
+                    minTickGap={24}
+                    tickFormatter={(value: string) =>
+                      analytics.bucket === "hour"
+                        ? formatTime(value, timeZone, {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: undefined,
+                          })
+                        : formatDate(value, timeZone, {
+                            month: "short",
+                            day: "numeric",
+                            year: undefined,
+                          })
+                    }
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tickMargin={8}
+                    width={56}
+                    tickFormatter={(value: number) =>
+                      metric === "cost"
+                        ? `$${value.toFixed(value < 1 ? 2 : 0)}`
+                        : formatTokenCount(value)
+                    }
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(_label, payload) => {
+                          const bucketStart = payload[0]?.payload?.bucketStart;
+                          return bucketStart ? formatDateTime(bucketStart, timeZone) : "";
+                        }}
+                      />
+                    }
+                  />
+                  <Area
+                    dataKey="value"
+                    type="monotone"
+                    fill="var(--color-value)"
+                    fillOpacity={0.12}
+                    stroke="var(--color-value)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ChartContainer>
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>
                 Usage coverage {formatPercent(usageCoverage(analytics.summary))} ·{" "}
@@ -465,10 +468,10 @@ export function UsageExplorer({ analytics, projects, scope }: UsageExplorerProps
 
 function SummaryStat({ label, value, context }: { label: string; value: string; context: string }) {
   return (
-    <div>
+    <div className="rounded-xl border p-4">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-2 font-mono text-xl font-semibold">{value}</dd>
-      <dd className="mt-1 text-xs text-muted-foreground">{context}</dd>
+      <dd className="mt-1 text-[22px] font-semibold tracking-tight">{value}</dd>
+      <dd className="mt-0.5 text-xs text-muted-foreground">{context}</dd>
     </div>
   );
 }
@@ -488,7 +491,7 @@ function ProjectBreakdownTable({
       <h2 id="project-breakdown-heading" className="mt-1 text-base font-semibold">
         Projects
       </h2>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 overflow-x-auto rounded-xl border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -562,7 +565,7 @@ function ModelBreakdownTable({
           </Button>
         ) : null}
       </div>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 overflow-x-auto rounded-xl border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -630,7 +633,7 @@ function AgentModelTable({
         Usage by Eve agent and model
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">One row per agent and model pair.</p>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 overflow-x-auto rounded-xl border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -681,6 +684,14 @@ function AgentModelTable({
   );
 }
 
+// Hue only where it carries state meaning: failures are red, partial-data
+// warnings amber, and the all-clear row stays grey.
+const SIGNAL_DOT = {
+  destructive: "bg-destructive",
+  warning: "bg-warning",
+  muted: "bg-muted-foreground/40",
+} as const;
+
 function UsageSignals({
   totals,
   projectName,
@@ -688,21 +699,21 @@ function UsageSignals({
   totals: UsageTotals;
   projectName: string | null;
 }) {
-  const signals: Array<{ title: string; detail: string; warning: boolean }> = [];
+  const signals: Array<{ title: string; detail: string; tone: keyof typeof SIGNAL_DOT }> = [];
   if (totals.failedSessions > 0) {
     signals.push({
       title: `${totals.failedSessions.toLocaleString()} failed sessions`,
       detail: projectName
         ? `Within ${projectName} during this period.`
         : "Across the selected workspace scope.",
-      warning: true,
+      tone: "destructive",
     });
   }
   if (totals.missingSteps > 0) {
     signals.push({
       title: `${totals.missingSteps.toLocaleString()} model steps have missing usage`,
       detail: "Token totals exclude fields the provider did not report.",
-      warning: true,
+      tone: "warning",
     });
   }
   const reportedCostCoverage = costCoverage(totals);
@@ -710,14 +721,14 @@ function UsageSignals({
     signals.push({
       title: `Cost coverage is ${reportedCostCoverage.toFixed(1)}%`,
       detail: "Provider cost is partial and Eveland does not estimate the remainder.",
-      warning: true,
+      tone: "warning",
     });
   }
   if (signals.length === 0) {
     signals.push({
       title: "No usage signals need attention",
       detail: "All observed steps reported usage and cost for this period.",
-      warning: false,
+      tone: "muted",
     });
   }
 
@@ -727,20 +738,13 @@ function UsageSignals({
       <h2 id="usage-signals-heading" className="mt-1 text-base font-semibold">
         Needs attention
       </h2>
-      <ul className="mt-4 flex flex-col gap-4">
+      <ul className="mt-3 flex flex-col divide-y rounded-xl border">
         {signals.slice(0, 3).map((signal) => (
-          <li key={signal.title} className="flex gap-3">
-            {signal.warning ? (
-              <AlertTriangleIcon
-                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-            ) : (
-              <CircleCheckIcon
-                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-            )}
+          <li key={signal.title} className="flex gap-3 p-4">
+            <span
+              aria-hidden="true"
+              className={`mt-1.5 size-1.5 shrink-0 rounded-full ${SIGNAL_DOT[signal.tone]}`}
+            />
             <div>
               <p className="text-sm font-medium">{signal.title}</p>
               <p className="mt-1 text-xs text-muted-foreground">{signal.detail}</p>
@@ -759,7 +763,7 @@ function RecentSessionsTable({ analytics }: { analytics: UsageAnalytics }) {
       <h2 id="recent-sessions-heading" className="mt-1 text-base font-semibold">
         Recent sessions
       </h2>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 overflow-x-auto rounded-xl border">
         <Table>
           <TableHeader>
             <TableRow>

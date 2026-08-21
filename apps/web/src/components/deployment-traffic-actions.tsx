@@ -52,6 +52,7 @@ export function DeploymentTrafficActions({
       <Button
         size="sm"
         variant="outline"
+        className="rounded-full"
         disabled={pending !== null || status !== "running"}
         onClick={() => run("promote", () => promoteDeployment(projectId, deploymentId))}
       >
@@ -62,6 +63,7 @@ export function DeploymentTrafficActions({
           <Button
             size="sm"
             variant="ghost"
+            className="rounded-full"
             disabled={pending !== null}
             onClick={() =>
               run("90/10", () =>
@@ -77,6 +79,7 @@ export function DeploymentTrafficActions({
           <Button
             size="sm"
             variant="ghost"
+            className="rounded-full"
             disabled={pending !== null}
             onClick={() =>
               run("50/50", () =>
@@ -94,6 +97,7 @@ export function DeploymentTrafficActions({
       <Button
         size="sm"
         variant="ghost"
+        className="rounded-full"
         disabled={pending !== null || status !== "running"}
         onClick={() => run("drain", () => drainDeployment(projectId, deploymentId))}
       >
@@ -102,6 +106,7 @@ export function DeploymentTrafficActions({
       <Button
         size="sm"
         variant="ghost"
+        className="rounded-full"
         disabled={
           pending !== null || retentionProtected || status === "archived" || status === "archiving"
         }

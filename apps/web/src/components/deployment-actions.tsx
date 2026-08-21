@@ -138,7 +138,12 @@ export function DeploymentActions({
   return (
     <div className="flex flex-col items-end gap-1">
       {retryingImport && !canDeploy && canSync ? (
-        <Button type="button" onClick={retryImport} disabled={busy}>
+        <Button
+          type="button"
+          className="rounded-full font-semibold"
+          onClick={retryImport}
+          disabled={busy}
+        >
           {pending === "retry" ? (
             <Spinner data-icon="inline-start" />
           ) : (
@@ -149,7 +154,13 @@ export function DeploymentActions({
       ) : (
         <Dialog open={open} onOpenChange={changeOpen}>
           <DialogTrigger
-            render={<Button type="button" disabled={busy || (!canDeploy && !canSync)} />}
+            render={
+              <Button
+                type="button"
+                className="rounded-full font-semibold"
+                disabled={busy || (!canDeploy && !canSync)}
+              />
+            }
           >
             {importActive ? (
               <Spinner data-icon="inline-start" />
@@ -288,15 +299,22 @@ export function DeploymentActions({
       )}
 
       {importNotice ? (
-        <div
-          className={cn(
-            "max-w-80 text-right text-xs",
-            retryingImport ? "text-destructive" : "text-muted-foreground",
-          )}
+        // Quiet inline chip: the title carries the state (destructive text only
+        // on failure), the detail truncates and survives in the tooltip.
+        <p
+          title={importNotice.detail}
+          className="inline-flex max-w-96 min-w-0 items-baseline gap-1.5 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground"
         >
-          <p className="font-medium">{importNotice.title}</p>
-          <p className="mt-1 leading-5">{importNotice.detail}</p>
-        </div>
+          <span
+            className={cn(
+              "shrink-0 font-medium",
+              retryingImport ? "text-destructive-foreground" : "text-foreground",
+            )}
+          >
+            {importNotice.title}
+          </span>
+          <span className="truncate">{importNotice.detail}</span>
+        </p>
       ) : null}
       {!open && error ? (
         <p className="max-w-80 text-right text-xs text-destructive">{error}</p>

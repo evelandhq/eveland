@@ -12,7 +12,7 @@ export default async function ProfileSettingsPage() {
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold tracking-tight">Profile</h2>
+        <h2 className="text-[17px] font-semibold tracking-tight">Profile</h2>
         <p className="text-sm text-muted-foreground">
           Update how you appear in Eveland and secure your account.
         </p>

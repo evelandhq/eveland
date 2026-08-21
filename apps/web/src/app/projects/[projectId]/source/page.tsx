@@ -38,33 +38,33 @@ export default async function SourcePage({
   const selectedLanguage = selectedFile ? getSourceLanguage(selectedFile.path) : null;
 
   return (
-    // The file tree sits directly on the canvas; only the file itself is raised
-    // onto a sheet, because the file is what this page is about.
-    <div className="grid min-h-[calc(100svh-9.0625rem)] min-w-0 gap-4 md:min-h-[calc(100svh-6rem)] lg:h-[calc(100svh-6rem)] lg:min-h-0 lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <aside className="flex min-h-72 min-w-0 flex-col gap-2 lg:h-full lg:min-h-0">
-        <header className="flex shrink-0 items-baseline justify-between gap-3 px-2">
+    // One framed browser: the tree pane sits on the quiet muted surface behind
+    // a hairline, and the file itself fills the code pane beside it.
+    <div className="grid min-h-[calc(100svh-9.0625rem)] min-w-0 overflow-hidden rounded-xl border md:min-h-[calc(100svh-6rem)] lg:h-[calc(100svh-6rem)] lg:min-h-0 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <aside className="flex min-h-72 min-w-0 flex-col gap-2 border-b bg-muted/30 py-3 lg:h-full lg:min-h-0 lg:border-b-0 lg:border-r">
+        <header className="flex shrink-0 items-baseline justify-between gap-3 px-4">
           <h2 className="text-sm font-medium">Source files</h2>
           <span className="text-xs tabular-nums text-muted-foreground">
             {files.length} {files.length === 1 ? "file" : "files"}
           </span>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2">
           <SourceFileTree
             paths={files.map((file) => file.path)}
             projectId={projectId}
             selectedPath={selectedPath}
           />
         </div>
-        <footer className="shrink-0 px-2 pt-1">
+        <footer className="shrink-0 px-4 pt-1">
           <EveVersionStatus className="items-start" eveVersion={eveVersion} showMessage={false} />
         </footer>
       </aside>
 
-      <section className="flex min-h-[30rem] min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xs lg:min-h-0">
+      <section className="flex min-h-[30rem] min-w-0 flex-col overflow-hidden bg-card lg:min-h-0">
         <header className="flex h-12 shrink-0 min-w-0 items-center justify-between gap-4 border-b px-4">
           <div className="flex min-w-0 items-center gap-2">
             <FileCodeIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-            <h1 className="truncate font-mono text-sm font-medium">
+            <h1 className="truncate font-mono text-xs font-medium">
               {selectedFile?.path ?? "File content"}
             </h1>
           </div>
