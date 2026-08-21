@@ -408,7 +408,7 @@ export function createPostgresProjectStore(
       return failed.length === 1;
     },
 
-    async createProjectFromSourcePreflight(input) {
+    async createProjectFromSourcePreflight(input, now = new Date()) {
       await ensureDefaultOwner();
       return db.transaction(async (tx) => {
         const [preflight] = await tx
@@ -427,7 +427,7 @@ export function createPostgresProjectStore(
         if (
           preflight.status !== "completed" ||
           !preflight.sourcePath ||
-          preflight.expiresAt <= new Date()
+          preflight.expiresAt <= now
         ) {
           return { outcome: "not_ready" } as const;
         }

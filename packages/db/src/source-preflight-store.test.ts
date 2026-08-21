@@ -5,14 +5,12 @@ import { createTestStore } from "./vitest-store.js";
 describe("source preflight store", () => {
   test("keeps preflights user-scoped and fences worker completion by attempt", async () => {
     const store = createTestStore();
+    const now = new Date("2026-01-01T00:00:00.000Z");
     const preflight = await store.createSourcePreflight({
       userId: "user_a",
       kind: "git",
       gitUrl: "https://github.com/evelandhq/example.git",
-      // Relative to the real clock: claimNextSourcePreflight and
-      // createProjectFromSourcePreflight compare expires_at against new Date()
-      // internally, so a fixed future date would become a time bomb.
-      expiresAt: new Date(Date.now() + 60_000),
+      expiresAt: new Date("2026-01-01T00:01:00.000Z"),
     });
 
     await expect(store.getSourcePreflight(preflight.id, "user_b")).resolves.toBeNull();
@@ -23,7 +21,7 @@ describe("source preflight store", () => {
       gitUrl: "https://github.com/evelandhq/example.git",
     });
 
-    const claimed = await store.claimNextSourcePreflight("worker-a");
+    const claimed = await store.claimNextSourcePreflight("worker-a", now);
     expect(claimed).toMatchObject({ id: preflight.id, status: "running", attempts: 1 });
     await expect(
       store.completeSourcePreflight(preflight.id, 0, {
@@ -48,29 +46,33 @@ describe("source preflight store", () => {
 
   test("atomically creates a project from the validated snapshot and consumes it once", async () => {
     const store = createTestStore();
+    const now = new Date("2026-01-01T00:00:00.000Z");
     const preflight = await store.createSourcePreflight({
       userId: "user_a",
       kind: "zip",
       sourcePath: "/data/uploads/zip-1/source",
-      expiresAt: new Date(Date.now() + 60_000),
+      expiresAt: new Date("2026-01-01T00:01:00.000Z"),
     });
-    const claimed = await store.claimNextSourcePreflight("worker-a");
+    const claimed = await store.claimNextSourcePreflight("worker-a", now);
     await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
       sourcePath: "/data/uploads/zip-1/source",
       commitSha: null,
       summary: { eveVersion: "0.34.5" },
     });
 
-    const result = await store.createProjectFromSourcePreflight({
-      preflightId: preflight.id,
-      userId: "user_a",
-      name: "validated-agent",
-      deployAfterImport: true,
-      secrets: [
-        { key: "OPENAI_API_KEY", kind: "secret", encryptedValue: "encrypted-openai-key" },
-        { key: "MODEL_NAME", kind: "variable", encryptedValue: "encrypted-model-name" },
-      ],
-    });
+    const result = await store.createProjectFromSourcePreflight(
+      {
+        preflightId: preflight.id,
+        userId: "user_a",
+        name: "validated-agent",
+        deployAfterImport: true,
+        secrets: [
+          { key: "OPENAI_API_KEY", kind: "secret", encryptedValue: "encrypted-openai-key" },
+          { key: "MODEL_NAME", kind: "variable", encryptedValue: "encrypted-model-name" },
+        ],
+      },
+      now,
+    );
     expect(result.outcome).toBe("created");
     if (result.outcome !== "created") throw new Error("Expected project creation.");
 
@@ -97,25 +99,29 @@ describe("source preflight store", () => {
       }),
     ]);
     await expect(
-      store.createProjectFromSourcePreflight({
-        preflightId: preflight.id,
-        userId: "user_a",
-        name: "second-agent",
-        deployAfterImport: true,
-      }),
+      store.createProjectFromSourcePreflight(
+        {
+          preflightId: preflight.id,
+          userId: "user_a",
+          name: "second-agent",
+          deployAfterImport: true,
+        },
+        now,
+      ),
     ).resolves.toEqual({ outcome: "consumed" });
   });
 
   test("does not consume a validated snapshot when its exact project name conflicts", async () => {
     const store = createTestStore();
+    const now = new Date("2026-01-01T00:00:00.000Z");
     await store.createProject({ name: "taken-name", importKind: "zip", requireExactSlug: true });
     const preflight = await store.createSourcePreflight({
       userId: "user_a",
       kind: "zip",
       sourcePath: "/data/uploads/zip-2/source",
-      expiresAt: new Date(Date.now() + 60_000),
+      expiresAt: new Date("2026-01-01T00:01:00.000Z"),
     });
-    const claimed = await store.claimNextSourcePreflight("worker-a");
+    const claimed = await store.claimNextSourcePreflight("worker-a", now);
     await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
       sourcePath: "/data/uploads/zip-2/source",
       commitSha: null,
@@ -123,12 +129,15 @@ describe("source preflight store", () => {
     });
 
     await expect(
-      store.createProjectFromSourcePreflight({
-        preflightId: preflight.id,
-        userId: "user_a",
-        name: "taken-name",
-        deployAfterImport: true,
-      }),
+      store.createProjectFromSourcePreflight(
+        {
+          preflightId: preflight.id,
+          userId: "user_a",
+          name: "taken-name",
+          deployAfterImport: true,
+        },
+        now,
+      ),
     ).rejects.toBeInstanceOf(ProjectSlugConflictError);
     await expect(store.getSourcePreflight(preflight.id, "user_a")).resolves.toMatchObject({
       status: "completed",
@@ -137,24 +146,25 @@ describe("source preflight store", () => {
 
   test("expires only unconsumed terminal snapshots and returns their cleanup paths", async () => {
     const store = createTestStore();
+    const now = new Date("2026-01-01T00:00:00.000Z");
     const preflight = await store.createSourcePreflight({
       userId: "user_a",
       kind: "zip",
       sourcePath: "/data/uploads/expired/source",
-      // Must stay in the future for the bare claim below, so derive it from
-      // the real clock; the expiry sweep then uses a cutoff past it.
-      expiresAt: new Date(Date.now() + 60_000),
+      // Still in the future at claim time; the expiry sweep below then uses a
+      // cutoff past it.
+      expiresAt: new Date("2026-01-01T00:01:00.000Z"),
     });
-    const claimed = await store.claimNextSourcePreflight("worker-a");
+    const claimed = await store.claimNextSourcePreflight("worker-a", now);
     await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
       sourcePath: "/data/uploads/expired/source",
       commitSha: null,
       summary: {},
     });
 
-    await expect(store.expireSourcePreflights(new Date(Date.now() + 120_000), 25)).resolves.toEqual(
-      ["/data/uploads/expired/source"],
-    );
+    await expect(
+      store.expireSourcePreflights(new Date("2026-01-01T00:02:00.000Z"), 25),
+    ).resolves.toEqual(["/data/uploads/expired/source"]);
     await expect(store.getSourcePreflight(preflight.id, "user_a")).resolves.toBeNull();
   });
 });

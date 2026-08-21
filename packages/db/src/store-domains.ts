@@ -218,13 +218,16 @@ export interface SourceStore {
     result: { sourcePath: string; commitSha: string | null; summary: Record<string, unknown> },
   ): Promise<boolean>;
   failSourcePreflight(preflightId: string, attempt: number, error: string): Promise<boolean>;
-  createProjectFromSourcePreflight(input: {
-    preflightId: string;
-    userId: string;
-    name: string;
-    deployAfterImport?: boolean;
-    secrets?: InitialProjectSecret[];
-  }): Promise<CreateProjectFromSourcePreflightResult>;
+  createProjectFromSourcePreflight(
+    input: {
+      preflightId: string;
+      userId: string;
+      name: string;
+      deployAfterImport?: boolean;
+      secrets?: InitialProjectSecret[];
+    },
+    now?: Date,
+  ): Promise<CreateProjectFromSourcePreflightResult>;
   expireSourcePreflights(now?: Date, limit?: number): Promise<string[]>;
   recordSourceRevision(input: {
     projectId: string;
