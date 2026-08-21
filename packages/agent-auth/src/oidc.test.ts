@@ -315,6 +315,10 @@ describe("generic OIDC Authorization Code provider", () => {
           return { subject: "id-token-subject" };
         },
       }),
+      // Pin the clock: the fixture credential expires 2030-01-01, and an
+      // unpinned provider would start refreshing (and failing) for real once
+      // wall clock reaches that date.
+      now: () => new Date("2029-01-01T00:00:00.000Z"),
     });
     const interaction = await provider.start({
       connection: snapshot,
@@ -344,6 +348,7 @@ describe("generic OIDC Authorization Code provider", () => {
       appSecretKey,
       callbackUrl: "https://eveland.example/agent-auth/oidc/callback",
       resolveClientSecret: async () => undefined,
+      now: () => new Date("2029-01-01T00:00:00.000Z"),
       protocol: protocol({
         async fetchUserInfo() {
           throw { code: "OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED" };

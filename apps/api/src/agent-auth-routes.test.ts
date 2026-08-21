@@ -226,6 +226,10 @@ describe("Agent Auth control-plane routes", () => {
       appSecretKey,
       webOrigin: "https://eveland.example",
       oidcProtocol: mockOidcProtocol(),
+      // Pin the agent-auth clock: the mock credential expires 2030-01-01, and
+      // an unpinned clock would trigger a real proactive refresh (which the
+      // mock forbids) once wall clock reaches that date.
+      agentAuthNow: () => new Date("2029-01-01T00:00:00.000Z"),
       oidcVerifyAccessToken: async () => ({
         issuer: "https://idp.example",
         subject: "agent-subject",
@@ -296,6 +300,7 @@ describe("Agent Auth control-plane routes", () => {
     const app = createApp(store, {
       appSecretKey,
       webOrigin: "https://eveland.example",
+      agentAuthNow: () => new Date("2029-01-01T00:00:00.000Z"),
       oidcProtocol: mockOidcProtocol({
         async refresh(_config, _secret, _refreshToken, subject) {
           refreshCalls += 1;
