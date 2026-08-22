@@ -50,9 +50,9 @@ git -C "$REPO_DIR" ls-files --cached --others --exclude-standard -z |
   COPYFILE_DISABLE=1 tar -czf - --null -T - |
   limactl shell "$VM" -- sudo tar -xzf - -C /opt/eveland --exclude='._*'
 
-# The external-only cutover made every new Release a shared-World build:
-# deployments need EVELAND_WORKFLOW_WORLD_URL at runtime and turns execute
-# only through the external dispatcher, so the guest now carries a real
+# Every Release is a shared-World build: deployments need
+# EVELAND_WORKFLOW_WORLD_URL at runtime and turns execute only through the
+# external dispatcher, so the guest carries a real
 # Postgres; each turn-driving smoke provisions its own scratch database off
 # this server (see infra/integration/workflow-runtime.mts). Single-quoted on
 # purpose: the smoke block below is one double-quoted string, and inner SQL

@@ -206,12 +206,6 @@ export function createPostgresDeploymentRoutingStore({
                   hostPort: input.hostPort,
                   status: "running",
                   runtimeKind: input.runtimeKind,
-                  // A shared build starts life on the external topology; any
-                  // other recording stays unclassified until a cutover
-                  // operation classifies it.
-                  workflowRunnerMode: attestation?.worldKind === "shared" ? "external" : "unknown",
-                  workflowConversionState:
-                    attestation?.worldKind === "shared" ? "external" : "unclassified",
                 })
                 .returning();
               if (!claimed) throw new Error("Failed to create deployment.");
@@ -358,30 +352,6 @@ export function createPostgresDeploymentRoutingStore({
       return deployment ? deploymentRowToDeployment(deployment) : null;
     },
 
-    async updateDeploymentWorkflowTopology(deploymentId, topology) {
-      const [deployment] = await db
-        .update(deployments)
-        .set({
-          ...(topology.runnerMode !== undefined ? { workflowRunnerMode: topology.runnerMode } : {}),
-          ...(topology.conversionState !== undefined
-            ? { workflowConversionState: topology.conversionState }
-            : {}),
-          ...(topology.conversionOperationId !== undefined
-            ? { workflowConversionOperationId: topology.conversionOperationId }
-            : {}),
-          ...(topology.runnerEvidence !== undefined
-            ? { workflowRunnerEvidence: topology.runnerEvidence }
-            : {}),
-          ...(topology.convertedAt !== undefined
-            ? { workflowConvertedAt: topology.convertedAt ? new Date(topology.convertedAt) : null }
-            : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(deployments.id, deploymentId))
-        .returning();
-      return deployment ? deploymentRowToDeployment(deployment) : null;
-    },
-
     async transitionDeploymentStatus({ deploymentId, to, from }) {
       if (from.length === 0) return null;
       const [deployment] = await db
@@ -395,25 +365,6 @@ export function createPostgresDeploymentRoutingStore({
     async getRelease(releaseId) {
       const [release] = await db.select().from(releases).where(eq(releases.id, releaseId)).limit(1);
       return release ? releaseRowToRelease(release) : null;
-    },
-
-    async attestReleaseWorkflow(releaseId, workflow) {
-      // Attestation is immutable once known: only an `unknown` row may be
-      // classified, and never back to unknown.
-      if (workflow.worldKind === "unknown") return null;
-      const [row] = await db
-        .update(releases)
-        .set({
-          workflowWorldKind: workflow.worldKind,
-          workflowWorldPackage: workflow.worldPackage,
-          workflowWorldVersion: workflow.worldVersion,
-          workflowStorageSpec: workflow.storageSpec,
-          workflowDispatchProtocol: workflow.dispatchProtocol,
-          workflowEnqueueCapability: workflow.enqueueCapability,
-        })
-        .where(and(eq(releases.id, releaseId), eq(releases.workflowWorldKind, "unknown")))
-        .returning();
-      return row ? releaseRowToRelease(row) : null;
     },
 
     async listReleaseSummaries(projectId) {

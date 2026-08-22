@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   await materializeConnectionOrigin(sourcePath, fixtureOrigin);
 
   const { store, close } = await createPgliteTestStore();
-  // Post-cutover: turns execute only via the external dispatcher. The helper
+  // Turns execute only via the external dispatcher. The helper
   // lives with the infra smokes; the computed specifier keeps this app's
   // typecheck out of the cross-tree import while tsx resolves it at runtime.
   const { startWorkflowRuntime } = (await import(

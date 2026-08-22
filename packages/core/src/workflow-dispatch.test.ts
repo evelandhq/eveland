@@ -16,10 +16,6 @@ function registration(
     schemaGeneration: null,
     protocolMin: 1,
     protocolMax: 1,
-    cutoverOperationId: null,
-    unscopedRunnableJobs: 0,
-    unresolvedQuarantines: 0,
-    desiredState: "ready",
     startedAt: new Date().toISOString(),
     readyAt: new Date().toISOString(),
     lastHeartbeatAt: new Date().toISOString(),
@@ -28,7 +24,7 @@ function registration(
 }
 
 describe("assessDispatcherReadiness", () => {
-  test("a fresh, owned, recovered, zero-unscoped ready dispatcher is ready", () => {
+  test("a fresh, owned, recovered ready dispatcher is ready", () => {
     expect(assessDispatcherReadiness(registration())).toEqual({ ready: true });
   });
 
@@ -66,20 +62,12 @@ describe("assessDispatcherReadiness", () => {
     ).toEqual({ ready: true });
   });
 
-  test("rejects a dispatcher serving the wrong cutover operation", () => {
-    const decision = assessDispatcherReadiness(
-      registration({ cutoverOperationId: "cut_other", state: "ready_paused" }),
-      { allowPaused: true, expectedOperationId: "cut_current" },
-    );
-    expect(decision.ready).toBe(false);
-    if (!decision.ready) expect(decision.reason).toContain("cut_other");
-  });
-
-  test("claimable or uncounted unscoped jobs block readiness", () => {
-    expect(assessDispatcherReadiness(registration({ unscopedRunnableJobs: 3 })).ready).toBe(false);
-    expect(assessDispatcherReadiness(registration({ unscopedRunnableJobs: null })).ready).toBe(
-      false,
-    );
+  test("a dispatcher that is not ready blocks readiness no matter how fresh", () => {
+    for (const state of ["recovering", "draining", "failed", "stopped"] as const) {
+      const decision = assessDispatcherReadiness(registration({ state }));
+      expect(decision.ready).toBe(false);
+      if (!decision.ready) expect(decision.reason).toContain(state);
+    }
   });
 });
 

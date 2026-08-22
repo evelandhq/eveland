@@ -48,7 +48,7 @@ describe("deriveWorkflowWorldAttestation", () => {
 });
 
 /**
- * The external-only runner contract (issue #278 cutover): every new build is
+ * The external-only runner contract (issue #278): every new build is
  * dispatched by the single external dispatcher. `embedded` let multiple
  * deployments of one project claim and replay each other's runs, so an
  * explicit request for it is a configuration error, never a silent fallback.

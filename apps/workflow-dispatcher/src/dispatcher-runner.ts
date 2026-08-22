@@ -8,26 +8,15 @@ import type {
 } from "@evelandhq/workflow-world/dispatcher";
 import { clusterWorldIdentity, WORLD_IDENTITY_SQL } from "@evelandhq/core/workflow-dispatch";
 import { createActivationClient } from "@evelandhq/workflow-world/dispatcher";
-import {
-  countClaimableUnscopedFlowJobs,
-  DISPATCH_VERSION,
-  listUnresolvedRunQuarantines,
-  readLatestCutoverProof,
-} from "@evelandhq/workflow-world";
+import { DISPATCH_VERSION } from "@evelandhq/workflow-world";
 
 /** The pg pool type as workflow-world exposes it; this app has no pg dependency. */
-type WorldPool = Parameters<typeof countClaimableUnscopedFlowJobs>[0];
+type WorldPool = Parameters<NonNullable<DispatcherServiceOptions["beforeBootRecovery"]>>[0]["pool"];
 
 /**
- * eveland's composition of the workflow dispatcher:
- *
- * - `recover-paused` start mode (`EVELAND_WORKFLOW_DISPATCHER_START_MODE`)
- *   finishes ownership, migrations and boot recovery but claims nothing until
- *   the control plane's authenticated resume arrives via the heartbeat reply;
- * - every lifecycle transition is reported machine-readably to the Control API
- *   as a registration heartbeat — the stdout token stays purely informational;
- * - the cutover preflight fails startup closed while any early-external job is
- *   still claimable outside a per-run queue.
+ * eveland's composition of the workflow dispatcher: every lifecycle
+ * transition is reported machine-readably to the Control API as a
+ * registration heartbeat — the stdout token stays purely informational.
  *
  * The registration deliberately carries the database *identity*
  * (`cluster:<system_identifier>/<database>`, read from the database itself),
@@ -39,19 +28,15 @@ export const DISPATCHER_READY_TOKEN = "workflow-dispatcher: ready";
 export type DispatcherRunnerDeps = {
   startService: (options: DispatcherServiceOptions) => Promise<DispatcherService>;
   fetchImplementation: typeof fetch;
-  countUnscopedJobs: (pool: WorldPool) => Promise<number>;
-  countUnresolvedQuarantines: (pool: WorldPool) => Promise<number>;
   readSchemaGeneration: (pool: WorldPool) => Promise<string | null>;
   /** `cluster:<system_identifier>/<database>` from the connected database itself. */
   readWorldIdentity: (pool: WorldPool) => Promise<string>;
-  /** The newest World-visible cutover proof for an operation, if any. */
-  readCutoverProof: (pool: WorldPool, operationId: string) => Promise<{ passed: boolean } | null>;
   now: () => Date;
 };
 
 export type DispatcherRunnerHandle = {
   service: DispatcherService;
-  /** One heartbeat: report state, apply the returned desired state. */
+  /** One heartbeat: report the current state to the Control API. */
   heartbeat(): Promise<void>;
   stop(): Promise<void>;
 };
@@ -63,23 +48,14 @@ export async function startEvelandWorkflowDispatcher(
 ): Promise<DispatcherRunnerHandle> {
   const instanceId = `wfd_${os.hostname()}_${String(process.pid)}_${randomUUID().slice(0, 8)}`;
   const generation = `eveland-workflow-dispatcher ${env.EVELAND_REVISION ?? "dev"}`;
-  const startPaused = env.EVELAND_WORKFLOW_DISPATCHER_START_MODE === "recover-paused";
 
   const snapshot = {
     ownershipAcquired: false,
     bootRecoveryCompleted: false,
     reenqueuedRuns: null as number | null,
-    unscopedRunnableJobs: null as number | null,
-    unresolvedQuarantines: null as number | null,
     schemaGeneration: null as string | null,
     worldIdentity: "unknown",
-    state: "recovering" as
-      | "recovering"
-      | "ready_paused"
-      | "ready"
-      | "draining"
-      | "failed"
-      | "stopped",
+    state: "recovering" as "recovering" | "ready" | "draining" | "failed" | "stopped",
     startedAt: deps.now().toISOString(),
     readyAt: null as string | null,
   };
@@ -95,9 +71,6 @@ export async function startEvelandWorkflowDispatcher(
           typeof event.attributes?.reenqueuedRuns === "number"
             ? event.attributes.reenqueuedRuns
             : null;
-        break;
-      case "ready_paused":
-        snapshot.state = "ready_paused";
         break;
       case "ready":
         snapshot.state = "ready";
@@ -120,7 +93,6 @@ export async function startEvelandWorkflowDispatcher(
   const service = await deps.startService({
     env,
     telemetry,
-    startPaused,
     lifecycle: { onPhase },
     // Exact activation is bound to THIS registration: the client sends the
     // instance id on every activation, and the control plane matches it to the
@@ -135,37 +107,12 @@ export async function startEvelandWorkflowDispatcher(
         }
       : {}),
     async beforeBootRecovery({ pool }) {
-      const [unscoped, quarantines, schemaGeneration, worldIdentity] = await Promise.all([
-        deps.countUnscopedJobs(pool),
-        deps.countUnresolvedQuarantines(pool),
+      const [schemaGeneration, worldIdentity] = await Promise.all([
         deps.readSchemaGeneration(pool),
         deps.readWorldIdentity(pool),
       ]);
-      snapshot.unscopedRunnableJobs = unscoped;
-      snapshot.unresolvedQuarantines = quarantines;
       snapshot.schemaGeneration = schemaGeneration;
       snapshot.worldIdentity = worldIdentity;
-      if (unscoped > 0) {
-        throw new Error(
-          `${String(unscoped)} early-external job(s) are still claimable outside a per-run queue. ` +
-            "Run the cutover job migration before starting the dispatcher; boot recovery must not race them.",
-        );
-      }
-      // Cutover mode: boot recovery may only run after the operator's
-      // postcondition ran and PASSED against this exact database — the proof
-      // is World-visible on purpose, because this process never reads the
-      // control-plane database and a control-plane fence is invisible here.
-      const operationId = env.EVELAND_WORKFLOW_CUTOVER_OPERATION_ID;
-      if (operationId) {
-        const proof = await deps.readCutoverProof(pool, operationId);
-        if (!proof || !proof.passed) {
-          throw new Error(
-            proof
-              ? `The cutover postcondition for operation ${operationId} last FAILED against this database; boot recovery must not run.`
-              : `No cutover postcondition proof exists for operation ${operationId} in this database. Run \`cutover postcondition\` (which records the proof) before starting the dispatcher.`,
-          );
-        }
-      }
     },
   });
 
@@ -194,9 +141,6 @@ export async function startEvelandWorkflowDispatcher(
             schemaGeneration: snapshot.schemaGeneration,
             protocolMin: DISPATCH_VERSION,
             protocolMax: DISPATCH_VERSION,
-            cutoverOperationId: env.EVELAND_WORKFLOW_CUTOVER_OPERATION_ID ?? null,
-            unscopedRunnableJobs: snapshot.unscopedRunnableJobs,
-            unresolvedQuarantines: snapshot.unresolvedQuarantines,
             startedAt: snapshot.startedAt,
             readyAt: snapshot.readyAt,
           }),
@@ -211,14 +155,7 @@ export async function startEvelandWorkflowDispatcher(
         });
         return;
       }
-      const body = (await response.json().catch(() => null)) as {
-        desiredState?: string;
-      } | null;
-      // The authenticated resume: the control plane flips the desired state,
-      // and this — never a process restart — is what starts claiming.
-      if (body?.desiredState === "ready" && service.phase === "ready_paused") {
-        await service.resume();
-      }
+      await response.body?.cancel();
     } catch (error) {
       // Observability/control-plane failure isolation: a failed heartbeat is
       // reported, never fatal to in-flight dispatch work.
@@ -230,8 +167,8 @@ export async function startEvelandWorkflowDispatcher(
     }
   };
 
-  // First report immediately so a paused dispatcher is visible to operators
-  // before the first interval elapses.
+  // First report immediately so the dispatcher is visible to operators before
+  // the first interval elapses.
   await heartbeat();
 
   return {
@@ -277,10 +214,7 @@ export async function readWorldClusterIdentity(pool: WorldPool): Promise<string>
 
 export const defaultRunnerDeps: Omit<DispatcherRunnerDeps, "startService"> = {
   fetchImplementation: fetch,
-  countUnscopedJobs: countClaimableUnscopedFlowJobs,
-  countUnresolvedQuarantines: async (pool) => (await listUnresolvedRunQuarantines(pool)).length,
   readSchemaGeneration: readLatestSchemaGeneration,
   readWorldIdentity: readWorldClusterIdentity,
-  readCutoverProof: async (pool, operationId) => readLatestCutoverProof(pool, operationId),
   now: () => new Date(),
 };

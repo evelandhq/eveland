@@ -60,7 +60,7 @@ Production uses two databases, normally on one instance:
 - **Platform database** (`DATABASE_URL`) — owns Projects, Deployments, jobs, and auth. Configure a dedicated role.
 - **Shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`) — one database backing `@evelandhq/workflow-world` for every Project, scoped internally by `tenant_id`. It is required in production: Worker fails startup closed without it, and API reads the same URL to verify the World's cluster identity. Worker startup and tenant provisioning apply all pending workflow-world migrations automatically, serialized by a PostgreSQL advisory lock; set `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when the host reaches the database through a different address than Deployments do.
 
-Do not create per-project workflow databases: the shared World replaced them. The legacy `WORKFLOW_POSTGRES_URL` is only relevant to installs still terminating pre-cutover Deployments — see [Upgrade and rollback](/docs/operations/upgrades).
+Do not create per-project workflow databases: the shared World replaced them. The legacy `WORKFLOW_POSTGRES_URL` is only relevant to installs still deleting Projects from before the shared World — see [Upgrade and rollback](/docs/operations/upgrades).
 
 Size `max_connections` and per-Deployment pool budgets with [Capacity planning](/docs/operations/capacity) before the first real workload, and put both databases plus the data root on your backup schedule — see [Backup and restore](/docs/operations/backup-restore).
 

@@ -101,22 +101,6 @@ export class UnmanagedTelemetryResourceError extends Error {
   }
 }
 
-/**
- * A late or replayed OTLP observation hit a durable projection fence: its
- * session family was managed-terminated, or its deployment was permanently
- * retired. The raw batch stays stored as audit data; the projection must not
- * recreate or reopen a running Session/SessionNode, so the collector skips
- * the observation instead of retrying it.
- */
-export class WorkflowProjectionFencedError extends Error {
-  readonly code = "WORKFLOW_PROJECTION_FENCED";
-
-  constructor(message: string) {
-    super(message);
-    this.name = "WorkflowProjectionFencedError";
-  }
-}
-
 export function createAgentRuntimePolicy(input: {
   policy: ObservabilityPolicy;
   otlpEndpoint: string;

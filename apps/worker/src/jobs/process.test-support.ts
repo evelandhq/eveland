@@ -35,9 +35,6 @@ export async function recordReadyDispatcherFixture(
       schemaGeneration: string | null;
       protocolMin: number;
       protocolMax: number;
-      cutoverOperationId: string | null;
-      unscopedRunnableJobs: number | null;
-      unresolvedQuarantines: number | null;
       startedAt: string;
       readyAt: string | null;
     }) => Promise<unknown>;
@@ -55,9 +52,6 @@ export async function recordReadyDispatcherFixture(
     schemaGeneration: null,
     protocolMin: 1,
     protocolMax: 1,
-    cutoverOperationId: null,
-    unscopedRunnableJobs: 0,
-    unresolvedQuarantines: 0,
     startedAt: new Date().toISOString(),
     readyAt: new Date().toISOString(),
   });

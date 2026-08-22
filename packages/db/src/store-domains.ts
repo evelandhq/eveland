@@ -36,14 +36,7 @@ import type {
   SharedAgentEnvironmentEntryKind,
   SharedAgentEnvironmentRecord,
   RuntimeKind,
-  WorkflowConversionState,
-  WorkflowCutoverOperation,
-  WorkflowCutoverPhase,
-  WorkflowDispatcherDesiredState,
   WorkflowDispatcherRegistration,
-  WorkflowFence,
-  WorkflowFenceScopeKind,
-  WorkflowRunnerModeState,
   ScheduleRecord,
   ScheduleRun,
   ScheduleRunDetail,
@@ -512,8 +505,6 @@ export interface JobStore {
     runtimeInstanceId: string,
     now?: Date,
     staleAfterMs?: number,
-    /** Stamped so a cutover Worker claims only its own operation's jobs. */
-    cutoverOperationId?: string,
   ): Promise<Job>;
   /**
    * Claims the oldest claimable queued job. At most one job runs per project;
@@ -525,17 +516,7 @@ export interface JobStore {
   claimNextJob(
     workerId: string,
     now?: Date,
-    options?: {
-      maxConcurrentHeavyJobs?: number;
-      /** Cutover process mode: claim only these job types; others stay queued. */
-      allowedTypes?: JobType[];
-      /**
-       * Cutover process mode: additionally claim only jobs stamped with this
-       * exact operation id. Ordinary or stale jobs stay queued for the normal
-       * worker that follows the maintenance window.
-       */
-      cutoverOperationId?: string;
-    },
+    options?: { maxConcurrentHeavyJobs?: number },
   ): Promise<Job | null>;
   heartbeatJob(jobId: string, attempt: number, now?: Date): Promise<boolean>;
   replaceJobPayload<Type extends JobType>(
@@ -573,39 +554,11 @@ export interface DeploymentStore {
     runtimeKind: RuntimeKind;
     /**
      * Immutable workflow attestation from what release preparation actually
-     * injected. Omitted records the Release as `unknown`/`unknown` and the
-     * Deployment as `unknown`/`unclassified` — the conservative state that
-     * blocks activation rather than guessing. A shared attestation starts the
-     * Deployment directly on the external topology.
+     * injected. Omitted records the Release as `unknown`/`unknown` — the
+     * conservative state that blocks activation rather than guessing.
      */
     workflowWorld?: ReleaseWorkflowAttestation;
   }): Promise<DeploymentRecord>;
-  /**
-   * Persist attestation derived from a Release's immutable artifact. Only an
-   * `unknown` Release may be classified — attestation is immutable once
-   * known, so a second classification (or any attempt to overwrite a real
-   * build's record) returns null and changes nothing.
-   */
-  attestReleaseWorkflow(
-    releaseId: string,
-    workflow: ReleaseWorkflowAttestation,
-  ): Promise<ReleaseRecord | null>;
-  /**
-   * Stage or finalize a Deployment's mutable workflow execution topology.
-   * Partial and idempotent: omitted fields keep their current values, so a
-   * cutover step can be re-run under the same operation id without churn.
-   * Returns null when the Deployment does not exist.
-   */
-  updateDeploymentWorkflowTopology(
-    deploymentId: string,
-    topology: {
-      runnerMode?: WorkflowRunnerModeState;
-      conversionState?: WorkflowConversionState;
-      conversionOperationId?: string | null;
-      runnerEvidence?: { source: string; capturedAt: string } | null;
-      convertedAt?: string | null;
-    },
-  ): Promise<DeploymentRecord | null>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
   listDeployments(projectId: string): Promise<DeploymentRecord[]>;
   listReservedDeploymentHostPorts(): Promise<number[]>;
@@ -899,111 +852,16 @@ export interface LogStore {
   listLogs(projectId: string, type?: LogRecord["type"]): Promise<LogRecord[]>;
 }
 
-export interface WorkflowCutoverStore {
-  /** Get-or-create by id, so a re-run resumes instead of duplicating. */
-  ensureWorkflowCutoverOperation(input: {
-    id: string;
-    kind: WorkflowCutoverOperation["kind"];
-    scope: Record<string, unknown>;
-  }): Promise<WorkflowCutoverOperation>;
-  getWorkflowCutoverOperation(id: string): Promise<WorkflowCutoverOperation | null>;
-  /**
-   * Advance the phase monotonically and/or merge a checkpoint. Regressing the
-   * phase is refused: a failed step keeps the operation where it is and
-   * records `lastError`; it never reopens an activatable state.
-   */
-  advanceWorkflowCutoverOperation(
-    id: string,
-    input: {
-      phase?: WorkflowCutoverPhase;
-      checkpoint?: { key: string; value: unknown };
-      lastError?: string | null;
-    },
-  ): Promise<WorkflowCutoverOperation | null>;
-  /** Idempotent: re-writing an existing fence under any operation keeps it. */
-  writeWorkflowFences(
-    operationId: string,
-    fences: Array<{ scopeKind: WorkflowFenceScopeKind; scopeId: string; reason: string }>,
-  ): Promise<WorkflowFence[]>;
-  getActiveWorkflowFence(
-    scopeKind: WorkflowFenceScopeKind,
-    scopeId: string,
-  ): Promise<WorkflowFence | null>;
-  listWorkflowFences(operationId: string): Promise<WorkflowFence[]>;
-  /** Explicit operator resolution; restarts never clear a fence. */
-  resolveWorkflowFence(
-    scopeKind: WorkflowFenceScopeKind,
-    scopeId: string,
-    resolvedBy: string,
-  ): Promise<WorkflowFence | null>;
-  /**
-   * Per-run managed termination: converge exactly the named Eve families —
-   * fail their Sessions and running SessionNodes, tombstone them, and remove
-   * their Session bindings — without touching anything else on the (still
-   * healthy) Deployment. Used when a single run is terminated on a
-   * shared-capable owner.
-   */
-  convergeWorkflowRunFamilies(
-    operationId: string,
-    families: Array<{ projectId: string; eveSessionId: string }>,
-  ): Promise<{ failedSessions: number; tombstonedFamilies: number }>;
-  /**
-   * The control-plane half of the measured maintenance boundary: live
-   * activity counters plus monotonic high-water marks. A quiescent system
-   * shows zero live activity and stable marks across two reads; a later
-   * measurement with `sinceSequence`/`excludeOperationId` reports foreign
-   * jobs — writes the cutover's own stamped work cannot explain — created
-   * after the recorded baseline.
-   */
-  measureCutoverQuiescence(input?: {
-    now?: Date;
-    sinceSequence?: number;
-    excludeOperationId?: string;
-  }): Promise<{
-    runningJobs: number;
-    activeActivationLeases: number;
-    latestSessionStartedAt: string | null;
-    latestJobSequence: number;
-    foreignJobsSince: number;
-  }>;
-  /**
-   * The control-plane half of a managed termination, in one idempotent
-   * transaction per call: non-terminal Sessions on the targeted deployments
-   * fail, their Session/Operation bindings are removed, activation leases are
-   * released, and queued/active ScheduleRuns are cancelled.
-   */
-  convergeWorkflowTermination(
-    operationId: string,
-    deploymentIds: string[],
-  ): Promise<{
-    failedSessions: number;
-    failedSessionNodes: number;
-    tombstonedFamilies: number;
-    removedSessionBindings: number;
-    removedOperationBindings: number;
-    releasedLeases: number;
-    cancelledScheduleRuns: number;
-  }>;
-}
-
 export interface WorkflowDispatcherStore {
   /**
    * Authenticated heartbeat from the dispatcher actually holding the ownership
-   * lock. Upserts by instance id and returns the stored registration — the
-   * response's `desiredState` is how an explicit, authenticated resume reaches
-   * a `ready_paused` dispatcher. A first heartbeat defaults the desired state
-   * to `paused` unless the dispatcher already reports `ready`.
+   * lock. Upserts by instance id and returns the stored registration.
    */
   recordWorkflowDispatcherHeartbeat(
-    input: Omit<WorkflowDispatcherRegistration, "desiredState" | "lastHeartbeatAt">,
+    input: Omit<WorkflowDispatcherRegistration, "lastHeartbeatAt">,
   ): Promise<WorkflowDispatcherRegistration>;
   /** The registration with the freshest heartbeat; staleness is the caller's TTL. */
   getWorkflowDispatcherRegistration(): Promise<WorkflowDispatcherRegistration | null>;
-  /** Explicit resume/pause; returns null when the instance is unknown. */
-  setWorkflowDispatcherDesiredState(
-    instanceId: string,
-    desiredState: WorkflowDispatcherDesiredState,
-  ): Promise<WorkflowDispatcherRegistration | null>;
 }
 
 export interface InstanceHealthStore {
@@ -1073,6 +931,5 @@ export type Store = ProjectStore &
   RuntimeStore &
   InstanceHealthStore &
   WorkflowDispatcherStore &
-  WorkflowCutoverStore &
   ObservabilityStore &
   LogStore;

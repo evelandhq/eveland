@@ -29,7 +29,7 @@ async function main(): Promise<void> {
     const fixtureSourcePath = path.join(fixtureRoot, "source");
     await materializeEveFixtureDirectory(FIXTURE_TEMPLATE, fixtureSourcePath);
     const { store, close } = await createPgliteTestStore();
-    // Post-cutover: turns execute only via the external dispatcher.
+    // Turns execute only via the external dispatcher.
     let workflowRuntime: WorkflowRuntime | null = null;
     workflowRuntime = await startWorkflowRuntime(store);
     let runtime: ReturnType<typeof createRuntimeAdapterFromEnv> | null = null;

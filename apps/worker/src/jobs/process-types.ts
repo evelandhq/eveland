@@ -44,10 +44,6 @@ export type ProcessJobOptions = {
   jobHeartbeatIntervalMs?: number;
   /** Global cap on concurrently running heavy jobs (builds); omitted leaves them uncapped. */
   maxConcurrentHeavyJobs?: number;
-  /** Cutover process mode: claim only these job families; others stay queued. */
-  allowedJobTypes?: import("@evelandhq/core/contracts").JobType[];
-  /** Cutover process mode: additionally require this exact operation stamp. */
-  cutoverOperationId?: string;
   dispatchSchedule?: (input: ScheduleDispatchInput) => Promise<{ sessionIds: string[] }>;
   tracer?: Tracer;
   /** Aborted when this execution's job lease is fenced away; long-running steps must stop. */

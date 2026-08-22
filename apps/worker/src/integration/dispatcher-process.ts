@@ -50,19 +50,18 @@ export function spawnDispatcherApp(
 
 /**
  * The supervisor-visible gate is the persisted registration, not stdout: wait
- * until a FRESH heartbeat from a ready (or ready_paused) instance lands.
+ * until a FRESH heartbeat from a ready instance lands.
  */
 export async function waitForDispatcherRegistration(
   store: Pick<Store, "getWorkflowDispatcherRegistration">,
-  input: { notInstanceId?: string | null; timeoutMs?: number; allowPaused?: boolean } = {},
+  input: { notInstanceId?: string | null; timeoutMs?: number } = {},
 ): Promise<{ instanceId: string; reenqueuedRuns: number }> {
   const deadline = Date.now() + (input.timeoutMs ?? 120_000);
   for (;;) {
     const registration = await store.getWorkflowDispatcherRegistration();
     if (
       registration &&
-      (registration.state === "ready" ||
-        (input.allowPaused === true && registration.state === "ready_paused")) &&
+      registration.state === "ready" &&
       registration.instanceId !== input.notInstanceId &&
       Date.now() - new Date(registration.lastHeartbeatAt).getTime() < 60_000
     ) {

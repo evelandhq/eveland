@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { assessWorkflowArchive, assessWorkflowLaunch } from "./workflow-topology-gate.js";
+import { assessWorkflowLaunch } from "./workflow-topology-gate.js";
 
 function release(worldKind: "shared" | "legacy_project" | "unknown") {
   return {
@@ -17,31 +17,16 @@ function release(worldKind: "shared" | "legacy_project" | "unknown") {
   };
 }
 
-function deployment(
-  conversionState: "unclassified" | "fenced" | "converting" | "external" | "blocked" | "terminated",
-) {
-  return {
-    id: "dep_gate",
-    workflowTopology: {
-      runnerMode: conversionState === "external" ? ("external" as const) : ("unknown" as const),
-      conversionState,
-      conversionOperationId: null,
-      runnerEvidence: null,
-      convertedAt: null,
-    },
-  };
-}
-
 describe("assessWorkflowLaunch", () => {
-  test("a converted shared deployment launches on the shared world", () => {
-    expect(assessWorkflowLaunch(release("shared"), deployment("external"))).toEqual({
+  test("a shared build launches on the shared world", () => {
+    expect(assessWorkflowLaunch(release("shared"))).toEqual({
       allowed: true,
       workflowWorldKind: "shared",
     });
   });
 
-  test("an unclassified historical deployment fails closed with a managed reason", () => {
-    const decision = assessWorkflowLaunch(release("unknown"), deployment("unclassified"));
+  test("an unattested historical release fails closed with a managed reason", () => {
+    const decision = assessWorkflowLaunch(release("unknown"));
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) {
       expect(decision.reason).toContain("workflow_migration_required");
@@ -50,38 +35,8 @@ describe("assessWorkflowLaunch", () => {
   });
 
   test("a legacy release is never launched again", () => {
-    const decision = assessWorkflowLaunch(release("legacy_project"), deployment("unclassified"));
+    const decision = assessWorkflowLaunch(release("legacy_project"));
     expect(decision.allowed).toBe(false);
     if (!decision.allowed) expect(decision.reason).toContain("workflow_unavailable");
-  });
-
-  test("a shared deployment still mid-conversion may not start", () => {
-    for (const state of ["unclassified", "fenced", "converting", "blocked"] as const) {
-      const decision = assessWorkflowLaunch(release("shared"), deployment(state));
-      expect(decision.allowed).toBe(false);
-    }
-  });
-});
-
-describe("assessWorkflowArchive", () => {
-  test("only converted or managed-terminated deployments may archive", () => {
-    expect(assessWorkflowArchive(release("shared"), deployment("external")).allowed).toBe(true);
-    expect(assessWorkflowArchive(release("legacy_project"), deployment("terminated")).allowed).toBe(
-      true,
-    );
-  });
-
-  test("a shared attestation alone never allows artifact destruction", () => {
-    // A historically classified Release with an unconverted Deployment may own
-    // the only artifact able to resume a parked run.
-    for (const state of ["unclassified", "fenced", "converting", "blocked"] as const) {
-      expect(assessWorkflowArchive(release("shared"), deployment(state)).allowed).toBe(false);
-    }
-    expect(assessWorkflowArchive(release("unknown"), deployment("unclassified")).allowed).toBe(
-      false,
-    );
-    expect(
-      assessWorkflowArchive(release("legacy_project"), deployment("unclassified")).allowed,
-    ).toBe(false);
   });
 });

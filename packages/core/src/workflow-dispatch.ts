@@ -75,15 +75,14 @@ export const WORLD_IDENTITY_SQL =
   "select system_identifier::text as system_identifier, current_database() as database from pg_control_system()";
 
 /**
- * Freshness check the activation path, the production deploy gate and the
- * cutover share. A missing, stale, ownerless or failed registration means the
- * external dispatcher cannot be proven to be claiming — everything that
- * depends on it fails closed with a managed reason instead of timing out.
- * systemd "active" and the stdout token never substitute for this.
+ * Freshness check the activation path and the production deploy gate share. A
+ * missing, stale, ownerless or failed registration means the external
+ * dispatcher cannot be proven to be claiming — everything that depends on it
+ * fails closed with a managed reason instead of timing out. systemd "active"
+ * and the stdout token never substitute for this.
  *
  * The registration's own claims are checked too, not just its liveness: a
- * dispatcher on the wrong World database, serving the wrong cutover operation,
- * or reporting claimable unscoped jobs is not ready no matter how fresh its
+ * dispatcher on the wrong World database is not ready no matter how fresh its
  * heartbeat is.
  */
 export function assessDispatcherReadiness(
@@ -91,11 +90,8 @@ export function assessDispatcherReadiness(
   input: {
     now?: Date;
     ttlMs?: number;
-    allowPaused?: boolean;
     /** Identity of the World database the caller injects/expects. */
     expectedWorldDatabaseIdentity?: string;
-    /** The cutover operation this caller serves; null means "not in cutover". */
-    expectedOperationId?: string | null;
   } = {},
 ): { ready: true } | { ready: false; reason: string } {
   const ttlMs = input.ttlMs ?? WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS;
@@ -129,25 +125,7 @@ export function assessDispatcherReadiness(
       reason: `${WORKFLOW_UNAVAILABLE}: dispatcher is claiming from ${registration.worldDatabaseIdentity}, not the expected ${input.expectedWorldDatabaseIdentity}`,
     };
   }
-  if (
-    input.expectedOperationId !== undefined &&
-    registration.cutoverOperationId !== input.expectedOperationId
-  ) {
-    return {
-      ready: false,
-      reason: `${WORKFLOW_UNAVAILABLE}: dispatcher serves cutover operation ${String(registration.cutoverOperationId)}, expected ${String(input.expectedOperationId)}`,
-    };
-  }
-  // Null means the dispatcher's preflight never counted — unprovable is not
-  // ready, exactly like a non-zero count.
-  if (registration.unscopedRunnableJobs === null || registration.unscopedRunnableJobs > 0) {
-    return {
-      ready: false,
-      reason: `${WORKFLOW_UNAVAILABLE}: ${String(registration.unscopedRunnableJobs ?? "an unknown number of")} early-external job(s) remain claimable outside a per-run queue`,
-    };
-  }
-  const acceptable = input.allowPaused ? ["ready", "ready_paused"] : ["ready"];
-  if (!acceptable.includes(registration.state)) {
+  if (registration.state !== "ready") {
     return {
       ready: false,
       reason: `${WORKFLOW_UNAVAILABLE}: dispatcher is ${registration.state}`,

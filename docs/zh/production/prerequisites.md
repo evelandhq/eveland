@@ -60,7 +60,7 @@ Worker 本身必须以 root 运行（它驱动 `systemd-run`、`systemctl` 与 `
 - **平台数据库**（`DATABASE_URL`）——持有 Project、Deployment、Job 与认证数据。配置专用角色。
 - **共享 Workflow 数据库**（`EVELAND_WORKFLOW_WORLD_URL`）——一个数据库为所有 Project 承载 `@evelandhq/workflow-world`，内部按 `tenant_id` 隔离。生产环境必需：缺失时 Worker 启动直接失败（Fail Closed），API 也读取同一 URL 校验 World 的 Cluster Identity。Worker 启动与 Tenant Provisioning 会自动应用所有待执行的 Workflow World Migration，由 PostgreSQL Advisory Lock 串行化；当宿主机与 Deployment 通过不同地址访问该数据库时，设置 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。
 
-不要创建每项目独立的 Workflow 数据库：共享 World 已取代它们。遗留的 `WORKFLOW_POSTGRES_URL` 只与仍在清退 Cutover 前 Deployment 的安装相关——参见[升级与回滚](/zh/docs/operations/upgrades)。
+不要创建每项目独立的 Workflow 数据库：共享 World 已取代它们。遗留的 `WORKFLOW_POSTGRES_URL` 只与仍在删除共享 World 之前 Project 的安装相关——参见[升级与回滚](/zh/docs/operations/upgrades)。
 
 在第一个真实负载之前，按[容量规划](/zh/docs/operations/capacity)确定 `max_connections` 与每 Deployment 连接池预算，并将两个数据库与数据根目录纳入备份计划——参见[备份与恢复](/zh/docs/operations/backup-restore)。
 

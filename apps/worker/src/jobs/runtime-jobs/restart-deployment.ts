@@ -84,10 +84,10 @@ export async function handleRestartDeploymentJob(
   if (!release) {
     throw new Error(`Release ${deployment.releaseId} not found for deployment ${deployment.id}.`);
   }
-  // Persisted topology decides the launch, never the worker's current
-  // environment; anything not provably shared/external fails closed here,
+  // Persisted attestation decides the launch, never the worker's current
+  // environment; anything not provably a shared build fails closed here,
   // before the running process is stopped.
-  const launchDecision = assessWorkflowLaunch(release, deployment);
+  const launchDecision = assessWorkflowLaunch(release);
   if (!launchDecision.allowed) {
     await store.appendLog({
       projectId: job.projectId,

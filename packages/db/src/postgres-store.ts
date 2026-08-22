@@ -4,7 +4,6 @@ import { createPostgresCatalogStore } from "./postgres-catalog-store.js";
 import { createPostgresDeploymentRoutingStore } from "./postgres-deployment-routing-store.js";
 import { createPostgresJobSourceStore } from "./postgres-job-source-store.js";
 import { createPostgresInstanceHealthStore } from "./postgres-instance-health-store.js";
-import { createPostgresWorkflowCutoverStore } from "./postgres-workflow-cutover-store.js";
 import { createPostgresWorkflowDispatcherStore } from "./postgres-workflow-dispatcher-store.js";
 import { createPostgresIdentityStore } from "./postgres-identity-store.js";
 import { createPostgresObservabilityStore } from "./postgres-observability-store.js";
@@ -42,7 +41,6 @@ export function createPostgresStore(database: StoreDatabase): Store {
     ...createPostgresRuntimeStore(context),
     ...createPostgresInstanceHealthStore(context),
     ...createPostgresWorkflowDispatcherStore(context),
-    ...createPostgresWorkflowCutoverStore(context),
     ...createPostgresObservabilityStore(context),
     ...createPostgresOtlpStore(context),
     ...createPostgresSessionQueryStore(context),

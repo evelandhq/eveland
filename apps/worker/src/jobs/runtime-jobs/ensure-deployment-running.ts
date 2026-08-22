@@ -52,10 +52,10 @@ export async function handleEnsureDeploymentRunningJob(
   }
   const release = await store.getRelease(deployment.releaseId);
   if (!release) throw new Error("Deployment activation Release is missing.");
-  // Cold activation decides from the persisted topology, never the worker's
+  // Cold activation decides from the persisted attestation, never the worker's
   // current environment. The instance fails with the managed reason instead of
   // waiting out an activation timeout.
-  const launchDecision = assessWorkflowLaunch(release, deployment);
+  const launchDecision = assessWorkflowLaunch(release);
   if (!launchDecision.allowed) {
     await store.updateRuntimeInstance(runtimeInstanceId, {
       status: "failed",

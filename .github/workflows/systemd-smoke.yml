@@ -27,8 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      # The external-only cutover made every new Release a shared-World build:
-      # deployments crash at boot without an injected WORKFLOW_WORLD_URL. Same
+      # Every Release is a shared-World build: deployments crash at boot
+      # without an injected WORKFLOW_WORLD_URL. Same
       # throwaway single-host database the Lima guest provisions
       # (infra/integration/run.sh); `sudo -E` carries it into every worker
       # step below.

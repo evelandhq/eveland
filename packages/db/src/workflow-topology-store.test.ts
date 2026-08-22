@@ -16,12 +16,11 @@ async function createDeployableProject(store: ReturnType<typeof createTestStore>
 }
 
 /**
- * Release workflow attestation is immutable build output; Deployment execution
- * topology is mutable runtime state. They are persisted separately, and every
- * caller that does not state provenance gets the conservative `unknown`
- * defaults that block activation rather than a guessed topology.
+ * Release workflow attestation is immutable build output. Every caller that
+ * does not state provenance gets the conservative `unknown` defaults that
+ * block activation rather than a guessed topology.
  */
-describe("release workflow attestation and deployment execution topology", () => {
+describe("release workflow attestation", () => {
   test("a build that attests the shared world persists the full attestation", async () => {
     const store = createTestStore();
     const { project, revision } = await createDeployableProject(store);
@@ -53,17 +52,9 @@ describe("release workflow attestation and deployment execution topology", () =>
       dispatchProtocol: 1,
       enqueueCapability: "per_run_queue_v1",
     });
-    // A new shared build starts life already on the external topology.
-    expect(deployment.workflowTopology).toMatchObject({
-      runnerMode: "external",
-      conversionState: "external",
-      conversionOperationId: null,
-    });
-    const fetched = await store.getDeployment(deployment.id);
-    expect(fetched?.workflowTopology).toEqual(deployment.workflowTopology);
   });
 
-  test("a recording without attestation stays unknown and unclassified", async () => {
+  test("a recording without attestation stays unknown", async () => {
     const store = createTestStore();
     const { project, revision } = await createDeployableProject(store);
 
@@ -86,56 +77,5 @@ describe("release workflow attestation and deployment execution topology", () =>
       dispatchProtocol: null,
       enqueueCapability: "unknown",
     });
-    expect(deployment.workflowTopology).toMatchObject({
-      runnerMode: "unknown",
-      conversionState: "unclassified",
-    });
-  });
-
-  test("execution topology can be staged and finalized idempotently under one operation id", async () => {
-    const store = createTestStore();
-    const { project, revision } = await createDeployableProject(store);
-    const deployment = await store.recordDeployment({
-      projectId: project.id,
-      sourceRevisionId: revision.id,
-      imageTag: "topology:converting",
-      containerName: "topology-converting",
-      internalPort: 3000,
-      hostPort: 41892,
-      runtimeKind: "docker",
-    });
-
-    const staged = await store.updateDeploymentWorkflowTopology(deployment.id, {
-      runnerMode: "external",
-      conversionState: "converting",
-      conversionOperationId: "cut_op_1",
-      runnerEvidence: { source: "systemd-environment", capturedAt: "2026-08-18T00:00:00.000Z" },
-    });
-    expect(staged?.workflowTopology).toMatchObject({
-      runnerMode: "external",
-      conversionState: "converting",
-      conversionOperationId: "cut_op_1",
-      runnerEvidence: { source: "systemd-environment", capturedAt: "2026-08-18T00:00:00.000Z" },
-    });
-
-    // Re-staging with the same operation id is a no-op, not an error.
-    const restaged = await store.updateDeploymentWorkflowTopology(deployment.id, {
-      runnerMode: "external",
-      conversionState: "converting",
-      conversionOperationId: "cut_op_1",
-    });
-    expect(restaged?.workflowTopology.conversionState).toBe("converting");
-
-    const finalized = await store.updateDeploymentWorkflowTopology(deployment.id, {
-      conversionState: "external",
-      conversionOperationId: "cut_op_1",
-    });
-    expect(finalized?.workflowTopology).toMatchObject({
-      runnerMode: "external",
-      conversionState: "external",
-      conversionOperationId: "cut_op_1",
-    });
-
-    expect(await store.updateDeploymentWorkflowTopology("dep_missing", {})).toBeNull();
   });
 });

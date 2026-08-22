@@ -134,9 +134,6 @@ describe("api app", () => {
       schemaGeneration: null,
       protocolMin: 1,
       protocolMax: 1,
-      cutoverOperationId: null,
-      unscopedRunnableJobs: 0,
-      unresolvedQuarantines: 0,
       startedAt: new Date().toISOString(),
       readyAt: new Date().toISOString(),
     });
@@ -225,9 +222,6 @@ describe("api app", () => {
       schemaGeneration: null,
       protocolMin: 1,
       protocolMax: 1,
-      cutoverOperationId: null,
-      unscopedRunnableJobs: 0,
-      unresolvedQuarantines: 0,
       startedAt: new Date().toISOString(),
       readyAt: new Date().toISOString(),
     });

@@ -1,5 +1,5 @@
 import type { WorkflowDispatcherRegistration } from "@evelandhq/core/contracts";
-import { desc, eq } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { timestampToIso } from "./mappers.js";
 import { workflowDispatcherRegistrations } from "./schema.js";
 import type { WorkflowDispatcherStore } from "./store-domains.js";
@@ -24,25 +24,15 @@ export function createPostgresWorkflowDispatcherStore(
         schemaGeneration: input.schemaGeneration,
         protocolMin: input.protocolMin,
         protocolMax: input.protocolMax,
-        cutoverOperationId: input.cutoverOperationId,
-        unscopedRunnableJobs: input.unscopedRunnableJobs,
-        unresolvedQuarantines: input.unresolvedQuarantines,
         startedAt: new Date(input.startedAt),
         readyAt: input.readyAt ? new Date(input.readyAt) : null,
         lastHeartbeatAt: now,
       };
       const [row] = await db
         .insert(workflowDispatcherRegistrations)
-        .values({
-          ...values,
-          // A dispatcher that reports `ready` was started unpaused; anything
-          // else waits for an explicit, authenticated resume.
-          desiredState: input.state === "ready" ? "ready" : "paused",
-        })
+        .values(values)
         .onConflictDoUpdate({
           target: workflowDispatcherRegistrations.instanceId,
-          // desiredState is deliberately not in the update set: the heartbeat
-          // reports state, it never grants itself permission to claim.
           set: values,
         })
         .returning();
@@ -56,15 +46,6 @@ export function createPostgresWorkflowDispatcherStore(
         .from(workflowDispatcherRegistrations)
         .orderBy(desc(workflowDispatcherRegistrations.lastHeartbeatAt))
         .limit(1);
-      return row ? rowToRegistration(row) : null;
-    },
-
-    async setWorkflowDispatcherDesiredState(instanceId, desiredState) {
-      const [row] = await db
-        .update(workflowDispatcherRegistrations)
-        .set({ desiredState })
-        .where(eq(workflowDispatcherRegistrations.instanceId, instanceId))
-        .returning();
       return row ? rowToRegistration(row) : null;
     },
   };
@@ -81,10 +62,6 @@ function rowToRegistration(row: {
   schemaGeneration: string | null;
   protocolMin: number;
   protocolMax: number;
-  cutoverOperationId: string | null;
-  unscopedRunnableJobs: number | null;
-  unresolvedQuarantines: number | null;
-  desiredState: string;
   startedAt: Date;
   readyAt: Date | null;
   lastHeartbeatAt: Date;
@@ -100,10 +77,6 @@ function rowToRegistration(row: {
     schemaGeneration: row.schemaGeneration,
     protocolMin: row.protocolMin,
     protocolMax: row.protocolMax,
-    cutoverOperationId: row.cutoverOperationId,
-    unscopedRunnableJobs: row.unscopedRunnableJobs,
-    unresolvedQuarantines: row.unresolvedQuarantines,
-    desiredState: row.desiredState as WorkflowDispatcherRegistration["desiredState"],
     startedAt: timestampToIso(row.startedAt),
     readyAt: timestampToIso(row.readyAt),
     lastHeartbeatAt: timestampToIso(row.lastHeartbeatAt),

@@ -224,15 +224,11 @@ export type JobPayloadMap = {
   restart_deployment: {
     deploymentId?: string;
     reason?: string;
-    /** Present only on jobs a cutover operation enqueued for itself. */
-    cutoverOperationId?: string;
   };
   trigger_schedule: { scheduleRunId: string };
   ensure_deployment_running: {
     deploymentId: string;
     runtimeInstanceId: string;
-    /** Present only on jobs a cutover operation enqueued for itself. */
-    cutoverOperationId?: string;
   };
   archive_deployment: { deploymentId: string; automatic?: boolean };
   delete_project: { sourcePaths?: string[] };
@@ -300,8 +296,8 @@ export type WorkflowWorldKind = "shared" | "legacy_project" | "unknown";
 /**
  * Whether the Release's deployment-side enqueue path scopes every Graphile job
  * to the per-run `wfrun:<tenant>:<run>` queue. Only `per_run_queue_v1` owners
- * may be recovered by the external dispatcher; `unscoped`/`unknown` owners are
- * managed-terminated because they would keep producing unserialized jobs.
+ * may be activated or recovered by the external dispatcher; `unscoped`/`unknown`
+ * owners never launch because they would keep producing unserialized jobs.
  */
 export type WorkflowEnqueueCapability = "per_run_queue_v1" | "unscoped" | "unknown";
 
@@ -322,32 +318,6 @@ export type ReleaseWorkflowAttestation = {
   enqueueCapability: WorkflowEnqueueCapability;
 };
 
-/** Mutable runner mode a Deployment is currently operated under. */
-export type WorkflowRunnerModeState = "external" | "embedded" | "unknown";
-
-/**
- * Where a Deployment stands in the external-only conversion. New shared builds
- * start at `external`; historical rows start `unclassified` and only a cutover
- * operation moves them forward. `blocked`/`terminated` are terminal outcomes
- * of the managed cutover, never launch states.
- */
-export type WorkflowConversionState =
-  | "unclassified"
-  | "fenced"
-  | "converting"
-  | "external"
-  | "blocked"
-  | "terminated";
-
-export type DeploymentWorkflowTopology = {
-  runnerMode: WorkflowRunnerModeState;
-  conversionState: WorkflowConversionState;
-  conversionOperationId: string | null;
-  /** Audit evidence for a captured historical runner mode; never a topology source. */
-  runnerEvidence: { source: string; capturedAt: string } | null;
-  convertedAt: string | null;
-};
-
 /**
  * Machine-readable dispatcher readiness, persisted through the authenticated
  * heartbeat. systemd "active" and a stdout token prove only that a process
@@ -355,15 +325,7 @@ export type DeploymentWorkflowTopology = {
  * entries gate on. Never carries connection strings or secrets — the database
  * identity is host/port/name only.
  */
-export type WorkflowDispatcherState =
-  | "recovering"
-  | "ready_paused"
-  | "ready"
-  | "draining"
-  | "failed"
-  | "stopped";
-
-export type WorkflowDispatcherDesiredState = "paused" | "ready";
+export type WorkflowDispatcherState = "recovering" | "ready" | "draining" | "failed" | "stopped";
 
 export type WorkflowDispatcherRegistration = {
   instanceId: string;
@@ -382,51 +344,9 @@ export type WorkflowDispatcherRegistration = {
   schemaGeneration: string | null;
   protocolMin: number;
   protocolMax: number;
-  cutoverOperationId: string | null;
-  /** Flow jobs still claimable outside a per-run queue; must be 0 to run. */
-  unscopedRunnableJobs: number | null;
-  unresolvedQuarantines: number | null;
-  desiredState: WorkflowDispatcherDesiredState;
   startedAt: string;
   readyAt: string | null;
   lastHeartbeatAt: string;
-};
-
-/**
- * Fail-closed saga phases for a cutover/termination operation. Monotonic:
- * a failure mid-phase stays where it is (fenced at worst), never regresses to
- * an activatable state. `fenced` protects the control plane only;
- * `workflow_safe` — every targeted run workflow-terminal or durably
- * quarantined in its World — is the dispatcher-startup gate.
- */
-export type WorkflowCutoverPhase =
-  | "pending"
-  | "fenced"
-  | "workflow_safe"
-  | "control_plane_converged"
-  | "completed";
-
-export type WorkflowCutoverOperation = {
-  id: string;
-  kind: "cutover" | "termination";
-  phase: WorkflowCutoverPhase;
-  scope: Record<string, unknown>;
-  checkpoints: Record<string, unknown>;
-  lastError: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type WorkflowFenceScopeKind = "deployment" | "run" | "session_family";
-
-export type WorkflowFence = {
-  id: string;
-  scopeKind: WorkflowFenceScopeKind;
-  scopeId: string;
-  operationId: string;
-  reason: string;
-  createdAt: string;
-  resolvedAt: string | null;
 };
 
 export type ReleaseRecord = {
@@ -459,18 +379,14 @@ export type DeploymentRecord = {
   hostPort: number;
   status: DeploymentStatus;
   runtimeKind: RuntimeKind;
-  workflowTopology: DeploymentWorkflowTopology;
   createdAt: string;
   updatedAt: string;
 };
 
-// The browser-facing shape: container naming, the container-internal port, and
-// the workflow execution topology are runtime-internal. hostPort stays -- the
-// deployments page shows it as the loopback upstream.
-export type PublicDeploymentRecord = Omit<
-  DeploymentRecord,
-  "containerName" | "internalPort" | "workflowTopology"
->;
+// The browser-facing shape: container naming and the container-internal port
+// are runtime-internal. hostPort stays -- the deployments page shows it as the
+// loopback upstream.
+export type PublicDeploymentRecord = Omit<DeploymentRecord, "containerName" | "internalPort">;
 
 export type SourceFileRecord = {
   id: string;

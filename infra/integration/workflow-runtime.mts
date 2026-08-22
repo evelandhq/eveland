@@ -12,8 +12,8 @@ import { serve } from "../../apps/api/node_modules/@hono/node-server/dist/index.
 import pg from "../../apps/worker/node_modules/pg/lib/index.js";
 
 /**
- * The post-cutover execution topology for the live smokes: every new Release
- * is a shared-World build and its turns execute only through the external
+ * The execution topology for the live smokes: every Release is a shared-World
+ * build and its turns execute only through the external
  * dispatcher. A smoke that drives a real turn therefore needs three things
  * this helper provides around its in-process store:
  *
@@ -39,7 +39,7 @@ export async function startWorkflowRuntime(
   const baseUrl = process.env.EVELAND_WORKFLOW_WORLD_URL;
   if (!baseUrl) {
     throw new Error(
-      "EVELAND_WORKFLOW_WORLD_URL is required: post-cutover turns execute only through the external dispatcher.",
+      "EVELAND_WORKFLOW_WORLD_URL is required: turns execute only through the external dispatcher.",
     );
   }
   // Deployment-facing vs host-facing views of the same server (Docker's
