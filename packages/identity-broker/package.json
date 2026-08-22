@@ -16,8 +16,8 @@
     "@evelandhq/core": "workspace:*"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.4",
+    "@electric-sql/pglite": "^0.5.5",
     "@evelandhq/db": "workspace:*",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   }
 }

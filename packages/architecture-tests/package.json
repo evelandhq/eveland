@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@evelandhq/core": "workspace:*",
-    "@types/node": "^26.0.1",
-    "vitest": "^4.1.9"
+    "@types/node": "^26.2.0",
+    "vitest": "^4.1.11"
   }
 }

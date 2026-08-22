@@ -14,9 +14,9 @@
   },
   "dependencies": {
     "@evelandhq/core": "workspace:*",
-    "protobufjs": "^7.6.5"
+    "protobufjs": "^8.7.2"
   },
   "devDependencies": {
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   }
 }
