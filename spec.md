@@ -1144,7 +1144,7 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 兼容性验证的依赖版本，不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
 不得被修改。Eve 0.38 起要求 workflow spec v6；共享 world 固定为
-`@evelandhq/workflow-world@0.12.0`，必须通过当前窗口各支持线已验证 patch 版本（当前为
+`@evelandhq/workflow-world@0.13.0`，必须通过当前窗口各支持线已验证 patch 版本（当前为
 0.42.0 与 0.44.0）的 World contract 门禁——门禁随窗口的 verified patch 滑动，不锚定在
 历史 patch 上（legacy `@workflow/world-postgres@5.0.0-beta.34` 仅作为历史 Deployment
 的既有事实保留同一门禁）。
@@ -1212,7 +1212,7 @@ world 是 Release 的 build-time 属性，不能用运行时改环境变量的�
 worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置的
 `WORKFLOW_POSTGRES_BOOTSTRAP_URL` 始终优先，平台不得对其他数据库地址关系做猜测。
 
-共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.12.0` 与 dispatcher 共同持有。
+共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.13.0` 与 dispatcher 共同持有。
 World 默认在写入前剥离可由 delta 重建的累计 snapshot，并按 128 个 logical chunk 或 64 KiB
 建立 server-side checkpoint；`writeMulti` 最多把 64 个 logical chunk、256 KiB 写入一个
 physical block，reader 仍按原 logical chunk id 和 cursor 返回兼容字节。
