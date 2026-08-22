@@ -40,8 +40,8 @@ async function main(): Promise<void> {
     try {
       runtime = createRuntimeAdapterFromEnv();
       receiver = await startOtlpTestReceiver();
-      // Post-cutover, this fixture's turn executes only through the external
-      // dispatcher; start the workflow runtime BEFORE the build so the
+      // This fixture's turn executes only through the external dispatcher;
+      // start the workflow runtime BEFORE the build so the
       // scratch World URL is injected into the Release.
       workflowRuntime = await startWorkflowRuntime(store);
       const project = await store.createProject({

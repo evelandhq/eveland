@@ -14,7 +14,7 @@ Eveland 不自带备份工具。运维使用标准的 `pg_dump`、`rsync` 或文
 3. **数据根目录**（`EVELAND_DATA_DIR`，通常为 `/var/lib/eveland`）：导入源码与上传、已构建的 Release Artifact、Deployment Env 文件、Agent Observability Policy、受管 Collector 配置与 Exporter Queue，以及 Sandbox Cache——它包含每个持久化 Session 的 `/workspace` 状态，虽名为 Cache，实为数据。
 4. **数据库之外的配置**：Compose `.env`、`/etc/eveland/eveland-worker.env` 与 Dispatcher Env 文件。`APP_SECRET_KEY` 需要特别对待：数据库备份只含密文，没有 Key 的备份无法恢复任何已存 Secret。Key 材料应保存在 Secret Store 中，而不仅在宿主机上。
 
-仍在终止 Cutover 之前历史的安装可能还持有派生的遗留 `eveland_wf_*` 数据库；在 Retire 完成前它们同样是状态（见[升级与回滚](/zh/docs/operations/upgrades)）。
+带有共享 World 之前历史的安装可能还持有派生的遗留 `eveland_wf_*` 数据库；在其 Project 被删除前它们同样是状态（见[升级与回滚](/zh/docs/operations/upgrades)）。
 
 两个数据库与数据根目录必须来自同一时间点。控制平面行引用数据根目录中的路径（`sourcePath`、Release 目录），共享 World 的 Tenant 引用控制平面 Deployment；一侧领先另一侧的备份会让 Reconciliation 指向不存在的对象。请在静默窗口内备份（没有运行中的 Job 或 Build），或使用彼此一致的快照。
 

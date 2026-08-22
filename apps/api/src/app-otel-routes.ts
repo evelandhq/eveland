@@ -1,6 +1,5 @@
 import {
   UnmanagedTelemetryResourceError,
-  WorkflowProjectionFencedError,
   type ObservabilitySignal,
 } from "@evelandhq/core/observability";
 import {
@@ -98,9 +97,6 @@ export function registerOtlpRoutes(input: {
             acceptedItems += 1;
           } catch (error) {
             if (error instanceof UnmanagedTelemetryResourceError) continue;
-            // A durable projection fence: the raw batch is already stored as
-            // audit data; the projection must stay terminal, so skip.
-            if (error instanceof WorkflowProjectionFencedError) continue;
             throw error;
           }
         }

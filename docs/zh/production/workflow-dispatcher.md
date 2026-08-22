@@ -49,6 +49,4 @@ Dispatcher 通过心跳向 Control API 报告机器可读的 Registration（状�
 
 保持 `EVELAND_REVISION` 与 `EVELAND_RELEASE_CHANNEL` 与 Dashboard、API、Agent Gateway、Worker 完全一致，并在每次升级时从 `/opt/eveland` 重启 Dispatcher。Dispatcher 还负责有界的共享 World 维护（Stream Block Packing、按期限过期）——Durable World 的运行时行为见[Runtime 运维](/zh/docs/operations/runtime)。
 
-带有共享 World 之前历史的遗留安装需要执行一次性维护停机 Cutover，使用 `EVELAND_WORKFLOW_DISPATCHER_START_MODE=recover-paused`；全新安装永远不需要——参见[升级与回滚](/zh/docs/operations/upgrades)。
-
 下一步[配置 Agent 流量](/zh/docs/production/networking)。

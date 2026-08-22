@@ -121,7 +121,7 @@ describe("processNextJob", () => {
       files: [],
       schedules: [],
     });
-    // No attestation: a historical row the cutover has not classified yet.
+    // No attestation: a historical row that predates release attestation.
     await store.recordDeployment({
       releaseId: "rel_unclassified",
       deploymentId: "dep_unclassified",

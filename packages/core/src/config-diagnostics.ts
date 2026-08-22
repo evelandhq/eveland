@@ -552,23 +552,6 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "15000",
   ),
   entry(
-    "EVELAND_WORKFLOW_DISPATCHER_START_MODE",
-    ["workflow-dispatcher"],
-    'Set "recover-paused" during the external-only cutover: ownership, migrations and boot recovery complete, but nothing is claimed until the Control API\'s authenticated resume.',
-    "normal",
-  ),
-  entry(
-    "EVELAND_WORKFLOW_CUTOVER_OPERATION_ID",
-    ["workflow-dispatcher", "api", "worker"],
-    "The maintenance-downtime cutover operation this process participates in; reported on the dispatcher registration and required by the cutover process modes.",
-  ),
-  entry(
-    "EVELAND_PROCESS_MODE",
-    ["api", "worker"],
-    'Set "workflow-cutover" during the maintenance downtime: the API serves only the cutover surface and the Worker claims only exact activation jobs. Requires EVELAND_WORKFLOW_CUTOVER_OPERATION_ID.',
-    "normal",
-  ),
-  entry(
     "EVELAND_WEB_PROXY_MARGIN_MS",
     ["web"],
     "Transport margin added on top of cold activation and the upstream idle timeout when computing the Dashboard proxy budget.",

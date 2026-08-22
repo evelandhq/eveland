@@ -84,11 +84,6 @@ jobs:
           --health-retries 20
     env:
       EVELAND_POSTGRES_TEST_URL: postgres://eveland:eveland@localhost:5432/eveland_test
-      # The shared-world cutover integration suite
-      # (apps/worker/src/cutover/shared-world-cutover.integration.test.ts)
-      # skips itself when this is unset; CI must run it, not skip it. The
-      # suite migrates its scratch database itself.
-      EVELAND_WORKFLOW_WORLD_TEST_URL: postgres://eveland:eveland@localhost:5432/wfw_cutover_test
     steps:
       - uses: actions/checkout@v4
 
@@ -113,11 +108,6 @@ jobs:
           pnpm --filter @evelandhq/db db:migrate
         env:
           DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland_test
-
-      # The service container only creates eveland_test; the cutover suite
-      # needs its own scratch shared-world database (see the job env).
-      - name: Create the shared workflow world scratch database
-        run: psql "$EVELAND_POSTGRES_TEST_URL" -c 'create database wfw_cutover_test'
 
       - name: Run tests
         run: ${{ matrix.command }}

@@ -43,23 +43,8 @@ Checking out an older tag is safe only when that release remains compatible with
 
 Never flip `EVELAND_RUNTIME` as an upgrade shortcut. Existing Deployments retain their recorded runtime owner and must be deliberately drained before a host runtime migration.
 
-## Workflow runtime cutover (completed)
+## Legacy per-project workflow residue
 
-The one-time maintenance-downtime cutover to the shared, external-only workflow world shipped on 2026-08-18 and is complete. Fresh installs never run it: every new Release builds against the shared world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`, so an install first deployed on a current release is post-cutover by construction.
+Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:
 
-An install with pre-shared-world history is post-cutover when its cutover operation reached `completed`, the dispatcher registration reports ready with the matching World cluster identity, and no `EVELAND_PROCESS_MODE` or `EVELAND_WORKFLOW_CUTOVER_OPERATION_ID` remains configured anywhere.
-
-Two kinds of legacy residue can outlive a completed cutover:
-
-- **Deployments whose Release attests an `unknown` workflow world** (typically old local Docker Releases, whose images the classifier cannot inspect). They can never wake — workflow dispatch to them dead-letters — and their `unknown` topology keeps them unarchivable. Retire them explicitly:
-
-  ```bash
-  pnpm --filter @evelandhq/worker cutover -- retire --operation-id <id> \
-    (--deployments dep_a,dep_b | --all-unknown)
-  ```
-
-  `retire` is fail-closed: it refuses any Deployment whose artifact actually classifies, or that owns an active run in the shared World. Accepted Deployments are fenced, converged, and moved to the `terminated` topology that archive accepts.
-
-- **Legacy per-project workflow configuration.** Keep `WORKFLOW_POSTGRES_URL` (and `WORKFLOW_POSTGRES_BOOTSTRAP_URL`) configured only while legacy Deployments or Projects are still being terminated or deleted — deleting a legacy Project is what drops its derived `eveland_wf_<project>_<digest>` database. Once no retained Deployment attests a legacy world and `pg_database` lists no `eveland_wf_*` databases other than the shared World itself, unset both variables; the legacy stream-retention sweep (`EVELAND_WORKFLOW_SWEEP_*`) then has nothing to do. Orphaned `eveland_wf_*` databases can be dropped with standard Postgres tooling. External-only installs never set these variables.
-
-The full executable runbook remains archived as a historical reference at [`.plans/workflow-external-cutover-runbook.md`](https://github.com/evelandhq/eveland/blob/main/.plans/workflow-external-cutover-runbook.md).
+- Keep `WORKFLOW_POSTGRES_URL` (and `WORKFLOW_POSTGRES_BOOTSTRAP_URL`) configured only while legacy Projects are still being deleted — deleting a legacy Project is what drops its derived `eveland_wf_<project>_<digest>` database. Once no retained Deployment attests a legacy world and `pg_database` lists no `eveland_wf_*` databases other than the shared World itself, unset both variables; the legacy stream-retention sweep (`EVELAND_WORKFLOW_SWEEP_*`) then has nothing to do. Orphaned `eveland_wf_*` databases can be dropped with standard Postgres tooling. External-only installs never set these variables.

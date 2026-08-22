@@ -332,7 +332,7 @@ export const workflowDispatcherHeartbeatSchema = z
   .object({
     instanceId: z.string().min(1).max(128),
     generation: z.string().min(1).max(256),
-    state: z.enum(["recovering", "ready_paused", "ready", "draining", "failed", "stopped"]),
+    state: z.enum(["recovering", "ready", "draining", "failed", "stopped"]),
     ownershipAcquired: z.boolean(),
     bootRecoveryCompleted: z.boolean(),
     reenqueuedRuns: z.number().int().nonnegative().nullable(),
@@ -340,9 +340,6 @@ export const workflowDispatcherHeartbeatSchema = z
     schemaGeneration: z.string().max(256).nullable(),
     protocolMin: z.number().int().positive(),
     protocolMax: z.number().int().positive(),
-    cutoverOperationId: z.string().max(128).nullable(),
-    unscopedRunnableJobs: z.number().int().nonnegative().nullable(),
-    unresolvedQuarantines: z.number().int().nonnegative().nullable(),
     startedAt: z.string().datetime(),
     readyAt: z.string().datetime().nullable(),
   })

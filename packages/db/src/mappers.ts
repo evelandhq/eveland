@@ -1,7 +1,6 @@
 import type {
   DeploymentStatus,
   DeploymentRecord,
-  DeploymentWorkflowTopology,
   ReleaseWorkflowAttestation,
   Job,
   LogRecord,
@@ -656,11 +655,6 @@ export function deploymentRowToDeployment(row: {
   hostPort: number;
   status: string;
   runtimeKind: string;
-  workflowRunnerMode: string;
-  workflowConversionState: string;
-  workflowConversionOperationId: string | null;
-  workflowRunnerEvidence: unknown;
-  workflowConvertedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): DeploymentRecord {
@@ -674,23 +668,9 @@ export function deploymentRowToDeployment(row: {
     hostPort: row.hostPort,
     status: row.status as DeploymentStatus,
     runtimeKind: row.runtimeKind as RuntimeKind,
-    workflowTopology: {
-      runnerMode: row.workflowRunnerMode as DeploymentWorkflowTopology["runnerMode"],
-      conversionState: row.workflowConversionState as DeploymentWorkflowTopology["conversionState"],
-      conversionOperationId: row.workflowConversionOperationId,
-      runnerEvidence: parseRunnerEvidence(row.workflowRunnerEvidence),
-      convertedAt: timestampToIso(row.workflowConvertedAt),
-    },
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   };
-}
-
-function parseRunnerEvidence(value: unknown): DeploymentWorkflowTopology["runnerEvidence"] {
-  if (!isRecord(value)) return null;
-  const { source, capturedAt } = value;
-  if (typeof source !== "string" || typeof capturedAt !== "string") return null;
-  return { source, capturedAt };
 }
 
 export function agentRouteRowToAgentRoute(row: {

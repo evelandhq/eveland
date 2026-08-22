@@ -27,13 +27,8 @@ export function publicSourceRevision<T extends SourceRevision>(revision: T): Omi
 // hostPort stays: the deployments page shows it as the loopback upstream.
 export function publicDeployment<T extends DeploymentRecord>(
   deployment: T,
-): Omit<T, "containerName" | "internalPort" | "workflowTopology"> {
-  const {
-    containerName: _containerName,
-    internalPort: _internalPort,
-    workflowTopology: _workflowTopology,
-    ...rest
-  } = deployment;
+): Omit<T, "containerName" | "internalPort"> {
+  const { containerName: _containerName, internalPort: _internalPort, ...rest } = deployment;
   return rest;
 }
 

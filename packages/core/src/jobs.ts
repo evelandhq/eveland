@@ -36,8 +36,6 @@ const jobPayloadSchemas: {
     .object({
       deploymentId: z.string(),
       runtimeInstanceId: z.string(),
-      /** Present only on jobs a cutover operation enqueued for itself. */
-      cutoverOperationId: z.string().optional(),
     })
     .passthrough(),
   archive_deployment: z

@@ -8,7 +8,6 @@ import {
 } from "@evelandhq/core/eve";
 import {
   UnmanagedTelemetryResourceError,
-  WorkflowProjectionFencedError,
   type AgentEventObservation,
 } from "@evelandhq/core/observability";
 import type { SessionTrigger } from "@evelandhq/core/contracts";
@@ -36,7 +35,6 @@ import {
   sessionEvents,
   sessionNodes,
   sessions,
-  workflowFences,
 } from "./schema.js";
 
 /** The ingest projection only writes an execution outcome for boundary events. */
@@ -80,46 +78,6 @@ export async function ingestPostgresAgentEvent(
         );
       }
     }
-    // Durable late-OTLP guards, checked before any Session/SessionNode write.
-    // Delivery is at-least-once and the Collector's queue survives the
-    // maintenance window, so a managed termination is only terminal if a
-    // replayed or late batch cannot re-materialize what it terminated. The raw
-    // batch itself stays stored as audit data.
-    const familyScopes = [
-      `${deployment.projectId}:${observation.eveSessionId}`,
-      ...(observation.parentEveSessionId
-        ? [`${deployment.projectId}:${observation.parentEveSessionId}`]
-        : []),
-    ];
-    const [projectionFence] = await tx
-      .select({
-        scopeKind: workflowFences.scopeKind,
-        scopeId: workflowFences.scopeId,
-        operationId: workflowFences.operationId,
-      })
-      .from(workflowFences)
-      .where(
-        and(
-          isNull(workflowFences.resolvedAt),
-          or(
-            and(
-              eq(workflowFences.scopeKind, "deployment"),
-              eq(workflowFences.scopeId, observation.deploymentId),
-            ),
-            and(
-              eq(workflowFences.scopeKind, "session_family"),
-              sql`${workflowFences.scopeId} in ${familyScopes}`,
-            ),
-          ),
-        ),
-      )
-      .limit(1);
-    if (projectionFence) {
-      throw new WorkflowProjectionFencedError(
-        `Observation for Eve session ${observation.eveSessionId} is blocked by a ${projectionFence.scopeKind} projection fence (operation ${projectionFence.operationId}).`,
-      );
-    }
-
     const [binding] = await tx
       .select()
       .from(sessionBindings)

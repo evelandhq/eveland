@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   const processNames: string[] = [];
   let runtime: ReturnType<typeof createRuntimeAdapterFromEnv> | null = null;
   const database = await createPgliteTestStore();
-  // Post-cutover: turns execute only via the external dispatcher.
+  // Turns execute only via the external dispatcher.
   const workflowRuntime: WorkflowRuntime = await startWorkflowRuntime(database.store);
   const { store } = database;
   try {

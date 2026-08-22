@@ -1152,41 +1152,18 @@ runner mode 只支持 `external`：`EVELAND_WORKFLOW_RUNNER` 未设置时解析�
 `embedded` 是配置错误，worker 启动与 Deployment 启动都必须 fail closed，不得静默回退。
 `WORKFLOW_POSTGRES_URL` 与 `EVELAND_WORKFLOW_WORLD_URL`、`EVELAND_WORKFLOW_RUNNER` 都是保留的
 运行时变量，Project Secret 不得覆盖。production worker 缺少 `EVELAND_WORKFLOW_WORLD_URL`
-必须在接收 job 前失败；`WORKFLOW_POSTGRES_URL` 不再是 production 必需项，只服务仍处于
-legacy 终止流程的既有安装。development 未配置共享 world 时继续使用 Eve local world。
+必须在接收 job 前失败；`WORKFLOW_POSTGRES_URL` 不再是 production 必需项，只服务仍在删除
+legacy Project 的既有安装。development 未配置共享 world 时继续使用 Eve local world。
 
 每个 Release 持久化 immutable workflow attestation（world kind、package/version、storage
 spec、dispatch protocol、deployment-side enqueue capability），来源是 release preparation 实际
 注入的内容，绝不来自记录时的 worker 环境；runner mode 是启动时输入，不属于 attestation。
-capability 是版本事实：0.5.0 之前的 shared world 不具备 per-run enqueue，分类后 attest 为
-`unscoped`。历史 `unknown` Release 只能通过读取 immutable artifact 分类，且 attestation
-一经写入不可更改（分类流程见 `.plans/workflow-external-cutover-runbook.md`）。每个
-Deployment 另行持久化 mutable execution topology（runner mode、conversion state、cutover
-operation id、runner evidence）。历史行 migration 为 `unknown`/`unclassified`。deploy start、
-restart、cold activation 等所有启动路径只依据持久化的 attestation 与 topology 决策：只有
-`shared` attestation 且 conversion state 为 `external` 的 Deployment 可以启动；legacy、
-`unknown` 或未完成转换的对象返回带 `workflow_migration_required`/`workflow_unavailable`
-稳定前缀的 managed error 并 fail closed，不得按当前环境猜测。archive 只允许 conversion
-state 为 `external` 或 `terminated` 的 Deployment——shared attestation 本身不允许销毁
-artifact；automatic sweep 对受保护对象静默跳过并记录原因。
-
-fence 与控制面收敛是持久语义：被永久退休的 owner（非 shared attestation 或 enqueue
-capability 无法 per-run 的 immutable Release）获得 deployment fence，它阻断该 Deployment
-的所有 activation **与 lease 续期**，并触发控制面收敛（fail 全部非 terminal Session、写
-session-family tombstone、把 running SessionNode 收敛为 terminal、删除 binding、释放
-lease、终止 ScheduleRun），同时写入 terminal topology（`conversionState = terminated`），
-使 archive 门（仅允许 external|terminated）可以放行其 artifact。shared-capable owner 上的
-单个坏 run 只得到 run fence + durable World quarantine，同 Deployment 的健康 run 继续
-可用。不可恢复的 shared run 必须已 workflow-terminal 或带有 boot recovery、enqueue 与
-dispatch handler 都识别的 durable World quarantine marker——仅控制面 fence 不满足任何
-workflow-safety 门禁。绝不猜测。
-
-把存量安装迁到 external-only 拓扑的一次性维护停机 cutover 已于 2026-08-18 完成（merge
-`f1659437`）。其 saga 机制——测量三明治维护边界 attestation、全量控制面 inventory 遍历与
-分类、family disposition 与 hold 语义、finalize/completion 门禁、dispatcher 的
-recover-paused/resume 与 cutover proof——不再是新安装会经历的路径，作为历史运维记录完整
-保留在 `.plans/workflow-external-cutover-runbook.md`；cutover CLI 的存量处置子命令（如
-`cutover retire`）沿用上文的 fence 与收敛语义。
+capability 是版本事实：0.5.0 之前的 shared world 不具备 per-run enqueue，attest 为
+`unscoped`。attestation 一经写入不可更改；历史行 migration 为 `unknown`。deploy start、
+restart、cold activation 等所有启动路径只依据持久化的 attestation 决策：只有 `shared`
+attestation 的 Release 可以启动；legacy 或 `unknown` 的对象返回带
+`workflow_migration_required`/`workflow_unavailable` 稳定前缀的 managed error 并 fail
+closed，不得按当前环境猜测。
 
 配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在 dispatcher 或 Deployment 使用共享库前幂等执行
 `@evelandhq/workflow-world` migration；若 host 与 Deployment 访问同一数据库所需地址不同，
@@ -1200,11 +1177,10 @@ maintenance-window gate 或预先执行 `workflow-world-setup`。
 
 dispatcher readiness 是机器可读的持久化 registration，由实际持有 ownership lock 的
 dispatcher 通过受服务认证的 heartbeat 上报（instance/generation、ownership、boot recovery
-完成、World cluster identity、schema generation、dispatch protocol 窗口、仍可 claim 的
-unscoped job 数、状态与时间）。cluster identity 是从数据库自身读取的
-`cluster:<pg system_identifier>/<database>`（绝不含凭据），双方严格相等比较——URL/host
-形态的比较会在不相关集群间 fail open，禁止使用；unscoped job 计数非 0 或未知都不
-ready。stdout 的 ready token 与 systemd `active` 只作人工诊断。production 中 shared build
+完成、World cluster identity、schema generation、dispatch protocol 窗口、状态与时间）。
+cluster identity 是从数据库自身读取的 `cluster:<pg system_identifier>/<database>`（绝不含
+凭据），双方严格相等比较——URL/host 形态的比较会在不相关集群间 fail open，禁止使用。
+stdout 的 ready token 与 systemd `active` 只作人工诊断。production 中 shared build
 与 `workflow_step` activation 都以该 registration 的新鲜度
 （`EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS`）fail closed；`workflow_step` activation
 的调用方还必须以 `x-eveland-dispatcher-instance` header 携带与该 registration 完全一致的
@@ -1225,8 +1201,7 @@ legacy workflow 的按 Project 物理分库（从 base `WORKFLOW_POSTGRES_URL` �
 `eveland_wf_<project>_<digest>` 数据库）只剩历史数据残留：legacy Deployment 已不能启动，
 worker 不再为启动路径派生或 bootstrap 派生库。base URL 仅作为枚举与删除派生库的管理连接
 （数据库角色需要 `CREATEDB`）；删除 Project 时必须一并删除其派生 workflow 数据库（在项目
-行删除之前执行，删库失败必须让删除可重试），派生库不得作为孤儿残留。历史分库机制的完整
-描述见 `.plans/workflow-external-cutover-runbook.md`。
+行删除之前执行，删库失败必须让删除可重试），派生库不得作为孤儿残留。
 
 共享 workflow 使用一个数据库内的 `tenant_id` 作为强制查询边界，events 与 stream chunks
 按 Project LIST partition；queue 只由平台 external dispatcher 认领，cold-start recovery

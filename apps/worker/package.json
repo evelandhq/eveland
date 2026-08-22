@@ -12,8 +12,7 @@
     "smoke:connections": "tsx src/integration/connections-e2e.ts",
     "smoke:docker-sandbox": "tsx src/integration/docker-sandbox-smoke.ts",
     "smoke:workflow-wake": "tsx src/integration/workflow-wake-e2e.ts",
-    "smoke:workflow-dual-release": "tsx src/integration/workflow-dual-release-e2e.ts",
-    "cutover": "tsx src/cutover/cli.ts"
+    "smoke:workflow-dual-release": "tsx src/integration/workflow-dual-release-e2e.ts"
   },
   "dependencies": {
     "@evelandhq/agent-observer": "workspace:*",

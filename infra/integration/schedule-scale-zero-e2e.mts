@@ -57,7 +57,7 @@ async function main(): Promise<void> {
     process.env.EVELAND_HEALTH_TIMEOUT_MS ??= "30000";
 
     cleanupStore = await createPgliteTestStore();
-    // Post-cutover: turns execute only via the external dispatcher.
+    // Turns execute only via the external dispatcher.
     // The dispatch runtime secret shares its env name with the scheduler
     // runtime secret ON PURPOSE (one contract, both ends); this smoke injects
     // its own value into the deployment via jobOptions, so the dispatcher

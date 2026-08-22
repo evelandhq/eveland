@@ -43,23 +43,8 @@ pnpm --filter @evelandhq/api db:migrate
 
 不要通过切换 `EVELAND_RUNTIME` 规避升级步骤。已有 Deployment 保留其记录的 Runtime Owner；迁移宿主机 Runtime 前必须有意识地 Drain。
 
-## Workflow Runtime Cutover（已完成）
+## 遗留的按 Project Workflow 残余
 
-切换到共享、External-only Workflow World 的一次性停机维护 Cutover 已于 2026-08-18 交付并完成。全新安装永远不需要执行它：每个新 Release 都基于共享 World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动，因此首次部署即为当前 Release 的安装天然处于 Cutover 之后。
+每个 Release 都基于共享、External-only Workflow World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动。带有共享 World 之前历史的安装可能仍保留遗留的按 Project Workflow 配置：
 
-带有共享 World 之前历史的安装，满足以下条件即为 Cutover 之后：其 Cutover Operation 已到达 `completed`，Dispatcher Registration 报告 Ready 且 World Cluster Identity 匹配，且任何地方都不再配置 `EVELAND_PROCESS_MODE` 或 `EVELAND_WORKFLOW_CUTOVER_OPERATION_ID`。
-
-两类遗留残余可能在 Cutover 完成后继续存在：
-
-- **Release Attestation 为 `unknown` Workflow World 的 Deployment**（通常是旧的本地 Docker Release，其镜像无法被分类器检查）。它们永远无法被唤醒——对它们的 Workflow Dispatch 会进入 Dead Letter——`unknown` Topology 也让它们无法 Archive。显式 Retire：
-
-  ```bash
-  pnpm --filter @evelandhq/worker cutover -- retire --operation-id <id> \
-    (--deployments dep_a,dep_b | --all-unknown)
-  ```
-
-  `retire` 是 Fail-closed 的：凡是 Artifact 实际可分类、或在共享 World 中拥有活跃 Run 的 Deployment 都会被拒绝。被接受的 Deployment 会被 Fence、收敛，并移入 Archive 接受的 `terminated` Topology。
-
-- **遗留的按 Project Workflow 配置。**只在仍有遗留 Deployment 或 Project 处于终止/删除过程中时保留 `WORKFLOW_POSTGRES_URL`（与 `WORKFLOW_POSTGRES_BOOTSTRAP_URL`）——删除遗留 Project 时才会 Drop 其派生的 `eveland_wf_<project>_<digest>` 数据库。一旦没有任何保留 Deployment Attestation 为 Legacy World、且 `pg_database` 中除共享 World 本身外不再有 `eveland_wf_*` 数据库，即可取消这两个变量；遗留 Stream Retention Sweep（`EVELAND_WORKFLOW_SWEEP_*`）随之无事可做。孤立的 `eveland_wf_*` 数据库可用标准 Postgres 工具 Drop。External-only 安装永远不设置这些变量。
-
-完整的可执行 Runbook 作为历史参考归档于 [`.plans/workflow-external-cutover-runbook.md`](https://github.com/evelandhq/eveland/blob/main/.plans/workflow-external-cutover-runbook.md)。
+- 只在仍有遗留 Project 处于删除过程中时保留 `WORKFLOW_POSTGRES_URL`（与 `WORKFLOW_POSTGRES_BOOTSTRAP_URL`）——删除遗留 Project 时才会 Drop 其派生的 `eveland_wf_<project>_<digest>` 数据库。一旦没有任何保留 Deployment Attestation 为 Legacy World、且 `pg_database` 中除共享 World 本身外不再有 `eveland_wf_*` 数据库，即可取消这两个变量；遗留 Stream Retention Sweep（`EVELAND_WORKFLOW_SWEEP_*`）随之无事可做。孤立的 `eveland_wf_*` 数据库可用标准 Postgres 工具 Drop。External-only 安装永远不设置这些变量。

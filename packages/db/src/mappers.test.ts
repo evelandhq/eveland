@@ -71,14 +71,6 @@ describe("db mappers", () => {
       hostPort: 41001,
       status: "running",
       runtimeKind: "systemd",
-      workflowRunnerMode: "external",
-      workflowConversionState: "external",
-      workflowConversionOperationId: null,
-      workflowRunnerEvidence: {
-        source: "systemd-environment",
-        capturedAt: "2026-07-01T00:00:00.000Z",
-      },
-      workflowConvertedAt: null,
       createdAt,
       updatedAt,
     });
@@ -93,13 +85,6 @@ describe("db mappers", () => {
       hostPort: 41001,
       status: "running",
       runtimeKind: "systemd",
-      workflowTopology: {
-        runnerMode: "external",
-        conversionState: "external",
-        conversionOperationId: null,
-        runnerEvidence: { source: "systemd-environment", capturedAt: "2026-07-01T00:00:00.000Z" },
-        convertedAt: null,
-      },
       createdAt: "2026-07-01T01:00:00.000Z",
       updatedAt: "2026-07-01T02:00:00.000Z",
     });

@@ -14,7 +14,7 @@ function heartbeatBody(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
     instanceId: "wfd_api_test",
     generation: "eveland-workflow-dispatcher test",
-    state: "ready_paused",
+    state: "recovering",
     ownershipAcquired: true,
     bootRecoveryCompleted: true,
     reenqueuedRuns: 2,
@@ -22,9 +22,6 @@ function heartbeatBody(overrides: Record<string, unknown> = {}) {
     schemaGeneration: "0013_run_quarantines.sql",
     protocolMin: 1,
     protocolMax: 1,
-    cutoverOperationId: null,
-    unscopedRunnableJobs: 0,
-    unresolvedQuarantines: 0,
     startedAt: new Date().toISOString(),
     readyAt: null,
     ...overrides,
@@ -78,7 +75,7 @@ const sharedAttestation = {
 };
 
 describe("workflow dispatcher registration API", () => {
-  test("heartbeat requires service auth, persists the registration, and answers the desired state", async () => {
+  test("heartbeat requires service auth and persists the registration", async () => {
     const store = createTestStore();
     const app = createApp(store, { gatewayServiceToken: "gateway-service-token" });
 
@@ -95,8 +92,9 @@ describe("workflow dispatcher registration API", () => {
       body: heartbeatBody(),
     });
     expect(first.status).toBe(200);
-    // ready_paused never grants itself permission to claim.
-    expect(await first.json()).toEqual({ desiredState: "paused" });
+    expect((await first.json()) as { registration: { state: string } }).toMatchObject({
+      registration: { state: "recovering" },
+    });
 
     const registration = await app.request("/internal/workflow/dispatcher/registration", {
       method: "GET",
@@ -107,7 +105,7 @@ describe("workflow dispatcher registration API", () => {
       registration: { state: string; worldDatabaseIdentity: string };
     };
     expect(registrationBody.registration).toMatchObject({
-      state: "ready_paused",
+      state: "recovering",
       worldDatabaseIdentity: WORLD_IDENTITY,
     });
     // The readiness surface never carries credentials.
@@ -145,99 +143,6 @@ describe("workflow dispatcher registration API", () => {
       body: heartbeatBody({ worldDatabaseIdentity: "unknown" }),
     });
     expect(unknownIdentity.status).toBe(200);
-  });
-
-  test("the explicit resume flips the desired state exactly once from ready_paused", async () => {
-    const store = createTestStore();
-    const app = createApp(store, { gatewayServiceToken: "gateway-service-token" });
-    await app.request("/internal/workflow/dispatcher/heartbeat", {
-      method: "POST",
-      headers: serviceHeaders,
-      body: heartbeatBody(),
-    });
-
-    const resume = await app.request("/internal/workflow/dispatcher/resume", {
-      method: "POST",
-      headers: serviceHeaders,
-    });
-    expect(resume.status).toBe(200);
-
-    const next = await app.request("/internal/workflow/dispatcher/heartbeat", {
-      method: "POST",
-      headers: serviceHeaders,
-      body: heartbeatBody(),
-    });
-    expect(await next.json()).toEqual({ desiredState: "ready" });
-
-    // Once the dispatcher reports ready, resume is a 409 — it is not a toggle.
-    await app.request("/internal/workflow/dispatcher/heartbeat", {
-      method: "POST",
-      headers: serviceHeaders,
-      body: heartbeatBody({ state: "ready", readyAt: new Date().toISOString() }),
-    });
-    const again = await app.request("/internal/workflow/dispatcher/resume", {
-      method: "POST",
-      headers: serviceHeaders,
-    });
-    expect(again.status).toBe(409);
-  });
-});
-
-describe("cutover process mode", () => {
-  test("serves only the cutover surface and answers everything else with a managed 503", async () => {
-    const store = createTestStore();
-    const app = createApp(store, {
-      gatewayServiceToken: "gateway-service-token",
-      cutoverOperationId: "cut_api_test",
-    });
-    await store.ensureWorkflowCutoverOperation({
-      id: "cut_api_test",
-      kind: "cutover",
-      scope: {},
-    });
-
-    // Ordinary control-plane surface is refused with a stable managed code.
-    const projects = await app.request("/api/projects");
-    expect(projects.status).toBe(503);
-    expect(((await projects.json()) as { error: string }).error).toContain("workflow_unavailable");
-
-    // The cutover surface stays up: health, heartbeat, and operation status —
-    // but only for the Dispatcher serving this exact operation. A normal-mode
-    // or stale-operation Dispatcher is refused.
-    expect((await app.request("/health")).status).toBe(200);
-    const wrongOperation = await app.request("/internal/workflow/dispatcher/heartbeat", {
-      method: "POST",
-      headers: serviceHeaders,
-      body: heartbeatBody(),
-    });
-    expect(wrongOperation.status).toBe(409);
-    const heartbeat = await app.request("/internal/workflow/dispatcher/heartbeat", {
-      method: "POST",
-      headers: serviceHeaders,
-      body: heartbeatBody({ cutoverOperationId: "cut_api_test" }),
-    });
-    expect(heartbeat.status).toBe(200);
-
-    // Resume is likewise scoped: a registration for another operation cannot
-    // be resumed through this API.
-    const staleRegistration = createApp(store, { gatewayServiceToken: "gateway-service-token" });
-    await staleRegistration.request("/internal/workflow/dispatcher/heartbeat", {
-      method: "POST",
-      headers: serviceHeaders,
-      body: heartbeatBody({ instanceId: "wfd_stale_op", cutoverOperationId: "cut_other" }),
-    });
-    const resume = await app.request("/internal/workflow/dispatcher/resume", {
-      method: "POST",
-      headers: serviceHeaders,
-    });
-    expect(resume.status).toBe(409);
-    const status = await app.request("/internal/workflow/cutover/status", {
-      headers: serviceHeaders,
-    });
-    expect(status.status).toBe(200);
-    expect(
-      ((await status.json()) as { operation: { id: string; phase: string } }).operation,
-    ).toMatchObject({ id: "cut_api_test", phase: "pending" });
   });
 });
 

@@ -32,10 +32,9 @@ async function waitForControlApi(apiUrl: string): Promise<void> {
 
 /**
  * eveland's launcher for the workflow dispatcher. The package owns ownership,
- * migrations, boot recovery and the recover-paused lifecycle; this launcher
- * owns what is the host's business — the platform observability sink, the
- * authenticated registration heartbeat to the Control API, and the resume
- * signal that heartbeat carries back.
+ * migrations and boot recovery; this launcher owns what is the host's
+ * business — the platform observability sink and the authenticated
+ * registration heartbeat to the Control API.
  */
 const telemetry: DispatcherTelemetry = {
   emit(event) {

@@ -7,15 +7,9 @@ import { startEvelandWorkflowDispatcher } from "./dispatcher-runner.js";
 
 const telemetry = { emit: vi.fn(), shutdown: vi.fn(async () => {}) };
 
-function fakeServiceFactory(state: { phase: "ready_paused" | "ready" | "stopped" }) {
-  const resume = vi.fn(async () => {
-    state.phase = "ready";
-    lifecycleSink?.({ phase: "ready", at: new Date() });
-  });
-  let lifecycleSink: ((event: { phase: string; at: Date }) => void) | undefined;
+function fakeServiceFactory(state: { phase: "ready" | "stopped" }) {
   const startService = vi.fn(async (options: DispatcherServiceOptions) => {
-    lifecycleSink = options.lifecycle?.onPhase as typeof lifecycleSink;
-    // Reproduce the package's ordering for a paused start.
+    // Reproduce the package's lifecycle ordering.
     options.lifecycle?.onPhase?.({ phase: "ownership_acquired", at: new Date() });
     options.lifecycle?.onPhase?.({ phase: "migrations_applied", at: new Date() });
     await options.beforeBootRecovery?.({ pool: {} as never });
@@ -24,51 +18,43 @@ function fakeServiceFactory(state: { phase: "ready_paused" | "ready" | "stopped"
       at: new Date(),
       attributes: { reenqueuedRuns: 3 },
     });
-    options.lifecycle?.onPhase?.({ phase: "ready_paused", at: new Date() });
+    options.lifecycle?.onPhase?.({ phase: "ready", at: new Date() });
     const service = {
       config: { worldUrl: "postgres://user:secret@db.internal:5432/eveland_workflow" },
       get phase() {
         return state.phase;
       },
-      resume,
       stop: vi.fn(async () => {
         state.phase = "stopped";
       }),
     } as unknown as DispatcherService;
     return service;
   });
-  return { startService, resume };
+  return { startService };
 }
 
 function runnerDeps(overrides: Record<string, unknown> = {}) {
   return {
     fetchImplementation: vi.fn(),
-    countUnscopedJobs: vi.fn(async () => 0),
-    countUnresolvedQuarantines: vi.fn(async () => 0),
     readSchemaGeneration: vi.fn(async () => "0013_run_quarantines.sql"),
     readWorldIdentity: vi.fn(async () => "cluster:7234567890123456789/eveland_workflow"),
-    readCutoverProof: vi.fn(async () => ({ passed: true })),
     now: () => new Date("2026-08-18T00:00:00.000Z"),
     ...overrides,
   };
 }
 
 describe("eveland workflow dispatcher runner", () => {
-  test("registers machine-readably without credentials and resumes only on the control plane's word", async () => {
-    const state = { phase: "ready_paused" as const } as {
-      phase: "ready_paused" | "ready" | "stopped";
-    };
-    const { startService, resume } = fakeServiceFactory(state);
+  test("registers machine-readably without credentials", async () => {
+    const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
+    const { startService } = fakeServiceFactory(state);
     const heartbeats: Array<Record<string, unknown>> = [];
-    let desiredState = "paused";
     const fetchImplementation = vi.fn(async (_url: string, init?: RequestInit) => {
       heartbeats.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return Response.json({ desiredState });
+      return Response.json({ registration: {} });
     });
 
     const handle = await startEvelandWorkflowDispatcher(
       {
-        EVELAND_WORKFLOW_DISPATCHER_START_MODE: "recover-paused",
         WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test",
         WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: "token",
       },
@@ -76,15 +62,11 @@ describe("eveland workflow dispatcher runner", () => {
       { ...runnerDeps({ fetchImplementation }), startService } as never,
     );
 
-    // Paused start: the service was asked to pause and the first registration
-    // reports a completed recovery that is not claiming.
-    expect(startService).toHaveBeenCalledWith(expect.objectContaining({ startPaused: true }));
     expect(heartbeats[0]).toMatchObject({
-      state: "ready_paused",
+      state: "ready",
       ownershipAcquired: true,
       bootRecoveryCompleted: true,
       reenqueuedRuns: 3,
-      unscopedRunnableJobs: 0,
       schemaGeneration: "0013_run_quarantines.sql",
       protocolMin: 1,
       protocolMax: 1,
@@ -93,66 +75,13 @@ describe("eveland workflow dispatcher runner", () => {
     // The identity never carries the URL or its credentials.
     expect(JSON.stringify(heartbeats[0])).not.toContain("postgres://");
     expect(JSON.stringify(heartbeats[0])).not.toContain("secret");
-    // A "paused" reply does not resume.
-    expect(resume).not.toHaveBeenCalled();
 
-    // The authenticated resume arrives through the heartbeat reply.
-    desiredState = "ready";
-    await handle.heartbeat();
-    expect(resume).toHaveBeenCalledTimes(1);
-    // Once ready, further ready replies are a no-op.
-    await handle.heartbeat();
-    expect(resume).toHaveBeenCalledTimes(1);
-    expect(heartbeats.at(-1)).toMatchObject({ state: "ready" });
-  });
-
-  test("cutover mode refuses boot recovery without a passed World-visible proof", async () => {
-    const state = { phase: "ready_paused" as const } as {
-      phase: "ready_paused" | "ready" | "stopped";
-    };
-    const missing = fakeServiceFactory(state);
-    await expect(
-      startEvelandWorkflowDispatcher(
-        { EVELAND_WORKFLOW_CUTOVER_OPERATION_ID: "cut_x" },
-        telemetry,
-        {
-          ...runnerDeps({ readCutoverProof: vi.fn(async () => null) }),
-          startService: missing.startService,
-        } as never,
-      ),
-    ).rejects.toThrow(/No cutover postcondition proof/);
-
-    const failed = fakeServiceFactory(state);
-    await expect(
-      startEvelandWorkflowDispatcher(
-        { EVELAND_WORKFLOW_CUTOVER_OPERATION_ID: "cut_x" },
-        telemetry,
-        {
-          ...runnerDeps({ readCutoverProof: vi.fn(async () => ({ passed: false })) }),
-          startService: failed.startService,
-        } as never,
-      ),
-    ).rejects.toThrow(/last FAILED/);
-  });
-
-  test("fails startup closed while early-external jobs are still claimable", async () => {
-    const state = { phase: "ready_paused" as const } as {
-      phase: "ready_paused" | "ready" | "stopped";
-    };
-    const { startService } = fakeServiceFactory(state);
-
-    await expect(
-      startEvelandWorkflowDispatcher({}, telemetry, {
-        ...runnerDeps({ countUnscopedJobs: vi.fn(async () => 7) }),
-        startService,
-      } as never),
-    ).rejects.toThrow(/7 early-external job/);
+    await handle.stop();
+    expect(heartbeats.at(-1)).toMatchObject({ state: "stopped" });
   });
 
   test("a failed heartbeat is reported, never fatal", async () => {
-    const state = { phase: "ready_paused" as const } as {
-      phase: "ready_paused" | "ready" | "stopped";
-    };
+    const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
     const { startService } = fakeServiceFactory(state);
     const fetchImplementation = vi.fn(async () => {
       throw new TypeError("fetch failed");

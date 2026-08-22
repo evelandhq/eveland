@@ -49,6 +49,4 @@ The dispatcher reports a machine-readable registration (state, ownership, boot r
 
 Keep `EVELAND_REVISION` and `EVELAND_RELEASE_CHANNEL` identical to the Dashboard, API, Agent Gateway, and Worker, and restart the dispatcher from `/opt/eveland` on every upgrade. The dispatcher also owns bounded shared-world maintenance (stream block packing, deadline-driven expiry) — see [Runtime operations](/docs/operations/runtime) for how the durable World behaves in service.
 
-Legacy installs with pre-shared-world history run a one-time maintenance-downtime cutover using `EVELAND_WORKFLOW_DISPATCHER_START_MODE=recover-paused`; fresh installs never need it — see [Upgrade and rollback](/docs/operations/upgrades).
-
 Next, [configure Agent traffic](/docs/production/networking).

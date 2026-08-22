@@ -14,7 +14,7 @@ Three stores plus configuration hold everything a restore needs:
 3. **The data root** (`EVELAND_DATA_DIR`, normally `/var/lib/eveland`): imported sources and uploads, built Release artifacts, deployment env files, Agent observability policies, managed Collector configuration and exporter queues, and the sandbox cache — which contains every durable session's `/workspace` state and is therefore data, not cache, despite the name.
 4. **Configuration outside the database**: the Compose `.env`, `/etc/eveland/eveland-worker.env`, and the dispatcher env file. `APP_SECRET_KEY` deserves special care: database backups contain only ciphertext, so a backup without the key cannot recover any stored Secret. Keep the key material in your secret store, not only on the host.
 
-An install still terminating pre-cutover history may also hold derived legacy `eveland_wf_*` databases; they remain state until retired (see [Upgrade and rollback](/docs/operations/upgrades)).
+An install with history from before the shared World may also hold derived legacy `eveland_wf_*` databases; they remain state until their Projects are deleted (see [Upgrade and rollback](/docs/operations/upgrades)).
 
 Both databases and the data root must come from the same point in time. Control-plane rows reference data-root paths (`sourcePath`, release directories) and shared-World tenants reference control-plane Deployments; a backup where one side has moved past the other leaves reconciliation pointing at objects that do not exist. Take backups inside a quiesced window (no running jobs or builds) or use snapshots that are mutually consistent.
 
