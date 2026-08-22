@@ -95,12 +95,10 @@ describe("waitForHttpHealth", () => {
 
 describe("waitForOwnedHttpHealth", () => {
   test("fails immediately and loudly when the port is held by a foreign process", async () => {
-    const verifyPortOwnership = vi.fn(
-      async (): Promise<PortOwnership> => ({
-        status: "foreign",
-        holder: "pid 9876 (unit eveland-proj_other-dep_9.service)",
-      }),
-    );
+    const verifyPortOwnership = vi.fn(async (): Promise<PortOwnership> => ({
+      status: "foreign",
+      holder: "pid 9876 (unit eveland-proj_other-dep_9.service)",
+    }));
     const waitForHealth = vi.fn();
 
     const start = Date.now();

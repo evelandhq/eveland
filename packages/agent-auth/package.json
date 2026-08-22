@@ -18,10 +18,10 @@
   "dependencies": {
     "@evelandhq/core": "workspace:*",
     "eve": "catalog:",
-    "openid-client": "^6.8.4"
+    "openid-client": "^6.8.7"
   },
   "devDependencies": {
     "@evelandhq/db": "workspace:*",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   }
 }

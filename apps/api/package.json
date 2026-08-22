@@ -20,13 +20,13 @@
     "@evelandhq/identity-broker": "workspace:*",
     "@evelandhq/platform-observability": "workspace:*",
     "@evelandhq/session-collector": "workspace:*",
-    "@hono/node-server": "^2.0.6",
-    "better-auth": "^1.6.23",
-    "hono": "^4.12.27",
+    "@hono/node-server": "^2.1.1",
+    "better-auth": "^1.6.30",
+    "hono": "^4.13.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "protobufjs": "^7.6.5",
-    "vitest": "^4.1.9"
+    "protobufjs": "^8.7.2",
+    "vitest": "^4.1.11"
   }
 }

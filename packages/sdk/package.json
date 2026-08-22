@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "eve": "catalog:",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   },
   "peerDependencies": {
     "eve": "catalog:eve-sdk-peer"

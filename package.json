@@ -21,15 +21,15 @@
     "dev:gateway": "pnpm --filter @evelandhq/gateway dev"
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
-    "node-addon-api": "^8.9.0",
+    "@types/node": "^26.2.0",
+    "node-addon-api": "^8.9.2",
     "node-gyp": "^12.4.0",
-    "oxfmt": "0.58.0",
-    "oxlint": "1.73.0",
+    "oxfmt": "0.64.0",
+    "oxlint": "1.79.0",
     "simple-git-hooks": "2.13.1",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.12",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   },
   "simple-git-hooks": {
     "pre-commit": "node ./scripts/pre-commit-fmt.mjs"

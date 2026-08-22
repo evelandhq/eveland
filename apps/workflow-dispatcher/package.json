@@ -18,6 +18,6 @@
     "@evelandhq/workflow-world": "^0.13.1"
   },
   "devDependencies": {
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   }
 }
