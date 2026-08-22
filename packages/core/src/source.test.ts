@@ -12,7 +12,7 @@ describe("inspectEveProject", () => {
     const result = inspectEveProject([
       {
         path: "package.json",
-        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.39.3" } }),
+        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.42.0" } }),
       },
       {
         path: "agent/agent.ts",
@@ -38,7 +38,7 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(true);
     expect(result.layout).toBe("nested");
     expect(result.projectName).toBe("weather-agent");
-    expect(result.eveVersion).toBe("0.39.3");
+    expect(result.eveVersion).toBe("0.42.0");
     expect(result.capabilities).toEqual({ eveChat: true });
     expect(result.summary).toMatchObject({
       agents: ["agent/agent.ts"],
@@ -60,7 +60,7 @@ describe("inspectEveProject", () => {
 
   test("does not declare eveChat for a non-canonical or unrelated Eve channel", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.39.3" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.42.0" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       {
         path: "agent/channels/eve.ts",
@@ -73,7 +73,7 @@ describe("inspectEveProject", () => {
 
   test("uses Eve's authored skill extensions in the source summary", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.39.3" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.42.0" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       ...["md", "ts", "cts", "mts", "js", "cjs", "mjs"].map((extension) => ({
         path: `agent/skills/research.${extension}`,
@@ -116,31 +116,30 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(false);
     expect(result.eveVersion).toBe("0.22.6");
     expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.39.x or 0.42.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.42.x or 0.44.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
     );
   });
 
-  test("accepts dependency declarations contained inside the 0.39/0.42 compatibility window", () => {
+  test("accepts dependency declarations contained inside the 0.42/0.44 compatibility window", () => {
     for (const version of [
-      "0.39.0",
-      "0.39.3",
-      "~0.39.1",
-      "^0.39.0",
-      "0.39",
-      "0.39.x",
-      "0.39.*",
       "0.42.0",
       "~0.42.0",
       "^0.42.0",
       "0.42",
       "0.42.x",
       "0.42.*",
+      "0.44.0",
+      "~0.44.0",
+      "^0.44.0",
+      "0.44",
+      "0.44.x",
+      "0.44.*",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }
-    // 0.40.x and 0.41.x sit inside the window's bounds but are deliberately
-    // unsupported: the window is a set of verified lines, not a contiguous
-    // range, and these two lines were skipped.
+    // 0.43.x sits inside the window's bounds but is deliberately unsupported:
+    // the window is a set of verified lines, not a contiguous range, and that
+    // line was skipped (as 0.40.x/0.41.x were before it).
     for (const version of [
       "0.30.8",
       "0.31.3",
@@ -151,12 +150,19 @@ describe("inspectEveProject", () => {
       "0.36.0",
       "0.37.1",
       "0.38.3",
-      ">=0.39.0",
+      "0.39.0",
+      "0.39.3",
+      "^0.39.0",
+      "0.39.x",
       "0.40.0",
       "^0.40.0",
       "0.40.x",
       "0.41.0",
+      ">=0.42.0",
       "0.43.0",
+      "~0.43.0",
+      "0.43.x",
+      "0.45.0",
       "*",
       "latest",
     ]) {
@@ -178,10 +184,10 @@ describe("inspectEveProject", () => {
   });
 
   test("reports the sliding compatibility window as structured ranges", () => {
-    expect(createEveVersionInfo("0.39.3", "src_1")).toEqual({
-      version: "0.39.3",
-      expected: "0.39.x or 0.42.x",
-      supportedRanges: ["0.39.x", "0.42.x"],
+    expect(createEveVersionInfo("0.42.0", "src_1")).toEqual({
+      version: "0.42.0",
+      expected: "0.42.x or 0.44.x",
+      supportedRanges: ["0.42.x", "0.44.x"],
       supported: true,
       sourceRevisionId: "src_1",
     });

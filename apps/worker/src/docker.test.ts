@@ -34,7 +34,7 @@ vi.mock("execa", () => ({
 
 vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
-    eveVersion: "0.39.3",
+    eveVersion: "0.42.0",
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),
@@ -403,7 +403,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
-          resolvedEveVersion: "0.39.3",
+          resolvedEveVersion: "0.42.0",
           schedulerDefinitions: [
             {
               key: "crm__sync",
@@ -444,7 +444,7 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("Docker sandbox self-check passed");
     expect(result.discovery).toEqual({
       manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
-      resolvedEveVersion: "0.39.3",
+      resolvedEveVersion: "0.42.0",
       schedulerDefinitions: [
         {
           key: "crm__sync",
@@ -532,7 +532,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "0.39.3",
+          resolvedEveVersion: "0.42.0",
           schedulerDefinitions: [],
         }),
       } as never);
@@ -566,7 +566,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "0.39.3",
+          resolvedEveVersion: "0.42.0",
           schedulerDefinitions: [],
         }),
       } as never);
@@ -962,7 +962,7 @@ describe("readImageDiscovery", () => {
       exitCode: 0,
       stdout: JSON.stringify({
         manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
-        resolvedEveVersion: "0.39.3",
+        resolvedEveVersion: "0.42.0",
       }),
     } as never);
 

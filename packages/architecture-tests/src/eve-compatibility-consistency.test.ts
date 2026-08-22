@@ -31,7 +31,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.42.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.44.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -74,7 +74,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.39/0.42 compatibility window", () => {
+  test("describes the supported 0.42/0.44 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-oldest", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
@@ -93,7 +93,8 @@ describe("Eve compatibility repository contract", () => {
     expect(supportedLines).toHaveLength(2);
     // Lines are strictly ascending but need not be contiguous: a minor that
     // was superseded before it could host a real deployment may be skipped
-    // (0.40/0.41 were replaced by 0.42 within 48 hours of release). Each skip
+    // (0.40/0.41 were replaced by 0.42 within 48 hours of release, 0.43 by
+    // 0.44 within four hours). Each skip
     // must be re-justified: it is only safe when every wire format is
     // byte-identical across the whole span, so mixed-window pairs stay
     // trivially compatible.

@@ -26,12 +26,12 @@ test("reads the discovery manifest and the installed eve version from a built re
   );
   await writeFile(
     path.join(releaseDir, "node_modules", "eve", "package.json"),
-    JSON.stringify({ name: "eve", version: "0.39.3" }),
+    JSON.stringify({ name: "eve", version: "0.42.0" }),
   );
 
   await expect(readReleaseDiscovery(releaseDir)).resolves.toEqual({
     manifest: { kind: "eve-agent-discovery-manifest", version: 13 },
-    resolvedEveVersion: "0.39.3",
+    resolvedEveVersion: "0.42.0",
   });
 });
 
