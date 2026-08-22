@@ -21,7 +21,7 @@
     "@evelandhq/db": "workspace:*",
     "@evelandhq/platform-observability": "workspace:*",
     "@evelandhq/sandbox-bwrap": "^0.2.0",
-    "@evelandhq/workflow-world": "^0.13.0",
+    "@evelandhq/workflow-world": "^0.13.1",
     "@opentelemetry/api": "^1.9.1",
     "@workflow/world-postgres": "5.0.0-beta.34",
     "esbuild": "^0.28.1",
