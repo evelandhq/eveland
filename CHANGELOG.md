@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.39.1](https://github.com/evelandhq/eveland/compare/v0.39.0...v0.39.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* slide the 0.44 line to Eve 0.44.3 and heartbeat gateway streams every 5 s ([#360](https://github.com/evelandhq/eveland/issues/360)) ([ba8892c](https://github.com/evelandhq/eveland/commit/ba8892cd75d67e987244120491e929b8495c8c8c))
+
 ## [0.39.0](https://github.com/evelandhq/eveland/compare/v0.38.0...v0.39.0) (2026-08-22)
 
 
