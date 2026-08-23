@@ -30,7 +30,7 @@ export default async function MembersSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h2 className="text-[17px] font-semibold tracking-tight">Members</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Members</h2>
         <p className="text-sm text-muted-foreground">
           Manage access to this Eveland workspace and its projects.
         </p>
@@ -50,58 +50,55 @@ export default async function MembersSettingsPage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Team</CardTitle>
-          <CardDescription>
-            {members.length} active {members.length === 1 ? "member" : "members"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto rounded-xl border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Member</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Joined</TableHead>
-                  {current.role === "admin" ? (
-                    <TableHead className="text-right">Actions</TableHead>
-                  ) : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {members.map((member) => (
-                  <TableRow key={member.userId}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{member.name ?? member.email}</span>
-                        <span className="text-xs text-muted-foreground">{member.email}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={member.role === "admin" ? "default" : "secondary"}>
-                        {member.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <DateTime value={member.joinedAt} display="date" />
-                    </TableCell>
-                    {current.role === "admin" ? (
-                      <TableCell className="text-right">
-                        <MemberActions
-                          member={member}
-                          isLastAdmin={member.role === "admin" && adminCount === 1}
-                        />
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <div>
+        <h2 className="text-base font-medium">Team</h2>
+        <p className="text-sm text-muted-foreground">
+          {members.length} active {members.length === 1 ? "member" : "members"}
+        </p>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Member</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Joined</TableHead>
+              {current.role === "admin" ? (
+                <TableHead className="text-right">Actions</TableHead>
+              ) : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {members.map((member) => (
+              <TableRow key={member.userId}>
+                <TableCell>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{member.name ?? member.email}</span>
+                    <span className="text-xs text-muted-foreground">{member.email}</span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={member.role === "admin" ? "default" : "secondary"}>
+                    {member.role}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <DateTime value={member.joinedAt} display="date" />
+                </TableCell>
+                {current.role === "admin" ? (
+                  <TableCell className="text-right">
+                    <MemberActions
+                      member={member}
+                      isLastAdmin={member.role === "admin" && adminCount === 1}
+                    />
+                  </TableCell>
+                ) : null}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
 
       {current.role === "admin" && invitations.length > 0 ? (
         <Card>

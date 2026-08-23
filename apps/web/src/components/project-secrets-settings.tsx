@@ -224,7 +224,6 @@ export function ProjectSecretsSettings({
               type="button"
               size="sm"
               variant="outline"
-              className="rounded-full"
               onClick={() => setImportDialogOpen(true)}
               disabled={pending}
             >
@@ -234,7 +233,6 @@ export function ProjectSecretsSettings({
             <Button
               type="button"
               size="sm"
-              className="rounded-full"
               onClick={openAddDialog}
               disabled={pending || entries.length >= 50}
             >
@@ -340,17 +338,12 @@ export function ProjectSecretsSettings({
                             </AlertDialogHeader>
                             <form onSubmit={removeEntry}>
                               <AlertDialogFooter>
-                                <AlertDialogCancel
-                                  type="button"
-                                  className="rounded-full"
-                                  disabled={pending}
-                                >
+                                <AlertDialogCancel type="button" disabled={pending}>
                                   Cancel
                                 </AlertDialogCancel>
                                 <AlertDialogAction
                                   type="submit"
                                   variant="destructive"
-                                  className="rounded-full"
                                   disabled={pending}
                                 >
                                   {pending ? (
@@ -467,13 +460,12 @@ export function ProjectSecretsSettings({
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-full"
                 disabled={pending}
                 onClick={() => setDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" className="rounded-full" disabled={pending}>
+              <Button type="submit" disabled={pending}>
                 {pending ? <Spinner data-icon="inline-start" /> : null}
                 {pending ? "Saving…" : editingEntry ? "Save changes" : "Add entry"}
               </Button>

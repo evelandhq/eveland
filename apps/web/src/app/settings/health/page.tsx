@@ -70,7 +70,7 @@ export default async function InstanceHealthPage({
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-[17px] font-semibold tracking-tight">Instance health</h2>
+            <h2 className="text-2xl font-semibold tracking-tight">Instance health</h2>
             <HealthBadge status={report.status} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">

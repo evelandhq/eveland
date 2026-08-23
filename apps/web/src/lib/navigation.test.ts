@@ -42,7 +42,7 @@ describe("sidebar navigation", () => {
           { href: "/settings/identity", label: "Identity" },
           {
             href: "/settings/shared-agent-environment",
-            label: "Shared agent environment",
+            label: "Environment",
           },
           { href: "/settings/observability", label: "Observability" },
           { href: "/settings/health", label: "Instance health" },

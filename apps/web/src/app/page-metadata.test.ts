@@ -20,7 +20,7 @@ const titledPages = [
   ["./settings/members/page.tsx", "Members"],
   ["./settings/observability/page.tsx", "Observability"],
   ["./settings/profile/page.tsx", "Profile"],
-  ["./settings/shared-agent-environment/page.tsx", "Shared Agent environment"],
+  ["./settings/shared-agent-environment/page.tsx", "Environment"],
   ["./projects/[projectId]/logs/page.tsx", "Logs"],
   ["./projects/[projectId]/playground/page.tsx", "Playground"],
   ["./projects/[projectId]/schedules/page.tsx", "Schedules"],
@@ -39,7 +39,7 @@ describe("page metadata", () => {
       expect(existsSync(fileURLToPath(url)), relativePath).toBe(true);
       if (!existsSync(fileURLToPath(url))) continue;
 
-      expect(source(relativePath), relativePath).toContain(`title: "${title}"`);
+      expect(source(relativePath), relativePath).toMatch(new RegExp(`title:\\s*["']${title}["']`));
     }
   });
 
@@ -61,5 +61,13 @@ describe("page metadata", () => {
     expect(source("./projects/[projectId]/schedule-runs/[scheduleRunId]/page.tsx")).toContain(
       "title: `Schedule run ${scheduleRunId}`",
     );
+  });
+
+  test("shows the Dashboard and API build identities on the About page", () => {
+    const aboutPage = source("./settings/about/page.tsx");
+
+    expect(aboutPage).toContain("Components");
+    expect(aboutPage).toContain("[webBuild, ...(apiBuild ? [apiBuild] : [])].map");
+    expect(aboutPage).toContain("{build.component}");
   });
 });

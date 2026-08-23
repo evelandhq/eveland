@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
  * rule spans the viewport but whose contents still have to line up with the
  * page below it.
  */
-export const PAGE_INSET = "mx-auto w-full max-w-7xl px-5 md:px-8";
+export const PAGE_INSET = "mx-auto w-full max-w-7xl px-4 md:px-8";
 
 export function PageContainer({
   className,

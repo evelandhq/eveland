@@ -47,7 +47,7 @@ export function CapacityTrend({
   } satisfies ChartConfig;
 
   return (
-    <figure className="flex min-w-0 flex-col gap-3 py-4">
+    <figure className="flex min-w-0 flex-col gap-3">
       <figcaption className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium">{label}</p>
