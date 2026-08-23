@@ -54,7 +54,7 @@ export function InviteMemberForm() {
               aria-invalid={Boolean(error)}
               required
             />
-            <Button type="submit" className="rounded-full" disabled={pending}>
+            <Button type="submit" disabled={pending}>
               <SendIcon data-icon="inline-start" />
               {pending ? "Creating…" : "Create invite"}
             </Button>
@@ -67,7 +67,7 @@ export function InviteMemberForm() {
             <FieldLabel htmlFor="invite-url">Invitation link</FieldLabel>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input id="invite-url" value={inviteUrl} readOnly />
-              <Button type="button" variant="outline" className="rounded-full" onClick={copy}>
+              <Button type="button" variant="outline" onClick={copy}>
                 {copied ? (
                   <CheckIcon data-icon="inline-start" />
                 ) : (

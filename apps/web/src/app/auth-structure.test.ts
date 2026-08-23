@@ -44,7 +44,6 @@ describe("team management web surfaces", () => {
       return;
     expect(source("./settings/git-credentials/page.tsx")).toContain("getGitCredentials");
     const credentialsForm = source("../components/git-credentials-settings.tsx");
-    expect(credentialsForm).toContain("<Card");
     expect(credentialsForm).toContain("<Table");
     expect(credentialsForm).toContain("<Badge");
     expect(credentialsForm).toContain("deleteGitCredential");
@@ -78,7 +77,6 @@ describe("team management web surfaces", () => {
     expect(environmentPage).toContain("getSharedAgentEnvironment");
     expect(environmentPage.replace(/\s+/g, " ")).toContain("every Agent Deployment");
     const environmentSettings = source("../components/shared-agent-environment-settings.tsx");
-    expect(environmentSettings).toContain("<Card");
     expect(environmentSettings).toContain("<Table");
     expect(environmentSettings).toContain("<Dialog");
     expect(environmentSettings).toContain("<AlertDialog");

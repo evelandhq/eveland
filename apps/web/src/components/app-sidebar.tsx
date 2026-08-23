@@ -90,7 +90,7 @@ export function AppSidebar() {
     // prefix has to match the one Sidebar sets, or tailwind-merge keeps both.
     <Sidebar className="group-data-[side=left]:border-r-0" collapsible="icon">
       <SidebarHeader>
-        <SidebarMenu>
+        <SidebarMenu className="gap-px">
           {/* The logo row is the constant anchor at the top of every context:
               it names the product and IS the way back up to the workspace. */}
           <SidebarMenuItem>
@@ -153,7 +153,7 @@ export function AppSidebar() {
             <SidebarGroup key={group.label}>
               <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu>
+                <SidebarMenu className="gap-px">
                   {group.items.map((item) => {
                     const Icon = item.icon;
 
@@ -183,7 +183,7 @@ export function AppSidebar() {
         ) : (
           <SidebarGroup>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-px">
                 {globalNavigationItems.map((item) => {
                   const Icon = item.icon;
 
@@ -206,7 +206,7 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter>
-        <SidebarMenu>
+        <SidebarMenu className="gap-px">
           {/* Version above the account row, as quiet small print — no icon,
               no divider. The account row keeps the bottom anchor position. */}
           <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">

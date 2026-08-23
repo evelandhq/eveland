@@ -11,7 +11,7 @@ export default async function GitCredentialsSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-[17px] font-semibold tracking-tight">Git credentials</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Git credentials</h2>
         <p className="text-sm text-muted-foreground">
           Manage personal credentials reused for private repository imports.
         </p>

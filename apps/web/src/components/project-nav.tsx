@@ -11,7 +11,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
 
   // One flat, evenly spaced list: the daily/manage split turned out to be a
   // boundary readers never needed — nine items scan fine as a single column.
-  return <ProjectNavigationMenu items={items} pathname={pathname} />;
+  return <ProjectNavigationMenu className="gap-px" items={items} pathname={pathname} />;
 }
 
 function ProjectNavigationMenu({

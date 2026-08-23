@@ -16,9 +16,9 @@ import {
   RocketIcon,
   ScrollTextIcon,
   SettingsIcon,
-  ShieldUserIcon,
   UsersIcon,
   type LucideIcon,
+  CircleUserRoundIcon,
 } from "lucide-react";
 
 export type NavigationRole = "admin" | "member";
@@ -48,7 +48,7 @@ export const settingsNavigationGroups = [
   {
     label: "Personal",
     items: [
-      { href: "/settings/profile", label: "Profile", icon: ShieldUserIcon, access: "all" },
+      { href: "/settings/profile", label: "Profile", icon: CircleUserRoundIcon, access: "all" },
       {
         href: "/settings/git-credentials",
         label: "Git credentials",
@@ -64,7 +64,7 @@ export const settingsNavigationGroups = [
       { href: "/settings/identity", label: "Identity", icon: FingerprintIcon, access: "admin" },
       {
         href: "/settings/shared-agent-environment",
-        label: "Shared agent environment",
+        label: "Environment",
         icon: LockKeyholeIcon,
         access: "admin",
       },

@@ -141,10 +141,26 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
             <Field>
               <FieldLabel htmlFor="avatar">Avatar</FieldLabel>
               <div className="flex flex-wrap items-center gap-4">
-                <Avatar className="size-16">
-                  {image ? <AvatarImage src={image} alt={name || member.email} /> : null}
-                  <AvatarFallback>{initials}</AvatarFallback>
-                </Avatar>
+                <div>
+                  <Avatar className="size-16">
+                    {image ? <AvatarImage src={image} alt={name || member.email} /> : null}
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  </Avatar>
+                  {image ? (
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setImage(null)}
+                      >
+                        <Trash2Icon data-icon="inline-start" />
+                        Remove
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="flex flex-1 flex-col gap-2">
                   <Input
                     id="avatar"
@@ -154,12 +170,6 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
                   />
                   <FieldDescription>PNG, JPEG, or WebP. Maximum 512 KB.</FieldDescription>
                 </div>
-                {image ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => setImage(null)}>
-                    <Trash2Icon data-icon="inline-start" />
-                    Remove
-                  </Button>
-                ) : null}
               </div>
             </Field>
             <Field>
@@ -214,7 +224,6 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
           <div>
             <Button
               type="submit"
-              className="rounded-full"
               disabled={profilePending || name.trim().length === 0 || displayTimezone.length === 0}
             >
               {profilePending ? (
@@ -287,7 +296,7 @@ export function ProfileSettingsForm({ member }: { member: CurrentMember }) {
             </Alert>
           ) : null}
           <div>
-            <Button type="submit" className="rounded-full" disabled={passwordPending}>
+            <Button type="submit" disabled={passwordPending}>
               {passwordPending ? (
                 <Spinner data-icon="inline-start" />
               ) : (

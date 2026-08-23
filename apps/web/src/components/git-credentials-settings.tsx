@@ -9,14 +9,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -115,21 +107,20 @@ export function GitCredentialsSettings({
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Saved hosts</CardTitle>
-          <CardDescription>
-            PATs are encrypted and scoped to your account. Add one here, or enter it while importing
-            a private repository.
-          </CardDescription>
-          <CardAction>
-            <Button type="button" size="sm" className="rounded-full" onClick={openAddDialog}>
-              <PlusIcon data-icon="inline-start" />
-              Add credential
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-base font-medium">Saved hosts</h2>
+        <div className="mt-2 text-sm text-muted-foreground">
+          PATs are encrypted and scoped to your account. Add one here, or enter it while importing a
+          private repository.
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button type="button" size="sm" onClick={openAddDialog}>
+            <PlusIcon data-icon="inline-start" />
+            Add credential
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-4">
           {error ? (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -149,7 +140,7 @@ export function GitCredentialsSettings({
               </EmptyHeader>
             </Empty>
           ) : (
-            <div className="overflow-x-auto rounded-xl border">
+            <div className="mt-4 overflow-x-auto rounded-xl border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -193,8 +184,8 @@ export function GitCredentialsSettings({
               </Table>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <Dialog
         open={dialogOpen}
@@ -252,13 +243,12 @@ export function GitCredentialsSettings({
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-full"
                 disabled={pending}
                 onClick={() => setDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" className="rounded-full" disabled={pending}>
+              <Button type="submit" disabled={pending}>
                 {pending ? (
                   <Spinner data-icon="inline-start" />
                 ) : (

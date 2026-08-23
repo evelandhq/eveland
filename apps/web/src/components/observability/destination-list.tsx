@@ -16,14 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { destinationKindLabel, type ObservabilityDestination } from "./destination-draft";
 
@@ -45,49 +38,53 @@ export function ObservabilityDestinationList({
   onDelete: (destinationId: string) => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>External destinations</CardTitle>
-        <CardDescription>
+    <>
+      <div>
+        <h2 className="text-base font-medium">External destinations</h2>
+        <p className="text-sm text-muted-foreground">
           Forward Eveland telemetry through the managed OpenTelemetry Collector. Elastic receives
           every signal and domain; Langfuse receives Agent traces only.
-        </CardDescription>
-        <CardAction>
+        </p>
+        <div className="mt-4">
           <Button type="button" size="sm" onClick={onCreate} disabled={pending}>
             <PlusIcon data-icon="inline-start" />
             Add destination
           </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {error ? (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
-        {destinations.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-            No external destination is configured. Until one is added, span, log, and metric detail
-            is not retained anywhere.
-          </div>
-        ) : (
-          destinations.map((destination) => (
-            <DestinationRow
-              key={destination.id}
-              destination={destination}
-              pending={pending}
-              onEdit={onEdit}
-              onToggle={onToggle}
-              onDelete={onDelete}
-            />
-          ))
-        )}
-        <p className="text-xs text-muted-foreground">
-          Credentials are encrypted at rest and are never returned to the browser after saving.
-          Changes are applied without restarting Agent Deployments.
-        </p>
-      </CardContent>
-    </Card>
+        </div>
+      </div>
+      <Card>
+        <CardContent className="flex flex-col gap-4">
+          {error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          {destinations.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No external destination is configured. Until one is added, span, log, and metric
+              detail is not retained anywhere.
+            </div>
+          ) : (
+            destinations.map((destination) => (
+              <DestinationRow
+                key={destination.id}
+                destination={destination}
+                pending={pending}
+                onEdit={onEdit}
+                onToggle={onToggle}
+                onDelete={onDelete}
+              />
+            ))
+          )}
+          {destinations.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Credentials are encrypted at rest and are never returned to the browser after saving.
+              Changes are applied without restarting Agent Deployments.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </>
   );
 }
 

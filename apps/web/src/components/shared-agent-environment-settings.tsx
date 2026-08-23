@@ -18,14 +18,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -177,29 +169,26 @@ export function SharedAgentEnvironmentSettings({
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Variables and secrets</CardTitle>
-          <CardDescription>
-            Shared fallback values are encrypted and applied to every Agent Deployment. Project
-            Secrets take precedence. A secret only ever reaches the running agent; a variable is
-            also readable by every project&rsquo;s build, and reaches what a project compiled on its
-            next deploy rather than on the restart this queues.
-          </CardDescription>
-          <CardAction>
-            <Button
-              type="button"
-              size="sm"
-              className="rounded-full"
-              onClick={openAddDialog}
-              disabled={pending || entries.length >= 50}
-            >
-              <PlusIcon data-icon="inline-start" />
-              Add entry
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+      <h2 className="text-base font-medium">Variables and secrets</h2>
+      <p className="text-sm text-muted-foreground">
+        Shared fallback values are encrypted and applied to every Agent Deployment. Project Secrets
+        take precedence. A secret only ever reaches the running agent; a variable is also readable
+        by every project&rsquo;s build, and reaches what a project compiled on its next deploy
+        rather than on the restart this queues.
+      </p>
+      <div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={openAddDialog}
+          disabled={pending || entries.length >= 50}
+        >
+          <PlusIcon data-icon="inline-start" />
+          Add entry
+        </Button>
+      </div>
+      <div>
+        <div className="flex flex-col gap-4">
           {error ? (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -303,17 +292,12 @@ export function SharedAgentEnvironmentSettings({
                               </AlertDialogHeader>
                               <form onSubmit={deleteEntry}>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel
-                                    type="button"
-                                    className="rounded-full"
-                                    disabled={pending}
-                                  >
+                                  <AlertDialogCancel type="button" disabled={pending}>
                                     Cancel
                                   </AlertDialogCancel>
                                   <AlertDialogAction
                                     type="submit"
                                     variant="destructive"
-                                    className="rounded-full"
                                     disabled={pending}
                                   >
                                     {pending ? (
@@ -335,8 +319,8 @@ export function SharedAgentEnvironmentSettings({
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <Dialog
         open={dialogOpen}
@@ -428,13 +412,12 @@ export function SharedAgentEnvironmentSettings({
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-full"
                 disabled={pending}
                 onClick={() => setDialogOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" className="rounded-full" disabled={pending}>
+              <Button type="submit" disabled={pending}>
                 {pending ? <Spinner data-icon="inline-start" /> : null}
                 {pending ? "Saving…" : editingIndex === null ? "Add entry" : "Save changes"}
               </Button>
