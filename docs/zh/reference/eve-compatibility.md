@@ -3,9 +3,9 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.42.x` 与 `0.44.x`，验证版本为 `0.42.0` 与 `0.44.0`。Eve 0.41 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.42.x` 与 `0.44.x`，验证版本为 `0.42.0` 与 `0.44.3`。Eve 0.41 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
-窗口是一组已验证的 Line，而非连续区间：Eve 0.43 在发布后四小时内即被 0.44 取代，因此被有意跳过（此前 0.40 与 0.41 同样被跳过）——声明 `0.43.x` 的项目会收到与其他不受支持版本相同的升级诊断。跳过是安全的，因为从 0.42.0 到 0.44.0 的所有 Wire Format（Message Stream、Manifest、Workflow 存储 Spec、捆绑的 Workflow SDK）逐字节相同。
+窗口是一组已验证的 Line，而非连续区间：Eve 0.43 在发布后四小时内即被 0.44 取代，因此被有意跳过（此前 0.40 与 0.41 同样被跳过）——声明 `0.43.x` 的项目会收到与其他不受支持版本相同的升级诊断。跳过是安全的，因为从 0.42.0 到 0.44.3 的所有 Wire Format（Message Stream、Manifest、Workflow 存储 Spec、捆绑的 Workflow SDK）逐字节相同。
 
 UI 仅将最新支持线 `0.44.x` 标为绿色。Eve 0.42.x 保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
@@ -32,7 +32,9 @@ UI 仅将最新支持线 `0.44.x` 标为绿色。Eve 0.42.x 保持可运行，�
 
 **Eve 0.44 吸收了被跳过的 0.43。** 来自 0.43：Tool 可以声明 `execution: "background"` 并返回 `task.delegated()` 回执，后台执行器通过 `task.send({ kind: "complete" | "fail" | "cancel" })` 在进程内回报进度与任务终态；开启 `experimental.tasks` 时，本地与远端 Subagent 也走同一条后台工具路径。动态工具的 Approval、Execute 与 Output 回调现在可跨冷启动持久化——捕获了不可序列化值的回调会直接抛出可操作的错误，而不是在 Replay 时静默丢失。远端 Subagent 的每一轮续接都会转发调用者身份，因此在恢复持久化的远端 Session 前请先把两端 Deployment 都升级：只在建 Session 时接受转发的接收方会用 HTTP 400 拒绝这样的续接（父 Agent 保留子 Handle，升级接收方后可重试）。来自 0.44 本身：Eve 自身的 OpenTelemetry 导出默认只保留公开受众的会话——内置消息 Channel 会把对话分类为 `public`、`private` 或 `unknown`，而经由 HTTP 到达的 Session（Eveland 的 Playground 与 Agent Gateway）属于 `unknown`。Eveland 的 Observer 不受影响，因为它是注入的 Hook、自带导出管线；但自行声明了 `otel()` / `agentRuns()` / `otelIntegration()` 的 Agent 将在自己的后端看不到 Playground 与 Gateway 会话，除非设置 `otel({ tracePolicy: () => true })`；`recordInputs` / `recordOutputs` 已废弃，改用由 `redactSpanInputs()` / `redactSpanOutputs()` 组合而成的 `exportPolicy`。在 `eve dev` 下，本地 Trace Spool 现在默认记录 Prompt 与输出，除非设置 `EVE_TRACES_CONTENT=off`。
 
-对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.44.0`，即便 `^0.44.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
+**Eve 0.44.3 是同一线内的 Patch 滑动。** 0.44.1 起，Eve 自身托管的 Instrumentation 会对 `private` 与 `unknown` Audience 去除模型、工具、审批与投递内容，因此 Playground 与 Agent Gateway 的 Session 通过 Agent 自带的 `otel()` 只导出元数据；Workflow Run 属性新增 `$eve.is_trace_content_visible`，并对这类 Run 省略由内容派生的 `$eve.title`。Eveland 的 Observer 与共享 World 不受影响（二者只读生命周期事件与结构性属性，不读 Eve 的 Instrumentation 内容）。动态工具的 Callback 改为按工具名与阶段绑定、不再按源码位置绑定，编辑 Callback 正文不再有让已暂存审批回放到错误代码的风险；工具已不存在的暂存调用会 Fail Closed。`useEveAgent` 新增 `resume: true` / `resume()` 与 `send(..., { turnPolicy: "steer" })`。自 0.44.3 起，Eve 客户端在 15 秒收不到 Stream 字节后会重连；因此 Gateway 默认每 5 秒写一次 Heartbeat（`EVELAND_GATEWAY_STREAM_HEARTBEAT_MS`），让只是安静的代理 Stream 保持连接，而不是逐跳重连。
+
+对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.44.3`，即便 `^0.44.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
 
 npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelog 与源码审阅加上完整兼容矩阵之后才会进入；移除旧 Minor 同样是显式的产品变更。
 

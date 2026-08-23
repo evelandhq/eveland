@@ -68,7 +68,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
   const maxRequestBodyBytes = options.maxRequestBodyBytes ?? 10_485_760;
   const now = options.now ?? (() => new Date());
   const streamHeartbeatMs =
-    options.streamHeartbeatMs ?? Number(process.env.EVELAND_GATEWAY_STREAM_HEARTBEAT_MS ?? 15_000);
+    options.streamHeartbeatMs ?? Number(process.env.EVELAND_GATEWAY_STREAM_HEARTBEAT_MS ?? 5_000);
   const sessionIdlePolicy = {
     playgroundIdleTtlMs:
       options.playgroundSessionIdleTtlMs ??

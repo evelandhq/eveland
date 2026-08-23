@@ -39,16 +39,18 @@ describe("Eve observer hook compatibility matrix", () => {
       // global registrations into the per-call list itself, which additionally
       // closes the gap on the calls that did pass one. If either pinned
       // expression changes shape in a new Eve line, re-verify model-capture.ts
-      // against it before bumping the matrix.
+      // against it before bumping the matrix. The minifier is free to rename
+      // the local that holds Eve's own integration (0.44.0 emitted `r`, 0.44.3
+      // `i`), so the pin captures the identifier instead of spelling it.
       const evePackageDir = await realpath(evePackage(packageName));
       const toolLoop = await readFile(
         path.join(evePackageDir, "dist/src/harness/tool-loop.js"),
         "utf8",
       );
-      expect(toolLoop).toContain(
+      expect(toolLoop).toMatch(
         Number(version.split(".")[1]) >= 34
-          ? "integrations:r===void 0?void 0:[r,...getRegisteredTelemetryIntegrations()]"
-          : "integrations:r===void 0?void 0:e===void 0?[r]:[r,createOtelIntegration()]",
+          ? /integrations:(\w+)===void 0\?void 0:\[\1,\.\.\.getRegisteredTelemetryIntegrations\(\)\]/
+          : /integrations:(\w+)===void 0\?void 0:\w+===void 0\?\[\1\]:\[\1,createOtelIntegration\(\)\]/,
       );
 
       const aiDist = await readFile(path.join(evePackageDir, "../ai/dist/index.js"), "utf8");
