@@ -8,11 +8,12 @@ detail (it is written for coding agents but applies equally to humans).
 ## Before you start
 
 - **Languages.** The README, `AGENTS.md`, and `docs/en` are English.
-  [`spec.md`](spec.md) — the product behavior contract — is currently written
-  in Chinese; the English documentation under [`docs/en`](docs/en) covers the
-  same product surface from the operator's perspective. If a spec question
-  blocks you, ask in the issue or PR and a maintainer will translate the
-  relevant section.
+  [`spec.md`](spec.md) — the product boundary and architecture contract — is
+  currently written in Chinese; the per-domain behavioral contracts live in
+  [`docs/en/reference`](docs/en/reference) and its Chinese mirror, so the
+  English reference pages cover the detailed product surface. If a spec
+  question blocks you, ask in the issue or PR and a maintainer will translate
+  the relevant section.
 - **Discuss first for larger changes.** Open an issue before building a
   feature or changing behavior, topology, or the public API. Small fixes can
   go straight to a PR.

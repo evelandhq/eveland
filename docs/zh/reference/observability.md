@@ -3,8 +3,8 @@ title: Observability 架构
 description: 理解 Eveland 遥测的四个 Domain、Collector 信任边界、Built-in 与外部 Destination。
 ---
 
-本文描述 Eveland 当前实现的监控架构。产品行为以产品规格（仓库根 `spec.md`）为准，
-部署参数以[生产部署](/zh/docs/production)与
+本文描述 Eveland 当前实现的监控架构，是可观测性域的权威行为契约。产品边界与架构
+原则以产品规格（仓库根 `spec.md`）为准，部署参数以[生产部署](/zh/docs/production)与
 [环境变量](/zh/docs/reference/environment-variables)为准。
 
 ## 产品边界

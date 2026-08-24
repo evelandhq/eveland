@@ -7,14 +7,18 @@ agents; product behavior still belongs in the product and deployment docs.
 
 Before changing code:
 
-1. Read `spec.md` for the product contract (written in Chinese; `docs/en` covers
-   the same surface in English from the operator's perspective).
+1. Read `spec.md` for the product boundaries and architecture principles
+   (written in Chinese). It is deliberately principle-level: the per-domain
+   behavioral contracts live in `docs/{zh,en}/reference/` (identity,
+   source-import, playground, scheduling, agent-environment, dashboard,
+   routing, observability, eve-compatibility) — read the domain page for the
+   area you touch.
 2. Read `README.md` for the current repository shape and local workflow.
 3. For Linux, systemd, sandbox, or host-worker work, also read
    `docs/en/production/`.
 4. For Agent Gateway, routing, or versioned Deployment work, read the
-   invariants in `docs/en/reference/design/gateway.md` and the Gateway
-   sections of `spec.md`.
+   invariants in `docs/en/reference/design/gateway.md` and the behavioral
+   contract in `docs/{zh,en}/reference/routing.md`.
 5. For observability work, read `docs/en/reference/observability.md` and the Observation path in
    `docs/en/reference/architecture.md`.
 6. Inspect the implementation, nearby tests, and `git status` before proposing
@@ -27,8 +31,10 @@ Design rationale — why the platform is shaped the way it is — lives in
 retired at open-sourcing; its durable content was distilled into those pages,
 and the full documents remain available in git history.
 
-`spec.md` is the product truth source. Tests and current code are the truth
-for implemented behavior. If they conflict, identify the conflict explicitly;
+`spec.md` is the truth source for product boundaries and architecture
+principles; the per-domain reference pages under `docs/{zh,en}/reference/` are
+the truth source for behavioral detail, and spec.md points at them. Tests and
+current code are the truth for implemented behavior. If they conflict, identify the conflict explicitly;
 do not silently make the implementation, spec, and operational docs disagree.
 
 ## How to work in this repository

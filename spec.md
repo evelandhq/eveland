@@ -1,7 +1,9 @@
 # Eveland 产品规格
 
-> 本文件只约束产品边界与架构，不携带版本事实。当前支持的 Eve 版本窗口、各线基线与
-> 平台注入的共享 workflow world 版本见 `docs/zh/reference/eve-compatibility.md`。
+> 本文件是 Eveland 的产品与架构契约：只约束产品边界、架构不变量与信任边界，不描述
+> 实现细节，也不携带版本事实。每个域的行为细则以 `docs/zh/reference/`（与 `docs/en`
+> 互为镜像）为权威，各节末尾给出指针；当前支持的 Eve 版本窗口与平台注入的 workflow
+> world 版本见 `docs/zh/reference/eve-compatibility.md`。
 
 ## 1. 定位
 
@@ -52,7 +54,7 @@ Team
 
 ---
 
-## 4. 页面结构
+## 4. 产品契约
 
 ### 登录 (/login)
 
@@ -340,7 +342,44 @@ diagnostics）三类日志；Agent 的具体执行过程不放在 Logs 中，而
 
 ---
 
-## 5. 最小运行架构
+## 5. 架构原则
+
+跨越所有域的约束。违反任何一条都是架构决策变更，必须先讨论再动手：
+
+1. **Fail closed。** 无法证明合规——版本窗口、workflow attestation、dispatcher
+   registration、Secret reference、manifest 版本——即拒绝并给出可操作诊断；不猜测、
+   不静默降级、不做旧协议兼容。
+2. **不可变工件。** Source Revision、Release、workflow attestation、ScheduleVersion
+   一经写入不可更改；可变的只有路由与配置。Release 不可变意味着环境变更只能重启回原
+   Release，编译期输入只在下一次 deploy 生效。
+3. **单一特权组件。** 只有 Worker 拥有宿主机权限（Docker/systemd）；API 只持久化与
+   等待状态，Agent Gateway 只转发流量，Dashboard 只读展示。
+4. **绑定优先于权重。** 路由权重只作用于新 Session；Session/Operation 绑定一旦建立，
+   promote、rollback 或权重变化都不得移动既有会话，过期绑定显式失败而不是重新路由。
+5. **Secret 单向流动。** 加密保存、只在进程启动边界解密、经 root-owned 0600 文件
+   交付；绝不回浏览器、日志、遥测、argv、build 或任何持久化产物；诊断只显示
+   configured 状态。
+6. **平台注入，源码不感知。** sandbox backend、workflow world、observer hook 由平台
+   在一次性 Release 副本中注入；导入的源码、manifest 与 lockfile 永不修改，authored
+   lifecycle 与配置必须保留。
+7. **透明代理。** Agent Gateway 不解释、不改写 Agent 的认证协议与响应字节；唯一的
+   蓄意例外是 Open 模式对无凭据请求注入 Caller Token，且绝不覆盖已有 credential。
+8. **认证归平台，授权归 Agent。** Eveland 只签发并验证自己的身份凭据；"谁能使用哪个
+   Agent"永远是 Agent 的业务逻辑，不是平台配置。
+9. **Provider 中立。** 身份与凭据的 provider 差异只能通过通用协议配置表达；
+   provider-specific 代码住在平台之外。
+10. **At-least-once 加幂等。** 后台 job 用租约与 fencing；side-effect credential 一旦
+    兑换绝不自动重放；遥测投影按事件序号幂等推进，不因重放回退状态。
+11. **平台拥有调度时钟。** Release 中的 native cron handler 是 no-op；唯一调度器把
+    每次执行固定到创建时的 target。
+12. **观测不改变行为。** 遥测失败只降级不阻断；Playground transport 不是权威观测
+    路径；Built-in 只投影读模型，明细留给外部 Destination。
+13. **版本事实外置。** spec 不携带任何版本号；扩展或收缩兼容窗口是显式产品变更，由
+    `docs/zh/reference/eve-compatibility.md` 与架构测试共同锁定。
+
+---
+
+## 6. 运行架构
 
 `apps/docs` 是独立于 self-hosted 平台的公共网站。生产站点发布在
 `https://eveland.ai`，由 Cloudflare Workers 承载 Next.js/Fumadocs 应用；它不与
@@ -452,7 +491,7 @@ apps -X-> apps
 
 ---
 
-## 6. 非目标
+## 7. 非目标
 
 Eveland 当前不做：
 
@@ -471,7 +510,7 @@ Eveland 当前不做：
 
 ---
 
-## 技术栈
+## 8. 技术栈
 
 - 前端： Next.js, typescript, Tailwind /Shadcn (shadcn@latest init --preset bJxy4cpE --base base --template next)，使用系统默认字体并在 `body` 启用 `antialiased`
 - 后端： Honojs, BetterAuth, DrizzleORM, postgresql

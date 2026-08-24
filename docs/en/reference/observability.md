@@ -3,9 +3,11 @@ title: Observability
 description: Understand Eveland's four telemetry domains, the Collector trust boundary, Built-in, and external destinations.
 ---
 
-This page describes the observability architecture Eveland currently implements. Product
-behavior is defined by the product specification (`spec.md` at the repository root);
-deployment parameters are defined by [Production deployment](/docs/production) and
+This page describes the observability architecture Eveland currently implements and is
+the authoritative behavior contract of the observability domain. Product boundaries and
+architecture principles are defined by the product specification (`spec.md` at the
+repository root); deployment parameters are defined by
+[Production deployment](/docs/production) and
 [Environment variables](/docs/reference/environment-variables).
 
 ## Product boundary

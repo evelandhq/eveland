@@ -4,9 +4,10 @@ description: Why Eveland is built the way it is — the recorded rationale behin
 ---
 
 These pages record the **why** behind Eveland's structural decisions. The
-behavior contract lives in the repository's `spec.md` and the operational
-truth lives in the rest of this documentation; this section explains the
-reasoning that produced them, distilled from the project's internal planning
+product boundaries and architecture principles live in the repository's
+`spec.md`, the per-domain behavior contracts in this site's reference section,
+and the operational truth in the rest of this documentation; this section
+explains the reasoning that produced them, distilled from the project's internal planning
 records when the platform was opened up in August 2026. Decision zero —
 why build Eveland at all — is [Why Eveland](/docs/why).
 
