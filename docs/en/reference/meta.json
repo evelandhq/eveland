@@ -8,6 +8,7 @@
     "identity",
     "source-import",
     "playground",
+    "scheduling",
     "observability",
     "design",
     "troubleshooting"
