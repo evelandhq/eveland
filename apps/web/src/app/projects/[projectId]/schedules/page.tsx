@@ -2,7 +2,8 @@ import Link from "next/link";
 import { SUPPORTED_EVE_VERSION_RANGE } from "@evelandhq/core/eve-compatibility";
 import { describeScheduleCron } from "@evelandhq/core/schedules";
 import { DateTime } from "@/components/date-time";
-import { getScheduleRuns, getSchedules } from "@/lib/server-api";
+import { getScheduleAttention, getScheduleRuns, getSchedules } from "@/lib/server-api";
+import { AcknowledgeScheduleRuns } from "@/components/acknowledge-schedule-runs";
 import { RunScheduleAction } from "@/components/run-schedule-action";
 import { StatusBadge } from "@/components/status-badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -34,13 +35,14 @@ export default async function SchedulesPage({
   searchParams: Promise<SchedulesQuery>;
 }) {
   const [{ projectId }, query] = await Promise.all([params, searchParams]);
-  const [schedules, runPage] = await Promise.all([
+  const [schedules, runPage, attention] = await Promise.all([
     getSchedules(projectId),
     getScheduleRuns(projectId, {
       scheduleId: query.schedule,
       cursor: query.runCursor,
       limit: "50",
     }),
+    getScheduleAttention(projectId),
   ]);
   const selectedSchedule = query.schedule
     ? schedules.find(({ schedule }) => schedule.id === query.schedule)
@@ -56,6 +58,15 @@ export default async function SchedulesPage({
         Markdown and TypeScript schedules run from the promoted scheduler target. Cron definitions
         use UTC; run timestamps use your display timezone.
       </p>
+      {attention > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive-subtle px-4 py-3">
+          <p className="text-sm text-destructive-foreground">
+            {attention} failed {attention === 1 ? "run needs" : "runs need"} review. Each run below
+            records why it failed; mark it reviewed once someone has looked.
+          </p>
+          <AcknowledgeScheduleRuns projectId={projectId}>Mark all reviewed</AcknowledgeScheduleRuns>
+        </div>
+      ) : null}
       {schedules.length === 0 ? (
         <Empty>
           <EmptyHeader>
@@ -193,6 +204,21 @@ export default async function SchedulesPage({
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={run.status} />
+                        {run.status === "failed" ? (
+                          run.acknowledgedAt ? (
+                            <p className="mt-1 text-xs text-muted-foreground">Reviewed</p>
+                          ) : (
+                            <div className="mt-1.5">
+                              <AcknowledgeScheduleRuns
+                                projectId={projectId}
+                                runIds={[run.id]}
+                                variant="ghost"
+                              >
+                                Mark reviewed
+                              </AcknowledgeScheduleRuns>
+                            </div>
+                          )
+                        ) : null}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {run.sessionCount === 0

@@ -43,6 +43,8 @@ const apiBaseUrl =
 export type ProjectListItem = Project & {
   eveVersion: EveVersionInfo;
   activity: ProjectActivity;
+  /** Failed scheduled runs nobody has marked as reviewed (#294). */
+  unacknowledgedFailedRuns: number;
 };
 
 export const getProjects = () =>
@@ -78,6 +80,10 @@ export const getScheduleRuns = (
   );
 export const getScheduleRun = (scheduleRunId: string) =>
   apiGet<{ run: ScheduleRunDetail }>(`/schedule-runs/${scheduleRunId}`).then((data) => data.run);
+export const getScheduleAttention = (projectId: string) =>
+  apiGet<{ unacknowledgedFailedRuns: number }>(`/projects/${projectId}/schedule-attention`).then(
+    (data) => data.unacknowledgedFailedRuns,
+  );
 export const getSessions = (projectId: string, filters: Record<string, string | undefined> = {}) =>
   apiGet<{ sessions: Session[]; nextCursor: string | null }>(
     `/projects/${projectId}/sessions${queryString(filters)}`,

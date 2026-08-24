@@ -526,6 +526,42 @@ describe("api app", () => {
     );
   });
 
+  test("acknowledges failed schedule runs and reports per-project attention", async () => {
+    const store = createTestStore();
+    const { project, run } = await createScheduleRunFixture(store);
+    await store.completeScheduleRun(run.id, {
+      status: "failed",
+      error: "Scheduled handler failed.",
+    });
+    const app = createApp(store);
+
+    const before = await app.request(`/projects/${project.id}/schedule-attention`);
+    await expect(before.json()).resolves.toEqual({ unacknowledgedFailedRuns: 1 });
+    const projectList = await app.request("/projects");
+    await expect(projectList.json()).resolves.toMatchObject({
+      projects: [{ id: project.id, unacknowledgedFailedRuns: 1 }],
+    });
+
+    const acknowledge = await app.request(`/projects/${project.id}/schedule-runs/acknowledge`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ runIds: [run.id] }),
+    });
+    expect(acknowledge.status).toBe(200);
+    await expect(acknowledge.json()).resolves.toEqual({ acknowledged: 1 });
+
+    const after = await app.request(`/projects/${project.id}/schedule-attention`);
+    await expect(after.json()).resolves.toEqual({ unacknowledgedFailedRuns: 0 });
+    // Replays and empty-body project-wide sweeps are safe no-ops.
+    const sweep = await app.request(`/projects/${project.id}/schedule-runs/acknowledge`, {
+      method: "POST",
+    });
+    await expect(sweep.json()).resolves.toEqual({ acknowledged: 0 });
+    expect(
+      (await app.request("/projects/missing/schedule-runs/acknowledge", { method: "POST" })).status,
+    ).toBe(404);
+  });
+
   test("returns health status", async () => {
     const buildInfo = createBuildInfo("api", {
       revision: "6bb1d53f51ab",

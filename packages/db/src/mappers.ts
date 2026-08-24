@@ -409,6 +409,7 @@ export function scheduleRunRowToScheduleRun(row: {
   attempt: number;
   missedTicks: number;
   error: string | null;
+  acknowledgedAt: Date | null;
   startedAt: Date | null;
   completedAt: Date | null;
   createdAt: Date;
@@ -419,6 +420,7 @@ export function scheduleRunRowToScheduleRun(row: {
     dueAt: row.dueAt.toISOString(),
     trigger: row.trigger as ScheduleRun["trigger"],
     status: row.status as ScheduleRun["status"],
+    acknowledgedAt: timestampToIso(row.acknowledgedAt),
     startedAt: timestampToIso(row.startedAt),
     completedAt: timestampToIso(row.completedAt),
     createdAt: row.createdAt.toISOString(),

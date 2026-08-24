@@ -81,6 +81,17 @@ function describeProjectState(project: ProjectListItem): ProjectState {
     };
   if (project.deploymentStatus === "failed")
     return { tone: "failed", label: "Failed", activity: "Latest deployment failed" };
+  // Unreviewed scheduled failures outrank everything a session is currently
+  // doing: they are exactly the failures nobody was watching (#294), and a
+  // later successful run must not make them look handled.
+  if (project.unacknowledgedFailedRuns > 0)
+    return {
+      tone: "failed",
+      label: "Failed runs",
+      activity: `${project.unacknowledgedFailedRuns} scheduled ${
+        project.unacknowledgedFailedRuns === 1 ? "run needs" : "runs need"
+      } review`,
+    };
   if (project.latestSessionStatus === "waiting_approval")
     return { tone: "attention", label: "Needs review", activity: "Paused for your approval" };
   if (project.latestSessionStatus === "waiting")

@@ -3,6 +3,7 @@ import type { Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
 import { publicDeployment, publicRelease, publicSourceRevision } from "./app-public-projections.js";
 import {
+  acknowledgeScheduleRunsSchema,
   scheduleRunListQuerySchema,
   sessionListQuerySchema,
   usageAnalyticsQuerySchema,
@@ -47,6 +48,27 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
       const message = error instanceof Error ? error.message : String(error);
       return c.json({ error: message }, message === "Project schedule not found." ? 404 : 409);
     }
+  });
+
+  app.post("/projects/:projectId/schedule-runs/acknowledge", async (c) => {
+    const parsed = acknowledgeScheduleRunsSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success)
+      return c.json({ error: "Invalid acknowledgement", issues: parsed.error.issues }, 400);
+    const projectId = c.req.param("projectId");
+    if (!(await store.getProject(projectId))) return c.json({ error: "Project not found" }, 404);
+    return c.json({
+      acknowledged: await store.acknowledgeScheduleRuns(projectId, parsed.data),
+    });
+  });
+
+  app.get("/projects/:projectId/schedule-attention", async (c) => {
+    const projectId = c.req.param("projectId");
+    const attention = (await store.listScheduleAttention()).find(
+      (entry) => entry.projectId === projectId,
+    );
+    return c.json({
+      unacknowledgedFailedRuns: attention?.unacknowledgedFailedRuns ?? 0,
+    });
   });
 
   app.get("/projects/:projectId/schedule-runs", async (c) => {

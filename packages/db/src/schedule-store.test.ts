@@ -529,6 +529,99 @@ describe("schedule persistence", () => {
     expect(completed?.error).toContain("Failed query");
   });
 
+  test("acknowledges failed runs per project and counts the unacknowledged ones", async () => {
+    const store = createTestStore();
+    const scheduledProject = async (name: string, hostPort: number) => {
+      const project = await store.createProject({ name, importKind: "zip" });
+      await store.completeJob((await store.claimNextJob("fixture-import"))!.id);
+      const revision = await store.recordSourceRevision({
+        projectId: project.id,
+        kind: "zip",
+        sourcePath: `/tmp/${name}`,
+        summary: {},
+        envVars: [],
+        files: [],
+        schedules: [],
+      });
+      const [recorded] = await store.recordScheduleVersions({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        definitions: [
+          {
+            key: "heartbeat",
+            kind: "markdown",
+            cron: "0 2 * * *",
+            sourcePath: "agent/schedules/heartbeat.md",
+            definitionHash: "a".repeat(64),
+          },
+        ],
+      });
+      if (!recorded) throw new Error("Expected schedule fixture.");
+      const deployment = await store.recordDeployment({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `fixture:${name}`,
+        containerName: `fixture-${name}`,
+        internalPort: 3000,
+        hostPort,
+        runtimeKind: "docker",
+      });
+      await store.setProjectSchedulerTarget(project.id, deployment.id);
+      return { project, scheduleId: recorded.schedule.id, deploymentId: deployment.id };
+    };
+    const runWithStatus = async (
+      fixture: Awaited<ReturnType<typeof scheduledProject>>,
+      dueAt: Date,
+      status: "succeeded" | "failed",
+    ) => {
+      const run = await store.createManualScheduleRun(
+        fixture.project.id,
+        fixture.scheduleId,
+        dueAt,
+      );
+      await store.claimScheduleRunActivation(run.id);
+      await store.redeemScheduleRunDispatch(run.id, fixture.deploymentId);
+      await store.completeScheduleRun(run.id, {
+        status,
+        error: status === "failed" ? "Scheduled handler failed." : null,
+      });
+      return run;
+    };
+
+    const watched = await scheduledProject("ack-watched", 41997);
+    const bystander = await scheduledProject("ack-bystander", 41998);
+    const firstFailure = await runWithStatus(
+      watched,
+      new Date("2026-08-20T02:00:00.000Z"),
+      "failed",
+    );
+    await runWithStatus(watched, new Date("2026-08-21T02:00:00.000Z"), "failed");
+    await runWithStatus(watched, new Date("2026-08-22T02:00:00.000Z"), "succeeded");
+    await runWithStatus(bystander, new Date("2026-08-20T02:00:00.000Z"), "failed");
+
+    await expect(store.listScheduleAttention()).resolves.toEqual(
+      expect.arrayContaining([
+        { projectId: watched.project.id, unacknowledgedFailedRuns: 2 },
+        { projectId: bystander.project.id, unacknowledgedFailedRuns: 1 },
+      ]),
+    );
+
+    // Targeted acknowledgement touches only the named failed run.
+    await expect(
+      store.acknowledgeScheduleRuns(watched.project.id, { runIds: [firstFailure.id] }),
+    ).resolves.toBe(1);
+    await expect(store.getScheduleRun(firstFailure.id)).resolves.toMatchObject({
+      acknowledgedAt: expect.any(String),
+    });
+    // Project-wide acknowledgement sweeps the rest; succeeded runs and the
+    // other project stay untouched, and a replay acknowledges nothing.
+    await expect(store.acknowledgeScheduleRuns(watched.project.id)).resolves.toBe(1);
+    await expect(store.acknowledgeScheduleRuns(watched.project.id)).resolves.toBe(0);
+    await expect(store.listScheduleAttention()).resolves.toEqual([
+      { projectId: bystander.project.id, unacknowledgedFailedRuns: 1 },
+    ]);
+  });
+
   test("paginates filtered run and Session history with zero-Session runs and aggregate usage", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Schedule history", importKind: "zip" });

@@ -720,10 +720,22 @@ export type ScheduleRun = {
   attempt: number;
   missedTicks: number;
   error: string | null;
+  /**
+   * When a human marked this failed run as handled; null while it still
+   * needs attention (or for runs that never failed). Never cleared by a
+   * later successful run.
+   */
+  acknowledgedAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Per-project count of failed ScheduleRuns nobody has acknowledged yet. */
+export type ProjectScheduleAttention = {
+  projectId: string;
+  unacknowledgedFailedRuns: number;
 };
 
 export type ProjectScheduleSummary = {

@@ -367,6 +367,11 @@ export const runtimeActivationSchema = z.object({
   ownerId: z.string().min(1).max(256),
 });
 
+// Empty body = acknowledge every unacknowledged failed run in the project.
+export const acknowledgeScheduleRunsSchema = z.object({
+  runIds: z.array(z.string().min(1)).min(1).max(200).optional(),
+});
+
 export const scheduleRunListQuerySchema = z.object({
   scheduleId: z.string().min(1).optional(),
   trigger: z.enum(["cron", "manual"]).optional(),
