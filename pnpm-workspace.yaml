@@ -29,6 +29,15 @@ allowBuilds:
 overrides:
   "react-jsx-parser>@types/react": 19.2.17
   "react-jsx-parser>@types/react-dom": 19.2.3
+  # Security floors for transitive deps whose parents pin vulnerable versions
+  # exactly (Dependabot alerts, 2026-08-24). Drop each once the parent moves:
+  # miniflare pins sharp/undici exactly per release; ansi-to-react declares
+  # linkify-it ^3 (5.0.2 ships a CJS build, API-compatible); drizzle-kit's
+  # deprecated @esbuild-kit chain pins esbuild ~0.18.
+  "miniflare>sharp": "^0.35.0"
+  "miniflare>undici": "^7.29.0"
+  "ansi-to-react>linkify-it": "^5.0.2"
+  "@esbuild-kit/core-utils>esbuild": "^0.25.0"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
 # verified minor in the current window (0.42.x and 0.44.x; 0.43 was superseded
