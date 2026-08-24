@@ -34,7 +34,7 @@ jobs:
       # step below.
       EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
