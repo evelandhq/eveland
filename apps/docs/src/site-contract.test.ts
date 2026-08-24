@@ -150,6 +150,7 @@ describe("Eveland public website contract", () => {
       "reference/eve-compatibility.md",
       "reference/architecture.md",
       "reference/identity.md",
+      "reference/source-import.md",
       "reference/observability.md",
       "reference/troubleshooting.md",
     ];
