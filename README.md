@@ -69,7 +69,7 @@ Open the Dashboard at `http://localhost:3000` and the public documentation site 
 | Working conventions for coding agents         | [`AGENTS.md`](AGENTS.md)                                                   |
 | How to contribute                             | [`CONTRIBUTING.md`](CONTRIBUTING.md)                                       |
 | Reporting security issues                     | [`SECURITY.md`](SECURITY.md)                                               |
-| Historical plans and handoffs                 | [`.plans/`](.plans/)                                                       |
+| Design decisions (the "why")                  | [`docs/en/reference/design/`](docs/en/reference/design/)                   |
 
 The `docs/en` and `docs/zh` trees are the published site content and must stay in
 sync — edit both languages together.

@@ -12,9 +12,9 @@ Before changing code:
 2. Read `README.md` for the current repository shape and local workflow.
 3. For Linux, systemd, sandbox, or host-worker work, also read
    `docs/en/production/`.
-4. For Agent Gateway, routing, or versioned Deployment work, read the relevant
-   decisions in
-   `.plans/2026-07-13-gateway-observability-handoff.md`.
+4. For Agent Gateway, routing, or versioned Deployment work, read the
+   invariants in `docs/en/reference/design/gateway.md` and the Gateway
+   sections of `spec.md`.
 5. For observability work, read `docs/en/reference/observability.md` and the Observation path in
    `docs/en/reference/architecture.md`.
 6. Inspect the implementation, nearby tests, and `git status` before proposing
@@ -22,7 +22,10 @@ Before changing code:
 
 The `docs/en` and `docs/zh` trees are the published documentation-site content
 (single source, rendered at `eveland.ai`); edit both languages together.
-`.plans/` is historical plans and handoffs, not current guidance.
+Design rationale — why the platform is shaped the way it is — lives in
+`docs/{en,zh}/reference/design/`. The old `.plans/` handoff archive was
+retired at open-sourcing; its durable content was distilled into those pages,
+and the full documents remain available in git history.
 
 `spec.md` is the product truth source. Tests and current code are the truth
 for implemented behavior. If they conflict, identify the conflict explicitly;
