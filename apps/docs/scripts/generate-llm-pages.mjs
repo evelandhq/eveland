@@ -24,17 +24,34 @@ function pageLocation(language, relativeFile) {
   const prefix = language === "en" ? "/docs" : `/${language}/docs`;
 
   return {
-    outputFile: slug ? `${slug}.md` : "index.md",
+    slug,
     pageUrl: `${prefix}${slug ? `/${slug}` : ""}`,
   };
 }
 
-export async function generateLlmPages({ docsDirectory, outputDirectory }) {
-  if (basename(resolve(outputDirectory)) !== "_llms") {
-    throw new Error('Refusing to replace an output directory not named "_llms".');
+export async function generateLlmPages({ docsDirectory, publicDirectory }) {
+  if (basename(resolve(publicDirectory)) !== "public") {
+    throw new Error('Refusing to replace generated assets outside a directory named "public".');
   }
 
-  await rm(outputDirectory, { recursive: true, force: true });
+  const destinations = {
+    en: {
+      root: join(publicDirectory, "docs.md"),
+      directory: join(publicDirectory, "docs"),
+    },
+    zh: {
+      root: join(publicDirectory, "zh", "docs.md"),
+      directory: join(publicDirectory, "zh", "docs"),
+    },
+  };
+
+  await Promise.all([
+    rm(destinations.en.root, { force: true }),
+    rm(destinations.en.directory, { recursive: true, force: true }),
+    rm(destinations.zh.root, { force: true }),
+    rm(destinations.zh.directory, { recursive: true, force: true }),
+    rm(join(publicDirectory, "_llms"), { recursive: true, force: true }),
+  ]);
   let pages = 0;
 
   for (const language of languages) {
@@ -48,8 +65,10 @@ export async function generateLlmPages({ docsDirectory, outputDirectory }) {
       }
 
       const title = parsed.data.title;
-      const { outputFile, pageUrl } = pageLocation(language, relative(languageDirectory, file));
-      const destination = join(outputDirectory, language, outputFile);
+      const { slug, pageUrl } = pageLocation(language, relative(languageDirectory, file));
+      const destination = slug
+        ? join(destinations[language].directory, `${slug}.md`)
+        : destinations[language].root;
       const body = parsed.content.trim();
       const markdown = `# ${title} (${pageUrl})\n${body ? `\n${body}\n` : ""}`;
 
@@ -67,7 +86,7 @@ if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
   const appDirectory = resolve(dirname(scriptPath), "..");
   const result = await generateLlmPages({
     docsDirectory: resolve(appDirectory, "../../docs"),
-    outputDirectory: resolve(appDirectory, "public/_llms"),
+    publicDirectory: resolve(appDirectory, "public"),
   });
 
   console.log(`Generated ${result.pages} page-action Markdown assets.`);
