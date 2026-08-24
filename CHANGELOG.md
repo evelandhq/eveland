@@ -4,6 +4,29 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.40.0](https://github.com/evelandhq/eveland/compare/v0.39.1...v0.40.0) (2026-08-24)
+
+
+### Features
+
+* add Fumadocs page actions ([10f4dd6](https://github.com/evelandhq/eveland/commit/10f4dd6d48042a548ef4089e72e9ecd07099d5f6))
+* record and surface why a Session failed ([#381](https://github.com/evelandhq/eveland/issues/381)) ([c1abdbd](https://github.com/evelandhq/eveland/commit/c1abdbdb0876a8c9c744525c95bf3a1dd5dae408))
+* surface failed scheduled runs until a human reviews them ([#382](https://github.com/evelandhq/eveland/issues/382)) ([9a16dc0](https://github.com/evelandhq/eveland/commit/9a16dc0305d91f76c09841acbbd302be565b2053)), closes [#294](https://github.com/evelandhq/eveland/issues/294)
+
+
+### Bug Fixes
+
+* **docs:** serve prerendered pages from static cache ([#371](https://github.com/evelandhq/eveland/issues/371)) ([2b4ed94](https://github.com/evelandhq/eveland/commit/2b4ed9441e34b248f93feccb43f3750d6533eb89))
+* give action buttons success feedback and close the double-queue gap ([#380](https://github.com/evelandhq/eveland/issues/380)) ([e6aff4e](https://github.com/evelandhq/eveland/commit/e6aff4e2f2cae42f6f4fd55469669d7ee667781f)), closes [#142](https://github.com/evelandhq/eveland/issues/142)
+* keep docs markdown out of worker bundle ([#376](https://github.com/evelandhq/eveland/issues/376)) ([357cd98](https://github.com/evelandhq/eveland/commit/357cd987f02828f7526d447939e5eda834fab406))
+* publish docs markdown at static paths ([#377](https://github.com/evelandhq/eveland/issues/377)) ([b88aacf](https://github.com/evelandhq/eveland/commit/b88aacf50735a6063087e912aa9070458e1c922f))
+* replace web API wildcard rewrite with fail-closed allowlist ([#379](https://github.com/evelandhq/eveland/issues/379)) ([d45bd66](https://github.com/evelandhq/eveland/commit/d45bd66670b1d0de30d2f13f1b946028f9861b34)), closes [#73](https://github.com/evelandhq/eveland/issues/73)
+
+
+### Performance Improvements
+
+* **gateway:** memoize per-deployment Eve version lookups ([#323](https://github.com/evelandhq/eveland/issues/323)) ([645597b](https://github.com/evelandhq/eveland/commit/645597bc9d319fd5c13d165ddd4659dfb50b3a38))
+
 ## [0.39.1](https://github.com/evelandhq/eveland/compare/v0.39.0...v0.39.1) (2026-08-23)
 
 
