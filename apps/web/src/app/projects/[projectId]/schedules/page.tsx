@@ -119,6 +119,7 @@ export default async function SchedulesPage({
                       <RunScheduleAction
                         projectId={projectId}
                         scheduleId={schedule.id}
+                        scheduleKey={schedule.key}
                         disabled={!version || !schedule.enabled}
                       />
                     </div>
