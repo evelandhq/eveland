@@ -21,6 +21,7 @@ import type {
   ProjectImportKind,
   ProjectSchedule,
   ProjectSchedulerTarget,
+  ProjectScheduleAttention,
   ProjectScheduleSummary,
   ProjectScheduleVersion,
   ProjectStatus,
@@ -790,6 +791,17 @@ export interface ScheduleStore {
     now?: Date,
   ): Promise<number>;
   failExpiredScheduleExecutions(now: Date, limit: number): Promise<number>;
+  /**
+   * Marks failed runs as handled by a human. Without `runIds`, acknowledges
+   * every unacknowledged failed run in the project. Only failed,
+   * still-unacknowledged runs are touched; returns how many were.
+   */
+  acknowledgeScheduleRuns(
+    projectId: string,
+    input?: { runIds?: string[]; now?: Date },
+  ): Promise<number>;
+  /** Per-project counts of failed runs nobody has acknowledged yet. */
+  listScheduleAttention(): Promise<ProjectScheduleAttention[]>;
 }
 
 export interface RuntimeStore {

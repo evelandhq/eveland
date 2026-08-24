@@ -878,6 +878,43 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
         return expiredRuns.length;
       });
     },
+
+    async acknowledgeScheduleRuns(projectId, input) {
+      const now = input?.now ?? new Date();
+      const projectScheduleIds = db
+        .select({ id: projectSchedules.id })
+        .from(projectSchedules)
+        .where(eq(projectSchedules.projectId, projectId));
+      const acknowledged = await db
+        .update(scheduleRuns)
+        .set({ acknowledgedAt: now, updatedAt: now })
+        .where(
+          and(
+            inArray(scheduleRuns.scheduleId, projectScheduleIds),
+            eq(scheduleRuns.status, "failed"),
+            isNull(scheduleRuns.acknowledgedAt),
+            ...(input?.runIds ? [inArray(scheduleRuns.id, input.runIds)] : []),
+          ),
+        )
+        .returning({ id: scheduleRuns.id });
+      return acknowledged.length;
+    },
+
+    async listScheduleAttention() {
+      const rows = await db
+        .select({
+          projectId: projectSchedules.projectId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(scheduleRuns)
+        .innerJoin(projectSchedules, eq(projectSchedules.id, scheduleRuns.scheduleId))
+        .where(and(eq(scheduleRuns.status, "failed"), isNull(scheduleRuns.acknowledgedAt)))
+        .groupBy(projectSchedules.projectId);
+      return rows.map((row) => ({
+        projectId: row.projectId,
+        unacknowledgedFailedRuns: row.count,
+      }));
+    },
   };
 }
 

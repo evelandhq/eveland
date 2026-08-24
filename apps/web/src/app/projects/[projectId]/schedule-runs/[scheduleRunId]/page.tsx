@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AcknowledgeScheduleRuns } from "@/components/acknowledge-schedule-runs";
 import { DateTime } from "@/components/date-time";
 import { getScheduleRun } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
@@ -71,7 +72,20 @@ export default async function ScheduleRunPage({
         </dl>
         {run.error ? (
           <div className="border-t pt-4">
-            <h3 className="text-sm font-medium">Failure</h3>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-sm font-medium">Failure</h3>
+              {run.status === "failed" ? (
+                run.acknowledgedAt ? (
+                  <p className="text-xs text-muted-foreground">
+                    Reviewed <DateTime value={run.acknowledgedAt} />
+                  </p>
+                ) : (
+                  <AcknowledgeScheduleRuns projectId={projectId} runIds={[run.id]}>
+                    Mark reviewed
+                  </AcknowledgeScheduleRuns>
+                )
+              ) : null}
+            </div>
             <p className="mt-1 text-sm text-destructive">{run.error}</p>
           </div>
         ) : null}

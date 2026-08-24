@@ -806,6 +806,11 @@ export const scheduleRuns = pgTable(
     attempt: integer("attempt").notNull().default(0),
     missedTicks: integer("missed_ticks").notNull().default(0),
     error: text("error"),
+    // When a human marked this failed run as handled (#294 part 2: failed
+    // cron runs were only ever discovered by accident). Team-shared, never
+    // cleared by a later successful run -- recovery does not mean the failure
+    // was seen.
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

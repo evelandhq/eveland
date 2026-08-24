@@ -6,7 +6,11 @@ import { resolveProjectEveVersion, type EveVersionStore } from "./app-support.js
 // The narrow persistence port this slice actually needs.
 export type ProjectMetadataStore = Pick<
   Store,
-  "getProject" | "listProjects" | "listProjectActivity" | "updateProjectMetadata"
+  | "getProject"
+  | "listProjects"
+  | "listProjectActivity"
+  | "listScheduleAttention"
+  | "updateProjectMetadata"
 > &
   EveVersionStore;
 
@@ -19,11 +23,15 @@ export function registerProjectMetadataRoutes(input: {
 }): void {
   const { app, store } = input;
   app.get("/projects", async (c) => {
-    const [projects, activity] = await Promise.all([
+    const [projects, activity, attention] = await Promise.all([
       store.listProjects(),
       store.listProjectActivity({ days: ACTIVITY_WINDOW_DAYS }),
+      store.listScheduleAttention(),
     ]);
     const activityByProject = new Map(activity.map(({ projectId, ...rest }) => [projectId, rest]));
+    const attentionByProject = new Map(
+      attention.map((entry) => [entry.projectId, entry.unacknowledgedFailedRuns]),
+    );
     const quietProject = {
       days: Array.from({ length: ACTIVITY_WINDOW_DAYS }, () => "none" as const),
       sessions: 0,
@@ -39,6 +47,7 @@ export function registerProjectMetadataRoutes(input: {
           ...project,
           eveVersion: await resolveProjectEveVersion(store, project.id),
           activity: activityByProject.get(project.id) ?? quietProject,
+          unacknowledgedFailedRuns: attentionByProject.get(project.id) ?? 0,
         })),
       ),
     });

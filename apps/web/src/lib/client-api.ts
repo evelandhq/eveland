@@ -575,6 +575,30 @@ export async function syncSource(
   return data.job;
 }
 
+/** Marks failed runs as reviewed; without ids, every unreviewed one. */
+export async function acknowledgeScheduleRuns(
+  projectId: string,
+  runIds?: string[],
+): Promise<number> {
+  const data = await clientRequest<{ acknowledged: number }>(
+    `/projects/${projectId}/schedule-runs/acknowledge`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(runIds ? { runIds } : {}),
+    },
+  );
+  return data.acknowledged;
+}
+
+export async function getScheduleAttention(projectId: string): Promise<number> {
+  const data = await clientRequest<{ unacknowledgedFailedRuns: number }>(
+    `/projects/${projectId}/schedule-attention`,
+    { method: "GET" },
+  );
+  return data.unacknowledgedFailedRuns;
+}
+
 export async function runSchedule(projectId: string, scheduleId: string): Promise<ScheduleRun> {
   const data = await clientRequest<{ run: ScheduleRun }>(
     `/projects/${projectId}/schedules/${scheduleId}/runs`,
