@@ -404,156 +404,40 @@ Host 形态、权重与绑定细则、durable route、激活与端口预留、or
 - Eveland 私有 OpenTelemetry 信号
 - 容器重启
 
-durable workflow world 是平台 runtime contract，不是 Agent 源码 contract。每个新 Release
-无条件构建进共享 `@evelandhq/workflow-world`，不存在选择 build topology 的 rollout flag，
-也不再创建 legacy `@workflow/world-postgres` Release；worker 强制注入平台固定且经过 Eve
-兼容性验证的依赖版本，不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
-已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
-不得被修改。共享 world 的固定版本与要求的 workflow storage spec 见
-`docs/zh/reference/eve-compatibility.md`；world 必须通过当前窗口各支持线已验证 patch
-的 World contract 门禁——门禁随窗口的 verified patch 滑动，不锚定在历史 patch 上
-（legacy world 仅作为历史 Deployment 的既有事实保留同一门禁）。
-runner mode 只支持 `external`：`EVELAND_WORKFLOW_RUNNER` 未设置时解析为 `external`，显式
-`embedded` 是配置错误，worker 启动与 Deployment 启动都必须 fail closed，不得静默回退。
-`WORKFLOW_POSTGRES_URL` 与 `EVELAND_WORKFLOW_WORLD_URL`、`EVELAND_WORKFLOW_RUNNER` 都是保留的
-运行时变量，Project Secret 不得覆盖。production worker 缺少 `EVELAND_WORKFLOW_WORLD_URL`
-必须在接收 job 前失败；`WORKFLOW_POSTGRES_URL` 不再是 production 必需项，只服务仍在删除
-legacy Project 的既有安装。development 未配置共享 world 时继续使用 Eve local world。
+durable workflow world 是平台 runtime contract，不是 Agent 源码 contract：每个新
+Release 无条件构建进共享 `@evelandhq/workflow-world`，worker 强制注入平台固定且经过
+Eve 兼容性验证的版本，不得要求 Agent 声明 world，也不得修改导入的 snapshot、manifest
+与 lockfile；world 必须通过当前窗口各支持线已验证 patch 的 World contract 门禁（版本
+见 `docs/zh/reference/eve-compatibility.md`）。
 
-每个 Release 持久化 immutable workflow attestation（world kind、package/version、storage
-spec、dispatch protocol、deployment-side enqueue capability），来源是 release preparation 实际
-注入的内容，绝不来自记录时的 worker 环境；runner mode 是启动时输入，不属于 attestation。
-capability 是 world 的版本事实：早期不具备 per-run enqueue 的 shared world attest 为
-`unscoped`。attestation 一经写入不可更改；历史行 migration 为 `unknown`。deploy start、
-restart、cold activation 等所有启动路径只依据持久化的 attestation 决策：只有 `shared`
-attestation 的 Release 可以启动；legacy 或 `unknown` 的对象返回带
-`workflow_migration_required`/`workflow_unavailable` 稳定前缀的 managed error 并 fail
-closed，不得按当前环境猜测。
+runner mode 只支持 `external`，显式 `embedded` 是配置错误，必须 fail closed；恰好一个
+外部 dispatcher 以生命周期 advisory lock 保证单实例。每个 Release 持久化 immutable
+workflow attestation，所有启动路径只依据持久化 attestation 决策：legacy 或 `unknown`
+返回带稳定前缀的 managed error 并 fail closed，不得按当前环境猜测。production 的共享
+构建与 `workflow_step` activation 都以 dispatcher 的机器可读 registration 新鲜度 fail
+closed。
 
-配置 `EVELAND_WORKFLOW_WORLD_URL` 时，worker 必须在 dispatcher 或 Deployment 使用共享库前幂等执行
-`@evelandhq/workflow-world` migration；若 host 与 Deployment 访问同一数据库所需地址不同，
-host 侧一律优先使用 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。新空库可以无人值守完成完整
-bootstrap；已有 schema 的 pending migration 同样由 worker startup 或 tenant provisioning
-直接幂等执行。`runMigrations` 使用 PostgreSQL advisory lock 串行化并发启动，不要求单独的
-maintenance-window gate 或预先执行 `workflow-world-setup`。
-外部 workflow dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Platform API 的
-公开 `/health` 成功，不能用 Graphile job 的首次失败承担并行进程启动顺序；健康门打开后
-的 activation、executor dispatch 与重试语义仍由 dispatcher 持有。
+共享 workflow 使用一个数据库内的 `tenant_id` 作为强制查询边界，events 与 stream
+chunks 按 Project 分区；queue 只由平台 external dispatcher 认领，cold-start recovery
+必须按 tenant 过滤；Project 删除只 drop 自己的 partitions，不得扫描或删除其他
+tenant。world 是 Release 的 build-time 属性，不能用运行时改环境变量的方式替换仍在
+执行的 World。共享 World 对新 run 按唯一的 retention 策略链决定 class，lineage 无法
+解析时 fail closed；`persistent` 行永不改写。
 
-dispatcher readiness 是机器可读的持久化 registration，由实际持有 ownership lock 的
-dispatcher 通过受服务认证的 heartbeat 上报（instance/generation、ownership、boot recovery
-完成、World cluster identity、schema generation、dispatch protocol 窗口、状态与时间）。
-cluster identity 是从数据库自身读取的 `cluster:<pg system_identifier>/<database>`（绝不含
-凭据），双方严格相等比较——URL/host 形态的比较会在不相关集群间 fail open，禁止使用。
-stdout 的 ready token 与 systemd `active` 只作人工诊断。production 中 shared build
-与 `workflow_step` activation 都以该 registration 的新鲜度
-（`EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS`）fail closed；`workflow_step` activation
-的调用方还必须以 `x-eveland-dispatcher-instance` header 携带与该 registration 完全一致的
-instance id——绑定的是通过 readiness 门禁的那个进程，而不是任何持有 service token 的
-进程——不一致返回 409；activation 还要求目标 Release attestation 为 shared、enqueue
-capability 为 `per_run_queue_v1`、dispatch protocol 落在 registration 声明的窗口内
-（protocol 与 storage 是独立轴，窗口外 storage 同样返回 `workflow_migration_required`
-409），否则返回带 `workflow_migration_required` 稳定前缀的 409；dispatcher 不可证明时返回
-带 `workflow_unavailable` 前缀的 503。activation response 对 `workflow_step` 附带协商结果
-（selected protocol 与 enqueue capability）。
-当前 external dispatcher 是单实例：健康门打开后先获取生命周期 PostgreSQL advisory lock，
-再从 active run 的精确 `wfrun:<tenant>:<run>` queue 收集旧 Graphile worker id 并强制解锁，
-随后 re-enqueue，最后才启动新 worker pool。第二个 dispatcher 必须 fail closed；升级时
-operator 必须先停止旧进程，不能用新锁推断旧 generation 已退出，也不能省略 per-run
-queueName 或批量清空所有 queue lock。
+attestation、bootstrap、dispatcher registration、存储边界与 retention class 细节见
+`docs/zh/operations/runtime.md` 与 `docs/zh/production/workflow-dispatcher.md`。
 
-legacy workflow 的按 Project 物理分库（从 base `WORKFLOW_POSTGRES_URL` 派生的
-`eveland_wf_<project>_<digest>` 数据库）只剩历史数据残留：legacy Deployment 已不能启动，
-worker 不再为启动路径派生或 bootstrap 派生库。base URL 仅作为枚举与删除派生库的管理连接
-（数据库角色需要 `CREATEDB`）；删除 Project 时必须一并删除其派生 workflow 数据库（在项目
-行删除之前执行，删库失败必须让删除可重试），派生库不得作为孤儿残留。
-
-共享 workflow 使用一个数据库内的 `tenant_id` 作为强制查询边界，events 与 stream chunks
-按 Project LIST partition；queue 只由平台 external dispatcher 认领，cold-start recovery
-也必须按 tenant 过滤。Project 删除时 drop 自己的 partitions，不得扫描或删除其他 tenant。
-world 是 Release 的 build-time 属性，不能用运行时改环境变量的方式替换仍在执行的 World；
-新 build 一律共享。
-当 Deployment URL 使用 `host.docker.internal` 且除 host 外与 `DATABASE_URL` 完全一致时，
-worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置的
-`WORKFLOW_POSTGRES_BOOTSTRAP_URL` 始终优先，平台不得对其他数据库地址关系做猜测。
-
-共享 workflow 的存储边界由平台注入的共享 world 与 dispatcher 共同持有。
-World 默认在写入前剥离可由 delta 重建的累计 snapshot，并按 128 个 logical chunk 或 64 KiB
-建立 server-side checkpoint；`writeMulti` 最多把 64 个 logical chunk、256 KiB 写入一个
-physical block，reader 仍按原 logical chunk id 和 cursor 返回兼容字节。
-`EVELAND_WORKFLOW_STREAM_COMPACTION=off` 只是写侧与 terminal block rewrite 的紧急开关，
-由 worker 保留并注入 Deployment，同时提供给 dispatcher；reader 始终兼容新旧混合数据。
-
-dispatcher 在启动时以及默认每 60 秒执行一次 bounded maintenance：打包旧 terminal stream、
-按 deadline 删除非 EOF stream data、删除过期 workflow graph，并独立回收空的 per-run Graphile
-queue。每项使用 advisory lock、彼此 failure-isolated，单次工作量由
-`WORKFLOW_DISPATCHER_MAINTENANCE_*` 控制；`WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS=0`
-禁用自动 maintenance。scheduled/ephemeral run 在 terminal 后 1 分钟可 compact；成功 run
-在 15 分钟后删除非 EOF stream data、24 小时后删除 graph，失败 run 分别保留 1 小时和 7 天，
-取消 run 分别保留 1 小时和 3 天。interactive（默认）分别为 5 分钟、24 小时和 30 天；
-persistent 永不自动删除。cleanup 必须按完整 run lineage 判断：任一 descendant 仍 active、
-为 persistent、持有更晚 deadline 或有效 callback/hook capability 时，整棵 graph 均不得删除。
-active/waiting run 没有 deadline，EOF marker 永久保留。删除窗口外 chunk 意味着更老 raw cursor
-不再保证 replay；普通 DELETE 只保证页面可复用，不保证数据库文件立即向操作系统缩小。
-
-共享 World 对新 run 只使用一条完整策略链：显式 `retentionClass` 高于
-`workflow-world.retention-class` attribute，attribute 高于 Workflow SDK 的
-`$rootRunId`/`$parentRunId` lineage，lineage 高于平台 root invocation context，最后才是
-`interactive` 默认值。子 run 直接读取同租户 ancestor 的已存 class，不按 workflow name、
-timeout 或 callback 猜测；lineage 存在但无法解析时 fail closed。Eve 自身不做 Eveland 专用
-修改，现有 SDK lineage 同时覆盖 `workflowEntry`、`turnWorkflow`、
-`sessionTimeoutWorkflow`、`taskRunWorkflow`、subagent 与任意 custom workflow。architecture
-门禁从支持的 Eve 发布包读取 `STABLE_WORKFLOW_NAMES`，新增稳定内部 workflow 而未更新审计矩阵
-时必须失败。
-
-root source 的产品契约如下：
-
-| root source                                              | 默认 class                           | 说明                                           |
-| -------------------------------------------------------- | ------------------------------------ | ---------------------------------------------- |
-| Eveland Markdown Schedule 新建 Session                   | `scheduled`                          | 平台强制，authored options 不可放宽            |
-| Eveland handler Schedule 新建 target Session             | `scheduled`                          | cross-channel origin 保持到 owner resolution   |
-| Schedule delivery 到既有 Session                         | 保留既有 root                        | continuation 不重新分类                        |
-| Playground / public Eve HTTP / ordinary authored Channel | `interactive`                        | Eveland 只做代理，不注入策略                   |
-| Eve SDK Session create、MCP/operation invocation         | `interactive`                        | create-once 与 binding 不改变 class            |
-| callback、follow-up、reset                               | 既有 root；reset 新 owner 时重新选择 | lineage 优先；新 root 按当前 source            |
-| 直接/custom Workflow start                               | 显式 class，否则 `interactive`       | 任意 workflow name 都不能作为策略依据          |
-| 审核通过的 durable product operation                     | `persistent`                         | 必须有可观测 owner/reason；不得从 timeout 推断 |
-
-历史修复与前向正确性分开。operator 必须先以精确 durable root trigger（当前为
-`$eve.trigger = channel:eveland-scheduler`）预览单 tenant 的 root/descendant 图和 mismatch，
-再按 bounded batch 优先修 active graph；已有 `persistent` 行永不改写，terminal class 更新由
-数据库 trigger 按原 terminal timestamp 原子重算 deadline。之后只运行正常 bounded
-maintenance，不允许无界删除或 `VACUUM FULL`。诊断按 tenant、resolved root trigger、run type、
-workflow name、status 与当前 class 分组，并单独报告错误 root class 与 child/root mismatch；
-不得根据 title 或稳定 Eve workflow name 本身回填。
-
-Eve Deployment 的内置 `bash`、`read_file`、`write_file`、`glob` 与 `grep`
-必须连接到可执行的隔离 Sandbox，而不能在生产式 `eve start` 下静默退化为缺少
-optional peer 的 `just-bash`。平台在 Docker 与 systemd 的 Release 副本中注入
-`@evelandhq/sandbox-bwrap`，并将每个 Project 的 durable Session workspace 保存在
-Release 目录之外；redeploy 或 restart 不得丢失同一 Eve Session 的 `/workspace`。
-Release 准备必须替换用户编写的 Sandbox backend，但必须保留 authored
-`bootstrap()`、`onSession()`、`description` 与 `revalidationKey`。注入器把有效 authored
-definition 原地改名为同目录的非发现 companion module，再由生成的 `sandbox.js` 展开其字段并
-最后覆盖 `backend`，因此原 definition 的相对 import 语义不能改变。平台还必须保留
-`agent/sandbox/workspace/**`；这些 authored seeds 继续由 Eve 编译并在
-每个新 Session 初始化到 `/workspace/**`，不能因为平台选择 backend 而从 Release 删除。
-workspace template 必须按不可变 Release 隔离：同步部署更新 seed 后，针对新 Release 创建的
-Session 必须使用其新内容；已有 durable Session 的 `/workspace` 不得被 deploy 覆盖。
-Release 构建完成后必须用实际运行权限写入并执行一个 Node 24 TypeScript probe；
-同时验证平台提供的 Sandbox 命令基线：`bash`、Node 24、`npm`、`pnpm`、`rg`、
-GNU `grep`/`find`、`git`、`curl`、`jq`、Python 3 与 `pip`、`unzip`、`zstd`。
-自检必须实际执行 Eve 首选的 `rg` 搜索和带 `--exclude-dir=.git` 的 GNU `grep`
-回退，不能只检查文件存在或相信 `/eve/v1/health`。Docker image 构建安装这套工具；
-systemd runtime 将它视为 host-owned contract，由 worker preflight 一次报告所有缺项，
-因为 bwrap 的只读 host root 不能由 Project 在部署后修补。Docker 本地开发容器不得
-获得 Docker socket；为 nested bwrap 增加的 capability/seccomp 配置只属于本地
-Docker runtime，Linux production 继续使用 unprivileged systemd+bwrap 边界。
-单次 Sandbox `run()` 默认有 10 分钟硬截止时间；截止或调用方 Abort 时必须终止完整的
-bwrap 进程组，不能只终止直接 shell 而留下后代。需要长期存活的 authored process 必须使用
-`spawn()`，并继续受 Session stop/shutdown 管理。Docker 与 systemd 的每个 Deployment
-还必须具有一致的内存、CPU 和进程/线程 cgroup 上限；默认分别为 2 GiB、200% CPU 与
-512 tasks，避免递归 fork 或无限 CPU 命令把故障扩散到宿主机。
+Eve Deployment 的内置执行工具必须连接到可执行的隔离 Sandbox，不能在生产式 `eve
+start` 下静默退化为缺少 optional peer 的 `just-bash`。平台注入
+`@evelandhq/sandbox-bwrap` 并替换用户编写的 Sandbox backend，但必须保留 authored
+lifecycle（`bootstrap()`、`onSession()`、`description`、`revalidationKey`）与
+`agent/sandbox/workspace/**` seeds。durable Session workspace 保存在 Release 目录之
+外，redeploy/restart 不得丢失同一 Session 的 `/workspace`；workspace template 按不可
+变 Release 隔离。Release 构建完成后必须以实际运行权限自检 Sandbox 与平台命令基线，
+不能只检查文件存在或相信 health 端点。每个 Deployment 必须具有一致的内存、CPU 和
+进程数上限；单次 `run()` 有硬截止时间，需要长期存活的 authored process 必须使用
+`spawn()` 并受 Session 生命周期管理。注入机制与 workspace 细节见
+`docs/zh/operations/runtime.md`，决策理由见 `docs/zh/reference/design/sandbox.md`。
 
 代码依赖边界固定为：
 

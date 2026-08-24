@@ -47,6 +47,10 @@ sudo systemctl enable --now eveland-workflow-dispatcher
 
 Dispatcher 通过心跳向 Control API 报告机器可读的 Registration（状态、所有权、启动恢复、协议窗口）。生产部署与 Workflow Step 激活以该 Registration 为门槛——systemd `active` 与 stdout Token 都不能替代它：Registration 过期或缺失时，共享构建与 `workflow_step` 激活会以 `workflow_unavailable` 直接失败（Fail Closed）。
 
+Dispatcher 在启动 runner 和执行 boot recovery 前必须等待 Platform API 的公开 `/health` 成功——并行进程的启动顺序不由 Graphile Job 的首次失败承担；健康门打开后的 Activation、Executor Dispatch 与重试语义仍由 Dispatcher 持有。取得生命周期 Advisory Lock 后，Dispatcher 先从 Active Run 的精确 `wfrun:<tenant>:<run>` Queue 收集旧 Graphile Worker Id 并强制解锁，随后 Re-enqueue，最后才启动新 Worker Pool。第二个 Dispatcher 必须 Fail Closed；升级时必须先停止旧进程，不能用新锁推断旧 Generation 已退出，也不能省略 Per-run QueueName 或批量清空所有 Queue Lock。
+
+Registration 由实际持有 Ownership Lock 的 Dispatcher 通过受服务认证的 Heartbeat 上报，内容包括 Instance/Generation、Ownership、Boot Recovery 完成、World Cluster Identity、Schema Generation、Dispatch Protocol 窗口、状态与时间。Cluster Identity 是从数据库自身读取的 `cluster:<pg system_identifier>/<database>`（绝不含凭据），双方严格相等比较——URL/Host 形态的比较会在不相关集群间 Fail Open，禁止使用。生产中共享构建与 `workflow_step` 激活都以该 Registration 的新鲜度（`EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS`）Fail Closed；`workflow_step` 激活的调用方还必须以 `x-eveland-dispatcher-instance` Header 携带与该 Registration 完全一致的 Instance Id——绑定的是通过 Readiness 门禁的那个进程，而不是任何持有 Service Token 的进程——不一致返回 409。激活还要求目标 Release Attestation 为 `shared`、Enqueue Capability 为 `per_run_queue_v1`、Dispatch Protocol 落在 Registration 声明的窗口内（Protocol 与 Storage 是独立轴，窗口外 Storage 同样返回 `workflow_migration_required` 409）；Dispatcher 不可证明时返回带 `workflow_unavailable` 前缀的 503。`workflow_step` 的激活响应附带协商结果（Selected Protocol 与 Enqueue Capability）。
+
 保持 `EVELAND_REVISION` 与 `EVELAND_RELEASE_CHANNEL` 与 Dashboard、API、Agent Gateway、Worker 完全一致，并在每次升级时从 `/opt/eveland` 重启 Dispatcher。Dispatcher 还负责有界的共享 World 维护（Stream Block Packing、按期限过期）——Durable World 的运行时行为见[Runtime 运维](/zh/docs/operations/runtime)。
 
 下一步[配置 Agent 流量](/zh/docs/production/networking)。
