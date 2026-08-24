@@ -16,7 +16,7 @@ describe("Eveland public website contract", () => {
     const packageJson = source("../package.json");
 
     expect(packageJson).toContain('"name": "@evelandhq/docs"');
-    expect(packageJson).toContain('"build": "next build"');
+    expect(packageJson).toContain("next build");
     expect(source("../next.config.mjs")).toContain("createMDX");
     expect(source("../source.config.ts")).toContain('dir: "../../docs"');
   });
@@ -25,7 +25,7 @@ describe("Eveland public website contract", () => {
     const packageJson = source("../package.json");
     const wrangler = source("../wrangler.jsonc");
 
-    expect(packageJson).toContain('"build:cloudflare": "opennextjs-cloudflare build"');
+    expect(packageJson).toContain("opennextjs-cloudflare build");
     expect(packageJson).toContain('"deploy:cloudflare": "opennextjs-cloudflare deploy"');
     expect(packageJson).toContain('"@opennextjs/cloudflare"');
     expect(packageJson).toContain('"wrangler"');
@@ -63,6 +63,16 @@ describe("Eveland public website contract", () => {
     expect(workflow).toContain("CLOUDFLARE_ACCOUNT_ID");
     expect(workflow).toContain("apps/docs/.next/cache");
     expect(workflow).toContain("key: ${{ runner.os }}-next-docs-");
+  });
+
+  test("runs every workflow on the current Node 24 action runtime", () => {
+    for (const workflow of ["ci.yml", "deploy-docs.yml", "systemd-smoke.yml"]) {
+      const sourceText = source(`../../../.github/workflows/${workflow}`);
+
+      expect(sourceText).toContain("actions/setup-node@v6");
+      expect(sourceText).not.toContain("actions/setup-node@v4");
+      expect(sourceText).toContain("node-version: 24");
+    }
   });
 
   test("runs the three slowest test packages on independent CI runners", () => {
@@ -241,27 +251,30 @@ describe("Eveland public website contract", () => {
     expect(page).toContain('className="eve-docs-page-actions"');
   });
 
-  test("serves each localized document as Markdown for page actions", () => {
-    const markdownRoute = source("./app/llms.mdx/[lang]/docs/[[...slug]]/route.ts");
-    const llmText = source("./lib/get-llm-text.ts");
+  test("builds localized page-action Markdown as Worker-free static assets", () => {
+    const packageJson = source("../package.json");
+    const generator = source("../scripts/generate-llm-pages.mjs");
 
-    expect(markdownRoute).toContain("getLLMText(page)");
-    expect(markdownRoute).toContain('"Content-Type": "text/markdown; charset=utf-8"');
-    expect(markdownRoute).toContain("source.generateParams()");
-    expect(llmText).toContain('page.data.getText("processed")');
-    expect(llmText).toContain("# ${page.data.title} (${page.url})");
+    expect(packageJson).toContain('"generate:llm-pages": "node scripts/generate-llm-pages.mjs"');
+    expect(packageJson).toContain('"build": "pnpm generate:llm-pages && next build"');
+    expect(packageJson).toContain(
+      '"build:cloudflare": "pnpm generate:llm-pages && opennextjs-cloudflare build"',
+    );
+    expect(generator).toContain('from "fumadocs-core/content/md/frontmatter"');
+    expect(generator).toContain("export async function generateLlmPages");
+    expect(generator).toContain("# ${title} (${pageUrl})");
   });
 
   test("rewrites clean English and prefixed Chinese Markdown URLs", () => {
     const nextConfig = source("../next.config.mjs");
 
-    expect(nextConfig).toContain('{ source: "/docs.md", destination: "/llms.mdx/en/docs" }');
+    expect(nextConfig).toContain('{ source: "/docs.md", destination: "/_llms/en/index.md" }');
     expect(nextConfig).toContain(
-      '{ source: "/docs/:path*.md", destination: "/llms.mdx/en/docs/:path*" }',
+      '{ source: "/docs/:path*.md", destination: "/_llms/en/:path*.md" }',
     );
-    expect(nextConfig).toContain('{ source: "/zh/docs.md", destination: "/llms.mdx/zh/docs" }');
+    expect(nextConfig).toContain('{ source: "/zh/docs.md", destination: "/_llms/zh/index.md" }');
     expect(nextConfig).toContain(
-      '{ source: "/zh/docs/:path*.md", destination: "/llms.mdx/zh/docs/:path*" }',
+      '{ source: "/zh/docs/:path*.md", destination: "/_llms/zh/:path*.md" }',
     );
   });
 
