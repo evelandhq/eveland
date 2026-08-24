@@ -201,7 +201,7 @@ binding.
 
 ### License
 
-Copyright (C) 2026 Michael Chen and the Eveland contributors.
+Copyright (C) 2026 Jinzhou Chen.
 
 Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE);
 third-party attributions are listed in [`NOTICE`](NOTICE). The bubblewrap sandbox

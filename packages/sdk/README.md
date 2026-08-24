@@ -92,6 +92,6 @@ imports cleanly, so the package stays publishable from `main` at any time.
 
 ## License
 
-AGPL-3.0-only, © 2026 Michael Chen and the Eveland contributors. Source lives
+AGPL-3.0-only, © 2026 Jinzhou Chen. Source lives
 in [`packages/sdk`](https://github.com/evelandhq/eveland/tree/main/packages/sdk)
 of the [Eveland monorepo](https://github.com/evelandhq/eveland).
