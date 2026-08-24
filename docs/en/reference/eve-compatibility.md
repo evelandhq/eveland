@@ -5,6 +5,8 @@ description: Understand Eveland's verified Eve version window and fail-closed po
 
 Until Eve publishes a stable compatibility contract, Eveland supports only minor lines that have passed the complete compatibility matrix, and changes that window explicitly. The checked-in product contract supports `0.42.x` and `0.44.x`, verified at `0.42.0` and `0.44.3`. Eve 0.41 and older are no longer accepted for import, build, restart, activation, Playground, Agent Gateway, or schedule execution.
 
+The Eve dependency declarations a project's `package.json` may carry are: an exact patch inside a supported line, a `~`/`^` range anchored on a supported minor's patch, and the `0.42` / `0.42.x` / `0.42.*`, `0.44` / `0.44.x` / `0.44.*` forms. A missing Eve dependency, a broad cross-minor range, or any declaration that could resolve outside the window fails closed. The project Overview, Source, and Playground pages show the Eve dependency version of the current deployment's source revision alongside the platform requirement.
+
 The window is a set of verified lines, not a contiguous range: Eve 0.43 was superseded by 0.44 four hours after its release and is deliberately skipped, as 0.40 and 0.41 were skipped before it — a project declaring `0.43.x` is rejected with the same upgrade diagnostic as any other unsupported version. Skipping it is safe because every wire format (message stream, manifests, workflow storage spec, bundled Workflow SDK) is byte-identical from 0.42.0 through 0.44.3.
 
 The UI marks only the latest supported line, `0.44.x`, in green. Eve 0.42.x stays operational but appears in red with an upgrade reminder; unsupported versions also appear in red and remain blocked.

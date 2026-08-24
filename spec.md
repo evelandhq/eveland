@@ -1,6 +1,7 @@
 # Eveland 产品规格
 
-> 适用窗口：eve 0.42/0.44（0.43 被有意跳过）、eveland ≥0.37（external workflow world）。最后校订日期：2026-08-22。
+> 本文件只约束产品边界与架构，不携带版本事实。当前支持的 Eve 版本窗口、各线基线与
+> 平台注入的共享 workflow world 版本见 `docs/zh/reference/eve-compatibility.md`。
 
 ## 1. 定位
 
@@ -462,7 +463,7 @@ Agent 能完成的 routine，以供成员理解和未来 Catalog discovery 使�
 
 - 拉取或解压源码
 - 检查是否为合法 Eve 项目
-- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台已验证的 0.42.x 或 0.44.x
+- 检查 `package.json` 中的 Eve 依赖是否完全限定在平台当前支持窗口内
 - 识别项目配置、agent、tools、skills、schedules，以及标准 Eve Channel 的
   `capabilities.eveChat`
 - 创建 Source Revision
@@ -497,22 +498,16 @@ worker 不得覆盖新 attempt 的状态。同一 Project 同时至多一个 run
 Project 页面展示最近 Git import job 的 queued/running/failed 状态，在活动期间自动刷新，
 失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 
-Eveland 在 Eve 达到稳定产品兼容承诺前，只支持已经完成完整兼容验证的 minor line；每次扩展或
-收缩窗口都是显式产品变更。当前窗口是 0.42.x 与 0.44.x。允许精确的 0.42/0.44
-patch、锚定在对应 minor patch 上的 `~`/`^` range，以及
-`0.42` / `0.42.x` / `0.42.*`、`0.44` / `0.44.x` / `0.44.*`。窗口是已验证 line 的集合而非连续区间：
-0.43 在发布后四小时内即被 0.44 取代（此前 0.40/0.41 同样被 0.42 取代），被有意跳过，声明它们与其他窗口外版本同样被拒绝。
-缺少 Eve 依赖、跨 minor 的宽泛 range 或任何可能解析到
-当前窗口之外的声明都必须 fail closed，并明确提醒
-开发者升级项目的 `eve` 依赖。该检查同时应用于 import、build、restart、冷启动、
-Playground，以及公开 Agent Gateway 到达所选 Deployment 的全部流量——Eve session 新建、继续、取消、
-reset、stream，以及自定义 Channel route 与 webhook 等未分类请求——不能通过已有的
-旧 Source Revision、旧 Deployment 或 SessionBinding 绕过，也不得因此唤醒休眠的窗口外 Deployment。Agent Gateway 在选定实际 Deployment
-后校验其不可变 Source Revision；不支持时返回 409，且不得唤醒或请求 Agent。项目 Overview、
-Source 和 Playground 显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本及平台要求；
-无法证明版本受支持时按不支持处理，不能猜测或做旧协议兼容。
-UI 仅将当前最新支持线 0.44.x 标为绿色；仍受支持但较旧的 0.42.x 使用红色状态与
-“尽快升级”提醒，但不阻断运行。窗口外或无法识别的版本同样使用红色状态，并继续阻断操作。
+Eveland 在 Eve 达到稳定产品兼容承诺前，只支持已经完成完整兼容验证的 minor line；窗口是
+已验证 line 的集合而非连续区间，每次扩展或收缩窗口都是显式产品变更。当前窗口值、允许的
+依赖声明形式与各线基线见 `docs/zh/reference/eve-compatibility.md`。
+
+缺少 Eve 依赖或任何可能解析到窗口之外的声明都必须 fail closed，并明确提醒开发者升级项目
+的 `eve` 依赖。该检查覆盖 import、build、restart、冷启动、Playground，以及公开 Agent
+Gateway 到达所选 Deployment 的全部流量，不能通过旧 Source Revision、旧 Deployment 或
+SessionBinding 绕过，也不得因此唤醒休眠的窗口外 Deployment；无法证明版本受支持时按不
+支持处理，不能猜测或做旧协议兼容。UI 以绿色标注最新支持线，以红色提示较旧支持线与窗口
+外版本；仍受支持的旧线不阻断运行，窗口外版本继续阻断操作。
 
 用户随后确认自动猜测的项目名称并点击 `Deploy`。Project 与初始 import job 在同一数据库
 事务内消费已完成的 Preflight；命名冲突不得消费快照，成功后不得再次消费。同一 `sourcePath`
@@ -776,7 +771,7 @@ Model 的 distinct root Sessions，Token、Cost 和 step 数按 model usage even
 Eveland 是生产 Schedule 的唯一调度器。Release adapter 遵循「新建项目」一节定义的
 全局 Eve 版本滑动窗口；任何可能解析到窗口之外的 Eve 依赖必须在 build 时 fail
 closed 并返回明确的 adapter diagnostic，不能猜测或降级执行。导入源码时按
-`agent/schedules/` 下的完整相对路径识别 root Schedule key；安装依赖后还从 Eve v13
+`agent/schedules/` 下的完整相对路径识别 root Schedule key；安装依赖后还从 Eve
 discovery manifest 读取已解析的 Extension Schedule，并按 Eve 的
 `<mount namespace>__<schedule name>` 规则加入同一调度面。目录 mount 中同名 consumer
 override 优先于 Extension distribution。两种来源都只接受五字段、UTC、分钟级 cron
@@ -896,7 +891,7 @@ sandbox
 
 Source 页面只把 Connection 与其他 Eve 实体一起作为项目结构摘要展示，不提供独立的 Connections
 导航或配置 UI。Release 的已构建摘要来自相同已安装依赖树上的最终 `eve info`；平台只接受
-当前窗口产出的 discovery manifest v13，未知版本继续
+当前窗口产出的 discovery manifest 版本，未知版本继续
 fail closed 并保留静态摘要。摘要会把有效的 Extension Schedule 与直接贡献的 Extension
 Subagent 投影成稳定的 `agent/extensions/<namespace>/...` 路径，Subagent ID 使用 Eve 的
 `<namespace>__<id>`；consumer override 与 Eve 编译器保持相同的优先级。只投影根 Agent 的
@@ -1143,11 +1138,10 @@ durable workflow world 是平台 runtime contract，不是 Agent 源码 contract
 也不再创建 legacy `@workflow/world-postgres` Release；worker 强制注入平台固定且经过 Eve
 兼容性验证的依赖版本，不得要求 Agent 的 `agent.ts` 或 `package.json` 声明 world。Agent
 已有的 root 配置必须由 Release wrapper 保留，导入的 Git/Zip snapshot、manifest 与 lockfile
-不得被修改。Eve 0.38 起要求 workflow spec v6；共享 world 固定为
-`@evelandhq/workflow-world@0.13.1`，必须通过当前窗口各支持线已验证 patch 版本（当前为
-0.42.0 与 0.44.3）的 World contract 门禁——门禁随窗口的 verified patch 滑动，不锚定在
-历史 patch 上（legacy `@workflow/world-postgres@5.0.0-beta.34` 仅作为历史 Deployment
-的既有事实保留同一门禁）。
+不得被修改。共享 world 的固定版本与要求的 workflow storage spec 见
+`docs/zh/reference/eve-compatibility.md`；world 必须通过当前窗口各支持线已验证 patch
+的 World contract 门禁——门禁随窗口的 verified patch 滑动，不锚定在历史 patch 上
+（legacy world 仅作为历史 Deployment 的既有事实保留同一门禁）。
 runner mode 只支持 `external`：`EVELAND_WORKFLOW_RUNNER` 未设置时解析为 `external`，显式
 `embedded` 是配置错误，worker 启动与 Deployment 启动都必须 fail closed，不得静默回退。
 `WORKFLOW_POSTGRES_URL` 与 `EVELAND_WORKFLOW_WORLD_URL`、`EVELAND_WORKFLOW_RUNNER` 都是保留的
@@ -1158,7 +1152,7 @@ legacy Project 的既有安装。development 未配置共享 world 时继续使�
 每个 Release 持久化 immutable workflow attestation（world kind、package/version、storage
 spec、dispatch protocol、deployment-side enqueue capability），来源是 release preparation 实际
 注入的内容，绝不来自记录时的 worker 环境；runner mode 是启动时输入，不属于 attestation。
-capability 是版本事实：0.5.0 之前的 shared world 不具备 per-run enqueue，attest 为
+capability 是 world 的版本事实：早期不具备 per-run enqueue 的 shared world attest 为
 `unscoped`。attestation 一经写入不可更改；历史行 migration 为 `unknown`。deploy start、
 restart、cold activation 等所有启动路径只依据持久化的 attestation 决策：只有 `shared`
 attestation 的 Release 可以启动；legacy 或 `unknown` 的对象返回带
@@ -1212,7 +1206,7 @@ world 是 Release 的 build-time 属性，不能用运行时改环境变量的�
 worker bootstrap 必须复用 worker 已可达的 `DATABASE_URL`；显式配置的
 `WORKFLOW_POSTGRES_BOOTSTRAP_URL` 始终优先，平台不得对其他数据库地址关系做猜测。
 
-共享 workflow 的存储边界由 `@evelandhq/workflow-world@0.13.1` 与 dispatcher 共同持有。
+共享 workflow 的存储边界由平台注入的共享 world 与 dispatcher 共同持有。
 World 默认在写入前剥离可由 delta 重建的累计 snapshot，并按 128 个 logical chunk 或 64 KiB
 建立 server-side checkpoint；`writeMulti` 最多把 64 个 logical chunk、256 KiB 写入一个
 physical block，reader 仍按原 logical chunk id 和 cursor 返回兼容字节。
