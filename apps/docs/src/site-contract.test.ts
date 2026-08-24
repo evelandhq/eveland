@@ -41,6 +41,16 @@ describe("Eveland public website contract", () => {
     expect(source("../next.config.mjs")).toContain('destination: "/en/docs/:path*"');
   });
 
+  test("serves prerendered docs from Workers Static Assets", () => {
+    const openNext = source("../open-next.config.ts");
+
+    expect(openNext).toContain(
+      'from "@opennextjs/cloudflare/overrides/incremental-cache/static-assets-incremental-cache"',
+    );
+    expect(openNext).toContain("incrementalCache: staticAssetsIncrementalCache");
+    expect(openNext).toContain("enableCacheInterception: true");
+  });
+
   test("deploys docs changes pushed to main", () => {
     const workflow = source("../../../.github/workflows/deploy-docs.yml");
 
