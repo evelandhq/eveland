@@ -89,7 +89,7 @@ export function oidcProviderConfig(
 /**
  * JWT and OIDC protocol plumbing that would only restate the login mechanics
  * on every Principal row. Everything else the IdP asserts about the person
- * (name, email, picture, 金数据's account_role, ...) is worth keeping.
+ * (name, email, picture, a provider's account_role, ...) is worth keeping.
  */
 const PROTOCOL_CLAIMS = new Set([
   "iss",

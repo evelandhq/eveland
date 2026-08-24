@@ -663,7 +663,7 @@ const OIDC_RESOLUTIONS = [
   {
     value: "id_token_claim",
     label: "ID token claim",
-    description: "Read the Realm from a claim in the verified ID token (e.g. 金数据's account_id).",
+    description: "Read the Realm from a claim in the verified ID token (e.g. an account_id claim).",
   },
   {
     value: "userinfo_claim",
@@ -791,7 +791,7 @@ function OidcProviderCard({
                   id={issuerId}
                   name="issuer"
                   type="url"
-                  placeholder="https://account.jinshuju.net"
+                  placeholder="https://auth.example.com"
                   defaultValue={provider?.issuer ?? ""}
                   required
                   autoComplete="off"

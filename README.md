@@ -1,9 +1,22 @@
 # Eveland
 
+[![CI](https://github.com/evelandhq/eveland/actions/workflows/ci.yml/badge.svg)](https://github.com/evelandhq/eveland/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/evelandhq/eveland)](https://github.com/evelandhq/eveland/releases)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
+[![npm (SDK)](https://img.shields.io/npm/v/eveland?label=eveland%20SDK)](https://www.npmjs.com/package/eveland)
+
 Self-hosted platform for importing, deploying, and observing [eve](https://eve.dev)
 projects: import an Eve project from a Git repo or Zip upload, configure its runtime
 environment, deploy it behind a public Agent Gateway, and observe its Sessions, usage,
 schedules, and logs.
+
+> **Status: pre-1.0.** Eveland is used in production by its maintainers, but the
+> 0.x line makes breaking changes in minor releases (each is documented in the
+> [CHANGELOG](CHANGELOG.md) and in
+> [`docs/en/operations/upgrades.md`](docs/en/operations/upgrades.md)). Production
+> deployments run on Linux with the systemd runtime (bubblewrap sandboxing);
+> the Docker runtime is for development, not production. Development works on
+> macOS and Linux with Node ≥ 24 and pnpm 11.
 
 Eveland is a pnpm monorepo. The authenticated Dashboard, platform API, Agent
 Gateway, worker, and workflow dispatcher ship together as one SemVer-versioned
@@ -12,7 +25,9 @@ product; the bilingual documentation site is built from the same repository.
 Production installation and operations are documented at
 [eveland.ai/docs](https://eveland.ai/docs), whose content is single-sourced from the
 [`docs/`](docs/) tree in this repository. Product behavior is specified in
-[`spec.md`](spec.md). This README covers local development and contribution.
+[`spec.md`](spec.md) (currently written in Chinese; [`docs/en`](docs/en/) covers
+the same surface in English from the operator's perspective). This README covers
+local development and contribution.
 
 ## Quickstart (local development)
 
@@ -47,12 +62,15 @@ Open the Dashboard at `http://localhost:3000` and the public documentation site 
 
 ## Documentation map
 
-| Looking for                                   | Go to                                                                      |
-| --------------------------------------------- | -------------------------------------------------------------------------- |
-| Production install, operations, and reference | [eveland.ai/docs](https://eveland.ai/docs) — sourced from [`docs/`](docs/) |
-| Product contract (behavior spec)              | [`spec.md`](spec.md)                                                       |
-| Working conventions for coding agents         | [`AGENTS.md`](AGENTS.md)                                                   |
-| Historical plans and handoffs                 | [`.plans/`](.plans/)                                                       |
+| Looking for                                   | Go to                                                                                           |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Why Eveland exists                            | [`docs/en/why.md`](docs/en/why.md) — also at [eveland.ai/docs/why](https://eveland.ai/docs/why) |
+| Production install, operations, and reference | [eveland.ai/docs](https://eveland.ai/docs) — sourced from [`docs/`](docs/)                      |
+| Product contract (behavior spec)              | [`spec.md`](spec.md) (Chinese; English: [`docs/en`](docs/en/))                                  |
+| Working conventions for coding agents         | [`AGENTS.md`](AGENTS.md)                                                                        |
+| How to contribute                             | [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                            |
+| Reporting security issues                     | [`SECURITY.md`](SECURITY.md)                                                                    |
+| Design decisions (the "why")                  | [`docs/en/reference/design/`](docs/en/reference/design/)                                        |
 
 The `docs/en` and `docs/zh` trees are the published site content and must stay in
 sync — edit both languages together.
@@ -62,7 +80,15 @@ sync — edit both languages together.
 The production topology (Docker Compose core services, host systemd worker and
 workflow dispatcher, Traefik wildcard routing) is documented at
 [eveland.ai/docs/production](https://eveland.ai/docs/production), sourced from
-[`docs/en/production/`](docs/en/production/).
+[`docs/en/production/`](docs/en/production/) — the in-repo Markdown is readable
+standalone if the site is unavailable.
+
+## Getting help
+
+- **Bugs and feature requests** — [GitHub issues](https://github.com/evelandhq/eveland/issues)
+- **Security vulnerabilities** — [`SECURITY.md`](SECURITY.md); never a public issue
+- **Contributing** — [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+  [Code of Conduct](CODE_OF_CONDUCT.md)
 
 ## Contributing
 
@@ -177,7 +203,12 @@ binding.
 
 ### License
 
-Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE).
-The bubblewrap sandbox backend it depends on,
-[`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap), is a
-separate project under the Apache License 2.0.
+Copyright (C) 2026 Jinzhou Chen.
+
+Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE);
+third-party attributions are listed in [`NOTICE`](NOTICE). Two deliberate
+exceptions are more permissive: the published
+[`eveland` SDK](packages/sdk/) that Agents import is Apache-2.0 (so using it in
+your own Agent carries no copyleft obligation), and the bubblewrap sandbox
+backend [`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap)
+is a separate Apache-2.0 project.

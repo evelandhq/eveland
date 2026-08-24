@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Pre-commit hook: run `oxfmt` on staged files and re-stage the results.
-// Adapted from vercel/eve's scripts/pre-commit-fmt.mjs.
+// Adapted from vercel/eve's scripts/pre-commit-fmt.mjs (Apache-2.0).
 //
 // Design notes
 // ------------

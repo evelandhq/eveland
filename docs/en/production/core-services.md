@@ -42,6 +42,8 @@ The overlay does not start a containerized Worker; `--profile docker-worker` res
 
 API, Agent Gateway, and Dashboard run with host networking so they can reach Deployments on the host's loopback ports; Postgres stays bridged and publishes `5432` to the host. The API container bind-mounts `/var/lib/eveland` at that same absolute path, matching the host Worker's `EVELAND_DATA_DIR` — see the [shared data contract](/docs/production).
 
+**The published `5432` must never be reachable from outside the host.** It exists so host services (Worker, workflow dispatcher) and deployed Agent containers (via `host.docker.internal`) can reach the database, and it ships with well-known default credentials. Block it from every non-local network at the host firewall — see [Networking](/docs/production/networking).
+
 ## Align release identity
 
 Set `EVELAND_RELEASE_CHANNEL=stable` and `EVELAND_REVISION` to the output of `git rev-parse --short=12 HEAD` in three places:

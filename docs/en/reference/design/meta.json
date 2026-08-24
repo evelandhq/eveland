@@ -1,0 +1,14 @@
+{
+  "title": "Design decisions",
+  "pages": [
+    "index",
+    "runtime",
+    "sandbox",
+    "scale-to-zero",
+    "workflow",
+    "gateway",
+    "observability",
+    "identity",
+    "agent-catalog"
+  ]
+}

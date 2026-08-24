@@ -9,7 +9,7 @@ describe("source preflight store", () => {
     const preflight = await store.createSourcePreflight({
       userId: "user_a",
       kind: "git",
-      gitUrl: "https://github.com/evelandhq/example.git",
+      gitUrl: "https://github.com/example/example.git",
       expiresAt: new Date("2026-01-01T00:01:00.000Z"),
     });
 
@@ -18,7 +18,7 @@ describe("source preflight store", () => {
       id: preflight.id,
       status: "queued",
       kind: "git",
-      gitUrl: "https://github.com/evelandhq/example.git",
+      gitUrl: "https://github.com/example/example.git",
     });
 
     const claimed = await store.claimNextSourcePreflight("worker-a", now);

@@ -48,7 +48,7 @@ describe("Eveland public website contract", () => {
     expect(workflow).toContain("- apps/docs/**");
     expect(workflow).toContain("- docs/**");
     expect(workflow).toContain("pnpm --filter @evelandhq/docs build:cloudflare");
-    expect(workflow).toContain("cloudflare/wrangler-action@v3");
+    expect(workflow).toMatch(/cloudflare\/wrangler-action@[0-9a-f]{40} # v3/);
     expect(workflow).toContain("CLOUDFLARE_API_TOKEN");
     expect(workflow).toContain("CLOUDFLARE_ACCOUNT_ID");
     expect(workflow).toContain("apps/docs/.next/cache");

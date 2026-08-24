@@ -2,6 +2,7 @@
   "title": "Eveland Documentation",
   "pages": [
     "index",
+    "why",
     "---Deploy Eveland---",
     "production",
     "---Deploy agents---",

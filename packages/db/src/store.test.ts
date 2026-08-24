@@ -71,7 +71,7 @@ describe("SQL Store project creation", () => {
     const project = await store.createProject({
       name: "first-deploy",
       importKind: "git",
-      gitUrl: "https://github.com/evelandhq/first-deploy.git",
+      gitUrl: "https://github.com/example/first-deploy.git",
       requireExactSlug: true,
       deployAfterImport: true,
     });
@@ -85,7 +85,7 @@ describe("SQL Store project creation", () => {
       store.createProject({
         name: "first-deploy",
         importKind: "git",
-        gitUrl: "https://github.com/evelandhq/first-deploy.git",
+        gitUrl: "https://github.com/example/first-deploy.git",
         requireExactSlug: true,
       }),
     ).rejects.toThrow("Project name is already in use.");
