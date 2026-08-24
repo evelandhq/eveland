@@ -60,9 +60,9 @@ Project 自己的 Agent Environment 会加入该白名单，但只限 `variable`
 两组名称始终归平台所有；声明其中任一名称的条目会被从构建中丢弃，并在构建日志打出 `WARNING`——绝不静默：
 
 - **`PATH`、`HOME`、`NPM_CONFIG_CACHE`**——构建自身的工具链。`NPM_CONFIG_CACHE` 是因为 npm 会不区分大小写地把它与 `npm_config_cache` 一起读取，使用它的条目可能把共享 Cache 重定向出去。这些名称仍会正常到达已部署进程。
-- **平台在运行时保留的所有名称**——`NODE_ENV`、`EVELAND_PROJECT_ID`、`EVELAND_IDENTITY_ISSUER`、`EVELAND_IDENTITY_JWKS_URL`、`EVELAND_SCHEDULER_REDEEM_URL`、`EVELAND_SCHEDULER_RUNTIME_SECRET`、`WORKFLOW_POSTGRES_URL`、`WORKFLOW_POSTGRES_MAX_POOL_SIZE`。Runtime 最后应用这些值，采用 Project 值的构建会编译出被部署进程随后覆盖的内容。`NODE_ENV` 无论宿主机自身取值如何都会从每次构建中丢弃：`npm ci` 与 `pnpm install --frozen-lockfile` 在 `NODE_ENV=production` 下都会省略 devDependencies，从而剥离 Project 自己的构建工具链。
+- **平台在运行时保留的所有名称**——`NODE_ENV`、`EVELAND_PROJECT_ID`、`EVELAND_IDENTITY_ISSUER`、`EVELAND_IDENTITY_JWKS_URL`、`EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES`、`EVELAND_SANDBOX_MAX_OUTPUT_BYTES`、`EVELAND_SANDBOX_RUN_TIMEOUT_MS`、`EVELAND_SCHEDULER_REDEEM_URL`、`EVELAND_SCHEDULER_RUNTIME_SECRET`、`EVELAND_WORKFLOW_RUNNER`、`EVELAND_WORKFLOW_STREAM_COMPACTION`、`EVELAND_WORKFLOW_WORLD_URL`、`WORKFLOW_POSTGRES_URL`、`WORKFLOW_POSTGRES_MAX_POOL_SIZE`（与 `apps/worker/src/runtime/reserved-environment.ts` 保持一致，由测试锁定）。Runtime 最后应用这些值，采用 Project 值的构建会编译出被部署进程随后覆盖的内容。`NODE_ENV` 无论宿主机自身取值如何都会从每次构建中丢弃：`npm ci` 与 `pnpm install --frozen-lockfile` 在 `NODE_ENV=production` 下都会省略 devDependencies，从而剥离 Project 自己的构建工具链。
 
-由于 Release 不可变，修改 `variable` 只在下一次部署时刷新编译后的 Manifest——单纯的环境变更只会让存活 Deployment 在其现有 Release 上重启。在 Docker Runtime 上，这些变量以 `--build-arg` 传入并出现在镜像构建元数据中；systemd Runtime 在同一个 Shell 中把它们同时暴露给安装与构建。
+由于 Release 不可变，修改 `variable` 只在下一次部署时刷新编译后的 Manifest——单纯的环境变更只会让存活 Deployment 在其现有 Release 上重启。在 Docker Runtime 上，这些变量以 `--build-arg` 传入并出现在镜像构建元数据中；`ARG` 声明位于依赖安装层之后，因此 Docker 上只有预发现、Extension Integrator、`npx eve build` 与最终 Discovery 能读到它们。systemd Runtime 在同一个 Shell 中把它们同时暴露给安装与构建。
 
 ## 绝不切换已解析的 Runtime
 

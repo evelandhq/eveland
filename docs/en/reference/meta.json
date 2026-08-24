@@ -9,6 +9,7 @@
     "source-import",
     "playground",
     "scheduling",
+    "agent-environment",
     "observability",
     "design",
     "troubleshooting"

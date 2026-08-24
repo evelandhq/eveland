@@ -153,6 +153,7 @@ describe("Eveland public website contract", () => {
       "reference/source-import.md",
       "reference/playground.md",
       "reference/scheduling.md",
+      "reference/agent-environment.md",
       "reference/observability.md",
       "reference/troubleshooting.md",
     ];
