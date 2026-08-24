@@ -2,6 +2,7 @@
   "title": "Eveland 文档",
   "pages": [
     "index",
+    "why",
     "---部署 Eveland---",
     "production",
     "---部署 Agent---",

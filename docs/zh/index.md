@@ -3,7 +3,7 @@ title: 概览
 description: 在自己的基础设施上为团队部署和运营 Eve Agents。
 ---
 
-Eveland 是面向团队的自托管部署与运营平台，服务于已经使用 [Eve](https://eve.dev) 构建 Agent 的团队。Eve 定义 Agent；Eveland 为 Agent 提供由 Release、Preview、稳定路由、运行时隔离、Schedules 与 Session 可观测性组成的生产运行环境。
+Eveland 是面向团队的自托管部署与运营平台，服务于已经使用 [Eve](https://eve.dev) 构建 Agent 的团队。Eve 定义 Agent；Eveland 为 Agent 提供由 Release、Preview、稳定路由、运行时隔离、Schedules 与 Session 可观测性组成的生产运行环境。立项论证——为什么要在自己的基础设施上运行 agent——见[为什么有 Eveland](/zh/docs/why)。
 
 ## Eveland 负责什么
 

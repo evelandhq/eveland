@@ -7,7 +7,8 @@ These pages record the **why** behind Eveland's structural decisions. The
 behavior contract lives in the repository's `spec.md` and the operational
 truth lives in the rest of this documentation; this section explains the
 reasoning that produced them, distilled from the project's internal planning
-records when the platform was opened up in August 2026.
+records when the platform was opened up in August 2026. Decision zero —
+why build Eveland at all — is [Why Eveland](/docs/why).
 
 Two conventions keep these pages honest:
 

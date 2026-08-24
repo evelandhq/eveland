@@ -62,14 +62,15 @@ Open the Dashboard at `http://localhost:3000` and the public documentation site 
 
 ## Documentation map
 
-| Looking for                                   | Go to                                                                      |
-| --------------------------------------------- | -------------------------------------------------------------------------- |
-| Production install, operations, and reference | [eveland.ai/docs](https://eveland.ai/docs) — sourced from [`docs/`](docs/) |
-| Product contract (behavior spec)              | [`spec.md`](spec.md) (Chinese; English: [`docs/en`](docs/en/))             |
-| Working conventions for coding agents         | [`AGENTS.md`](AGENTS.md)                                                   |
-| How to contribute                             | [`CONTRIBUTING.md`](CONTRIBUTING.md)                                       |
-| Reporting security issues                     | [`SECURITY.md`](SECURITY.md)                                               |
-| Design decisions (the "why")                  | [`docs/en/reference/design/`](docs/en/reference/design/)                   |
+| Looking for                                   | Go to                                                                                           |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Why Eveland exists                            | [`docs/en/why.md`](docs/en/why.md) — also at [eveland.ai/docs/why](https://eveland.ai/docs/why) |
+| Production install, operations, and reference | [eveland.ai/docs](https://eveland.ai/docs) — sourced from [`docs/`](docs/)                      |
+| Product contract (behavior spec)              | [`spec.md`](spec.md) (Chinese; English: [`docs/en`](docs/en/))                                  |
+| Working conventions for coding agents         | [`AGENTS.md`](AGENTS.md)                                                                        |
+| How to contribute                             | [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                            |
+| Reporting security issues                     | [`SECURITY.md`](SECURITY.md)                                                                    |
+| Design decisions (the "why")                  | [`docs/en/reference/design/`](docs/en/reference/design/)                                        |
 
 The `docs/en` and `docs/zh` trees are the published site content and must stay in
 sync — edit both languages together.
