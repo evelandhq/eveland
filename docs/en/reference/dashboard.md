@@ -131,3 +131,10 @@ Project Settings uses in-page secondary navigation rather than a third sidebar l
 Logs offers three log kinds: build logs; deploy logs; and runtime stdout/stderr plus ScheduleRun lifecycle diagnostics. An agent's concrete execution belongs in the session timeline, not in Logs.
 
 The Logs page defaults to newest-first, offering text search, kind filtering, and sort-order toggling inside a fixed-height scroll area. Multi-line or overlong records default to a compact summary, expandable per row to the full original text.
+
+## Deeper reference
+
+- [Deploy your first agent](/docs/agents/first-deployment): quickstart for core console deployment actions
+- [Sessions and usage](/docs/observe/sessions): data models behind the Sessions and Usage console pages
+- [Health and diagnostics](/docs/operations/diagnostics): health metrics and log triage matrix in the console
+- [Security model](/docs/operations/security): platform authentication, invitations, and team permissions

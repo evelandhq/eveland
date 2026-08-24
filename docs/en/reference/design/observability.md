@@ -70,3 +70,10 @@ assume global provider ownership.)
 - **Reconstructions are labeled.** A model call's recorded input is
   reconstructed from the Eve event stream, and marked as such, rather than
   presented as the verbatim prompt.
+
+## Deeper reference
+
+- [Observability behavior contract](/docs/reference/observability): OTLP batch storage, SessionNode projection rules, and retention policy
+- [Sessions and usage tracking](/docs/observe/sessions): developer guide to SessionNode trees and usage reporting
+- [Health and diagnostics](/docs/operations/diagnostics): verifying Collector health and troubleshooting missing usage
+- [Architecture reference](/docs/reference/architecture): observation data path and telemetry flow diagrams

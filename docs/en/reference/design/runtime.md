@@ -76,3 +76,10 @@ between the build user and the app user. Skipping the sandbox
   contract: the API container must bind-mount it at the identical absolute
   path so stored source paths resolve for both the container and the host
   Worker.
+
+## Deeper reference
+
+- [Production architecture](/docs/production): core services and host Worker topology overview
+- [Install the host Worker](/docs/production/worker): systemd service setup and environment configuration
+- [Why a bubblewrap sandbox](/docs/reference/design/sandbox): build and runtime sandbox isolation decisions
+- [Scale to zero](/docs/reference/design/scale-to-zero): zero-cost dormant agents and cold activation mechanics

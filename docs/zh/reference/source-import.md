@@ -58,3 +58,10 @@ Source Revision 必须持久化启动既有 Release 所需的 `package.json` 与
 只读代码浏览器，支持文件树、文件内容查看、当前 Source Revision 信息与 Eve 项目结构摘要。摘要至少包括 agents、instructions、tools、skills、subagents、connections、schedules、sandbox。不做在线编辑，不做 Git 写回。
 
 Source 页面只把 Connection 与其他 Eve 实体一起作为项目结构摘要展示，不提供独立的 Connections 导航或配置 UI。Release 的已构建摘要来自相同已安装依赖树上的最终 `eve info`；平台只接受当前窗口产出的 discovery manifest 版本，未知版本继续 fail closed 并保留静态摘要。摘要会把有效的 Extension Schedule 与直接贡献的 Extension Subagent 投影成稳定的 `agent/extensions/<namespace>/...` 路径，Subagent ID 使用 Eve 的 `<namespace>__<id>`；consumer override 与 Eve 编译器保持相同的优先级。只投影根 Agent 的 Connection path，Subagent-owned Connection 保持在自己的 manifest scope 内。
+
+## 深入参考
+
+- [部署第一个 Agent](/zh/docs/agents/first-deployment)：项目导入与构建的快速入门指南
+- [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)：导入受支持的 Eve 版本范围与依赖规则
+- [Agent 环境](/zh/docs/reference/agent-environment)：向导中的 Secret 与 Variable 优先级与注入契约
+- [Dashboard 页面契约](/zh/docs/reference/dashboard)：新建项目向导、Projects 列表与 Git 凭证管理

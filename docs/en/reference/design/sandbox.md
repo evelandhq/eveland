@@ -34,7 +34,7 @@ zero-runtime-dependency package.
 > This is protection against mistakes and prompt injection — not
 > multi-tenant isolation.
 
-That sentence is the design's load-bearing wall. Concretely: every invocation
+This definition forms the core security boundary of the design. Concretely: every invocation
 runs `--clearenv` so deployment secrets in the Agent's process environment
 never leak into sandboxed code; tmpfs masks hide the platform's data
 directories; but the rest of the host filesystem is visible read-only and the
@@ -64,3 +64,10 @@ user's first command fails. Eveland therefore runs a build-time self-check
 that executes the real backend under the same systemd hardening the
 Deployment will get. A misconfigured host surfaces as a failed build, not a
 failed conversation.
+
+## Deeper reference
+
+- [Prepare the host](/docs/production/prerequisites): AppArmor, bwrap, and host user/directory requirements
+- [Install the host Worker](/docs/production/worker): build sandbox trust boundaries and environment filtering
+- [Why systemd, not Docker](/docs/reference/design/runtime): production runtime selection rationale
+- [Health and diagnostics](/docs/operations/diagnostics): sandbox probe evidence and build self-check logs

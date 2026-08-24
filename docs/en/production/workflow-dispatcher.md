@@ -54,3 +54,9 @@ The registration is reported by the dispatcher that actually holds the ownership
 Keep `EVELAND_REVISION` and `EVELAND_RELEASE_CHANNEL` identical to the Dashboard, API, Agent Gateway, and Worker, and restart the dispatcher from `/opt/eveland` on every upgrade. The dispatcher also owns bounded shared-world maintenance (stream block packing, deadline-driven expiry) — see [Runtime operations](/docs/operations/runtime) for how the durable World behaves in service.
 
 Next, [configure Agent traffic](/docs/production/networking).
+
+## Deeper reference
+
+- [Workflow architecture design decisions](/docs/reference/design/workflow): external dispatcher and purpose-built shared Workflow World rationale
+- [Runtime and resources](/docs/operations/runtime): durable workflow world tenant partitioning and retention classes
+- [Configuration reference](/docs/reference/configuration): dispatcher environment variable list and concurrency parameters

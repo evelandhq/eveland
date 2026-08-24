@@ -58,3 +58,10 @@ world 是构建时属性——不能对着执行中的 World 改运行时环境�
 开发环境未配置共享 world 时继续用 Eve 的本地 world。本地 world 不用于
 生产从未留下书面论证——它被当作不言自明的不合适（单进程，在缩容到零下
 不持久）。
+
+## 深入参考
+
+- [安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)：宿主机 Dispatcher 安装与注册对齐
+- [运行时与资源运营](/zh/docs/operations/runtime)：Durable Workflow World 的多租户隔离与保留策略
+- [Schedules 与自动化任务](/zh/docs/observe/schedules)：面向开发者的定时任务与调度模型
+- [Schedule 执行行为契约](/zh/docs/reference/scheduling)：Cron 调度与 Workflow 任务派发规范

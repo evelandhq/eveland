@@ -73,3 +73,10 @@ Development without a configured shared world keeps Eve's local world.
 Production use of the local world was never argued against in writing — it
 was treated as self-evidently unsuitable (single-process, non-durable under
 scale-to-zero).
+
+## Deeper reference
+
+- [Install the workflow dispatcher](/docs/production/workflow-dispatcher): host dispatcher setup and registration gating
+- [Runtime and resources](/docs/operations/runtime): durable workflow world tenant partitioning and retention classes
+- [Schedules and automation](/docs/observe/schedules): developer guide to schedule execution and workflow models
+- [Scheduling behavior contract](/docs/reference/scheduling): cron execution, prewarming, and durable dispatch boundaries

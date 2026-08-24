@@ -42,3 +42,11 @@ Client
 ## Observation path
 
 Injected Eve hooks use Eveland-private OpenTelemetry providers without changing user instrumentation. API, Agent Gateway, Worker, and Agent signals enter the managed Collector over OTLP. Built-in is always enabled and projects Agent logs and Worker capacity metrics into Sessions, Usage, and Instance Health; it stores no raw spans, LogRecords, or Metric Points. When configured, Elastic receives all Eveland signals, while Langfuse receives Agent traces only. External destinations have isolated queues and empty-OTLP health probes. Capacity samples retain 30 days, derived Session and Usage data retain 90 days, and batch receipts retain 24 hours. Playground streaming is not the authoritative collection path.
+
+## Deeper reference
+
+- [Production architecture](/docs/production): supported core services, host Worker, and systemd topology
+- [Design decisions overview](/docs/reference/design): full collection of architectural trade-offs behind structural choices
+- [Why systemd, not Docker](/docs/reference/design/runtime): runtime selection and host density rationale
+- [Agent Gateway invariants](/docs/reference/design/gateway): data-plane rules and security isolation boundaries
+- [Observability architecture decisions](/docs/reference/design/observability): why OpenTelemetry is the sole telemetry transport

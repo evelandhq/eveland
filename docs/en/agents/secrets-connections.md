@@ -31,3 +31,10 @@ Secret-bearing authentication fields select a Project Secret. API resolves the c
 - Playground-authentication Project Secret changes resolve per request and do not restart the Agent.
 - Deleted values fail closed instead of falling back to an older plaintext copy.
 - Secret values are added to diagnostic masking and never returned through client APIs.
+
+## Deeper reference
+
+- [Agent environment behavior contract](/docs/reference/agent-environment): three-tier precedence rules and build-visible variables
+- [Identity and Caller Token contract](/docs/reference/identity): Agent authentication, Principals, and Caller Token minting
+- [Security model and isolation boundaries](/docs/operations/security): encryption at rest, masking, and process permission models
+- [Playground behavior and authentication](/docs/reference/playground): interactive debugging and supported credential types

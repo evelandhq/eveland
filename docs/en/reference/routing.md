@@ -50,3 +50,10 @@ The sweep's scope includes systemd units stuck activating (auto-restart flapping
 ## Diagnostics capture on health-check failure
 
 When a newly started or restarted process fails its HTTP health check, the worker must capture runtime diagnostics before cleaning up the process. Docker records container state, exit code, OOM/restart counts, and the last 200 lines of `docker logs`; systemd records unit state, result/restart counts, and the last 200 lines of journal. Before entering the project runtime logs, diagnostics must be masked with the complete project secret set and capped at 32,000 characters. Failures in diagnostics capture or the subsequent cleanup may only append independent errors — never overwriting the original health-check error; responses and persisted logs must never leak secret plaintext.
+
+## Deeper reference
+
+- [Releases and traffic routing](/docs/agents/releases-routing): immutable previews, stable routes, and session affinity
+- [Agent Gateway invariants](/docs/reference/design/gateway): data-plane invariants and Host validation rationale
+- [Scale to zero and cold activation](/docs/reference/design/scale-to-zero): activation leases, idle reaping, and lifecycle governance
+- [Health and diagnostics](/docs/operations/diagnostics): runtime diagnostics capture and evidence inspection

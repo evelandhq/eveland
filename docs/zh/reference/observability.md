@@ -351,3 +351,10 @@ Worker 每五分钟通过同一条 API egress proxy 路径，用不含业务数�
 | `apps/worker/src/jobs/collector-observability` | Collector 配置生成、验证、应用和健康协调                                             |
 | `apps/web/src/app/settings/observability`      | external destinations 与 Agent capture 设置                                          |
 | `infra/otel/collector.yaml`                    | 默认 managed Collector 配置                                                          |
+
+## 深入参考
+
+- [可观测性设计决策](/zh/docs/reference/design/observability)：为什么选择 OpenTelemetry 作为唯一遥测传输
+- [会话与用量追踪](/zh/docs/observe/sessions)：面向开发者的 Session 与 Usage 模型概览
+- [健康与诊断](/zh/docs/operations/diagnostics)：Collector 存活检查与故障定位
+- [架构参考](/zh/docs/reference/architecture)：系统 Observation Path 与信号流向图

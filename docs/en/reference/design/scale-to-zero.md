@@ -71,3 +71,10 @@ missed count, never an unbounded replay.
   invariant: readiness verifies the listening socket belongs to the process
   the Worker started, so the Gateway can never proxy traffic to a stranger
   that grabbed the port.
+
+## Deeper reference
+
+- [Why systemd, not Docker](/docs/reference/design/runtime): runtime density and marginal cost of dormant agents
+- [Routing and Deployment lifecycle contract](/docs/reference/routing): activation leases, port reservation, and cold starts
+- [Schedules and automation](/docs/observe/schedules): developer guide to schedule execution and prewarming
+- [Scheduling behavior contract](/docs/reference/scheduling): planner state machine, prewarming, and execution boundaries

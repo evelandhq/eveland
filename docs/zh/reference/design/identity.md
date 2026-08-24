@@ -85,3 +85,10 @@ Agent Gateway 的一般规则是透明转发、绝不解释认证协议；Open �
 - **OIDC 模式下 Playground 的平台身份凭证直接不可用**，而不是架桥：
   Playground 用户与 IdP 用户之间不存在可信映射，用 email 造一个就违反
   反合并规则。为了边界干净，真实的能力被放弃了。
+
+## 深入参考
+
+- [Agent 身份行为契约](/zh/docs/reference/identity)：三种 Provider 模式、Caller Token 规范与协议细节
+- [Agent Catalog 与聊天客户端](/zh/docs/reference/design/agent-catalog)：统一聊天客户端 Dawn 与 Catalog 投影契约
+- [安全模型与隔离边界](/zh/docs/operations/security)：外部身份网络策略、凭据存储与 CORS 保护
+- [Playground 交互与认证](/zh/docs/reference/playground)：Playground 认证方法与 OIDC 授权码支持

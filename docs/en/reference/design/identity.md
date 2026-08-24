@@ -106,3 +106,10 @@ caching, the mint-failure fallback) live in
   Playground users and IdP users, and inventing one by email would breach
   the anti-conflation rule. A real capability was dropped to keep the
   boundary clean.
+
+## Deeper reference
+
+- [Agent identity behavior contract](/docs/reference/identity): three provider modes, Caller Token specifications, and protocol details
+- [Agent Catalog and chat clients](/docs/reference/design/agent-catalog): the unified Dawn web chat client and Catalog projection contract
+- [Security model and isolation boundaries](/docs/operations/security): external identity network policy, credential storage, and CORS protections
+- [Playground behavior and authentication](/docs/reference/playground): Playground authentication methods and OIDC authorization code support

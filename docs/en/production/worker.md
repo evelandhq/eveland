@@ -94,3 +94,9 @@ Only start the Worker with the new runtime once the old runtime has zero `evelan
 Worker refuses to accept jobs while production preflight or the durable workflow configuration is incomplete. Check the service journal and the masked Worker configuration snapshot (`diagnostics/worker-configuration.json` under the data root, surfaced in **Settings → About**) before moving on.
 
 Next, [install the workflow dispatcher](/docs/production/workflow-dispatcher).
+
+## Deeper reference
+
+- [Why systemd, not Docker](/docs/reference/design/runtime): runtime selection and host density rationale
+- [Why a bubblewrap sandbox](/docs/reference/design/sandbox): build and execution sandbox isolation
+- [Capacity planning](/docs/operations/capacity): calculating concurrent builds, running agents, and database connection limits

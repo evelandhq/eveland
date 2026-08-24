@@ -63,3 +63,10 @@ The standalone, public `GET /agent-catalog` serves the read-only Agent Catalog p
 The Catalog returns project ID, display name, description, stable endpoint, and capability; it creates no separate Catalog records, probes no Agents dynamically, includes or infers no auth configuration, and offers no marketplace, categories, search, or review. The `projectId` is the stable managed Agent identity a chat client uses together with the Eveland issuer; an endpoint change must not mint a new Agent identity.
 
 The source scan records `eveChat=true` only when the standard `agent/channels/eve.ts` (including supported JS/TS extensions) explicitly imports from `eve/channels/eve` and default-exports `eveChannel(...)`. The Catalog always reads the stable route's actual Deployment → Release → Source Revision, never a project's later-imported but undeployed current source revision. Projects with no standard Eve Channel, no stable deployment, any unroutable positive-weight target, or a target not declaring the Eve Channel must not appear in results. An Agent's use of `none()`, `localDev()`, `httpBasic()`, JWT, OIDC, `evelandIdentity()`, or a custom `AuthFn` never changes Catalog membership.
+
+## Deeper reference
+
+- [Identity architecture design decisions](/docs/reference/design/identity): three independent trust boundaries and offline Caller Token verification
+- [Agent Catalog and chat clients](/docs/reference/design/agent-catalog): the unified Dawn web chat client and the Catalog projection contract
+- [Playground behavior and authentication](/docs/reference/playground): credential acquisition methods and OIDC code flow
+- [Security model](/docs/operations/security): external identity network policies and CORS boundaries

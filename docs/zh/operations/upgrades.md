@@ -48,3 +48,9 @@ pnpm --filter @evelandhq/api db:migrate
 每个 Release 都基于共享、External-only Workflow World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动。带有共享 World 之前历史的安装可能仍保留遗留的按 Project Workflow 配置：
 
 - 只在仍有遗留 Project 处于删除过程中时保留 `WORKFLOW_POSTGRES_URL`（与 `WORKFLOW_POSTGRES_BOOTSTRAP_URL`）——删除遗留 Project 时才会 Drop 其派生的 `eveland_wf_<project>_<digest>` 数据库。一旦没有任何保留 Deployment Attestation 为 Legacy World、且 `pg_database` 中除共享 World 本身外不再有 `eveland_wf_*` 数据库，即可取消这两个变量；遗留 Stream Retention Sweep（`EVELAND_WORKFLOW_SWEEP_*`）随之无事可做。孤立的 `eveland_wf_*` 数据库可用标准 Postgres 工具 Drop。External-only 安装永远不设置这些变量。
+
+## 深入参考
+
+- [备份与恢复](/zh/docs/operations/backup-restore)：升级前后的完整数据备份与灾难恢复流程
+- [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)：平台支持的 Eve 版本范围与依赖演进
+- [运行时与资源管理](/zh/docs/operations/runtime)：版本升级时的实例生命周期与 Attestation 验证

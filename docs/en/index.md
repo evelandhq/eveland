@@ -26,8 +26,9 @@ This boundary keeps the Docker controller, source tree, decrypted secrets, and t
 
 ## Choose your path
 
-- **Platform administrators:** start with [Production architecture](/docs/production), prepare a Linux host, install the core services and Worker, then verify the complete path.
-- **Team members:** if Eveland is already installed, follow [Deploy your first agent](/docs/agents/first-deployment).
-- **Operators:** use [Runtime and resources](/docs/operations/runtime) and [Health and diagnostics](/docs/operations/diagnostics) for day-two work; [capacity](/docs/operations/capacity), [backup and restore](/docs/operations/backup-restore), and the [environment variable reference](/docs/reference/environment-variables) go deeper.
+- **Architects and evaluators:** start with [Why Eveland](/docs/why) for the founding argument, and explore [Design decisions](/docs/reference/design) for detailed trade-offs behind runtime density, bubblewrap sandboxing, scale-to-zero, and gateway design.
+- **Agent developers and team members:** if Eveland is already installed, follow [Deploy your first agent](/docs/agents/first-deployment), then explore [Secrets and Connections](/docs/agents/secrets-connections), [Releases and traffic routing](/docs/agents/releases-routing), [Sessions and usage tracking](/docs/observe/sessions), and [Schedules and automation](/docs/observe/schedules).
+- **Platform administrators:** start with [Production architecture](/docs/production), prepare a Linux host, install the core services, host Worker, and Workflow Dispatcher, then verify the complete path.
+- **Operators and SREs:** use [Runtime and resources](/docs/operations/runtime), [Health and diagnostics](/docs/operations/diagnostics), and [Troubleshooting](/docs/reference/troubleshooting) for day-two operations; [Capacity planning](/docs/operations/capacity), [Upgrades](/docs/operations/upgrades), [Backup and restore](/docs/operations/backup-restore), and the [Environment variable reference](/docs/reference/environment-variables) cover deeper production scenarios.
 
 Local Docker development and repository contribution workflows remain in the repository README. They are not the production deployment path.

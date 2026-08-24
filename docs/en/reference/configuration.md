@@ -30,3 +30,11 @@ Configure independent runtime and dispatch secrets, the private redeem URL, prew
 Configure only the documented OpenTelemetry topology values needed by the deployment. Agent capture, privacy, and external destinations belong to System settings; telemetry degradation must remain separate from Agent-turn success.
 
 Never copy a development fallback into production. Admins can compare the allowlisted effective component configuration under **Settings → About**; secret values remain masked.
+
+## Deeper reference
+
+- [Environment variables](/docs/reference/environment-variables): complete dictionary of platform variable names, defaults, and consumers
+- [Production architecture](/docs/production): core services, host Worker, and Dispatcher topology
+- [Install the core services](/docs/production/core-services): Compose production environment variable configuration
+- [Install the host Worker](/docs/production/worker): Worker systemd environment variable configuration
+- [Install the workflow dispatcher](/docs/production/workflow-dispatcher): Dispatcher environment variables and concurrency tuning

@@ -1,19 +1,22 @@
 {
   "title": "参考",
   "pages": [
+    "---架构与设计决策---",
+    "architecture",
+    "design",
+    "---运维与配置---",
     "configuration",
     "environment-variables",
     "eve-compatibility",
-    "architecture",
-    "identity",
+    "troubleshooting",
+    "---领域行为契约---",
     "source-import",
-    "playground",
-    "scheduling",
     "agent-environment",
-    "dashboard",
+    "identity",
+    "playground",
     "routing",
+    "scheduling",
     "observability",
-    "design",
-    "troubleshooting"
+    "dashboard"
   ]
 }

@@ -58,3 +58,10 @@ Eveland 不增加独立的 Connections 配置页，也不接管 Eve 的 Connecti
 - deploy、restart 和新 Release 后继续可用，且 credential 不进入 Build Log 或 Release summary。
 
 Connection URL、inline OpenAPI spec 与模块结构仍是源码/构建输入；Project Secret 只在运行时注入，不能在 build 时读取。Vercel Connect 是项目可以自行采用的外部 credential helper，不是 Eveland 托管 Connection 的前置条件，也不要求 Eveland operator 或项目拥有 Vercel account。self-hosted interactive user authorization 尚未纳入端到端支持矩阵；Connection marketplace 仍是非目标。
+
+## 深入参考
+
+- [密钥、Connection 与 Playground 认证](/zh/docs/agents/secrets-connections)：面向开发者的凭据配置指引
+- [安全模型](/zh/docs/operations/security)：Playground 凭证信封、安全版本号与网络 Egress 策略
+- [Agent Gateway 不变量](/zh/docs/reference/design/gateway)：`/internal/*` 路径的特权隔离与数据面边界
+- [Agent 身份](/zh/docs/reference/identity)：Eveland Identity、OIDC 与 Caller Token 体系

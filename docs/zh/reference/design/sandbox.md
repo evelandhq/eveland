@@ -31,7 +31,7 @@ bubblewrap 胜出是因为它只需要 `bwrap` 二进制加非特权 user namesp
 
 > 这是对失误和 prompt injection 的防护——不是多租户隔离。
 
-这句话是整个设计的承重墙。具体地说：每次调用都 `--clearenv`，Agent 进程
+这是整个设计的核心防护边界。具体地说：每次调用都 `--clearenv`，Agent 进程
 环境里的部署 Secret 绝不泄漏进沙箱代码；tmpfs 掩码遮住平台数据目录；但
 宿主机文件系统的其余部分对沙箱内代码只读可见，且沙箱共享宿主机内核。
 如果必须在一台机器上运行不受信任的租户，记录在案的指引是转向 VM 级
@@ -55,3 +55,10 @@ Eve 懒加载沙箱：`eve build` 不碰后端，健康端点在沙箱完全坏�
 `bwrap`。Eveland 因此在构建时执行自检：用部署将获得的同一套 systemd
 加固运行真实后端。配置错误的宿主机表现为一次失败的构建，而不是一次
 失败的对话。
+
+## 深入参考
+
+- [准备宿主机](/zh/docs/production/prerequisites)：AppArmor、bwrap 与用户/目录前提
+- [安装宿主机 Worker](/zh/docs/production/worker)：构建 Sandbox 信任边界与环境变量过滤
+- [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：生产环境运行时选型决策
+- [健康与诊断](/zh/docs/operations/diagnostics)：构建日志中的 Sandbox 探针自检证据

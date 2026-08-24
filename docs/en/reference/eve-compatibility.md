@@ -54,3 +54,10 @@ Eveland fails closed when the dependency is missing, outside the window, or cann
 - schedule execution
 
 The diagnostic asks the project owner to upgrade instead of guessing an older protocol. Review the release notes before upgrading either Eve or Eveland in production.
+
+## Deeper reference
+
+- [Source import](/docs/reference/source-import): preflight validation and dependency scanning contract
+- [Deploy your first agent](/docs/agents/first-deployment): project import and build quickstart
+- [Upgrade and rollback](/docs/operations/upgrades): platform updates and Eve dependency lifecycle management
+- [Agent Gateway invariants](/docs/reference/design/gateway): sliding fail-closed compatibility window design decisions

@@ -253,3 +253,11 @@ Read only by test or integration harnesses; not part of runtime configuration:
 - `E2E_CHECK_MODE` — agent-sandbox end-to-end check.
 - `SMOKE_SECRET` — bwrap / systemd smoke tests.
 - `EVE_EXAMPLE_MODEL`, `EVE_EXAMPLE_REAL_LLM` — example-agent tests.
+
+---
+
+## Deeper reference
+
+- [Configuration](/docs/reference/configuration): component ownership and configuration application rules
+- [Production architecture](/docs/production): system core services, host Worker, and network/storage topology
+- [Capacity planning](/docs/operations/capacity): connection limits, concurrent builds, and memory budgeting guide

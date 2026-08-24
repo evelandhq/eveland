@@ -71,3 +71,10 @@ release note、对耦合面做源码 diff、并用真实发布包跑完 fixture 
 Agent 晾在原地；能力地板（比如持久路由）返回显式错误而不是降级。
 
 当前窗口与各线状态见 [Eve 兼容性](/zh/docs/reference/eve-compatibility)。
+
+## 深入参考
+
+- [配置 Agent 流量](/zh/docs/production/networking)：Wildcard DNS、TLS、反向代理与私有端口
+- [路由与 Deployment 生命周期契约](/zh/docs/reference/routing)：Route Policy、两目标加权与 Session 绑定
+- [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)：滑动兼容窗口与受支持版本范围
+- [安全模型与网络边界](/zh/docs/operations/security)：Host 重写防护、内部特权路径与凭据隔离

@@ -31,3 +31,10 @@ Eveland Identity 发送 Eveland 签发的 Caller Token，让 Agent 的 `evelandI
 - Playground authentication 的 Project Secret 每次请求解析，不重启 Agent。
 - 已删除的值 Fail Closed，不回退到旧明文副本。
 - Secret 值进入诊断脱敏列表，永远不会通过 Client API 返回。
+
+## 深入参考
+
+- [Agent 环境行为契约](/zh/docs/reference/agent-environment)：三层环境变量优先级与 Build 可见变量规则
+- [身份与 Caller Token 契约](/zh/docs/reference/identity)：Agent 认证、Principal 与 Caller Token 铸造
+- [安全模型与隔离边界](/zh/docs/operations/security)：机密落盘加密、脱敏与进程权限模型
+- [Playground 交互与认证参考](/zh/docs/reference/playground)：各种认证方式在 Playground 中的具体行为与限制

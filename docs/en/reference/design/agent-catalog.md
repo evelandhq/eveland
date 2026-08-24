@@ -68,3 +68,10 @@ LLM chat experience and more than a message bridge can show.
 Dawn is _a_ client, not _the_ client — the continuation protocol above is
 deliberately implementable by any client, and a CLI was anticipated as a
 peer from the start.
+
+## Deeper reference
+
+- [Identity architecture design decisions](/docs/reference/design/identity): three independent trust boundaries and Caller Tokens
+- [Agent identity behavior contract](/docs/reference/identity): Agent Catalog read-only projection contract and `evelandIdentity()` protocol
+- [Deploy your first agent](/docs/agents/first-deployment): importing and publishing an agent with standard Eve Channels
+- [Security model](/docs/operations/security): external identity network policy and browser session isolation

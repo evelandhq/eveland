@@ -391,3 +391,10 @@ failure.
 | `apps/worker/src/jobs/collector-observability` | Collector configuration generation, validation, application, and health coordination |
 | `apps/web/src/app/settings/observability`      | External destinations and Agent capture settings                                     |
 | `infra/otel/collector.yaml`                    | Default managed Collector configuration                                              |
+
+## Deeper reference
+
+- [Observability design decisions](/docs/reference/design/observability): why OpenTelemetry is the sole telemetry transport
+- [Sessions and usage tracking](/docs/observe/sessions): developer guide to SessionNode trees and usage reporting
+- [Health and diagnostics](/docs/operations/diagnostics): verifying Collector health and evidence discovery
+- [Architecture reference](/docs/reference/architecture): observation data path and telemetry flow diagrams

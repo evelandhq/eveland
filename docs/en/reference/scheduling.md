@@ -48,3 +48,10 @@ Every cron or manual execution persists an independent ScheduleRun; success with
 Below the schedule definition table, the latest 50 ScheduleRuns are shown with further pagination. The list covers all schedules by default; clicking a schedule's "view history" stays on the Schedules page, filters to that schedule (`schedule_id = current schedule`), and scrolls to Recent runs.
 
 When a ScheduleRun is associated with exactly one session, its primary link goes straight to that session's detail. A zero-session run has no session to jump to, and a multi-session run cannot arbitrarily pick one, so both cases open the ScheduleRun detail to see the full execution result and associated sessions.
+
+## Deeper reference
+
+- [Schedules and automation](/docs/observe/schedules): developer guide to schedule definitions and execution
+- [Workflow architecture design decisions](/docs/reference/design/workflow): external dispatching and purpose-built Workflow World rationale
+- [Scale-to-zero design decisions](/docs/reference/design/scale-to-zero): why the platform owns cron clocks and target prewarming
+- [Troubleshooting](/docs/reference/troubleshooting#schedule-did-not-run): diagnosing missed schedule runs and execution errors

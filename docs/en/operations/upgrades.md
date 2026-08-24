@@ -48,3 +48,9 @@ Never flip `EVELAND_RUNTIME` as an upgrade shortcut. Existing Deployments retain
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:
 
 - Keep `WORKFLOW_POSTGRES_URL` (and `WORKFLOW_POSTGRES_BOOTSTRAP_URL`) configured only while legacy Projects are still being deleted — deleting a legacy Project is what drops its derived `eveland_wf_<project>_<digest>` database. Once no retained Deployment attests a legacy world and `pg_database` lists no `eveland_wf_*` databases other than the shared World itself, unset both variables; the legacy stream-retention sweep (`EVELAND_WORKFLOW_SWEEP_*`) then has nothing to do. Orphaned `eveland_wf_*` databases can be dropped with standard Postgres tooling. External-only installs never set these variables.
+
+## Deeper reference
+
+- [Backup and restore](/docs/operations/backup-restore): full data backup and disaster recovery procedures around upgrades
+- [Eve compatibility window](/docs/reference/eve-compatibility): supported Eve version lines and dependency evolution
+- [Runtime and resources](/docs/operations/runtime): instance lifecycle and attestation verification during release updates

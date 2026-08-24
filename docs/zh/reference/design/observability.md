@@ -54,3 +54,10 @@ flush 或关闭用户自己的 OTel 设施——自带可观测性的 Agent 保�
   领域账本，而不是把遥测 spool 改造成非标准的账本。
 - **重建有标注。** 记录的模型调用输入是从 Eve 事件流重建的，并如实标注
   为重建，而不是冒充逐字 prompt。
+
+## 深入参考
+
+- [可观测性行为契约](/zh/docs/reference/observability)：OTLP 批处理存储、SessionNode 树合并规则与数据保留周期
+- [会话与用量追踪](/zh/docs/observe/sessions)：面向开发者的 Session 与 Usage 模型概览
+- [健康与诊断](/zh/docs/operations/diagnostics)：Collector 状态检查与用量完整性排查
+- [架构参考](/zh/docs/reference/architecture)：系统 Observation Path 与信号拓扑图

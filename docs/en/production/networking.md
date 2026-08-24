@@ -41,3 +41,9 @@ The Agent Gateway validates the complete canonical Host, strips untrusted forwar
 The service-authenticated Playground and activation routes under `/internal/*` must remain unreachable through the public proxy.
 
 Next, [verify the platform](/docs/production/verify).
+
+## Deeper reference
+
+- [Agent Gateway design decisions](/docs/reference/design/gateway): data-plane invariants, Host validation, and proxy security
+- [Routing and Deployment lifecycle contract](/docs/reference/routing): route policies, two-target basis-point weights, and session affinity
+- [Security model and network boundaries](/docs/operations/security): private port shielding and wildcard TLS certificate models

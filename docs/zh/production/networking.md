@@ -41,3 +41,9 @@ Agent Gateway 验证完整 Canonical Host，移除不受信任的 Forwarding Hea
 `/internal/*` 下由 Service Authentication 保护的 Playground 与 Activation Route 必须对公开代理保持不可达。
 
 下一步[验证平台](/zh/docs/production/verify)。
+
+## 深入参考
+
+- [Agent Gateway 不变量与安全设计](/zh/docs/reference/design/gateway)：网关数据面规则与 Host 校验决策
+- [路由与 Deployment 生命周期契约](/zh/docs/reference/routing)：Route Policy、两目标加权与 Session 绑定
+- [安全模型与网络边界](/zh/docs/operations/security)：私有端口保护与证书模型
