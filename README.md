@@ -14,7 +14,8 @@ schedules, and logs.
 > 0.x line makes breaking changes in minor releases (each is documented in the
 > [CHANGELOG](CHANGELOG.md) and in
 > [`docs/en/operations/upgrades.md`](docs/en/operations/upgrades.md)). Production
-> deployments run on Linux (systemd or Docker runtimes); development works on
+> deployments run on Linux with the systemd runtime (bubblewrap sandboxing);
+> the Docker runtime is for development, not production. Development works on
 > macOS and Linux with Node ≥ 24 and pnpm 11.
 
 Eveland is a pnpm monorepo. The authenticated Dashboard, platform API, Agent

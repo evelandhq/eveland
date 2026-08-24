@@ -15,7 +15,7 @@ body:
       label: Deployment runtime
       options:
         - systemd (production default)
-        - docker
+        - docker (development)
         - local dev (pnpm dev)
     validations:
       required: true
