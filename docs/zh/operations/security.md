@@ -59,3 +59,10 @@ Generic OIDC 需要把 `${WEB_ORIGIN}/agent-auth/oidc/callback` 注册为精确 
 ## GitLab PAT 导入
 
 GitLab PAT 导入在 API 与 Worker 上使用同一个 `APP_SECRET_KEY`；数据库只存按用户与规范化 HTTP Host 加密的 AES-256-GCM 密文。`git clone` 期间，Worker 通过 Git 的临时环境配置传递 Host-scoped Basic Authorization Header——Token 永远不会出现在 argv、仓库 URL、`.git/config`、Job/Status 响应或日志中。只有一次完整源码导入成功后，Credential 才会提升为用户的已保存设置。要求 PAT 设置过期时间并使用最小的 `read_repository` Scope；泄露的 Token 在 GitLab 中吊销，并在 Settings 里删除其 Host 条目。SSH/SCP 导入继续使用 Worker 宿主机现有的 SSH 配置，不消费 PAT。
+
+## 深入参考
+
+- [身份架构设计决策](/zh/docs/reference/design/identity)：三条独立信任边界与 Caller Token 机制
+- [Agent 身份行为契约](/zh/docs/reference/identity)：三种 Provider 模式、Token 规范与 `evelandIdentity()`
+- [Agent 环境行为契约](/zh/docs/reference/agent-environment)：Project Secret、Shared Environment 与保留变量优先级
+- [安装宿主机 Worker](/zh/docs/production/worker)：构建 Sandbox、非特权用户与权限隔离实操

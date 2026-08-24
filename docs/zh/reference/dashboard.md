@@ -131,3 +131,10 @@ Project Settings 使用页面内二级导航，不在主 Sidebar 展开第三层
 Logs 提供三类日志：Build Log；Deploy Log；Runtime stdout/stderr 与 ScheduleRun lifecycle diagnostics。Agent 的具体执行过程不放在 Logs 中，而放在 Session Timeline 中。
 
 Logs 页面默认按时间倒序展示最新记录，在固定高度的滚动区域内提供文本搜索、类型筛选和升降序切换。多行或超长记录默认显示紧凑摘要，用户可按行展开查看完整原文。
+
+## 深入参考
+
+- [部署第一个 Agent](/zh/docs/agents/first-deployment)：控制台核心部署操作快速入门
+- [会话与用量](/zh/docs/observe/sessions)：Sessions 与 Usage 页面背后的数据模型
+- [健康与诊断](/zh/docs/operations/diagnostics)：控制台中的健康指标与日志排障矩阵
+- [安全模型](/zh/docs/operations/security)：平台认证、邀请与团队成员权限体系

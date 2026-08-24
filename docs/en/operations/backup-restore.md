@@ -38,3 +38,9 @@ Built Release artifacts (`builds/`) are _not_ safely excludable: a Release is im
 ## Host reboot recovery
 
 A reboot is not a restore case. systemd Deployment processes are transient units and deliberately do not restart after a host reboot. The enabled Worker service does restart, reconciles stale `ready` RuntimeInstances to `stopped`/`failed`, and the next cron or Agent Gateway request cold-starts the preserved exact Release. The immutable Deployment, routes, history, and SessionBindings survive; only the transient process is absent during the cold interval.
+
+## Deeper reference
+
+- [Upgrade and rollback](/docs/operations/upgrades): version upgrade checklist and control-plane database migrations
+- [Capacity planning](/docs/operations/capacity): storage budgeting for data root, release artifacts, and durable workspaces
+- [Security model](/docs/operations/security): protecting `APP_SECRET_KEY` and secret recovery boundaries

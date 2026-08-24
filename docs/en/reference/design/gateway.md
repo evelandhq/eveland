@@ -89,3 +89,10 @@ never strands Agents that are still on the previous line; capability floors
 
 The current window and per-line status live in
 [Eve compatibility](/docs/reference/eve-compatibility).
+
+## Deeper reference
+
+- [Configure Agent traffic](/docs/production/networking): wildcard DNS, TLS, reverse proxying, and private ports
+- [Routing and Deployment lifecycle contract](/docs/reference/routing): route policies, two-target basis-point weights, and session affinity
+- [Eve compatibility window](/docs/reference/eve-compatibility): sliding compatibility window and supported version matrix
+- [Security model and network boundaries](/docs/operations/security): Host rewrite defenses, internal privileged paths, and credential isolation

@@ -57,3 +57,9 @@ Restart the Dashboard, API, and Agent Gateway from the core-services checkout, a
 The authenticated Dashboard **Settings → About** page compares Dashboard and API build identity; API and Agent Gateway also expose it through their public `/health` responses, Worker prints it on startup, and the dispatcher reports it on its registration. Do not call the installation (or a later upgrade) complete while any of these disagree. Team admins can use the same About page to inspect the allowlisted effective configuration of each component; secrets appear only as a fixed mask.
 
 Next, [install the host Worker](/docs/production/worker).
+
+## Deeper reference
+
+- [Production architecture](/docs/production): supported core services, host Worker, and systemd topology
+- [Configuration reference](/docs/reference/configuration): component environment variable ownership and defaults
+- [Security model](/docs/operations/security): network isolation, credential protection, and process privilege boundaries

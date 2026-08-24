@@ -58,3 +58,10 @@ Eveland adds no standalone Connections configuration page and does not take over
 - continued availability after deploys, restarts, and new Releases, with credentials never entering the build log or Release summary.
 
 Connection URLs, inline OpenAPI specs, and module structure remain source/build inputs; project secrets inject at runtime only and cannot be read at build time. Vercel Connect is an external credential helper projects may adopt on their own — neither a prerequisite for Eveland-managed Connections nor a requirement for the Eveland operator or project to hold a Vercel account. Self-hosted interactive user authorization is not yet in the end-to-end support matrix; a Connection marketplace remains a non-goal.
+
+## Deeper reference
+
+- [Secrets, Connections, and Playground authentication](/docs/agents/secrets-connections): developer guide to credentials and authentication methods
+- [Security model](/docs/operations/security): credential envelopes, security revisions, and network egress policies
+- [Agent Gateway invariants](/docs/reference/design/gateway): `/internal/*` privileged isolation and data-plane rules
+- [Agent identity](/docs/reference/identity): Eveland Identity, OIDC, and Caller Token mechanics

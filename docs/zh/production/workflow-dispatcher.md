@@ -54,3 +54,9 @@ Registration 由实际持有 Ownership Lock 的 Dispatcher 通过受服务认证
 保持 `EVELAND_REVISION` 与 `EVELAND_RELEASE_CHANNEL` 与 Dashboard、API、Agent Gateway、Worker 完全一致，并在每次升级时从 `/opt/eveland` 重启 Dispatcher。Dispatcher 还负责有界的共享 World 维护（Stream Block Packing、按期限过期）——Durable World 的运行时行为见[Runtime 运维](/zh/docs/operations/runtime)。
 
 下一步[配置 Agent 流量](/zh/docs/production/networking)。
+
+## 深入参考
+
+- [Workflow 架构设计决策](/zh/docs/reference/design/workflow)：外置 Dispatcher 与自建共享 Workflow World 的论证
+- [运行时与资源运营](/zh/docs/operations/runtime)：Durable Workflow World 的租户隔离与保留策略
+- [配置参考](/zh/docs/reference/configuration)：Dispatcher 环境变量清单与并发参数配置

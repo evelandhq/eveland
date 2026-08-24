@@ -36,3 +36,10 @@ The build environment therefore receives, beyond the platform's own toolchain al
 Two groups of platform-reserved names are dropped from builds with a `WARNING` in the build log (never silently) while still injecting normally into deployed processes: the build toolchain's own `PATH`, `HOME`, `NPM_CONFIG_CACHE`, and every name in the runtime reserved layer — the runtime applies those last, so a build adopting a project's value would compile something the deployed process immediately overrides. The complete reserved list with per-name reasoning lives in [Worker and builds](/docs/production/worker); the list must stay in sync with the runtime reserved layer and is locked by a test.
 
 Releases are immutable, so changing a `variable` refreshes the compiled output only on the next deploy; a plain environment change still only enqueues restarts for live deployments on the existing Release. The Environment page must make this visible to operators. The Docker runtime passes these variables via the generated Dockerfile's `ARG` and `docker build --build-arg`, and their values appear in that image's build metadata — a direct consequence of the `variable`/`secret` tiering; the `ARG` declarations sit after the dependency-install layer, so on Docker only pre-discovery, the Extension integrator, `npx eve build`, and the final discovery can read them, while systemd runs install and build in one shell where both can. The build log still masks the complete set of project/shared environment values.
+
+## Deeper reference
+
+- [Secrets and Connections](/docs/agents/secrets-connections): developer guide to runtime secrets and Playground credentials
+- [Security model and isolation boundaries](/docs/operations/security): environment materialization, masking, and process privileges
+- [Install the host Worker](/docs/production/worker): build-time allowlists, environment filtering, and reserved variable rules
+- [Environment variables](/docs/reference/environment-variables): platform-wide configuration and runtime-reserved variables

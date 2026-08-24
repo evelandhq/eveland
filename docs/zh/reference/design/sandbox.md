@@ -55,3 +55,10 @@ Eve 懒加载沙箱：`eve build` 不碰后端，健康端点在沙箱完全坏�
 `bwrap`。Eveland 因此在构建时执行自检：用部署将获得的同一套 systemd
 加固运行真实后端。配置错误的宿主机表现为一次失败的构建，而不是一次
 失败的对话。
+
+## 深入参考
+
+- [准备宿主机](/zh/docs/production/prerequisites)：AppArmor、bwrap 与用户/目录前提
+- [安装宿主机 Worker](/zh/docs/production/worker)：构建 Sandbox 信任边界与环境变量过滤
+- [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：生产环境运行时选型决策
+- [健康与诊断](/zh/docs/operations/diagnostics)：构建日志中的 Sandbox 探针自检证据

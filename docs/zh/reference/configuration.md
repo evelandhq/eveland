@@ -30,3 +30,11 @@ description: 查找生产配置分组以及每个值所属的组件。
 部署时只配置文档要求的 OpenTelemetry 拓扑值。Agent Capture、隐私与外部目的地属于 System Settings；Telemetry Degradation 必须继续与 Agent Turn Success 分离。
 
 不要将开发 Fallback 复制到生产。管理员可以在 **Settings → About** 比较 Allowlisted Effective Configuration；Secret Value 始终 Masked。
+
+## 深入参考
+
+- [环境变量参考](/zh/docs/reference/environment-variables)：平台全部环境变量名称、默认值与读取位置
+- [生产架构概览](/zh/docs/production)：核心服务、宿主机 Worker 与 Dispatcher 的整体拓扑
+- [安装核心服务](/zh/docs/production/core-services)：Compose 生产环境变量配置
+- [安装宿主机 Worker](/zh/docs/production/worker)：Worker systemd 环境变量配置
+- [安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)：Dispatcher 环境变量配置与参数调优

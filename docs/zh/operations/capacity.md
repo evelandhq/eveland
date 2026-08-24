@@ -43,3 +43,10 @@ Eveland 在一台机器上运行一组 Agent，因此实际问题是机器规格
 - `EVELAND_SANDBOX_CACHE_DIR` 下的 Sandbox Cache 随持久化 Session 与唯一 Template 数量增长，且不会自动清理。Vendored Backend 提供 Dry-run 优先的 List/Prune API；应用删除前先检查 Dry Run，绝不手工删除哈希命名目录。
 - Release Artifact 由 Retention Sweep 约束（`EVELAND_RELEASE_RETENTION`，最新 Release 与活跃 Target 受保护）。
 - 本地 Docker Runtime 下，每个活跃 Deployment 占用一个 Bridge 子网；容量由 Docker 配置的 `default-address-pools` 决定（推荐的 `/16` 切分为 `/24` 允许 256 个并发受管网络）。
+
+## 深入参考
+
+- [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：运行时选型与资源密度
+- [缩容到零设计决策](/zh/docs/reference/design/scale-to-zero)：进程空闲停止与按需激活机制
+- [运行时与资源管理](/zh/docs/operations/runtime)：cgroup 资源限制与 Sandbox 执行预算
+- [环境变量参考](/zh/docs/reference/environment-variables)：并发与容量相关环境变量列表

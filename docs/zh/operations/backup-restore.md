@@ -38,3 +38,9 @@ Eveland 不自带备份工具。运维使用标准的 `pg_dump`、`rsync` 或文
 ## 宿主机重启恢复
 
 重启不是恢复场景。systemd Deployment 进程是 Transient Unit，有意不在宿主机重启后自动拉起。已 Enable 的 Worker 服务会重启，把过期的 `ready` RuntimeInstance 对账为 `stopped`/`failed`；下一个 Cron 或 Agent Gateway 请求会 Cold Start 保留的精确 Release。不可变的 Deployment、Route、历史与 SessionBinding 全部保留；冷启动间隔内缺席的只有 Transient 进程。
+
+## 深入参考
+
+- [升级与回滚](/zh/docs/operations/upgrades)：版本升级检查单与控制平面数据库迁移
+- [容量规划](/zh/docs/operations/capacity)：数据根目录、Release 产物与持久化 Workspace 存储预算
+- [安全模型](/zh/docs/operations/security)：主加密密钥 `APP_SECRET_KEY` 保护与 Secret 恢复边界

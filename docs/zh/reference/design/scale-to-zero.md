@@ -59,3 +59,10 @@ Deployment——绝不经过加权的 Gateway 路由——preview 和候选版�
 - **就绪必须证明端口属主。** 一个后来才发现的坑，现已是不变量：就绪
   检查验证监听 socket 属于 Worker 启动的那个进程，Gateway 才不会把流量
   代理给抢占了端口的陌生进程。
+
+## 深入参考
+
+- [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：运行时密度与休眠边际成本
+- [路由与 Deployment 生命周期契约](/zh/docs/reference/routing)：ActivationLease、端口预留与冷启动
+- [Schedules 与自动化任务](/zh/docs/observe/schedules)：面向开发者的定时调度与唤醒概览
+- [Schedule 执行行为契约](/zh/docs/reference/scheduling)：Planner、Prewarm 与状态机规范

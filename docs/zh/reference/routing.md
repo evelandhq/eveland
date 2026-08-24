@@ -50,3 +50,10 @@ Worker 按独立周期执行 orphan sweep，把主机上实际运行的 `eveland
 ## 健康检查失败的诊断采集
 
 新启动或重启的进程在 HTTP 健康检查失败时，worker 必须先采集 runtime diagnostics 再清理进程。Docker 记录容器 state、exit code、OOM/restart count 与最近 200 行 `docker logs`；systemd 记录 unit state、result/restart count 与最近 200 行 journal。诊断进入 Project runtime logs 前必须使用完整 Project Secret 集合脱敏并限制为 32,000 字符。诊断采集或后续清理失败只能追加独立错误，不能覆盖原始健康检查错误；响应和持久化日志不得泄露 Secret 明文。
+
+## 深入参考
+
+- [Release 与流量路由](/zh/docs/agents/releases-routing)：不可变 Preview、Stable 路由与会话绑定
+- [Agent Gateway 不变量](/zh/docs/reference/design/gateway)：网关数据面规则与 Host 校验决策
+- [缩容到零与冷激活](/zh/docs/reference/design/scale-to-zero)：ActivationLease、Idle 停止与生命周期管理
+- [健康与诊断](/zh/docs/operations/diagnostics)：Deployment 诊断数据采集与日志查看

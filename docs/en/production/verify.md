@@ -56,3 +56,10 @@ bash infra/integration/run.sh
 A fully successful run exits 0 and prints `SMOKE OK`. On failure, inspect the guest units from the host: `limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager | tail -50`.
 
 Record the exact revision and configuration used for the verification. Continue with [Deploy your first agent](/docs/agents/first-deployment) for the team-facing workflow.
+
+## Deeper reference
+
+- [Deploy your first agent](/docs/agents/first-deployment): onboarding guide for agent developers
+- [Health and diagnostics](/docs/operations/diagnostics): component availability checks and log inspection matrix
+- [Troubleshooting](/docs/reference/troubleshooting): symptom-specific triage and known platform limits
+- [Security model](/docs/operations/security): full security boundaries and process privilege model

@@ -67,3 +67,10 @@ Agent 的边际成本趋近于零，同样配置的机器在 systemd 上能跑�
 - 共享数据根 `/var/lib/eveland` 成为跨服务硬契约：API 容器必须以完全相同
   的绝对路径 Bind Mount 它，存储的源码路径才能对容器和宿主机 Worker 同时
   解析。
+
+## 深入参考
+
+- [生产架构概览](/zh/docs/production)：核心服务与宿主机 Worker 拓扑架构
+- [安装宿主机 Worker](/zh/docs/production/worker)：systemd Service 安装与配置
+- [为什么自研 bubblewrap 沙箱](/zh/docs/reference/design/sandbox)：构建与运行时沙箱隔离决策
+- [缩容到零设计决策](/zh/docs/reference/design/scale-to-zero)：休眠 Agent 零成本与冷激活机制

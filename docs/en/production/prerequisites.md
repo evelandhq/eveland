@@ -77,3 +77,10 @@ It verifies the full host contract in one pass: Linux with systemd, running as r
 It reports every failing check at once instead of stopping at the first. Do not continue until it prints `PREFLIGHT OK`.
 
 Continue with [Install the core services](/docs/production/core-services).
+
+## Deeper reference
+
+- [Production architecture](/docs/production): core services, host Worker, and systemd topology
+- [Why a bubblewrap sandbox](/docs/reference/design/sandbox): AppArmor configuration and sandbox self-check rationale
+- [Capacity planning](/docs/operations/capacity): host hardware sizing and Postgres connection budgets
+- [Troubleshooting](/docs/reference/troubleshooting#worker-will-not-start): preflight failure diagnosis and resolution steps

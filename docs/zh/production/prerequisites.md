@@ -77,3 +77,10 @@ pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 它会一次报告所有失败项，而不是在第一项就停止。输出 `PREFLIGHT OK` 之前不要继续。
 
 继续[安装核心服务](/zh/docs/production/core-services)。
+
+## 深入参考
+
+- [生产架构概览](/zh/docs/production)：核心服务、宿主机 Worker 与 systemd 拓扑
+- [为什么自研 bubblewrap 沙箱](/zh/docs/reference/design/sandbox)：AppArmor 配置与沙箱自检决策
+- [容量规划](/zh/docs/operations/capacity)：单机硬件资源评估与 Postgres 连接预算
+- [故障排查](/zh/docs/reference/troubleshooting#worker-无法启动)：Preflight 常见报错诊断与解决步骤

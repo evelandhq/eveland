@@ -82,3 +82,10 @@ Never change the resolved runtime on a host with live deployments. Drain every t
 The job stops every `running` or `draining` Deployment first, resolving each adapter from the Deployment's recorded `runtimeKind`, then removes its runtime Release and the Project's platform-managed source, build, Agent observability policy, and sandbox directories. Only paths contained by `EVELAND_DATA_DIR` are eligible; an externally supplied source path is never recursively removed. Database records are deleted last. Deleting a project must also delete its legacy derived workflow databases (before the project row is deleted; a failed database drop must keep the deletion retryable) — derived databases must never remain as orphans — and drops that project's partitions in the shared database without scanning or deleting any other tenant's.
 
 If a stop, Release removal, filesystem cleanup, or database operation fails, the Project remains with `deletion_status = 'failed'` and the error stays visible for retry. Runtime and filesystem cleanup is not a Postgres transaction, so some resources may already have been removed before a retry.
+
+## Deeper reference
+
+- [Why systemd, not Docker](/docs/reference/design/runtime): runtime density and host privilege isolation rationale
+- [Scale to zero and cold activation](/docs/reference/design/scale-to-zero): activation leases, idle reaping, and process lifecycle
+- [Security model and isolation boundaries](/docs/operations/security): sandbox boundaries and secret injection mechanics
+- [Capacity planning](/docs/operations/capacity): process memory, concurrent builds, and Postgres connection budgeting

@@ -94,3 +94,9 @@ docker rm -f $(docker ps -aq --filter "name=eveland-")
 生产 Preflight 或 Durable Workflow 配置不完整时，Worker 会拒绝接收 Job。继续之前检查 Service Journal 与已脱敏的 Worker Configuration Snapshot（数据根下的 `diagnostics/worker-configuration.json`，在 **Settings → About** 中呈现）。
 
 下一步[安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)。
+
+## 深入参考
+
+- [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：运行时选型与资源密度论证
+- [为什么自研 bubblewrap 沙箱](/zh/docs/reference/design/sandbox)：构建与执行沙箱隔离机制
+- [容量规划](/zh/docs/operations/capacity)：单机并发构建、运行中 Agent 与连接数核算

@@ -63,3 +63,10 @@ Agent Gateway 必须透明转发 challenge、请求 credential 与响应，不�
 Catalog 返回 Project ID、Display name、Description、Stable endpoint 与 capability；它不创建独立 Catalog 记录，不动态探测 Agent，不包含或推断 auth 配置，也不提供 marketplace、分类、搜索或审核。`projectId` 是聊天端结合 Eveland issuer 使用的稳定 managed Agent identity，endpoint 变化不得生成新的 Agent 身份。
 
 Source scan 只在标准 `agent/channels/eve.ts`（含受支持的 JS/TS 扩展）明确从 `eve/channels/eve` 导入并默认导出 `eveChannel(...)` 时记录 `eveChat=true`。Catalog 始终读取 Stable route 实际 Deployment → Release → Source Revision，而不是 Project 后来导入但尚未部署的 current Source Revision。没有标准 Eve Channel、没有 Stable Deployment、任一正权重 target 不可路由或未声明 Eve Channel 的 Project 不得出现在结果中。Agent 使用 `none()`、`localDev()`、`httpBasic()`、JWT、OIDC、`evelandIdentity()` 或 custom `AuthFn` 都不改变 Catalog membership。
+
+## 深入参考
+
+- [身份架构设计决策](/zh/docs/reference/design/identity)：三条互不替换的信任边界与 Caller Token 离线校验
+- [Agent Catalog 与聊天客户端](/zh/docs/reference/design/agent-catalog)：统一聊天客户端 Dawn 与 Catalog 投影契约
+- [Playground 交互与认证](/zh/docs/reference/playground)：Playground 的各认证方法实现与 OIDC 授权码流程
+- [安全模型](/zh/docs/operations/security)：外部身份网络策略与 CORS 安全边界

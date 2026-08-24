@@ -43,3 +43,10 @@ Each Deployment cgroup is bounded by `EVELAND_MEMORY_MAX`, `EVELAND_CPU_QUOTA`, 
 - The sandbox cache below `EVELAND_SANDBOX_CACHE_DIR` grows with durable sessions and unique templates and is not pruned automatically. The vendored backend exposes dry-run-first list/prune APIs; inspect a dry run before applying deletion, and never delete hash-named directories by hand.
 - Release artifacts are bounded by the retention sweep (`EVELAND_RELEASE_RETENTION`, newest releases and active targets protected).
 - On the local Docker runtime, each active Deployment consumes one bridge subnet; capacity is bounded by Docker's configured `default-address-pools` (the recommended `/16` split into `/24` networks permits 256 concurrent managed networks).
+
+## Deeper reference
+
+- [Why systemd, not Docker](/docs/reference/design/runtime): runtime selection and host density rationale
+- [Scale-to-zero design decisions](/docs/reference/design/scale-to-zero): idle process teardown and on-demand activation
+- [Runtime and resources](/docs/operations/runtime): cgroup resource ceilings and sandbox execution budgets
+- [Environment variables](/docs/reference/environment-variables): concurrency and capacity environment knobs

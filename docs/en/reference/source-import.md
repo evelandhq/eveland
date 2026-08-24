@@ -58,3 +58,10 @@ The Source Revision must persist the `package.json` and recognized-lockfile meta
 A read-only code browser supporting the file tree, file contents, the current Source Revision info, and the Eve project-structure summary. The summary covers at least agents, instructions, tools, skills, subagents, connections, schedules, and sandbox. No online editing, no Git write-back.
 
 The Source page presents Connections only as part of the project-structure summary alongside other Eve entities — no separate Connections navigation or configuration UI. The built summary of a Release comes from the final `eve info` on the same installed dependency tree; the platform accepts only the discovery manifest version produced by the current window, and unknown versions continue to fail closed while keeping the static summary. The summary projects effective Extension Schedules and directly contributed Extension Subagents onto stable `agent/extensions/<namespace>/...` paths, with Subagent IDs using Eve's `<namespace>__<id>`; consumer overrides keep the same precedence as the Eve compiler. Only the root agent's Connection paths are projected; subagent-owned Connections stay within their own manifest scope.
+
+## Deeper reference
+
+- [Deploy your first agent](/docs/agents/first-deployment): developer quickstart for project import and builds
+- [Eve compatibility window](/docs/reference/eve-compatibility): supported Eve version lines and dependency constraints
+- [Agent environment](/docs/reference/agent-environment): secret/variable precedence and injection rules in the wizard
+- [Dashboard contract](/docs/reference/dashboard): new project wizard, Projects list, and Git credentials management

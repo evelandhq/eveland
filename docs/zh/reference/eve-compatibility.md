@@ -54,3 +54,10 @@ npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelo
 - Schedule Execution
 
 诊断信息会请项目所有者升级，而不是猜测旧协议。在生产环境升级 Eve 或 Eveland 之前，请先阅读对应 Release Notes。
+
+## 深入参考
+
+- [源码导入](/zh/docs/reference/source-import)：Preflight 校验与依赖扫描契约
+- [部署第一个 Agent](/zh/docs/agents/first-deployment)：项目导入与构建入门
+- [升级与回滚](/zh/docs/operations/upgrades)：平台升级与 Eve 依赖演进管理
+- [Agent Gateway 不变量](/zh/docs/reference/design/gateway)：滑动的 Fail-closed 兼容窗口设计决策

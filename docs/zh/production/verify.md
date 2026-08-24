@@ -56,3 +56,10 @@ bash infra/integration/run.sh
 完全成功的运行以 0 退出并打印 `SMOKE OK`。失败时从宿主侧检查 Guest Unit：`limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager | tail -50`。
 
 记录本次验收使用的精确 Revision 与配置。继续阅读面向团队成员的[部署第一个 Agent](/zh/docs/agents/first-deployment)。
+
+## 深入参考
+
+- [部署第一个 Agent](/zh/docs/agents/first-deployment)：面向 Agent 开发者的第一次部署指引
+- [健康与诊断](/zh/docs/operations/diagnostics)：组件可用性验证与日志排查矩阵
+- [故障排查](/zh/docs/reference/troubleshooting)：常见报错排查与已知限制说明
+- [安全模型](/zh/docs/operations/security)：生产安装的完整安全边界与特权模型

@@ -36,3 +36,10 @@ Release build 在安装后运行预发现、Extension integrator、`npx eve buil
 两组平台保留名称在 build 中被丢弃并在 Build Log 记录 `WARNING`（绝不静默），但仍照常注入已部署进程：构建工具链自身的 `PATH`、`HOME`、`NPM_CONFIG_CACHE`，以及运行时保留层的全部名称——运行时最后覆盖它们，build 若采用 Project 值就会编译出运行时随即覆盖的结果。完整保留名单及各项理由见 [Worker 与构建](/zh/docs/production/worker)；该名单必须与运行时保留层保持一致，由测试锁定。
 
 Release 不可变，因此改动 `variable` 只在下一次 deploy 刷新编译产物；单纯的环境变更仍然只对 live Deployment 排 restart，沿用原 Release。Environment 页面必须让 operator 看到这一点。Docker runtime 通过 generated Dockerfile 的 `ARG` 与 `docker build --build-arg` 传递这些 variable，其值会出现在该镜像的 build metadata 中——这是 `variable` 与 `secret` 分级的直接后果；`ARG` 声明在依赖安装层之后，因此 Docker 上只有预发现、Extension integrator、`npx eve build` 与最终 discovery 能读到，systemd 把 install 与 build 放在同一个 shell，两者都能读到。Build Log 仍对完整 Project/Shared Environment 值集合脱敏。
+
+## 深入参考
+
+- [密钥与 Connection](/zh/docs/agents/secrets-connections)：面向开发者的 Secret 与 Playground 认证说明
+- [安全模型与隔离边界](/zh/docs/operations/security)：环境变量落地、脱敏与进程权限
+- [安装宿主机 Worker](/zh/docs/production/worker)：构建期白名单、环境变量过滤与保留变量规则
+- [环境变量参考](/zh/docs/reference/environment-variables)：平台核心及运行时保留环境变量清单

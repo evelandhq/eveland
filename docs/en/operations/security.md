@@ -59,3 +59,10 @@ Changing or clearing the shared environment queues `restart_deployment` jobs for
 ## GitLab PAT imports
 
 GitLab PAT imports use the same `APP_SECRET_KEY` on API and worker; the database stores only AES-256-GCM ciphertext keyed by user and normalized HTTP host. During `git clone`, the worker passes a host-scoped Basic authorization header through Git's temporary environment config — the token never appears in argv, the repository URL, `.git/config`, job/status responses, or logs. The credential is promoted to the user's saved settings only after a complete source import succeeds. Require PAT expiry and the minimal `read_repository` scope; revoke a compromised token in GitLab and remove its host entry in Settings. SSH/SCP imports use the worker host's existing SSH configuration and never consume PATs.
+
+## Deeper reference
+
+- [Identity architecture design decisions](/docs/reference/design/identity): three independent trust boundaries and Caller Token mechanics
+- [Agent identity behavior contract](/docs/reference/identity): three provider modes, token specifications, and `evelandIdentity()`
+- [Agent environment behavior contract](/docs/reference/agent-environment): project secrets, shared environment, and reserved variable precedence
+- [Install the host Worker](/docs/production/worker): build sandboxing, unprivileged users, and permission isolation in practice

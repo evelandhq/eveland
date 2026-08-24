@@ -82,3 +82,10 @@ Worker 恢复中断的 Activation Job，对账数据库状态与真实进程，�
 Job 先停止所有 `running`/`draining` Deployment——每个 Adapter 都从 Deployment 记录的 `runtimeKind` 解析——然后删除其 Runtime Release 与该 Project 平台管理的 Source、Build、Agent Observability Policy 与 Sandbox 目录。只有位于 `EVELAND_DATA_DIR` 之内的路径才符合删除条件；外部提供的源码路径永远不会被递归删除。数据库记录最后删除。删除 Project 时还必须一并删除其 legacy 派生 workflow 数据库（在项目行删除之前执行，删库失败必须让删除可重试），派生库不得作为孤儿残留；共享库中该 Project 的 partitions 一并 drop，不得扫描或删除其他 tenant。
 
 任一 Stop、Release 删除、文件系统清理或数据库操作失败时，Project 保持 `deletion_status = 'failed'`，错误可见并可重试。Runtime/文件系统清理不是 Postgres 事务，因此重试前部分资源可能已被删除。
+
+## 深入参考
+
+- [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：运行时密度与宿主机特权隔离决策
+- [缩容到零与冷激活](/zh/docs/reference/design/scale-to-zero)：ActivationLease、Idle Reaper 与进程生命周期
+- [安全模型与隔离边界](/zh/docs/operations/security)：Sandbox 边界与 Secret 注入机制
+- [容量规划](/zh/docs/operations/capacity)：进程内存、并发构建与 Postgres 连接预算

@@ -48,3 +48,10 @@ Prepared Release 会保留 root 与 Extension Schedule 的 Eve 注册形状，�
 Schedule 定义表下方展示最近 50 条 ScheduleRun，并可继续分页。列表默认覆盖全部 Schedule；点击某个 Schedule 的"查看历史"后仍停留在 Schedules 页面，筛选该 Schedule（`schedule_id = 当前 schedule`）并滚动到 Recent runs。
 
 一条 ScheduleRun 恰好关联一个 Session 时，主链接直接进入该 Session 详情。零 Session run 没有可跳转的 Session；多 Session run 也不能任意选择其中一个，因此这两种情况进入 ScheduleRun 详情查看完整执行结果与关联 Sessions。
+
+## 深入参考
+
+- [Schedules 与自动化任务](/zh/docs/observe/schedules)：面向开发者的定时任务配置与执行概览
+- [Workflow 架构设计决策](/zh/docs/reference/design/workflow)：为什么使用外置 Dispatcher 与自建 Workflow World
+- [缩容到零设计决策](/zh/docs/reference/design/scale-to-zero)：平台接管 Cron 时钟与预热机制的理由
+- [故障排查](/zh/docs/reference/troubleshooting#schedule-未运行)：Schedule 执行失败与未按时触发排查指南

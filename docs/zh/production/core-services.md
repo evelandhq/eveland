@@ -57,3 +57,9 @@ API、Agent Gateway 与 Dashboard 使用 Host Networking 运行，以便通过�
 需要认证的 Dashboard **Settings → About** 页面对比 Dashboard 与 API 的 Build Identity；API 与 Agent Gateway 也通过公开 `/health` 暴露它，Worker 在启动时打印它，Dispatcher 则在其 Registration 上报告它。只要其中任何一处不一致，就不能宣称安装（或后续升级）完成。团队 Admin 可以在同一 About 页面检查各组件白名单化的有效配置；Secret 只以固定掩码显示。
 
 下一步[安装宿主机 Worker](/zh/docs/production/worker)。
+
+## 深入参考
+
+- [生产架构概览](/zh/docs/production)：受支持的核心服务、宿主机 Worker 与 systemd 拓扑
+- [配置参考](/zh/docs/reference/configuration)：各组件环境变量归属与默认值
+- [安全模型](/zh/docs/operations/security)：网络隔离、凭证保护与进程特权边界

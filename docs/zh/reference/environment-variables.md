@@ -240,3 +240,11 @@ Instrumentation 保持独立，继续使用 Agent 源码中配置的 Provider/Ex
 - `E2E_CHECK_MODE` — Agent-sandbox 端到端检查。
 - `SMOKE_SECRET` — bwrap / systemd 冒烟测试。
 - `EVE_EXAMPLE_MODEL`、`EVE_EXAMPLE_REAL_LLM` — 示例 Agent 测试。
+
+---
+
+## 深入参考
+
+- [配置参考](/zh/docs/reference/configuration)：按组件划分的配置所有权与说明
+- [生产架构概览](/zh/docs/production)：系统核心服务与各组件网络/存储拓扑
+- [容量规划](/zh/docs/operations/capacity)：连接数、并发构建与内存配额配置指南

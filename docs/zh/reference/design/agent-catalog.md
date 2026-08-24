@@ -57,3 +57,10 @@ Channel 集成（Slack、飞书、企业微信）仍是把 Agent 送到用户所
 
 Dawn 是*一个*客户端，不是*唯一的*客户端——上面的 continuation 协议刻意
 保持任何客户端可实现，CLI 从一开始就被当作对等客户端来预期。
+
+## 深入参考
+
+- [身份架构设计决策](/zh/docs/reference/design/identity)：三条互不替换的信任边界与 Caller Token
+- [Agent 身份行为契约](/zh/docs/reference/identity)：Agent Catalog 只读投影契约与 `evelandIdentity()` 协议
+- [部署第一个 Agent](/zh/docs/agents/first-deployment)：导入带有标准 Eve Channel 的项目并发布
+- [安全模型](/zh/docs/operations/security)：外部身份网络策略与浏览器会话隔离
