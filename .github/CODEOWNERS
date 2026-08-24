@@ -1,0 +1,9 @@
+# Require maintainer review for the paths a PR could use to run code with
+# elevated credentials or to alter the dependency graph.
+/.github/ @mechiland
+/infra/ @mechiland
+/scripts/ @mechiland
+/docker-compose.yml @mechiland
+/docker-compose.prod.yml @mechiland
+/pnpm-lock.yaml @mechiland
+/pnpm-workspace.yaml @mechiland

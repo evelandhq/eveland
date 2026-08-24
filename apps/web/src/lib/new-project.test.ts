@@ -45,7 +45,7 @@ const baseProject: Project = {
   name: "support-agent",
   description: null,
   importKind: "git",
-  gitUrl: "https://github.com/evelandhq/support-agent.git",
+  gitUrl: "https://github.com/example/support-agent.git",
   status: "import_pending",
   deploymentStatus: "not_deployed",
   deletionStatus: null,

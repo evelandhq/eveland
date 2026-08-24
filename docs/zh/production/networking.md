@@ -32,6 +32,7 @@ Project Slug 全局唯一且不可变。Deployment Key 恰好由八个小写字�
 - Agent 进程绑定 `127.0.0.1:41xxx`。永远不要把这些动态端口加进 Traefik 或防火墙规则。
 - 托管 Collector 的 Receiver（平台侧 Loopback `4317`/`4318`，Agent 侧 `4327`/`4328`）绝不能发布到公开接口。
 - API（`4000`）与 Agent Gateway 的内部控制面在代理之后保持仅 Loopback。
+- Postgres 在宿主机上发布 `5432`，以便宿主机服务和已部署的 Agent 容器访问它，而它携带的是众所周知的默认凭据。**必须在宿主机防火墙上阻断所有非本地网络对 `5432` 的访问**（例如 `ufw deny in on <public-interface> to any port 5432`，或等效的安全组规则）；公开接口唯一需要放行的入站端口是反向代理的 `80`/`443`。
 
 ## Agent Gateway 边界
 

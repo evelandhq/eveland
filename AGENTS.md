@@ -7,7 +7,8 @@ agents; product behavior still belongs in the product and deployment docs.
 
 Before changing code:
 
-1. Read `spec.md` for the product contract.
+1. Read `spec.md` for the product contract (written in Chinese; `docs/en` covers
+   the same surface in English from the operator's perspective).
 2. Read `README.md` for the current repository shape and local workflow.
 3. For Linux, systemd, sandbox, or host-worker work, also read
    `docs/en/production/`.

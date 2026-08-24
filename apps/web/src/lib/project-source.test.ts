@@ -3,9 +3,9 @@ import { describeProjectSource } from "./project-source";
 
 describe("project source display", () => {
   test("shortens GitHub repositories to their owner and repository path", () => {
-    expect(describeProjectSource("git", "https://github.com/evelandhq/sample-agent.git")).toEqual({
+    expect(describeProjectSource("git", "https://github.com/example/sample-agent.git")).toEqual({
       kind: "github",
-      label: "evelandhq/sample-agent",
+      label: "example/sample-agent",
     });
   });
 

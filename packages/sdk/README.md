@@ -89,3 +89,9 @@ the window, so CI fails the moment one disappears — but a consumer who upgrade
 Eve ahead of that will not get an install-time warning first. Publishing is a manual, deliberate step; CI verifies
 on every commit that the packed tarball installs into a clean project and
 imports cleanly, so the package stays publishable from `main` at any time.
+
+## License
+
+AGPL-3.0-only, © 2026 Michael Chen and the Eveland contributors. Source lives
+in [`packages/sdk`](https://github.com/evelandhq/eveland/tree/main/packages/sdk)
+of the [Eveland monorepo](https://github.com/evelandhq/eveland).

@@ -17,7 +17,7 @@
 - Injection applies to the **systemd runtime only**. The docker adapter builds from the user's source tree via a generated Dockerfile and must not be touched.
 - Security invariants from Plan 2 hold unchanged: every bwrap invocation carries `--clearenv`; tmpfs hides precede the `/workspace` bind; host-side writes/removes are realpath-contained.
 - Tests: vitest, colocated `*.test.ts`, explicit imports. Unit tests must pass on macOS with no bwrap (execution stays behind the injectable `ProcessRunner`).
-- Git hygiene: work only in the worktree `/Users/michael/work/eveland/.claude/worktrees/sandbox-inject-eve022` on branch `worktree-sandbox-inject-eve022`. Never touch the main checkout. Never use bare `git stash`.
+- Git hygiene: work only in the worktree `<eveland-worktree>` on branch `worktree-sandbox-inject-eve022`. Never touch the main checkout. Never use bare `git stash`.
 
 ## Verified facts this plan rests on (do not re-derive; do not contradict)
 

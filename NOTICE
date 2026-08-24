@@ -1,0 +1,22 @@
+Eveland
+Copyright (C) 2026 Michael Chen and the Eveland contributors
+
+Licensed under the GNU Affero General Public License v3.0 (see LICENSE).
+
+This distribution includes material from third parties:
+
+- packages/session-collector/proto/opentelemetry/** — Protocol buffer
+  definitions copied from the OpenTelemetry protocol repository
+  (https://github.com/open-telemetry/opentelemetry-proto), licensed under the
+  Apache License 2.0. Original copyright headers are preserved in the files.
+
+- scripts/pre-commit-fmt.mjs — adapted from vercel/eve
+  (https://github.com/vercel/eve), licensed under the Apache License 2.0.
+
+Notable runtime dependencies and their licenses (installed from npm, not
+vendored here):
+
+- eve and @workflow/* (Vercel) — Apache License 2.0
+- @evelandhq/sandbox-bwrap and @evelandhq/workflow-world — Apache License 2.0
+- sharp / @img/sharp-libvips-* prebuilt binaries — LGPL-3.0-or-later
+- caniuse-lite — CC-BY-4.0

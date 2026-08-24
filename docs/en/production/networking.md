@@ -32,6 +32,7 @@ Keep the wildcard rule path-transparent. Eve task-input callbacks and custom MCP
 - Agent processes bind `127.0.0.1:41xxx`. Never add those dynamic ports to Traefik or firewall rules.
 - The managed Collector's receivers (loopback `4317`/`4318` for the platform, `4327`/`4328` for Agents) must never be published on a public interface.
 - API (`4000`) and the Agent Gateway's internal control surface stay loopback-only behind the proxy.
+- Postgres publishes `5432` on the host so host services and deployed Agent containers can reach it, and it ships with well-known default credentials. **Block `5432` from every non-local network at the host firewall** (for example `ufw deny in on <public-interface> to any port 5432`, or an equivalent security-group rule); the only inbound ports a public interface needs are the reverse proxy's `80`/`443`.
 
 ## Agent Gateway boundary
 

@@ -12,10 +12,10 @@ Connections provider-neutral 设计。
 
 ```text
 Eveland:
-/Users/michael/.codex/worktrees/cd9f/eveland
+<eveland-checkout>
 
 EveChats:
-/Users/michael/.codex/worktrees/a198/eve-chats
+<eve-chats-checkout>
 ```
 
 原因：
@@ -30,10 +30,10 @@ EveChats:
 两个 worktree 都是 dirty worktree，且未提交。开始实施前分别创建工作分支，保留当前改动：
 
 ```bash
-cd /Users/michael/.codex/worktrees/cd9f/eveland
+cd <eveland-checkout>
 git switch -c codex/agent-catalog-v0
 
-cd /Users/michael/.codex/worktrees/a198/eve-chats
+cd <eve-chats-checkout>
 git switch -c codex/agent-catalog-v0
 ```
 

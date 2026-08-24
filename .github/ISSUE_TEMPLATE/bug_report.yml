@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in Eveland is broken
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Eveland version
+      description: The release tag (e.g. v0.39.1), or the commit if running from `main`.
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Deployment runtime
+      options:
+        - systemd (production default)
+        - docker
+        - local dev (pnpm dev)
+    validations:
+      required: true
+  - type: input
+    id: eve-version
+    attributes:
+      label: Eve version of the affected Agent
+      description: If the bug involves an imported Agent, its `eve` dependency version.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what actually happened. Include relevant logs (redact secrets).
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. …
+        2. …

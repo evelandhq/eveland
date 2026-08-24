@@ -1,0 +1,10 @@
+# npm dependencies are deliberately NOT managed by Dependabot: the workspace
+# enforces a reviewed-release policy (see `minimumReleaseAgeExclude` and the
+# eve catalog notes in pnpm-workspace.yaml), and eve upgrades follow a manual
+# assessment process. Only GitHub Actions are auto-bumped.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

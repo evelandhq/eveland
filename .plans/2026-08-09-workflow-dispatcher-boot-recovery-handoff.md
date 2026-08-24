@@ -55,7 +55,7 @@ dispatch retries after the health gate opens.
 
 The full scale-to-zero platform E2E still needs an isolated stack running this
 worktree. The already-running native stack belongs to the separate
-`/Users/michael/work/eveland` checkout and still runs its older worker and
+`<eveland-checkout>` checkout and still runs its older worker and
 dispatcher, so it was not mutated as a substitute for that verification.
 Run the upgraded harness there with:
 
@@ -65,9 +65,9 @@ pnpm --filter @evelandhq/worker smoke:workflow-wake
 
 ## Repositories and local state
 
-- Eveland Codex worktree: `/Users/michael/.codex/worktrees/8416/eveland`
-- Eveland runtime checkout used to reproduce: `/Users/michael/work/eveland`
-- Workflow-world upstream checkout: `/Users/michael/work/workflow-world`
+- Eveland Codex worktree: `<eveland-worktree>`
+- Eveland runtime checkout used to reproduce: `<eveland-checkout>`
+- Workflow-world upstream checkout: `<workflow-world-checkout>`
 - Both checkouts were clean when inspected.
 - The native development stack was still running after cleanup. API, Web,
   Docs, and Gateway listened on ports `4000`, `3000`, `3001`, and `4080`.
@@ -217,7 +217,7 @@ run row after the original Graphile message is gone.
 Do not repeat cleanup as part of reproduction. A backup was created first:
 
 ```text
-/Users/michael/work/eveland/.eveland-data/backups/
+<eveland-checkout>/.eveland-data/backups/
   eveland_workflow-before-cleanup-20260809-1706.dump
 SHA-256:
 a072995400f5e3b673f642d6ebd661eef2c5a567df9fc4cb3bae30a6255891cc
@@ -254,7 +254,7 @@ dispatcher restart can reproduce the defect.
 
 ## Relevant upstream files
 
-In `/Users/michael/work/workflow-world`:
+In `<workflow-world-checkout>`:
 
 - `src/dispatcher/boot-recovery.ts` — loses the namespace while reconstructing
   `MessageData`;
@@ -297,7 +297,7 @@ In this repository:
 
 ## Recommended test-first sequence
 
-Start in `/Users/michael/work/workflow-world`.
+Start in `<workflow-world-checkout>`.
 
 ### 1. Add a narrow failing persistence/recovery test
 

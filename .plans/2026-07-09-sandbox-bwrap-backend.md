@@ -26,7 +26,7 @@
 
 Why this exists: eveland deployments on the systemd runtime have no Docker daemon and no KVM, so eve's `defaultBackend()` chain (Vercel → Docker → microsandbox → just-bash) degrades to `justbash` — a pure-JS interpreter with a virtual FS that cannot run real binaries. Projects opt into this backend explicitly in `agent/sandbox.ts`.
 
-eve internals to consult (in `/Users/michael/work/tmp/hello-world/node_modules/eve/dist/src/`, version 0.17.1 — reference only, we import solely from the public `eve/sandbox` subpath):
+eve internals to consult (in `a local node_modules/eve/dist/src/`, version 0.17.1 — reference only, we import solely from the public `eve/sandbox` subpath):
 
 - `shared/sandbox-backend.d.ts` — `SandboxBackend`, `SandboxBackendHandle`, `SandboxBackendCreateInput` (note: `templateKey` may be `null`), `SandboxBackendPrewarmInput`, `SandboxSeedFile` (`content: string | Buffer`), `SandboxBackendRuntimeContext` (`appRoot`).
 - `shared/sandbox-session.d.ts` — public `SandboxSession` = 8 AI SDK I/O methods + `id`, `resolvePath`, `setNetworkPolicy`, `removePath`. `readFile`/`readBinaryFile`/`readTextFile` resolve to `null` for missing files. `readTextFile`: `"utf-8"` decodes with `TextDecoder` in fatal mode, other encodings via `Buffer.toString(encoding)`; line ranges 1-based inclusive, `endLine` past EOF reads through EOF.
