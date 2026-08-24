@@ -14,6 +14,10 @@ export default withMDX({
   async rewrites() {
     return {
       beforeFiles: [
+        { source: "/docs.md", destination: "/llms.mdx/en/docs" },
+        { source: "/docs/:path*.md", destination: "/llms.mdx/en/docs/:path*" },
+        { source: "/zh/docs.md", destination: "/llms.mdx/zh/docs" },
+        { source: "/zh/docs/:path*.md", destination: "/llms.mdx/zh/docs/:path*" },
         { source: "/", destination: "/en" },
         { source: "/docs", destination: "/en/docs" },
         { source: "/docs/:path*", destination: "/en/docs/:path*" },

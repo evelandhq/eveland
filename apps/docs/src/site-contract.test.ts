@@ -231,6 +231,40 @@ describe("Eveland public website contract", () => {
     expect(existsSync(path("./app/api/search/route.ts"))).toBe(true);
   });
 
+  test("shows Fumadocs page actions for every localized document", () => {
+    const page = source("./app/[lang]/docs/[[...slug]]/page.tsx");
+
+    expect(page).toContain("MarkdownCopyButton");
+    expect(page).toContain("ViewOptionsPopover");
+    expect(page).toContain("`${page.url}.md`");
+    expect(page).toContain("https://github.com/evelandhq/eveland/blob/main/docs/${page.path}");
+    expect(page).toContain('className="eve-docs-page-actions"');
+  });
+
+  test("serves each localized document as Markdown for page actions", () => {
+    const markdownRoute = source("./app/llms.mdx/[lang]/docs/[[...slug]]/route.ts");
+    const llmText = source("./lib/get-llm-text.ts");
+
+    expect(markdownRoute).toContain("getLLMText(page)");
+    expect(markdownRoute).toContain('"Content-Type": "text/markdown; charset=utf-8"');
+    expect(markdownRoute).toContain("source.generateParams()");
+    expect(llmText).toContain('page.data.getText("processed")');
+    expect(llmText).toContain("# ${page.data.title} (${page.url})");
+  });
+
+  test("rewrites clean English and prefixed Chinese Markdown URLs", () => {
+    const nextConfig = source("../next.config.mjs");
+
+    expect(nextConfig).toContain('{ source: "/docs.md", destination: "/llms.mdx/en/docs" }');
+    expect(nextConfig).toContain(
+      '{ source: "/docs/:path*.md", destination: "/llms.mdx/en/docs/:path*" }',
+    );
+    expect(nextConfig).toContain('{ source: "/zh/docs.md", destination: "/llms.mdx/zh/docs" }');
+    expect(nextConfig).toContain(
+      '{ source: "/zh/docs/:path*.md", destination: "/llms.mdx/zh/docs/:path*" }',
+    );
+  });
+
   test("does not nest the brand link inside the docs navigation link", () => {
     expect(source("./lib/layout.shared.tsx")).toContain("<Brand lang={lang} linked={false}");
     expect(source("./components/brand.tsx")).toContain("linked = true");
