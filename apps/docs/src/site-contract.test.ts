@@ -265,17 +265,13 @@ describe("Eveland public website contract", () => {
     expect(generator).toContain("# ${title} (${pageUrl})");
   });
 
-  test("rewrites clean English and prefixed Chinese Markdown URLs", () => {
-    const nextConfig = source("../next.config.mjs");
+  test("publishes clean English and prefixed Chinese Markdown as direct static assets", () => {
+    const generator = source("../scripts/generate-llm-pages.mjs");
 
-    expect(nextConfig).toContain('{ source: "/docs.md", destination: "/_llms/en/index.md" }');
-    expect(nextConfig).toContain(
-      '{ source: "/docs/:path*.md", destination: "/_llms/en/:path*.md" }',
-    );
-    expect(nextConfig).toContain('{ source: "/zh/docs.md", destination: "/_llms/zh/index.md" }');
-    expect(nextConfig).toContain(
-      '{ source: "/zh/docs/:path*.md", destination: "/_llms/zh/:path*.md" }',
-    );
+    expect(generator).toContain('join(publicDirectory, "docs.md")');
+    expect(generator).toContain('join(publicDirectory, "docs")');
+    expect(generator).toContain('join(publicDirectory, "zh", "docs.md")');
+    expect(generator).toContain('join(publicDirectory, "zh", "docs")');
   });
 
   test("does not nest the brand link inside the docs navigation link", () => {
