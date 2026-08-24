@@ -273,11 +273,6 @@ describe("Eve compatibility repository contract", () => {
     const quotedRanges = SUPPORTED_EVE_VERSION_RANGES.map((range) => `\`${range}\``);
     const englishRanges = englishList(quotedRanges);
     const chineseRanges = chineseList(quotedRanges);
-    const specRanges = chineseList(SUPPORTED_EVE_VERSION_RANGES);
-    const exactMinors = SUPPORTED_EVE_VERSION_RANGES.map((range) => range.replace(/\.x$/, "")).join(
-      "/",
-    );
-    const spec = normalizedWhitespace(repositoryFile("spec.md"));
     const englishDocs = normalizedWhitespace(
       repositoryFile("docs/en/reference/eve-compatibility.md"),
     );
@@ -285,8 +280,26 @@ describe("Eve compatibility repository contract", () => {
       repositoryFile("docs/zh/reference/eve-compatibility.md"),
     );
 
-    expect(spec).toContain(`当前窗口是 ${specRanges}。允许精确的 ${exactMinors} patch`);
     expect(englishDocs).toContain(`supports ${englishRanges}`);
     expect(chineseDocs).toContain(`支持 ${chineseRanges}`);
+  });
+
+  test("keeps spec.md free of version facts", () => {
+    // spec.md is the version-stable product contract: the supported Eve
+    // window, verified patches, and injected workflow-world pins live only in
+    // docs/{en,zh}/reference/eve-compatibility.md (and the runtime operations
+    // docs), so widening or sliding the window never edits spec.md.
+    const spec = repositoryFile("spec.md");
+    const literals = [
+      ...SUPPORTED_EVE_VERSION_RANGES.map((range) => range.replace(/\.x$/, "")),
+      ...VERIFIED_EVE_VERSIONS,
+    ];
+    for (const literal of literals) {
+      expect(spec, `spec.md must not carry the Eve version literal ${literal}`).not.toContain(
+        literal,
+      );
+    }
+    expect(spec).not.toMatch(/@evelandhq\/workflow-world@\d/);
+    expect(spec).not.toMatch(/@workflow\/world-postgres@\d/);
   });
 });

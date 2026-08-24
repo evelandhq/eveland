@@ -3,9 +3,11 @@ title: Observability
 description: Understand Eveland's four telemetry domains, the Collector trust boundary, Built-in, and external destinations.
 ---
 
-This page describes the observability architecture Eveland currently implements. Product
-behavior is defined by the product specification (`spec.md` at the repository root);
-deployment parameters are defined by [Production deployment](/docs/production) and
+This page describes the observability architecture Eveland currently implements and is
+the authoritative behavior contract of the observability domain. Product boundaries and
+architecture principles are defined by the product specification (`spec.md` at the
+repository root); deployment parameters are defined by
+[Production deployment](/docs/production) and
 [Environment variables](/docs/reference/environment-variables).
 
 ## Product boundary
@@ -201,6 +203,10 @@ Docker mounts only a container's own policy into it. systemd uses a distinct
 and exposes only the release, sandbox, policy, and environment paths that Deployment
 needs. One Deployment therefore cannot read another Deployment's credential.
 
+Deployment credentials never expire; rotating `APP_SECRET_KEY` invalidates every
+Deployment credential, and capture recovers only after every Agent Deployment is
+redeployed with the new key — a supported operational flow.
+
 This boundary prevents an Agent from attributing data to another Deployment; it does
 not prevent an Agent from fabricating telemetry for its own Deployment.
 
@@ -235,6 +241,17 @@ read-model projection rules; invalid items are reported via the standard
 stores only signal, payload hash, and receive time — for replay idempotence and as
 Collector-online evidence — never the payload.
 
+Delivery is at-least-once and may arrive out of order, so projection must advance by
+event order, not arrival order: late events with older sequence numbers are still
+stored in full, but must neither regress the SessionNode/Session state projection nor
+rewrite the last-observed Deployment/RuntimeInstance provenance. The criterion is
+Eve's own per-session `data.sequence`; when an event lacks that sequence there is
+nothing to order by and projection degrades to last-writer-wins. Terminal states are
+not "sticky" — completed → running is a legal transition when a continuation wakes a
+session, judged by sequence, never by the state itself. Worker heartbeats and host
+metrics follow the same rule: a replayed old batch must not move `observedAt`
+backwards, or a healthy worker would show as lost.
+
 Retention is a fixed platform default:
 
 | Data                        | Retention |
@@ -266,6 +283,10 @@ External destination configuration is stored in the revisioned policy; credentia
 encrypted with `APP_SECRET_KEY`. The browser can read back only the URL, the
 authorization type, and header names — never credential values. Leaving the credential
 blank on edit keeps the stored value; first creation must provide it.
+A destination's product type is immutable after creation; the page shows the remote
+URL the admin configured, never derived signal endpoints. Destinations that cannot be
+decrypted with the current `APP_SECRET_KEY` must still be listed and editable for
+replacement — never silently hidden.
 
 The Collector's dynamic configuration contains only Destination IDs and the
 service-authenticated API proxy endpoint — no remote URLs or credentials. On every
@@ -288,6 +309,12 @@ queue. One destination's failure blocks neither Built-in nor other destinations.
 probes health every five minutes with an empty OTLP request carrying no business data;
 Settings shows `pending`, `healthy`, `degraded`, or `paused`. Collector self-metrics
 route only to external destinations that accept metrics and the `platform` domain.
+
+Observation of the platform's own telemetry belongs entirely to external
+destinations: with neither Elastic nor a Custom OTLP destination enabled,
+`platform`/`runtime` traces and logs are retained nowhere; Langfuse carries Agent
+traces only and cannot serve as a target for the platform's own telemetry; Eveland
+also builds no local view of the Collector's delivery volume or queue pressure.
 
 ## Reliability and privacy
 

@@ -185,9 +185,14 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     ).not.toBeNull();
     expect(postgresInjected![1]).toBe(postgresWorldManifest.version);
 
+    // spec.md deliberately carries no version pins (see the spec.md guard in
+    // eve-compatibility-consistency.test.ts); the pinned world versions are
+    // documented in the runtime operations and Eve compatibility pages.
     for (const documentation of [
-      readSource("spec.md"),
       readSource("docs/en/operations/runtime.md"),
+      readSource("docs/zh/operations/runtime.md"),
+      readSource("docs/en/reference/eve-compatibility.md"),
+      readSource("docs/zh/reference/eve-compatibility.md"),
     ]) {
       expect(documentation).toContain(`@evelandhq/workflow-world@${worldManifest.version}`);
       expect(documentation).toContain(`@workflow/world-postgres@${postgresWorldManifest.version}`);

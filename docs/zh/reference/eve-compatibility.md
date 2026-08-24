@@ -5,6 +5,8 @@ description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy�
 
 在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.42.x` 与 `0.44.x`，验证版本为 `0.42.0` 与 `0.44.3`。Eve 0.41 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
+项目 `package.json` 中允许的 Eve 依赖声明形式为：受支持线内的精确 Patch、锚定在受支持 Minor Patch 上的 `~`/`^` Range，以及 `0.42` / `0.42.x` / `0.42.*`、`0.44` / `0.44.x` / `0.44.*`。缺少 Eve 依赖、跨 Minor 的宽泛 Range 或任何可能解析到窗口之外的声明都会 Fail Closed。项目 Overview、Source 与 Playground 会显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本与平台要求。
+
 窗口是一组已验证的 Line，而非连续区间：Eve 0.43 在发布后四小时内即被 0.44 取代，因此被有意跳过（此前 0.40 与 0.41 同样被跳过）——声明 `0.43.x` 的项目会收到与其他不受支持版本相同的升级诊断。跳过是安全的，因为从 0.42.0 到 0.44.3 的所有 Wire Format（Message Stream、Manifest、Workflow 存储 Spec、捆绑的 Workflow SDK）逐字节相同。
 
 UI 仅将最新支持线 `0.44.x` 标为绿色。Eve 0.42.x 保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。

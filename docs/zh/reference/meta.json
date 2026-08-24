@@ -5,6 +5,13 @@
     "environment-variables",
     "eve-compatibility",
     "architecture",
+    "identity",
+    "source-import",
+    "playground",
+    "scheduling",
+    "agent-environment",
+    "dashboard",
+    "routing",
     "observability",
     "design",
     "troubleshooting"

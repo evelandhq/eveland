@@ -24,9 +24,9 @@ product; the bilingual documentation site is built from the same repository.
 
 Production installation and operations are documented at
 [eveland.ai/docs](https://eveland.ai/docs), whose content is single-sourced from the
-[`docs/`](docs/) tree in this repository. Product behavior is specified in
-[`spec.md`](spec.md) (currently written in Chinese; [`docs/en`](docs/en/) covers
-the same surface in English from the operator's perspective). This README covers
+[`docs/`](docs/) tree in this repository. Product boundaries and architecture principles are specified in
+[`spec.md`](spec.md); the per-domain behavioral contracts live in the bilingual
+[`docs/*/reference`](docs/en/reference/) pages. This README covers
 local development and contribution.
 
 ## Quickstart (local development)
@@ -66,7 +66,7 @@ Open the Dashboard at `http://localhost:3000` and the public documentation site 
 | --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Why Eveland exists                            | [`docs/en/why.md`](docs/en/why.md) — also at [eveland.ai/docs/why](https://eveland.ai/docs/why) |
 | Production install, operations, and reference | [eveland.ai/docs](https://eveland.ai/docs) — sourced from [`docs/`](docs/)                      |
-| Product contract (behavior spec)              | [`spec.md`](spec.md) (Chinese; English: [`docs/en`](docs/en/))                                  |
+| Product contract (principles + reference)     | [`spec.md`](spec.md) + [`docs/*/reference`](docs/en/reference/) (bilingual)                     |
 | Working conventions for coding agents         | [`AGENTS.md`](AGENTS.md)                                                                        |
 | How to contribute                             | [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                            |
 | Reporting security issues                     | [`SECURITY.md`](SECURITY.md)                                                                    |

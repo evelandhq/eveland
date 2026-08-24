@@ -63,6 +63,31 @@ department may use which Agent is Agent business logic — a finance-analysis
 Agent admits finance staff by its own rules — and Eveland neither configures
 nor stores that mapping.
 
+## Why the Gateway injects tokens in Open mode
+
+The Agent Gateway's general rule is transparent forwarding — it never
+interprets the authentication protocol. In Open mode it injects a
+platform-signed Caller Token for requests that carry no `Authorization`
+at all, a deliberate amendment to that rule. The reasoning recorded at
+decision time:
+
+- **Inject instead of redirecting to login**: in Open mode there is no
+  identity to protect, and a login redirect is unworkable for
+  non-browser callers — curl, CI, agent-to-agent calls, the eve TUI.
+  Answering `WWW-Authenticate: authorization_uri` when no
+  authentication is required is also lying at the protocol level.
+- **Never overwrite an existing credential**: the Gateway cannot verify
+  it (that is the Agent's job), and overwriting would break every Agent
+  that brings its own authentication — the corollary being that a bad
+  token is worse than none.
+- **A long TTL for the open token**: it carries no real identity and
+  has no revocation semantics, so a short TTL protects nothing; a long
+  TTL makes an Identity outage invisible to users within one cycle.
+
+The operational constraints of the injection (pass-through rules,
+caching, the mint-failure fallback) live in
+[Agent identity](/docs/reference/identity).
+
 ## Hard edges kept on purpose
 
 - **HS256 is rejected outright** for inbound ID tokens (RS256/PS256/ES256

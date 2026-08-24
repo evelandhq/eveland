@@ -9,7 +9,7 @@
 //     by the Gateway, which the Agent verifies against the platform JWKS and
 //     admits: the turn is accepted and streams to turn.completed;
 //   - a caller-supplied bad token is forwarded untouched and the Agent 401s
-//     ("a bad token is worse than none", spec.md);
+//     ("a bad token is worse than none", docs/zh/reference/design/identity.md);
 //   - the Agent itself is the enforcement point: bypassing the Gateway and
 //     hitting the deployment port without a token 401s with the eveland
 //     Bearer challenge.
@@ -233,7 +233,7 @@ async function main(): Promise<void> {
 
     // A caller-supplied credential is forwarded untouched -- the Gateway must
     // not paper over a bad token with a minted one ("a bad token is worse
-    // than none", spec.md).
+    // than none", docs/zh/reference/design/identity.md).
     const badToken = await request(warmGateway.port, {
       host: agentHost,
       path: "/eve/v1/session",
