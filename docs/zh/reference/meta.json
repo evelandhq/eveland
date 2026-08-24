@@ -5,6 +5,7 @@
     "environment-variables",
     "eve-compatibility",
     "architecture",
+    "identity",
     "observability",
     "design",
     "troubleshooting"

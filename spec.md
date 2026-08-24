@@ -72,119 +72,34 @@ API 与 Agent Gateway 的公开 `/health` 除存活状态外还返回 Eveland �
 
 ### Agent 用户身份 (/settings/identity)
 
-Agent 用户身份与平台 Better Auth、Playground authentication credential 是三条独立边界。
-Identity Provider 是实例级的，且任意时刻只能启用一个，三选一：
+Agent 用户身份与平台 Better Auth、Playground authentication credential 是三条独立信任
+边界，任何一条不得替代或静默回退到另一条；Better Auth cookie/token、member role 与
+provider credential 都不得进入 Caller Token、浏览器聊天存储、Agent Gateway 或 Agent。
 
-- `Open`（新实例默认）：Eveland 不认证任何人。它没有 provider 配置，只有一个共享
-  Realm，也不签发 Identity Session；`/identity/login` 返回
-  `identity_login_not_required`，不做任何跳转——非浏览器调用方无法跟随跳转，且此时
-  并不存在要建立的身份。
-- `Internal`：API 只在服务端验证有效 Better Auth member，再映射为通用
-  `ResolvedExternalIdentity`，通过统一的 `finalizeIdentity()` 建立独立
-  `eveland_identity` Session。
-- `OIDC`：把身份委托给一个外部 OpenID Connect Provider（authorization code +
-  PKCE S256 + nonce，全部强制开启）。`/identity/login` 302 跳转到 IdP 授权端点，
-  `GET /identity/oidc/callback`（固定 redirect URI：`<identityIssuer>/identity/oidc/callback`，
-  管理员需在 IdP 侧登记）一次性消费登录事务、完成 code 交换与 ID token 验签后，
-  经同一个 `finalizeIdentity()` 建立 Session。调用者的 Realm 按连接配置解析——
-  `connection`（整个连接唯一启用的 Realm）、`id_token_claim` 或 `userinfo_claim`
-  （从指定 claim 取外部 Realm id）——且只允许落在管理员预先登记的 Realm 白名单内，
-  未登记的 Realm 一律 `identity_realm_not_allowed` 403。ID token 验签只接受非对称
-  算法；client secret 与换回的 access/refresh token 均以 APP_SECRET_KEY 派生密钥
-  加密存储。OIDC 模式下 Playground 的 `eveland-identity` 凭据（平台用户直发
-  Caller Token）不可用——Playground 用户与 IdP 用户之间没有可信映射。
+Identity Provider 是实例级的，任意时刻只能启用一个，三选一：`Open`（新实例默认，不认证
+任何人、不签发 Identity Session）、`Internal`（服务端验证 Better Auth member）、`OIDC`
+（委托外部 OpenID Connect Provider，PKCE 与 nonce 强制开启）。System Admin 选择当前唯一
+active Provider、允许的 Identity Realm 与精确 web-chat return origin；切换 Provider 会使
+既有 Identity Session 不再认证任何人。
 
-OIDC 的 provider 边界是持久规则:金数据(Jinshuju)的 Eve OIDC verifier 属于外部
-`@jinshuju/eve-oidc` 包(`github.com/jinshuju/oidc`,API 为 `jinshujuOidc()`)。Eveland 自身
-不得包含任何 provider-specific OIDC 分支——没有 `jinshuju-oidc` method 常量、`JINSHUJU_OIDC_*`
-环境变量、源码扫描特判、自动 Connection 切换或按 provider 名区分的 diagnostics;provider 差异
-只能通过通用协议配置表达。
+Eveland 只签发自己的短时效 Caller Token（per-Project audience），不透传任何 provider
+credential。Caller Token 只证明调用者身份，访问授权完全归 Agent——“谁能使用哪个 Agent”
+不属于 Eveland 配置；Eveland 仅以 Realm 白名单持有实例级身份信任边界，不存在 Realm →
+Project access。Eveland 自身不得包含任何 provider-specific 分支：provider verifier 以
+外部包发布，provider 差异只能通过通用协议配置表达。
 
-已验证的目标 IdP 事实(2026-08-18 discovery 文档):金数据(`https://account.jinshuju.net`)
-只支持 code flow,PKCE S256,ID token 仅 RS256,`jwks_uri` 非标准(`/oauth/discovery/keys`),
-Realm claims 为 ID token 中的 `account_id`/`account_name`/`account_role`,issuer **不带**尾部
-斜杠;Auth0(per-tenant)issuer **带**尾部斜杠,`org_id` claim 仅在启用 Organizations 时存在,
-refresh token 需要 `offline_access`。ID token 验签只接受 RS256/PS256/ES256 并直接拒绝
-HS256——Auth0 tenant 可能被误配为 HS256,接受它会对公开的 client secret 造成 alg confusion。
+`evelandIdentity()` 通过标准 `WWW-Authenticate` Bearer challenge 协议工作；Agent Gateway
+必须透明转发 challenge、credential 与响应，不解释或改写该协议。唯一的蓄意例外：Identity
+Provider 为 `Open` 时，Agent Gateway 为完全不带 `Authorization` 的请求注入 open 模式
+Caller Token，且绝不覆盖已有 credential。
 
-Better Auth cookie/token、member role 与 provider credential 都不得进入 Caller Token、
-浏览器聊天存储、Agent Gateway 或 Agent。
+独立且公开的 `GET /agent-catalog` 提供 Agent Catalog 只读投影：不要求 Identity Session、
+不做授权过滤、不动态探测 Agent、不构成 marketplace；`projectId` 结合 Eveland issuer 是
+稳定的 managed Agent identity，endpoint 变化不得生成新的 Agent 身份。
 
-System Admin 选择当前唯一 active Provider、允许的 Identity Realm 与精确 web-chat return
-origin。切换 Provider 会使既有 Identity Session 不再认证任何人。有效 Identity Session
-可以请求约 60 秒、ES256、
-`aud=eveland:project:<projectId>` 的 Caller Token；Eveland 不再配置或检查 Realm →
-Project access。Token 只包含 Eveland 内部 principal/realm claims，不包含 provider issuer、
-外部 subject 或 provider credential。公开 JWKS 支持 active/retiring key overlap。
-
-Caller Token 只证明调用者身份。Agent 根据 Eveland principal、标准 claims 与自身业务数据
-决定访问权限，并对不允许的用户返回 `403`。财务部门、产品角色或其他“谁能使用哪个 Agent”
-规则不属于 Eveland 配置。Eveland 仍可限制可信 provider tenant/Realm，因为这是实例的身份
-信任边界。
-
-独立且公开的 `GET /agent-catalog` 提供 Agent Catalog 只读投影。它不要求 Identity Session，
-所有调用者得到完全相同的列表，Realm 不参与 Project 过滤。Catalog 只返回 Stable route
-当前全部正权重 Deployment 均可路由，且这些 Deployment 对应
-的不可变 Source Revision 都声明 `capabilities.eveChat=true` 的 Project。`running` 与
-scale-to-zero 的 `stopped` Deployment 都可收录。Catalog 返回 Project ID、Display name、
-Description、Stable endpoint 与 capability；它不创建独立 Catalog 记录，不动态探测 Agent，
-不包含或推断 auth 配置，也不提供 marketplace、分类、搜索或审核。`projectId` 是聊天端结合
-Eveland issuer 使用的稳定 managed Agent identity，endpoint 变化不得生成新的 Agent 身份。
-
-Source scan 只在标准 `agent/channels/eve.ts`（含受支持的 JS/TS 扩展）明确从
-`eve/channels/eve` 导入并默认导出 `eveChannel(...)` 时记录 `eveChat=true`。Catalog
-始终读取 Stable route 实际 Deployment → Release → Source Revision，而不是 Project
-后来导入但尚未部署的 current Source Revision。没有标准 Eve Channel、没有 Stable
-Deployment、任一正权重 target 不可路由或未声明 Eve Channel 的 Project 不得出现在结果中。
-Agent 使用 `none()`、`localDev()`、`httpBasic()`、JWT、OIDC、`evelandIdentity()` 或
-custom `AuthFn` 都不改变 Catalog membership。
-
-已登记的精确 return target origin 还可以在有效 Identity Session 下请求约五分钟的
-ES256 App Token，audience 为 `eveland:app:<targetKey>`。App Token 只证明 Eveland
-principal 与 active Realm 对该聊天应用的登录作用域；聊天应用用它保护自身历史与手动
-外部 Agent，不能用它替代 Agent credential。客户端不能因为 Catalog entry 有 `projectId`
-就自动取得或发送 Caller Token；必须先遵循 Agent route auth，只有 Agent 要求
-`evelandIdentity()` 时才进入 Eveland continuation。Caller Token 可携带 Eveland 解析并签名的
-`agent_url` 供 endpoint-substitution 防护，但该 claim 不表示 Agent 使用 Eveland Identity。
-（这条约束的对象是**客户端**。平台 Identity Provider 为 `Open` 时 Agent Gateway 自己注入
-Caller Token，见下文。）
-
-`evelandIdentity()` 通过标准 `WWW-Authenticate` Bearer challenge 声明 Eveland-owned
-`authorization_uri`、Project audience 与显示名。多个 AuthFn 的 challenge 可以同时出现；
-例如 Basic 与 Eveland Identity 仍是 fallback，而不是由 Eveland challenge 抢占。已有 Identity
-Session 的客户端可静默签发 Caller Token；否则浏览器导航到 `/identity/login`。登录 state
-随机、短时且只能消费一次，Eveland 根据当前 active Provider 完成认证后签发统一 Caller Token。
-Agent Gateway 必须透明转发 challenge、请求 credential 与响应，不解释或改写该协议；它唯一的
-例外是 open 模式下为无凭据请求注入 Caller Token（见下文），且从不改写已有 credential。
-
-部署 Worker 把 `EVELAND_IDENTITY_ISSUER`、`EVELAND_IDENTITY_JWKS_URL` 和不可由 Project
-覆盖的 `EVELAND_PROJECT_ID` 注入 Agent。公开 Agent Gateway 原样转发 Agent-owned Authorization；
-它不验签、不换 token、不读取 identity claims。Agent 的 `evelandIdentity()` AuthFn
-验证 issuer、project audience、ES256、kid、exp/nbf 后建立 `principalType=user`。
-
-平台 Identity Provider 为 `Open` 时是唯一的例外:公开 Agent Gateway 在客户端**完全没带**
-`Authorization` 的情况下注入一个 open 模式 Caller Token。这是对上面「Agent Gateway 不换
-token」的**蓄意修订**。约束:
-
-- 客户端带了任何 `Authorization` 就原样透传,Agent Gateway 绝不覆盖;过期或无效的 token
-  会让 `evelandIdentity()` 返回 null 并得到 401,清掉即恢复。
-- 注入不改变 `x-eveland-*` 剥离与 `eveland_affinity` cookie 剥离。
-- 注入**无路径范围限制**:catch-all 代理所有路径,平台签名的 token 会进入 Agent 自写路由,
-  不只 `/eve/v1/*`。
-- token 按 Project 分键缓存(audience 是 `eveland:project:<projectId>`),提前刷新;mint
-  不到时**不带 `Authorization` 转发**,由 Agent 自己的 auth 链决定,而不是由 Agent Gateway
-  拒绝请求。
-- open Caller Token 用 15–30 分钟的长 TTL(默认 20 分钟),Internal 保持约 60 秒。TTL 同时
-  就是切换 Provider 后的撤销滞后:Caller Token 是自包含离线校验,禁用 Provider 只作废
-  Identity Session,不作废已签发的 token。
-- open 模式移除了公网侧唯一的准入门槛,而平台没有 rate limit,且 Deployment 激活发生在
-  Agent 看到请求之前。
-
-设计决策记录:注入的理由是 open 模式下不存在要保护的身份,跳转登录对 curl、CI、agent 互调、
-eve TUI 等非浏览器调用方不可行,`WWW-Authenticate: authorization_uri` 在无需认证时也是协议
-撒谎;绝不覆盖已有 credential 是因为 Agent Gateway 无法验证它(那是 Agent 的职责),覆盖会打断
-每一个自带认证的 Agent——推论是带一个坏 token 比不带更糟;open token 选长 TTL 是因为它不承载
-真实身份、无撤销语义,短 TTL 保护不了任何东西,长 TTL 让 Identity 中断在一个周期内对用户无感。
+Provider 模式行为、Realm 解析、Caller/App Token 契约、open 注入约束与 Catalog
+membership 细则见 `docs/zh/reference/identity.md`；决策理由见
+`docs/zh/reference/design/identity.md`。
 
 ### 首页：Projects (/projects)
 

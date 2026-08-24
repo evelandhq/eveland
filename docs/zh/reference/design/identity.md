@@ -52,6 +52,24 @@ allowlist——登录解析到未注册的 Realm 即失败——仅此而已。
 逻辑——财务分析 Agent 按自己的规则只放行财务人员——Eveland 既不配置也不
 存储这个映射。
 
+## Open 模式为什么由 Gateway 注入 token
+
+Agent Gateway 的一般规则是透明转发、绝不解释认证协议；Open 模式下对
+完全不带 `Authorization` 的请求注入平台签名的 Caller Token，是对这条
+规则的蓄意修订。当时记录的论证：
+
+- **注入而不是跳转登录**：open 模式下不存在要保护的身份，跳转登录对
+  curl、CI、agent 互调、eve TUI 等非浏览器调用方不可行；
+  `WWW-Authenticate: authorization_uri` 在无需认证时也是协议撒谎。
+- **绝不覆盖已有 credential**：Agent Gateway 无法验证它（那是 Agent 的
+  职责），覆盖会打断每一个自带认证的 Agent——推论是带一个坏 token 比
+  不带更糟。
+- **open token 选长 TTL**：它不承载真实身份、无撤销语义，短 TTL 保护
+  不了任何东西；长 TTL 让 Identity 中断在一个周期内对用户无感。
+
+注入的操作约束（透传规则、缓存、mint 失败时的降级）见
+[Agent 身份](/zh/docs/reference/identity)。
+
 ## 刻意保留的硬边
 
 - **入站 ID token 直接拒绝 HS256**（只收 RS256/PS256/ES256）：现实世界

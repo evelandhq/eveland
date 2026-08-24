@@ -205,7 +205,7 @@ corresponding tests and docs are updated.
   The single exception is the open-access platform mode, where the Agent Gateway
   injects a Caller Token into requests that carry **no** `Authorization` at
   all; it still never inspects or replaces one the caller sent. See
-  `spec.md` for the constraints that exception carries.
+  `docs/zh/reference/identity.md` for the constraints that exception carries.
   Request bodies are buffered up to the configured body limit before
   forwarding (routing must inspect initial/reset bodies); upstream response
   bodies stream through, and any response tee (session metadata) must stay
