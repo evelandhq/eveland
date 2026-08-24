@@ -34,7 +34,7 @@ zero-runtime-dependency package.
 > This is protection against mistakes and prompt injection — not
 > multi-tenant isolation.
 
-That sentence is the design's load-bearing wall. Concretely: every invocation
+This definition forms the core security boundary of the design. Concretely: every invocation
 runs `--clearenv` so deployment secrets in the Agent's process environment
 never leak into sandboxed code; tmpfs masks hide the platform's data
 directories; but the rest of the host filesystem is visible read-only and the
