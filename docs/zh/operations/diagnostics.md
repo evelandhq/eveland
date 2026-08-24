@@ -64,3 +64,9 @@ Docker sandbox self-check passed: bwrap executed TypeScript with deployment-equi
 Docker 失败会报告镜像探针输出，并要求确认本地引擎支持 `SYS_ADMIN`、`NET_ADMIN` 与 `seccomp=unconfined`。HTTP Health 通过并不代表 Sandbox 可用——这正是自检存在的原因。
 
 继续使用[故障排查](/zh/docs/reference/troubleshooting)检查具体症状，包括 Scheduler、Cold Start 与 Activation 故障。
+
+## 深入参考
+
+- [故障排查速查](/zh/docs/reference/troubleshooting)：按症状快速索引具体故障与处置方案
+- [运行时与资源运营](/zh/docs/operations/runtime)：systemd/Docker 实例生命周期与资源限制
+- [沙箱设计与自检原理](/zh/docs/reference/design/sandbox)：bubblewrap 沙箱自检与权限模型的深度决策

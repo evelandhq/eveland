@@ -57,3 +57,10 @@ Compare the Deployment and its latest RuntimeInstance: `starting` should have on
 - Each active Docker Deployment uses one bridge subnet. Capacity is bounded by Docker's configured `default-address-pools`; the recommended `/16` split into `/24` networks permits 256 concurrent managed networks, including other Docker bridges on the same daemon.
 - An eve project with no `agent/` directory, or a plain Node project, gets no injected sandbox and runs on eve's default sandbox chain. Under production-style `eve start`, the optional `just-bash` peer may be absent; even when installed it cannot run real Node or TypeScript binaries.
 - systemd Deployment processes use `systemd-run --collect` transient units and therefore do not restart automatically after a host reboot. The enabled Worker does restart, reconciles stale `ready` RuntimeInstances to `stopped`/`failed`, and the next cron or Agent Gateway request cold-starts the preserved exact Release. The immutable Deployment, routes, history, and SessionBindings survive; only the transient process is absent during the cold interval.
+
+## Deeper reference
+
+- [Health and diagnostics](/docs/operations/diagnostics): component availability monitoring, log collection, and evidence routing
+- [Environment variables](/docs/reference/environment-variables): complete reference of platform environment variables and defaults
+- [Runtime and resources](/docs/operations/runtime): systemd units, bubblewrap processes, and resource quotas
+- [Configuration reference](/docs/reference/configuration): component ownership and configuration application rules

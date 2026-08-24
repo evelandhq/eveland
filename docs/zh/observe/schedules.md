@@ -18,3 +18,10 @@ Worker 创建 ScheduleRun 时固定所选 Deployment、Release 与 ScheduleVersi
 Worker 在配置的 Prewarm Window 内保持目标温热或将其唤醒，但不会提前执行 Handler。到期 Run 会获得 Runtime Protection，防止 Idle Reaper 停止固定 Target。
 
 错过的 Tick 会合并为一个带明确次数的 Run。对于 Dispatch 结果未知的 Run，重试前先检查 ScheduleRun 状态与 Worker Diagnostic。
+
+## 深入参考
+
+- [调度执行行为契约](/zh/docs/reference/scheduling)：Cron 格式规范、Prewarm/Activation 超时与 ScheduleRun 完整状态机
+- [Workflow 调度设计决策](/zh/docs/reference/design/workflow)：为什么使用外置 Dispatcher 驱动 Durable Timer
+- [安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)：生产环境部署与配置 Dispatcher 服务
+- [Schedule 故障排查](/zh/docs/reference/troubleshooting#schedule-未运行)：诊断 Schedule 未触发或 Dispatch 失败问题

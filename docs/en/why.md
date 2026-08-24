@@ -44,12 +44,18 @@ Then there is cost, in two currencies:
 - **Running cost.** The LLM calls, the workflow state, the sandboxes — on a
   hosted platform each is a metered line item. On your own hardware they are
   capacity you already own, and the platform is engineered to waste none of
-  it.
+  it. With [runtime density](/docs/reference/design/runtime),
+  [lightweight bubblewrap sandboxing](/docs/reference/design/sandbox),
+  [on-demand activation and scale-to-zero](/docs/reference/design/scale-to-zero),
+  and [external workflow dispatching](/docs/reference/design/workflow), a modest
+  machine comfortably hosts dozens of business agents.
 - **Management cost.** Hosted deployment platforms are built for operators;
   business people cannot see what an agent actually did. Eveland gives
   development, operations, _and_ business the same window: Sessions,
   reasoning, tool calls, schedules, and usage are first-class, readable
-  surfaces — not logs to be exported for whoever asks.
+  surfaces — not logs to be exported for whoever asks. The foundation is
+  guaranteed by a [transparent telemetry pipeline](/docs/reference/design/observability)
+  and a [secure Agent Gateway](/docs/reference/design/gateway).
 
 ## Where Eveland came from
 

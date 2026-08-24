@@ -31,3 +31,9 @@ description: Eveland 为什么长成这个样子——平台结构性选择背�
 | [可观测性](/zh/docs/reference/design/observability)      | 为什么 OpenTelemetry 是唯一的遥测传输           |
 | [身份](/zh/docs/reference/design/identity)               | Agent 为什么只见 brokered Caller Token          |
 | [Agent Catalog](/zh/docs/reference/design/agent-catalog) | Catalog 为什么是投影，以及聊天客户端契约        |
+
+## 深入参考
+
+- [生产架构概览](/zh/docs/production)：受支持的核心服务、宿主机 Worker 与 systemd 拓扑
+- [架构参考](/zh/docs/reference/architecture)：组件所有权、依赖方向与数据流动路径
+- [为什么有 Eveland](/zh/docs/why)：立项论证与产品核心主张

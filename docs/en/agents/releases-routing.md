@@ -29,3 +29,9 @@ After Eve returns a session ID, Eveland persists a binding to the owning Deploym
 ## Retention
 
 Eveland protects at least the newest configured Release count. A mutable route target, a non-expired SessionBinding, an active request lease, or other lifecycle protection can keep an older Release from archive independently of age. Playground bindings expire after 24 hours idle and public API bindings after 7 days idle by default; each successful bound request refreshes that deadline. A request for a known expired binding receives `410 session_expired` and is never routed to a different Deployment. The Worker automatically archives older unprotected Deployments after their RuntimeInstance has stopped, removing both the runtime artifact and its build directory. A build that fails before its Deployment is recorded is cleaned up immediately.
+
+## Deeper reference
+
+- [Routing and traffic policy contract](/docs/reference/routing): route policies, two-target basis-point weights, and SessionBinding lifecycle
+- [Agent Gateway design decisions](/docs/reference/design/gateway): data-plane invariants, Host validation, and reverse proxy security
+- [Scale-to-zero and cold activation](/docs/reference/design/scale-to-zero): activation leases, idle reaping, and retention safeguards

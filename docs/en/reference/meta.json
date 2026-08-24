@@ -1,19 +1,22 @@
 {
   "title": "Reference",
   "pages": [
+    "---Architecture & Design---",
+    "architecture",
+    "design",
+    "---Operations & Config---",
     "configuration",
     "environment-variables",
     "eve-compatibility",
-    "architecture",
-    "identity",
+    "troubleshooting",
+    "---Domain Contracts---",
     "source-import",
-    "playground",
-    "scheduling",
     "agent-environment",
-    "dashboard",
+    "identity",
+    "playground",
     "routing",
+    "scheduling",
     "observability",
-    "design",
-    "troubleshooting"
+    "dashboard"
   ]
 }

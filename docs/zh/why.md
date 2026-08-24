@@ -37,11 +37,16 @@ agent。
 
 - **运行成本。** LLM 调用、workflow 状态、沙箱——在托管平台上每一项都是
   计量账单；在自己的硬件上它们是你已经拥有的容量，而平台的工程目标就是
-  一点都不浪费。
+  一点都不浪费。通过[运行时密度](/zh/docs/reference/design/runtime)、
+  [轻量 bubblewrap 沙箱](/zh/docs/reference/design/sandbox)、
+  [按需激活与缩容到零](/zh/docs/reference/design/scale-to-zero) 以及
+  [外置 Workflow 调度](/zh/docs/reference/design/workflow)，一台普通主机
+  就能承载数十个业务 Agent。
 - **管理成本。** 托管部署平台是为运维人员建的；业务人员看不到 agent 到底
   做了什么。Eveland 给开发、运维*和*业务同一扇窗：Session、reasoning、
   工具调用、定时与用量都是一等的、可读的界面——而不是等谁来要再导出的
-  日志。
+  日志。底层由[透明遥测管道](/zh/docs/reference/design/observability)与
+  [安全 Agent Gateway](/zh/docs/reference/design/gateway)统一保障。
 
 ## Eveland 从哪里来
 

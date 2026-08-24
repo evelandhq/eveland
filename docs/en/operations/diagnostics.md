@@ -64,3 +64,9 @@ A failing check fails the build itself. The systemd failure message names the ho
 A Docker failure reports the image probe output and asks the operator to verify that the local engine supports `SYS_ADMIN`, `NET_ADMIN`, and `seccomp=unconfined`. A passing HTTP health check does not by itself mean the sandbox works — that is precisely why this self-check exists.
 
 Continue with [Troubleshooting](/docs/reference/troubleshooting) for symptom-specific checks, including scheduler, cold-start, and activation failures.
+
+## Deeper reference
+
+- [Troubleshooting reference](/docs/reference/troubleshooting): symptom-indexed triage for concrete failures and error states
+- [Runtime and resources](/docs/operations/runtime): systemd/Docker instance lifecycle, resource limits, and process cleanup
+- [Sandbox design decisions](/docs/reference/design/sandbox): bubblewrap sandbox self-check and host hardening rationale

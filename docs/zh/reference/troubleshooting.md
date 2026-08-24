@@ -57,3 +57,10 @@ description: 诊断生产安装、Build、Runtime、Routing、Activation 与 Obs
 - 每个活跃 Docker Deployment 使用一个 Bridge 子网。容量受 Docker 配置的 `default-address-pools` 约束；推荐的 `/16` 切分为 `/24` 网络允许 256 个并发受管 Network（含同一 Daemon 上的其他 Docker Bridge）。
 - 没有 `agent/` 目录的 eve 项目或普通 Node 项目不会获得注入的 Sandbox，运行在 eve 默认 Sandbox 链上。在生产式 `eve start` 下，可选的 `just-bash` Peer 可能缺席；即使安装了，它也不能运行真正的 Node 或 TypeScript 二进制。
 - systemd Deployment 进程使用 `systemd-run --collect` 瞬态 Unit，因此宿主机重启后不会自动重启。已 Enable 的 Worker 会重启，把过期的 `ready` RuntimeInstance 对账为 `stopped`/`failed`，下一次 Cron 或 Agent Gateway 请求会冷启动保留的精确 Release。不可变的 Deployment、Route、历史与 SessionBinding 全部幸存；冷启动间隙缺席的只有瞬态进程。
+
+## 深入参考
+
+- [健康与诊断](/zh/docs/operations/diagnostics)：组件可用性监控、日志采集与证据定位矩阵
+- [环境变量参考](/zh/docs/reference/environment-variables)：平台全部环境变量与默认值
+- [运行时与资源管理](/zh/docs/operations/runtime)：systemd Unit、Bubblewrap 进程与资源配额
+- [配置参考](/zh/docs/reference/configuration)：各组件配置归属与生效规则

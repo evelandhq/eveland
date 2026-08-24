@@ -18,3 +18,10 @@ When Worker creates a ScheduleRun, it pins the selected Deployment, Release, and
 Worker keeps an upcoming target warm or wakes it during the configured prewarm window without executing the handler early. A due run acquires runtime protection so idle reaping cannot stop its pinned target.
 
 Missed ticks coalesce into one run with an explicit count. Inspect ScheduleRun state and Worker diagnostics before retrying a result whose dispatch outcome is unknown.
+
+## Deeper reference
+
+- [Scheduling behavior contract](/docs/reference/scheduling): cron syntax, prewarm/activation timeouts, and the complete ScheduleRun state machine
+- [Workflow dispatch design decisions](/docs/reference/design/workflow): why external dispatchers drive durable timers
+- [Install Workflow Dispatcher](/docs/production/workflow-dispatcher): deploying and configuring the dispatcher service in production
+- [Troubleshooting schedules](/docs/reference/troubleshooting#schedule-not-running): diagnosing schedule dispatch and missed run issues

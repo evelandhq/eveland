@@ -26,8 +26,9 @@ Eveland 不替代 Eve 的文件系统优先编写方式，也不接管 Agent 自
 
 ## 选择你的路径
 
-- **平台管理员：** 从[生产架构](/zh/docs/production)开始，准备 Linux 主机，安装核心服务和 Worker，再验收完整链路。
-- **团队成员：** 如果 Eveland 已安装，直接[部署第一个 Agent](/zh/docs/agents/first-deployment)。
-- **平台运维：** 使用[运行时与资源](/zh/docs/operations/runtime)和[健康与诊断](/zh/docs/operations/diagnostics)处理日常运营；[容量](/zh/docs/operations/capacity)、[备份与恢复](/zh/docs/operations/backup-restore)与[环境变量参考](/zh/docs/reference/environment-variables)覆盖更深入的场景。
+- **技术评估与架构师：** 阅读[为什么有 Eveland](/zh/docs/why)了解立项论证，并在[设计决策](/zh/docs/reference/design)中查阅运行时密度、bubblewrap 沙箱、缩容至零与网关设计的详细权衡。
+- **Agent 开发者与团队成员：** 如果平台已就绪，直接从[部署第一个 Agent](/zh/docs/agents/first-deployment)开始，依次了解[密钥与 Connection](/zh/docs/agents/secrets-connections)、[Release 与流量路由](/zh/docs/agents/releases-routing)、[会话与用量追踪](/zh/docs/observe/sessions)以及[定时与自动化](/zh/docs/observe/schedules)。
+- **平台管理员：** 从[生产架构](/zh/docs/production)开始，准备 Linux 宿主机，安装核心服务、宿主机 Worker 与 Workflow Dispatcher，最后完成链路验收。
+- **平台运维与 SRE：** 使用[运行时与资源](/zh/docs/operations/runtime)、[健康与诊断](/zh/docs/operations/diagnostics)和[故障排查](/zh/docs/reference/troubleshooting)处理日常运营与排障；[容量规划](/zh/docs/operations/capacity)、[升级指南](/zh/docs/operations/upgrades)、[备份与恢复](/zh/docs/operations/backup-restore)与[环境变量参考](/zh/docs/reference/environment-variables)覆盖更深入的运维场景。
 
 本地 Docker 开发和仓库贡献流程继续由仓库 README 承载，不属于生产部署主路径。
