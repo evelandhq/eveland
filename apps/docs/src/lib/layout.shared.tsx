@@ -38,6 +38,16 @@ export const translations = i18n
       notFoundTitle: "页面不存在",
       notFoundDescription: "页面可能已被移动、重命名或删除。",
       notFoundLink: "返回首页",
+      "Copy Markdown(page actions)": "复制页面",
+      "Open(page actions)": "打开",
+      "Open in GitHub(page actions)": "在 GitHub 中打开",
+      "View as Markdown(page actions)": "查看 Markdown",
+      "Open in Scira AI(page actions)": "在 Scira AI 中打开",
+      "Open in ChatGPT(page actions)": "在 ChatGPT 中打开",
+      "Open in Claude(page actions)": "在 Claude 中打开",
+      "Open in Cursor(page actions)": "在 Cursor 中打开",
+      "Read {url}, I want to ask questions about it.(page actions)":
+        "阅读 {url}，我想询问与此页面有关的问题。",
     },
   });
 

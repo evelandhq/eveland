@@ -298,7 +298,8 @@
   color: var(--eve-docs-gray-1000);
 }
 
-.docs-shell #nd-page > h1 {
+.docs-shell #nd-page > h1,
+.docs-shell .eve-docs-page-heading h1 {
   margin: 0;
   color: var(--eve-docs-gray-1000);
   font-size: 2.5rem;
@@ -308,11 +309,65 @@
   text-wrap: balance;
 }
 
-.docs-shell #nd-page > p.text-fd-muted-foreground {
-  margin: 0 0 2rem;
+.docs-shell #nd-page > p.text-fd-muted-foreground,
+.docs-shell .eve-docs-page-heading p.text-fd-muted-foreground {
+  margin: 0;
   color: var(--eve-docs-gray-800);
   font-size: 1.125rem;
   line-height: 1.75rem;
+}
+
+.eve-docs-page-heading {
+  display: grid;
+  margin-bottom: 1rem;
+  padding-bottom: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--eve-docs-border);
+}
+
+.eve-docs-page-heading-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.eve-docs-page-actions {
+  display: inline-flex;
+  align-items: center;
+  isolation: isolate;
+}
+
+.eve-docs-page-actions > button {
+  height: 2.5rem;
+  border-color: var(--eve-docs-border);
+  border-radius: 0;
+  background: var(--eve-docs-surface);
+  color: var(--eve-docs-gray-1000);
+  box-shadow: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.eve-docs-page-actions > button:first-child {
+  padding-right: 0.875rem;
+  padding-left: 0.75rem;
+  border-radius: 0.5rem 0 0 0.5rem;
+}
+
+.eve-docs-page-actions > button:last-child {
+  width: 2.5rem;
+  margin-left: -1px;
+  padding: 0;
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.eve-docs-page-actions > button:hover,
+.eve-docs-page-actions > button[data-state="open"] {
+  z-index: 1;
+  background: var(--eve-docs-gray-100);
 }
 
 .docs-shell .prose {
@@ -613,10 +668,20 @@
     padding: 1.5rem 1.5rem 2rem;
   }
 
-  .docs-shell #nd-page > h1 {
+  .docs-shell #nd-page > h1,
+  .docs-shell .eve-docs-page-heading h1 {
     font-size: 2rem;
     letter-spacing: -0.04em;
     line-height: 2.5rem;
+  }
+
+  .eve-docs-page-heading {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .eve-docs-page-actions {
+    justify-self: start;
   }
 }
 
@@ -626,6 +691,7 @@
   .eve-docs-language,
   .eve-docs-github,
   .eve-docs-search,
+  .eve-docs-page-actions > button,
   .docs-shell #nd-sidebar a {
     transition: none;
   }
