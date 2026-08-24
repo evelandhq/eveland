@@ -204,7 +204,9 @@ binding.
 Copyright (C) 2026 Jinzhou Chen.
 
 Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE);
-third-party attributions are listed in [`NOTICE`](NOTICE). The bubblewrap sandbox
-backend it depends on,
-[`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap), is a
-separate project under the Apache License 2.0.
+third-party attributions are listed in [`NOTICE`](NOTICE). Two deliberate
+exceptions are more permissive: the published
+[`eveland` SDK](packages/sdk/) that Agents import is Apache-2.0 (so using it in
+your own Agent carries no copyleft obligation), and the bubblewrap sandbox
+backend [`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap)
+is a separate Apache-2.0 project.

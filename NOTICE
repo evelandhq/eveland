@@ -1,7 +1,9 @@
 Eveland
 Copyright (C) 2026 Jinzhou Chen
 
-Licensed under the GNU Affero General Public License v3.0 (see LICENSE).
+Licensed under the GNU Affero General Public License v3.0 (see LICENSE),
+except packages/sdk (the published "eveland" npm package), which is licensed
+under the Apache License 2.0 (see packages/sdk/LICENSE).
 
 This distribution includes material from third parties:
 
@@ -9,6 +11,10 @@ This distribution includes material from third parties:
   definitions copied from the OpenTelemetry protocol repository
   (https://github.com/open-telemetry/opentelemetry-proto), licensed under the
   Apache License 2.0. Original copyright headers are preserved in the files.
+
+- apps/web/src/components/ai-elements/** — UI components vendored from Vercel's
+  AI Elements (https://github.com/vercel/ai-elements), licensed under the
+  Apache License 2.0, with local modifications.
 
 - scripts/pre-commit-fmt.mjs — adapted from vercel/eve
   (https://github.com/vercel/eve), licensed under the Apache License 2.0.

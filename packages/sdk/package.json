@@ -3,7 +3,7 @@
   "version": "0.3.1",
   "homepage": "https://eveland.ai",
   "bugs": "https://github.com/evelandhq/eveland/issues",
-  "license": "AGPL-3.0-only",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/evelandhq/eveland.git",
