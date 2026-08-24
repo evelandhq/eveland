@@ -386,6 +386,13 @@ export function scheduleExecutionStatusFromEveEvent(
   return "running";
 }
 
+/** Operator-facing failure line for a Session's own failure boundary event. */
+export function sessionErrorFromEveEvent(type: string | undefined, payload: unknown): string {
+  const message =
+    isEveRecord(payload) && typeof payload.message === "string" ? payload.message : null;
+  return message ?? `The agent reported ${type ?? "session.failed"} without a message.`;
+}
+
 /** Operator-facing failure line for a scheduled execution's boundary event. */
 export function scheduleExecutionErrorFromEveEvent(
   type: string | undefined,

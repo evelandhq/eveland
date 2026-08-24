@@ -156,7 +156,91 @@ describe("canonical Playground API boundary", () => {
     expect(response.status).toBe(401);
     expect(playgroundProxy).toHaveBeenCalledTimes(2);
     await expect(store.listSessions(project.id)).resolves.toEqual([
-      expect.objectContaining({ status: "failed", trigger: "playground" }),
+      expect.objectContaining({
+        status: "failed",
+        trigger: "playground",
+        error: expect.stringContaining("The turn was not delivered"),
+      }),
+    ]);
+  });
+
+  test("stores the upstream rejection reason on the failed Session", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "upstream-rejection-reason",
+      importKind: "zip",
+    });
+    const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
+    const agentAuth = createAgentAuthService({
+      store,
+      appSecretKey,
+      oidcCallbackUrl: "http://localhost:3000/agent-auth/oidc/callback",
+    });
+    // The gateway's activation rejection, detail included (#294): the body
+    // must survive into the stored reason, not just stream to the browser.
+    const playgroundProxy = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: "Deployment activation failed",
+            detail: "Control API activation failed with HTTP 504: Runtime activation timed out.",
+          }),
+          { status: 503, headers: { "content-type": "application/json" } },
+        ),
+    );
+    registerCanonicalPlaygroundRoute({ app, store, agentAuth, playgroundProxy });
+
+    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Hit a cold deployment" }),
+    });
+
+    expect(response.status).toBe(503);
+    // The browser still receives the upstream body untouched.
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Deployment activation failed",
+    });
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({
+        status: "failed",
+        error:
+          "The turn failed upstream with HTTP 503: Deployment activation failed: " +
+          "Control API activation failed with HTTP 504: Runtime activation timed out.",
+      }),
+    ]);
+  });
+
+  test("stores a reason when the turn never reaches the gateway", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "proxy-connection-failure",
+      importKind: "zip",
+    });
+    const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
+    const agentAuth = createAgentAuthService({
+      store,
+      appSecretKey,
+      oidcCallbackUrl: "http://localhost:3000/agent-auth/oidc/callback",
+    });
+    const playgroundProxy = vi.fn(async () => {
+      throw new Error("fetch failed: connect ECONNREFUSED 127.0.0.1:4080");
+    });
+    registerCanonicalPlaygroundRoute({ app, store, agentAuth, playgroundProxy });
+
+    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "Nobody is listening" }),
+    });
+
+    expect(response.status).toBe(502);
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({
+        status: "failed",
+        error:
+          "The turn never reached the agent: fetch failed: connect ECONNREFUSED 127.0.0.1:4080",
+      }),
     ]);
   });
 

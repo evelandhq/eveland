@@ -100,6 +100,12 @@ export default async function SessionTimelinePage({
             </dl>
           ) : null}
         </div>
+        {session.error ? (
+          <div className="border-t pt-3">
+            <h3 className="text-sm font-medium">Failure</h3>
+            <p className="mt-1 text-sm text-destructive">{session.error}</p>
+          </div>
+        ) : null}
         {scheduleRun ? (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1 self-start rounded-lg bg-muted/60 px-2.5 py-1.5 text-xs">
             <span className="font-medium">

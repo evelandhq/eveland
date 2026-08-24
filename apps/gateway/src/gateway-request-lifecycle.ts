@@ -206,7 +206,13 @@ export async function executeGatewaySessionProxy(input: {
       );
     } catch (error) {
       if (signal.aborted || isAbortError(error)) return clientClosedResponse();
-      return Response.json({ error: "Deployment activation failed" }, { status: 503 });
+      return Response.json(
+        {
+          error: "Deployment activation failed",
+          detail: error instanceof Error ? error.message : String(error),
+        },
+        { status: 503 },
+      );
     }
   }
 

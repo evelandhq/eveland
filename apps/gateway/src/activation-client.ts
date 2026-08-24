@@ -23,8 +23,14 @@ export function createApiActivationClient(input: {
         if (response.status !== 425) break;
         await waitForRetry(input.drainRetryMs ?? 25, signal);
       }
-      if (!response.ok)
-        throw new Error(`Control API activation failed with HTTP ${response.status}.`);
+      if (!response.ok) {
+        // Carry the control API's reason (cold-start timeout, failed
+        // RuntimeInstance, workflow gate) instead of collapsing it to a bare
+        // status — it ends up in the failed session's stored error (#294).
+        const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+        const reason = typeof body?.error === "string" ? `: ${body.error.slice(0, 500)}` : ".";
+        throw new Error(`Control API activation failed with HTTP ${response.status}${reason}`);
+      }
       const value = (await response.json().catch(() => null)) as {
         lease?: { id?: unknown };
         runtimeInstance?: { endpointPort?: unknown };

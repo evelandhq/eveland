@@ -741,7 +741,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
           );
         await tx
           .update(sessions)
-          .set({ status: "failed", completedAt: now })
+          .set({ status: "failed", error: sanitizeStoredErrorText(reason), completedAt: now })
           .where(and(inArray(sessions.id, sessionIds), eq(sessions.status, "running")));
         for (const execution of interrupted) {
           await appendRuntimeLostEventTx(tx, {
@@ -833,7 +833,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
             );
           await tx
             .update(sessions)
-            .set({ status: "failed", completedAt: now })
+            .set({ status: "failed", error: reason, completedAt: now })
             .where(and(inArray(sessions.id, sessionIds), eq(sessions.status, "running")));
           for (const execution of executions) {
             await appendSessionEventRow(tx, {

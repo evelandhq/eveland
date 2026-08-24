@@ -28,6 +28,31 @@ export type CanonicalPlaygroundStore = EveVersionStore &
   Pick<ProjectStore, "getProject"> &
   Pick<SessionStore, "completeSession" | "createSession" | "getSessionByEveSessionId">;
 
+/**
+ * Distills a non-ok upstream response into a stored failure reason. The body
+ * is read from a clone so the original still flows back to the browser; a
+ * gateway rejection's body carries the "why" — activation failure, no running
+ * target, cold-start timeout — that previously existed only in host logs.
+ */
+async function upstreamRejectionReason(upstream: Response): Promise<string> {
+  let detail = "";
+  try {
+    const text = (await upstream.clone().text()).trim();
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown; detail?: unknown };
+      detail = [parsed.error, parsed.detail]
+        .filter((value): value is string => typeof value === "string")
+        .join(": ");
+    } catch {
+      detail = text;
+    }
+  } catch {
+    // The reason falls back to the bare status line.
+  }
+  detail = detail.slice(0, 500);
+  return `The turn failed upstream with HTTP ${upstream.status}${detail ? `: ${detail}` : "."}`;
+}
+
 export function registerCanonicalPlaygroundRoute(input: {
   app: ApiApp;
   store: CanonicalPlaygroundStore;
@@ -138,11 +163,16 @@ export function registerCanonicalPlaygroundRoute(input: {
         trigger: "playground",
       });
     }
-    const failActiveTurn = async () => {
+    // Every path that flips the session to `failed` states why: without a
+    // stored reason the session list shows a bare red badge and the detail
+    // page renders nothing, leaving the operator to reconstruct the cause
+    // from host logs and SQL (#294).
+    const failActiveTurn = async (reason: string) => {
       if (platformSession && (isInitial || isContinuation)) {
         await store.completeSession(platformSession.id, {
           status: "failed",
           eveSessionId: pathSessionId,
+          error: reason,
         });
       }
     };
@@ -174,7 +204,9 @@ export function registerCanonicalPlaygroundRoute(input: {
           attempt: 0,
         });
         if (recovery.action === "give_up") {
-          await failActiveTurn();
+          await failActiveTurn(
+            `The turn was not delivered: Playground authentication failed (${recovery.failure.message})`,
+          );
           return c.json(recovery.failure, agentAuthFailureStatus(recovery.failure));
         }
         const current = await agentAuth.resolveCurrentAgentAuthCredential(
@@ -184,7 +216,9 @@ export function registerCanonicalPlaygroundRoute(input: {
           `/projects/${projectId}/playground`,
         );
         if (!current) {
-          await failActiveTurn();
+          await failActiveTurn(
+            "The turn was not delivered: Playground authentication changed mid-request. Retrying usually succeeds.",
+          );
           return c.json(
             {
               error: "Playground authentication changed; retry the request.",
@@ -195,7 +229,9 @@ export function registerCanonicalPlaygroundRoute(input: {
         const retryContext = current.context;
         const retryCredential = current.resolution;
         if ("failure" in retryCredential) {
-          await failActiveTurn();
+          await failActiveTurn(
+            `The turn was not delivered: Playground authentication failed (${retryCredential.failure.message})`,
+          );
           return c.json(retryCredential.failure, agentAuthFailureStatus(retryCredential.failure));
         }
         upstream = await proxy(encodeAgentAuthEnvelope(retryCredential.envelope));
@@ -214,18 +250,18 @@ export function registerCanonicalPlaygroundRoute(input: {
                   method: activeProvider.method,
                   message: "The Agent credential was rejected twice; retry the request.",
                 };
-          await failActiveTurn();
+          await failActiveTurn(`The turn was not delivered: ${failure.message}`);
           return c.json(failure, agentAuthFailureStatus(failure));
         }
       }
     } catch (error) {
-      await failActiveTurn();
       const message = error instanceof Error ? error.message : String(error);
+      await failActiveTurn(`The turn never reached the agent: ${message}`);
       return c.json({ error: "Playground request failed", detail: message }, 502);
     }
 
     if (!upstream.ok && platformSession && (isInitial || isContinuation)) {
-      await failActiveTurn();
+      await failActiveTurn(await upstreamRejectionReason(upstream));
     }
 
     if ((isInitial || isContinuation) && upstream.ok && platformSession) {

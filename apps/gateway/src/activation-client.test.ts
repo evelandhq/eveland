@@ -69,6 +69,31 @@ describe("createApiActivationClient", () => {
     ]);
   });
 
+  test("carries the control API's rejection reason into the activation error", async () => {
+    const server = createServer((_request, response) => {
+      response.statusCode = 504;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ error: "Runtime activation timed out after 30000ms." }));
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected API fixture port.");
+    const client = createApiActivationClient({
+      apiUrl: `http://127.0.0.1:${address.port}`,
+      serviceToken: "gateway-service-token",
+    });
+
+    await expect(
+      client.activate(
+        { deploymentId: "dep_cold", kind: "turn", ownerId: "req_cold" },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(
+      "Control API activation failed with HTTP 504: Runtime activation timed out after 30000ms.",
+    );
+  });
+
   test("retries while the previous RuntimeInstance is draining", async () => {
     let attempts = 0;
     const server = createServer((_request, response) => {

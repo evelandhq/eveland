@@ -477,6 +477,7 @@ export function sessionRowToSession(row: {
   scheduleId: string | null;
   scheduleRunId: string | null;
   status: string;
+  error: string | null;
   startedAt: Date;
   completedAt: Date | null;
   inputTokens: number;
@@ -500,6 +501,7 @@ export function sessionRowToSession(row: {
     scheduleId: row.scheduleId,
     scheduleRunId: row.scheduleRunId,
     status: row.status as SessionStatus,
+    error: row.error,
     startedAt: timestampToIso(row.startedAt),
     completedAt: timestampToIso(row.completedAt),
     usage: {

@@ -312,6 +312,17 @@ describe("eve event projections", () => {
     expect(sessionStatusFromEveEvent("step.completed", "running")).toBeNull();
   });
 
+  test("renders the Session failure line from the boundary payload", () => {
+    const { sessionErrorFromEveEvent } = Eve;
+    expect(sessionErrorFromEveEvent("session.failed", { message: "boom" })).toBe("boom");
+    expect(sessionErrorFromEveEvent("session.failed", {})).toBe(
+      "The agent reported session.failed without a message.",
+    );
+    expect(sessionErrorFromEveEvent(undefined, "not a record")).toBe(
+      "The agent reported session.failed without a message.",
+    );
+  });
+
   test("renders the scheduled-execution failure line from the boundary payload", () => {
     const { scheduleExecutionErrorFromEveEvent } = Eve;
     expect(scheduleExecutionErrorFromEveEvent("turn.failed", { message: "boom" })).toBe(

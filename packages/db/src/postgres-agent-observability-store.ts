@@ -4,6 +4,7 @@ import {
   parseStepUsageEvent,
   scheduleExecutionErrorFromEveEvent,
   scheduleExecutionStatusFromEveEvent,
+  sessionErrorFromEveEvent,
   sessionStatusFromEveEvent,
 } from "@evelandhq/core/eve";
 import {
@@ -372,6 +373,10 @@ export async function ingestPostgresAgentEvent(
         .update(sessions)
         .set({
           status: projectedStatus,
+          error:
+            projectedStatus === "failed"
+              ? sanitizeStoredErrorText(sessionErrorFromEveEvent(type, payload))
+              : null,
           completedAt:
             projectedStatus === "completed" || projectedStatus === "failed" ? new Date() : null,
         })

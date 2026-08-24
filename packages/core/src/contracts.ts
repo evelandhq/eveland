@@ -409,6 +409,8 @@ export type Session = {
   scheduleId: string | null;
   scheduleRunId: string | null;
   status: SessionStatus;
+  /** Why the session is `failed`, in operator-facing words; null otherwise. */
+  error: string | null;
   startedAt: string;
   completedAt: string | null;
   usage: SessionTokenUsage;
