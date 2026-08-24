@@ -7,8 +7,8 @@ agents; product behavior still belongs in the product and deployment docs.
 
 Before changing code:
 
-1. Read `spec.md` for the product boundaries and architecture principles
-   (written in Chinese). It is deliberately principle-level: the per-domain
+1. Read `spec.md` for the product boundaries and architecture principles.
+   It is deliberately principle-level: the per-domain
    behavioral contracts live in `docs/{zh,en}/reference/` (identity,
    source-import, playground, scheduling, agent-environment, dashboard,
    routing, observability, eve-compatibility) — read the domain page for the

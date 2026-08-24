@@ -1,35 +1,41 @@
-# Eveland 产品规格
+# Eveland Product Specification
 
-> 本文件是 Eveland 的产品与架构契约：只约束产品边界、架构不变量与信任边界，不描述
-> 实现细节，也不携带版本事实。每个域的行为细则以 `docs/zh/reference/`（与 `docs/en`
-> 互为镜像）为权威，各节末尾给出指针；当前支持的 Eve 版本窗口与平台注入的 workflow
-> world 版本见 `docs/zh/reference/eve-compatibility.md`。
+> This file is Eveland's product and architecture contract: it constrains product
+> boundaries, architectural invariants, and trust boundaries only — it describes no
+> implementation detail and carries no version facts. The per-domain behavioral
+> contracts are authoritative in `docs/en/reference/` (mirrored by `docs/zh`), and
+> each section ends with a pointer; the currently supported Eve version window and
+> the platform-injected workflow world version live in
+> `docs/en/reference/eve-compatibility.md`.
 
-## 1. 定位
+## 1. Positioning
 
-Eveland 是一个 self-hosted Web 应用，用于导入、配置、运行和观察标准 Eve (https://eve.dev, https://github.com/vercel/eve) 项目。
+Eveland is a self-hosted web application for importing, configuring, running, and
+observing standard Eve (https://eve.dev, https://github.com/vercel/eve) projects.
 
-用户将一个 Eve 项目以 Git Repo 或 Zip 上传方式导入，配置运行环境后，即可直接部署、测试，并查看 Session 运行历史、日志与 Schedule 定义。
+A user imports an Eve project as a Git repo or a zip upload, configures its runtime
+environment, and can then deploy and test it directly, and inspect its session run
+history, logs, and schedule definitions.
 
 ---
 
-## 2. 用户路径
+## 2. User journey
 
 ```text
-登录
-  → 项目列表
-  → 新建项目
-  → 导入 Git Repo 或上传 Zip
-  → 校验 Eve 项目结构
-  → 配置运行所需 Secrets
+Sign in
+  → Project list
+  → New project
+  → Import a Git repo or upload a zip
+  → Validate the Eve project structure
+  → Configure the secrets the run needs
   → Build & Deploy
-  → 在 Playground 中直接运行
-  → 查看 Sessions、Schedules、Logs
+  → Run it directly in the Playground
+  → Inspect Sessions, Schedules, Logs
 ```
 
 ---
 
-## 3. 核心对象
+## 3. Core objects
 
 ```text
 Team
@@ -38,354 +44,480 @@ Team
       ├─ Source Revision
       │   └─ Git commit / uploaded zip snapshot
       ├─ Release
-      │   └─ 某次构建产物
+      │   └─ the artifact of one build
       ├─ Deployment
-      │   └─ 当前运行中的 Release
+      │   └─ a Release running now
       ├─ Secrets
-      │   └─ 平台保存，不写回代码或 Repo
+      │   └─ platform-held, never written back to code or the repo
       ├─ Sessions
-      │   └─ Eve 的实际运行历史
+      │   └─ Eve's actual run history
       └─ Schedules
-          └─ Eve 项目中的 cron 定义
+          └─ cron definitions in the Eve project
 ```
 
-当前只支持一个默认运行环境：`Production`。
-每个 Eveland 实例只有一个 Team；数据模型保留未来支持多个 Team 的边界。
+Only one default environment exists today: `Production`.
+Each Eveland instance has exactly one Team; the data model keeps the boundary needed
+to support multiple Teams later.
 
 ---
 
-## 4. 产品契约
+## 4. Product contract
 
-### 登录 (/login)
+### Login (/login)
 
-平台使用邮箱和密码登录，用户、密码账户与 Session 使用 Better Auth，团队成员与邀请使用
-Organization plugin。首次启动幂等创建默认 Admin；不内置生产默认密码，初始密码与
-`BETTER_AUTH_SECRET` 必须显式配置。除健康检查和邀请接受外，所有平台 API 都要求有效
-成员 Session；公开 Agent Gateway 流量使用独立认证边界。Better Auth 的 HTTP 面按
-allowlist 暴露：仅登录、登出与 get-session 公开可路由，其余端点（含未来版本新增）一律
-404，密码修改与成员管理走 Eveland-owned 端点。
+The platform signs in with email and password; users, password accounts, and
+sessions use Better Auth, and team members and invitations use the Organization
+plugin. First startup idempotently creates a default admin; there is no built-in
+production default password — the initial password and `BETTER_AUTH_SECRET` must be
+configured explicitly. Except for health checks and invitation acceptance, every
+platform API requires a valid member session; public Agent Gateway traffic uses an
+independent authentication boundary. Better Auth's HTTP surface is exposed by
+allowlist: only sign-in, sign-out, and get-session are publicly routable, every
+other endpoint (including anything future versions add) is a 404, and password
+changes and member management go through Eveland-owned endpoints.
 
-API 与 Agent Gateway 的公开 `/health` 除存活状态外还返回 Eveland 产品 `version`、Git
-`revision`、发布 `channel` 与当前 `component`；所有组件共享 `service = eveland`，不得把
-API、Dashboard、Agent Gateway 或 Worker 建模成独立产品版本。
+The public `/health` of the API and Agent Gateway returns, beyond liveness, the
+Eveland product `version`, Git `revision`, release `channel`, and current
+`component`; all components share `service = eveland`, and the API, Dashboard,
+Agent Gateway, and Worker must never be modeled as independently versioned
+products.
 
-### Agent 用户身份 (/settings/identity)
+### Agent user identity (/settings/identity)
 
-Agent 用户身份与平台 Better Auth、Playground authentication credential 是三条独立信任
-边界，任何一条不得替代或静默回退到另一条；Better Auth cookie/token、member role 与
-provider credential 都不得进入 Caller Token、浏览器聊天存储、Agent Gateway 或 Agent。
+Agent user identity, platform Better Auth, and Playground authentication
+credentials are three independent trust boundaries; none may substitute for or
+silently fall back to another. Better Auth cookies/tokens, member roles, and
+provider credentials must never enter Caller Tokens, browser chat storage, the
+Agent Gateway, or Agents.
 
-Identity Provider 是实例级的，任意时刻只能启用一个，三选一：`Open`（新实例默认，不认证
-任何人、不签发 Identity Session）、`Internal`（服务端验证 Better Auth member）、`OIDC`
-（委托外部 OpenID Connect Provider，PKCE 与 nonce 强制开启）。System Admin 选择当前唯一
-active Provider、允许的 Identity Realm 与精确 web-chat return origin；切换 Provider 会使
-既有 Identity Session 不再认证任何人。
+The Identity Provider is instance-level and exactly one can be active at any time,
+chosen from three: `Open` (the default for new instances; authenticates nobody and
+issues no Identity Session), `Internal` (server-side verification of a Better Auth
+member), and `OIDC` (delegation to an external OpenID Connect provider, with PKCE
+and nonce forced on). The System Admin selects the single active provider, the
+allowed Identity Realms, and the exact web-chat return origins; switching the
+provider makes existing Identity Sessions authenticate no one.
 
-Eveland 只签发自己的短时效 Caller Token（per-Project audience），不透传任何 provider
-credential。Caller Token 只证明调用者身份，访问授权完全归 Agent——“谁能使用哪个 Agent”
-不属于 Eveland 配置；Eveland 仅以 Realm 白名单持有实例级身份信任边界，不存在 Realm →
-Project access。Eveland 自身不得包含任何 provider-specific 分支：provider verifier 以
-外部包发布，provider 差异只能通过通用协议配置表达。
+Eveland issues only its own short-lived Caller Tokens (per-project audience) and
+never passes through any provider credential. A Caller Token proves caller identity
+only — access authorization belongs entirely to the Agent: "who may use which
+Agent" is never Eveland configuration. Eveland holds only the instance-level
+identity trust boundary via the Realm allowlist; there is no Realm → Project
+access. Eveland itself must contain no provider-specific branch: provider verifiers
+ship as external packages, and provider differences are expressed only through
+generic protocol configuration.
 
-`evelandIdentity()` 通过标准 `WWW-Authenticate` Bearer challenge 协议工作；Agent Gateway
-必须透明转发 challenge、credential 与响应，不解释或改写该协议。唯一的蓄意例外：Identity
-Provider 为 `Open` 时，Agent Gateway 为完全不带 `Authorization` 的请求注入 open 模式
-Caller Token，且绝不覆盖已有 credential。
+`evelandIdentity()` works through the standard `WWW-Authenticate` Bearer challenge
+protocol; the Agent Gateway must forward challenges, credentials, and responses
+transparently, neither interpreting nor rewriting the protocol. The single
+deliberate exception: when the Identity Provider is `Open`, the Agent Gateway
+injects an open-mode Caller Token for requests carrying no `Authorization` at all,
+and never overwrites an existing credential.
 
-独立且公开的 `GET /agent-catalog` 提供 Agent Catalog 只读投影：不要求 Identity Session、
-不做授权过滤、不动态探测 Agent、不构成 marketplace；`projectId` 结合 Eveland issuer 是
-稳定的 managed Agent identity，endpoint 变化不得生成新的 Agent 身份。
+The standalone, public `GET /agent-catalog` serves the read-only Agent Catalog
+projection: it requires no Identity Session, performs no authorization filtering,
+probes no Agents, and is not a marketplace; `projectId` combined with the Eveland
+issuer is the stable managed Agent identity, and an endpoint change must not mint a
+new Agent identity.
 
-Provider 模式行为、Realm 解析、Caller/App Token 契约、open 注入约束与 Catalog
-membership 细则见 `docs/zh/reference/identity.md`；决策理由见
-`docs/zh/reference/design/identity.md`。
+Provider-mode behavior, Realm resolution, the Caller/App Token contracts, the
+open-injection constraints, and the Catalog membership rules live in
+`docs/en/reference/identity.md`; the decision rationale in
+`docs/en/reference/design/identity.md`.
 
-### Workspace 与 Settings 页面
+### Workspace and Settings pages
 
-Projects 列表是 Workspace 首页；Settings 是独立设置区域，按 Personal 与 System 分组。
-各页面的展示列、交互与限制见 `docs/zh/reference/dashboard.md`。跨页面的产品不变量：
+The Projects list is the workspace home; Settings is a separate settings area
+grouped into Personal and System. Per-page columns, interactions, and limits live
+in `docs/en/reference/dashboard.md`. The cross-page product invariants:
 
-- Dashboard 中所有绝对日期与时间统一按当前用户的 Display timezone 展示，不得由服务器
-  运行时默认时区决定；Schedule 的原始 cron 仍按源码的 UTC 语义展示。
-- Project 删除是永久、异步操作：输入完整名称确认，API 原子标记 `deleting` 并创建唯一
-  `delete_project` job；失败时记录保留并支持幂等重试。平台不得删除 `EVELAND_DATA_DIR`
-  之外的外部源码路径。
-- 个人 Git 凭据按 `(userId, host)` 隔离，不能由同 Team 其他成员复用；任何界面不返回、
-  复制或提示 PAT 原值。
-- 团队角色只有 `admin` 与 `member`；最后一个 Admin 不能被移除或降级；邀请链接单次使用，
-  接受后立即失效。
-- About 的 runtime configuration 诊断使用显式 allowlist，不能枚举 `process.env`；Secret
-  只显示是否已配置。Worker 不增加公开 HTTP 服务，诊断经脱敏 snapshot 文件交给 API；
-  组件不可达时显示 unavailable，不得回退为读取原始环境文件。
-- Eveland 产品版本与 Project 的 Release/Deployment 是两个独立概念。
+- Every absolute date and time in the Dashboard renders in the current user's
+  display timezone, never decided by the server's runtime default timezone; a
+  schedule's raw cron keeps its source-level UTC semantics.
+- Project deletion is permanent and asynchronous: the full name is typed to
+  confirm, the API atomically marks `deleting` and creates a unique
+  `delete_project` job; on failure the record survives and supports idempotent
+  retry. The platform must never delete external source paths outside
+  `EVELAND_DATA_DIR`.
+- Personal Git credentials are isolated per `(userId, host)` and cannot be reused
+  by other members of the same team; no surface returns, copies, or hints at the
+  PAT value.
+- Team roles are only `admin` and `member`; the last admin can be neither removed
+  nor demoted; invitation links are single-use and expire immediately on
+  acceptance.
+- About's runtime-configuration diagnostic uses an explicit allowlist and can never
+  enumerate `process.env`; secrets show only configured/not-configured. The Worker
+  adds no public HTTP service — its diagnostics reach the API through a masked
+  snapshot file; an unreachable component shows unavailable, never falling back to
+  reading raw environment files.
+- The Eveland product version and a project's Release/Deployment are two
+  independent concepts.
 
 ### Observability (/settings/observability)
 
-Eveland 的监控以 OpenTelemetry/OTLP 为唯一传输标准。Built-in 是平台内置且始终启用的
-Destination：它只把 Eveland 原有的运行数据投影为 Sessions、Usage 与 Instance Health
-必需的读模型，不存储原始 Span/LogRecord/Metric Point，不提供统计视图，也不引入任何
-原本不存在的监控项。Span 级观测与下钻由外部 Destination 承担，平台自身遥测的观测同样
-完全由外部 Destination 承担，Eveland 不做本地兜底；Built-in retention 不是可配置项。
+Eveland's monitoring uses OpenTelemetry/OTLP as its only transport standard.
+Built-in is the platform's always-on internal destination: it only projects
+Eveland's existing operational data into the read models Sessions, Usage, and
+Instance Health require — storing no raw spans/LogRecords/metric points, offering
+no statistics views, and introducing no monitoring that did not already exist.
+Span-level observation and drill-down belong to external destinations, and
+observation of the platform's own telemetry likewise belongs entirely to external
+destinations — Eveland provides no local fallback; Built-in retention is not
+configurable.
 
-信任边界是产品承诺：平台与 Agent 使用互不共享信任的 OTLP receiver；Deployment 归属
-不取自 Agent 自报的 id，而由 Worker 签发的凭据验签后以 Store 中的归属覆盖，验签失败
-或缺失的 resource 不投影、不外发。由此 Agent 无法伪造平台状态，也无法把遥测写入其他
-Deployment 或 Project；但它仍可以伪造自己 Deployment 名下的数据——抵抗这一点需要由
-进程外的可信边界赋予 provenance，当前实现不提供该保证。
+The trust boundary is a product promise: the platform and Agents use OTLP receivers
+that share no trust; deployment attribution is never taken from an Agent's
+self-reported id but from Worker-issued credentials, whose verified identity
+overrides the payload with the Store's ownership — resources with failed or missing
+verification are neither projected nor sent externally. An Agent therefore cannot
+forge platform state or write telemetry into another Deployment or Project; it can
+still fabricate data under its own Deployment — resisting that requires provenance
+granted by a trusted out-of-process boundary, which the current implementation does
+not provide.
 
-Agent 源码中的 instrumentation 是独立边界：Eveland 不修改用户监控代码，不注册或替换
-全局 provider，也不截获用户 exporter；平台只在 Eve 的保留 hook slot 注入使用私有
-provider 的 Eveland hook。遥测失败只产生限频降级告警，不得使 Eve event hook 或 Agent
-turn 失败；Collector 缺失不得阻断 Agent 启动或 cold activation；监控设置的变更只重启
-Collector，不得为此重启 Agent Deployment。外部投递只经过 service-authenticated API
-egress proxy，执行 fail-closed SSRF 策略；凭据加密保存且不回浏览器。
+Instrumentation in Agent source is an independent boundary: Eveland does not modify
+user monitoring code, register or replace global providers, or intercept user
+exporters; the platform only injects the Eveland hook, with its private providers,
+into Eve's reserved hook slot. Telemetry failures produce only rate-limited
+degradation warnings and must never fail an Eve event hook or an Agent turn; a
+missing Collector must not block Agent startup or cold activation; observability
+settings changes restart only the Collector, never Agent Deployments. External
+delivery goes only through the service-authenticated API egress proxy under a
+fail-closed SSRF policy; credentials are stored encrypted and never returned to the
+browser.
 
-采集管线拓扑、Destination 行为、投影与乱序规则、retention 表见
-`docs/zh/reference/observability.md`。
+The collection-pipeline topology, destination behavior, projection and
+out-of-order rules, and the retention table live in
+`docs/en/reference/observability.md`.
 
 ### Instance Health (/settings/health)
 
-仅 Admin 可见，把“当前是否可用”与“是否正在接近容量风险”分开呈现。Worker 是唯一采集
-宿主机指标的特权组件：heartbeat 与 metric sample 作为 capacity domain 的标准 OTLP
-metrics 发送，Built-in 投影，API 只读聚合，Dashboard 只读展示。`stopped`
-RuntimeInstance 是正常 scale-to-zero 状态，不得单独视为故障；Worker heartbeat 独立于
-长时间 job 持续发布。页面不提供 shell、systemd restart 或其他宿主机写操作；服务器完全
-失联仍需要外部监控轮询公开 `/health`。展示项与判定规则见
-`docs/zh/reference/dashboard.md`。
+Admin-only; presents "is it currently available" separately from "is it approaching
+capacity risk". The Worker is the only privileged component collecting host
+metrics: heartbeats and metric samples are sent as standard OTLP metrics in the
+capacity domain, Built-in projects them, the API only reads and aggregates, and the
+Dashboard displays read-only. A `stopped` RuntimeInstance is normal scale-to-zero
+and must not alone be treated as a failure; the Worker heartbeat publishes
+independently of long-running jobs. The page offers no shell, systemd restarts, or
+any other host write operation; total server loss still requires external
+monitoring polling the public `/health`. Display items and judgment rules live in
+`docs/en/reference/dashboard.md`.
 
 ---
 
-### 新建项目 (/new)
+### New project (/new)
 
-新建项目使用全屏分步流程，支持 Git Repo URL 与上传 Zip 两种导入方式。API 先创建用户
-隔离、带过期时间的 Source Preflight，由 worker 校验真实文件树与 Eve 项目结构，此时不
-创建 Project；只有 Preflight 成功才进入命名屏幕。Project 与初始 import job 在同一数据
-库事务内消费已完成的 Preflight，同一快照直接成为不可变 Source Revision，不做第二次
-clone 或重新上传；失败导入不得继续部署。
+Creating a project uses a full-screen stepped flow supporting a Git repo URL and a
+zip upload. The API first creates a user-isolated, expiring Source Preflight whose
+real file tree and Eve project structure the worker validates — no project is
+created yet; only a successful preflight reaches the naming screen. The project and
+the initial import job consume the completed preflight in one database transaction,
+and the same snapshot becomes the immutable Source Revision directly — no second
+clone or re-upload; a failed import must not proceed to deployment.
 
-创建时确认的名称占用公开 Agent 地址中的不可变 slug（全实例唯一）；并发冲突返回 409，
-不允许静默改名。Project 另有可修改的 Display name 与 Description，修改不得改变 slug、
-公开 Agent endpoint、Project ID、Route 或既有 Session/Deployment 关系。
+The name confirmed at creation claims the immutable slug in the public Agent
+address (instance-unique); a concurrent conflict returns 409 — silent renaming is
+not allowed. The project also has a mutable display name and description whose
+changes must never alter the slug, the public Agent endpoint, the project ID,
+routes, or existing session/deployment relations.
 
-命名屏幕可在首次 Deploy 前录入运行时 Variables/Secrets；初始条目与 Project、initial
-import job 原子提交，Value 加密保存且不返回浏览器。私有仓库 PAT 只作为规范化 host
-作用域的临时认证使用，绝不进入 URL、源码 `.git/config`、日志或错误，且只在整次导入
-成功后保存。
+The naming screen can record runtime Variables/Secrets before the first deploy;
+the initial entries commit atomically with the project and the initial import job,
+and values are stored encrypted and never returned to the browser. A private-repo
+PAT serves only as temporary, normalized-host-scoped authentication — never
+entering URLs, the source `.git/config`, logs, or errors — and is saved only after
+the whole import succeeds.
 
-导入与构建对源码只读：Source Revision 不可变，Eveland 的 import、build 与 deploy 不得
-运行 `eve add`/`eve registry`、访问 registry 或修改源码。Release 构建必须尊重项目提交
-的包管理器锁文件（frozen install），Docker 与 systemd runtime 必须做出相同选择。
-`agent/skills/` 由 Eve 原生发现与编译，平台不自行解释 `defineSkill`，Skill 脚本不因此
-获得额外宿主机权限或 Secret。
+Import and build are read-only toward the source: Source Revisions are immutable,
+and Eveland's import, build, and deploy must not run `eve add`/`eve registry`,
+reach the registry, or modify the source. Release builds must honor the project's
+committed package-manager lockfile (frozen install), and the Docker and systemd
+runtimes must make the same choice. `agent/skills/` is discovered and compiled
+natively by Eve; the platform does not interpret `defineSkill` itself, and skill
+scripts gain no extra host privileges or secrets through it.
 
-导入等后台 job 使用租约与 fencing：同一 Project 同时至多一个 running job，迟到的旧
-attempt 不得覆盖新 attempt 的状态，被 fencing 拒绝的执行必须中止自己的宿主机副作用；
-瞬时错误有界重试，确定性错误不重试。Source Revision 持久化启动既有 Release 所需的
-`package.json` 与 lockfile 元数据：冷启动与 Schedule activation 可在源码目录被回收后
-从元数据恢复原 Deployment，restart 保持 live-source-only。
+Background jobs such as imports use leases and fencing: at most one running job per
+project at a time, a late old attempt must never overwrite a newer attempt's state,
+and an execution fenced off must abort its own host side effects; transient errors
+retry within bounds, deterministic errors never retry. The Source Revision persists
+the `package.json` and lockfile metadata needed to start an existing Release: cold
+activation and schedule activation can recover the original deployment from that
+metadata after the source directory is reclaimed, while restart stays
+live-source-only.
 
-Eveland 在 Eve 达到稳定产品兼容承诺前，只支持已经完成完整兼容验证的 minor line；窗口是
-已验证 line 的集合而非连续区间，每次扩展或收缩窗口都是显式产品变更。当前窗口值、允许的
-依赖声明形式与各线基线见 `docs/zh/reference/eve-compatibility.md`。
+Until Eve reaches a stable product-compatibility commitment, Eveland supports only
+minor lines that have completed full compatibility verification; the window is a
+set of verified lines, not a contiguous range, and every widening or narrowing of
+the window is an explicit product change. The current window values, accepted
+dependency-declaration forms, and per-line baselines live in
+`docs/en/reference/eve-compatibility.md`.
 
-缺少 Eve 依赖或任何可能解析到窗口之外的声明都必须 fail closed，并明确提醒开发者升级项目
-的 `eve` 依赖。该检查覆盖 import、build、restart、冷启动、Playground，以及公开 Agent
-Gateway 到达所选 Deployment 的全部流量，不能通过旧 Source Revision、旧 Deployment 或
-SessionBinding 绕过，也不得因此唤醒休眠的窗口外 Deployment；无法证明版本受支持时按不
-支持处理，不能猜测或做旧协议兼容。UI 以绿色标注最新支持线，以红色提示较旧支持线与窗口
-外版本；仍受支持的旧线不阻断运行，窗口外版本继续阻断操作。
+A missing Eve dependency, or any declaration that could resolve outside the window,
+must fail closed with a clear reminder to upgrade the project's `eve` dependency.
+The check covers import, build, restart, cold activation, the Playground, and all
+public Agent Gateway traffic reaching the selected deployment — it cannot be
+bypassed through an old Source Revision, an old Deployment, or a SessionBinding,
+and must never wake a dormant out-of-window Deployment; when a version cannot be
+proven supported it is treated as unsupported, with no guessing and no
+old-protocol compatibility. The UI marks the latest supported line in green and
+older supported lines and out-of-window versions in red; still-supported older
+lines keep running, out-of-window versions stay blocked.
 
-向导交互、PAT 细则、命名格式、`.env` 导入、Preflight 过期与 job 执行语义的完整契约见
-`docs/zh/reference/source-import.md`。
+The wizard interaction, PAT details, name format, `.env` import, preflight expiry,
+and job execution semantics live in `docs/en/reference/source-import.md`.
 
 ---
 
-### 项目首页与 Deployments
+### Project home and Deployments
 
-Overview 是观察入口：默认展示最近七天执行概况，主要操作是 Open Playground；完整的
-构建、预览、流量与回滚操作位于 Project Deployments。Project Sidebar 按日常观察优先
-排列，Logs 保持独立一级入口。
+Overview is the observation entry point: it defaults to the last seven days of
+execution, and its primary action is Open Playground; full build, preview, traffic,
+and rollback operations live in Project Deployments. The project sidebar orders
+daily observation first, and Logs keeps an independent first-level entry.
 
-Deployments 页面只提供一个 `Create deployment` 主入口，Dialog 以 Source（当前 Revision
-或先同步 Git）与结果（保留 preview 或健康后 promote）两个维度组合，提交文案必须显式
-命名组合，不能用含糊的 `latest` 同时指代当前 Revision 与远端 Git。页面明细与操作列表
-见 `docs/zh/reference/dashboard.md`。
+The Deployments page offers exactly one `Create deployment` entry point; the dialog
+composes two dimensions — Source (current revision, or sync Git first) and outcome
+(keep as preview, or promote after health) — and the submit label must name the
+combination explicitly, never using an ambiguous `latest` to mean both the current
+revision and remote Git. Page details and the operation list live in
+`docs/en/reference/dashboard.md`.
 
 ---
 
 ### Playground (/projects/proj_xxxxxxxxxx/playground)
 
-用于直接测试当前 Deployment。Dashboard 使用 Eve canonical session protocol，经 API 和
-仅内部可达、带 service credential 的 Agent Gateway Playground path 请求当前 Deployment，
-对话、reasoning、tool 调用与人工输入按 NDJSON 增量流式展示。Agent Gateway 不替代 Agent
-自己的认证，也不保存、解密或刷新 provider credential——credential 由 API 按请求解析并经
-严格校验的 versioned envelope 下发。
+Tests the current deployment directly. The Dashboard speaks the Eve canonical
+session protocol to the current deployment through the API and the internal-only,
+service-credentialed Agent Gateway Playground path; conversation, reasoning, tool
+calls, and human input stream incrementally as NDJSON. The Agent Gateway never
+substitutes for the Agent's own authentication and never stores, decrypts, or
+refreshes provider credentials — credentials are resolved per request by the API
+and delivered through a strictly validated versioned envelope.
 
-每个受管 Project 至多一套 Playground authentication 配置。它是 Playground 调用 Agent 的
-客户端配置，不是 Project、Deployment、Eve Connection 或平台登录 Session；用户必须显式
-选择客户端方法，平台不得从 Eve verifier 名称、源码 import、401 或 `WWW-Authenticate`
-猜测 credential acquisition。凭据加密保存，只返回 configured 状态，不返回原值。
+Each managed project has at most one Playground authentication configuration. It is
+the client configuration the Playground uses to call the Agent — not the project,
+the deployment, an Eve Connection, or the platform login session; the user must
+explicitly choose the client method, and the platform must never guess credential
+acquisition from Eve verifier names, source imports, 401s, or `WWW-Authenticate`.
+Credentials are stored encrypted and only their configured state is returned,
+never the values.
 
-Eveland 不增加独立的 Connections 配置页，也不接管 Eve 的 Connection 定义；官方 Eve
-Connection 随 Source Revision 构建、随 Release 部署，Project Secret 只在运行时注入，
-不能在 build 时读取。
+Eveland adds no standalone Connections configuration page and does not take over
+Eve's Connection definitions; official Eve Connections build with the Source
+Revision and deploy with the Release, and project secrets inject at runtime only —
+never readable at build time.
 
-每次打开或刷新 Playground 都从空白状态新建 Eve Session（`trigger = playground`）；New
-conversation 必须先完成 canonical session reset 再清空本地对话。停止生成必须使用
-canonical cancel route 请求服务器协作取消，并保持 stream 直到 settlement。Playground
-transport 不替代 Eveland 私有 OTLP 信号的权威观测路径；附件与原始 reasoning 不由
-Playground 持久化。
+Every open or refresh of the Playground creates a fresh Eve session from a blank
+state (`trigger = playground`); New conversation must complete a canonical session
+reset before clearing the local conversation. Stopping generation must request
+cooperative server-side cancellation through the canonical cancel route and keep
+the stream open until settlement. The Playground transport does not replace
+Eveland's private OTLP signals as the authoritative observation path; attachments
+and raw reasoning are not persisted by the Playground.
 
-认证方法矩阵、OIDC 客户端流程、凭据存储与信封、附件限制、取消/重连与 Catch-up Read
-的流语义，以及受管 Connection 验证矩阵见 `docs/zh/reference/playground.md`。
+The authentication method matrix, the OIDC client flow, credential storage and the
+envelope, attachment limits, cancel/reconnect and catch-up-read stream semantics,
+and the managed Connection validation matrix live in
+`docs/en/reference/playground.md`.
 
 ---
 
-### Sessions 与 Usage
+### Sessions and Usage
 
-Sessions 是核心运行历史，列表只展示实际 Eve Session，不把 ScheduleRun execution
-envelope 混入同级行；详情展示 Eve 事件时间线与按 agent/subagent 的用量，不展示 span
-tree 与 LogRecord 明细——Built-in 不存储原始明细，span 级下钻由外部 Destination 承担。
-Usage 完整性显式呈现：缺失的 usage 与 cost 保留缺失状态，不得按公开价目表估算，无法
-解析 Model 的 step 保留 `Unknown model`，不能丢弃或猜测。
+Sessions is the core run history: the list shows only actual Eve sessions and never
+mixes ScheduleRun execution envelopes in as peer rows; the detail shows Eve's event
+timeline and per-agent/subagent usage, with no span tree or LogRecord detail —
+Built-in stores no raw detail, and span-level drill-down belongs to external
+destinations. Usage completeness is presented explicitly: missing usage and cost
+stay missing, never estimated from public price lists, and steps whose model cannot
+be resolved stay `Unknown model` — never dropped or guessed.
 
-Usage 页面（Workspace 聚合与单 Project）必须在服务端对完整时间范围聚合，不能把分页
-列表第一页呈现为 Total；Usage coverage 与 Cost coverage 分别计算。列定义、筛选与
-Model 归因细则见 `docs/zh/reference/dashboard.md`。
+The Usage pages (workspace aggregate and single project) must aggregate server-side
+over the full time range, never presenting page one of a paginated list as the
+total; usage coverage and cost coverage are computed separately. Column
+definitions, filters, and model-attribution rules live in
+`docs/en/reference/dashboard.md`.
 
 ---
 
 ### Schedules (/projects/proj_xxxxxxxxxx/schedules)
 
-Eveland 是生产 Schedule 的唯一调度器。Prepared Release 保留 Schedule 的 Eve 注册形状但
-把 native cron handler 改为 no-op——warm preview、旧版本和 stable target 不会各自执行
-同一 cron；真正的 authored handler 只由经过认证的私有 Scheduler Channel 调用。root 与
-Extension 两种来源只接受五字段、UTC、分钟级 cron 语义，namespaced key 冲突必须使 build
-失败；`.eveland/scheduler/definitions.json` 是必须存在并通过校验的 build artifact。
+Eveland is the sole scheduler for production schedules. A prepared Release keeps a
+schedule's Eve registration shape but replaces the native cron handler with a
+no-op — warm previews, older versions, and the stable target never each execute the
+same cron; the real authored handlers are invoked only through the authenticated
+private Scheduler Channel. Both root and Extension sources accept only five-field,
+UTC, minute-granularity cron semantics, and a namespaced key conflict must fail the
+build; `.eveland/scheduler/definitions.json` is a required, validated build
+artifact.
 
-每次 Source Revision 保留不可变 ScheduleVersion；Project 有显式 scheduler target，
-cron/manual run 固定到创建时的 Deployment、Release 和 ScheduleVersion，promote、
-rollback 或路由权重变化不得重选，切换 target 只影响之后创建的 run。
+Every Source Revision keeps an immutable ScheduleVersion; each project has an
+explicit scheduler target, and cron/manual runs pin to the deployment, Release, and
+ScheduleVersion fixed at creation — promote, rollback, or route-weight changes
+never re-select them, and switching the target affects only runs created
+afterwards.
 
-Worker 以 Postgres 为权威状态。停机跨过多个 tick 时只为最早 due time 创建一个 run 并
-合并记录 missed tick，不做 burst replay。调度执行是 at-least-once：dispatch credential
-一旦兑换，不得因响应丢失自动重放 authored side effect。ScheduleRun 以每个返回 Session
-的 root turn boundary 结算并释放 ActivationLease；boundary 永久缺失时按硬截止时间失败
-关闭，不得永久显示 `running`。queued/running 的 ScheduleRun 对其 pinned Deployment 提供
-硬性回收保护。
+The Worker treats Postgres as the authoritative state. An outage spanning multiple
+ticks creates one run for the earliest due time and records the coalesced missed
+ticks — no burst replay. Schedule execution is at-least-once: once a dispatch
+credential is redeemed, authored side effects must never be replayed automatically
+because a response was lost. A ScheduleRun settles on each returned session's root
+turn boundary and releases its ActivationLease; when the boundary is permanently
+missing it fails closed at the hard deadline, never showing `running` forever.
+Queued/running ScheduleRuns give their pinned deployment hard reclamation
+protection.
 
-Schedule delivery 必须在平台拥有的 `scheduled` workflow 运行上下文中执行，authored
-options 不能把 Schedule 放宽为 `persistent`；命中既有 Session 时已存 root class 优先。
+Schedule delivery must execute inside the platform-owned `scheduled` workflow run
+context; authored options cannot loosen a schedule to `persistent`, and when a
+delivery lands on an existing session, its stored root class wins.
 
-每次 cron 或 manual 执行都持久化独立 ScheduleRun；成功且没有创建 Session 也是合法结果。
-发现与构建 artifact、planner 与预热、派发与结算细节、Extension integrator 以及页面展示
-规则见 `docs/zh/reference/scheduling.md`。
+Every cron or manual execution persists an independent ScheduleRun; success with no
+created session is a legitimate result. Discovery and the build artifact, the
+planner and prewarm, dispatch and settlement details, the Extension integrator, and
+the page display rules live in `docs/en/reference/scheduling.md`.
 
 ---
 
 ### Source (/projects/proj_xxxxxxxxxx/source)
 
-只读代码浏览器：文件树、文件内容、当前 Source Revision 信息与 Eve 项目结构摘要。不做
-在线编辑，不做 Git 写回；Connection 只作为结构摘要的一部分展示，不提供独立的
-Connections 导航或配置 UI。已构建摘要来自已安装依赖树上最终 `eve info` 的 discovery
-manifest，只接受当前窗口产出的版本，未知版本 fail closed 并保留静态摘要。摘要字段与
-Extension 投影规则见 `docs/zh/reference/source-import.md`。
+A read-only code browser: the file tree, file contents, current Source Revision
+info, and the Eve project-structure summary. No online editing, no Git write-back;
+Connections appear only as part of the structure summary, with no separate
+Connections navigation or configuration UI. The built summary comes from the
+discovery manifest of the final `eve info` on the installed dependency tree; only
+versions produced by the current window are accepted, and unknown versions fail
+closed while keeping the static summary. Summary fields and Extension projection
+rules live in `docs/en/reference/source-import.md`.
 
 ---
 
 ### Project Settings (/projects/proj_xxxxxxxxxx/settings)
 
-Project Settings 使用页面内二级导航（General 与 Environment），不在主 Sidebar 展开第三
-层；General 持有 Display name/Description 编辑与 Danger zone 的 Project 删除。页面明细
-见 `docs/zh/reference/dashboard.md`。
+Project Settings uses in-page secondary navigation (General and Environment)
+rather than a third sidebar level; General holds display name/description editing
+and project deletion in its danger zone. Page details live in
+`docs/en/reference/dashboard.md`.
 
 ### Variables and Secrets (/projects/proj_xxxxxxxxxx/settings/environment)
 
-Agent 运行时环境由三层组成，确定性优先级为 Shared Agent Environment < Project
-Secret/Variable < Eveland 保留变量。Type 明确区分 `variable` 与 `secret`；两种 Value 都
-加密保存，保存后只返回 configured 状态，不向浏览器返回原值。
+The Agent runtime environment has three layers with deterministic precedence:
+Shared Agent Environment < project Secret/Variable < Eveland reserved variables.
+Type distinguishes `variable` from `secret`; both value kinds are stored encrypted,
+returning only the configured state after saving — values never return to the
+browser.
 
-运行时条目是运行时配置：新增、修改或删除后，API 为该 Project 每个 `running`/`draining`
-Deployment 排入重启任务，重启沿用原 Release 并在新进程启动时重新解密注入完整集合；
-没有 live Deployment 时从下一次 deploy 生效。Project Secret 只在运行时注入，不进入
-Git Repo、Zip、Build Log、Source 页面或 Session Log；Variable 同样不进入上述位置，但
-额外参与 Release build。
+Runtime entries are runtime configuration: after an add, change, or delete, the API
+enqueues a restart task for each of the project's `running`/`draining` deployments;
+the restart keeps the original Release and re-decrypts and injects the full set
+when the new process starts. With no live deployment, entries take effect from the
+next deploy. Project secrets inject at runtime only and never enter the Git repo,
+the zip, the build log, the Source page, or session logs; variables are equally
+absent from those places but additionally participate in Release builds.
 
 ### Shared Agent Environment (/settings/shared-agent-environment)
 
-系统只有一套 operator-owned Shared Agent Environment（不是 Profile 集合），仅 Admin 可
-维护，自动应用到所有 Project 的每个 Agent Deployment。共享 `secret` 只在进程启动边界
-解密，经 root-owned 0600 环境文件交付 runtime，不得出现在进程 argv 或任何持久化产物
-中；完整值集合参与诊断脱敏。Shared Agent Environment 只属于 Agent runtime，不得作为
-Playground authentication credential；Secret reference 缺失、删除或无法解密必须 fail
-closed，不得回退旧值。
+The system has exactly one operator-owned Shared Agent Environment (not a profile
+collection), admin-maintained, applied automatically to every Agent deployment of
+every project. A shared `secret` decrypts only at the process-start boundary and
+reaches the runtime through a root-owned 0600 environment file — never appearing on
+process argv or in any persisted artifact; the full value set participates in
+diagnostic masking. The Shared Agent Environment belongs to the Agent runtime only
+and must not serve as a Playground authentication credential; a missing, deleted,
+or undecryptable secret reference must fail closed, never falling back to an old
+value.
 
-### Build 可见的 Variable
+### Build-visible variables
 
-`variable` 参与 Release build——agent config 在模块加载期从 `process.env` 读到的值会被
-固化进 Release；`secret` 永远不进入 build，因为 install/build lifecycle script 是不可
-信的项目代码。平台保留名称在 build 中被丢弃并在 Build Log 记录 `WARNING`（绝不静默），
-运行时保留层最后覆盖同名条目；保留名单与运行时保留层保持一致，由测试锁定。Release
-不可变：改动 `variable` 只在下一次 deploy 刷新编译产物，单纯环境变更只对 live
-Deployment 排 restart。
+`variable` entries participate in Release builds — values the agent config reads
+from `process.env` at module-load time are frozen into the Release; `secret` never
+enters a build, because install/build lifecycle scripts are untrusted project code.
+Platform-reserved names are dropped from builds with a `WARNING` in the build log
+(never silently), and the runtime reserved layer overrides same-named entries last;
+the reserved list stays in sync with the runtime reserved layer, locked by a test.
+Releases are immutable: changing a `variable` refreshes the compiled output only on
+the next deploy, and a plain environment change only enqueues restarts for live
+deployments.
 
-页面交互、批量导入、重启语义、Shared Agent Environment 细则与保留名单见
-`docs/zh/reference/agent-environment.md` 与 `docs/zh/production/worker.md`。
+Page interaction, bulk import, restart semantics, Shared Agent Environment details,
+and the reserved list live in `docs/en/reference/agent-environment.md` and
+`docs/en/production/worker.md`.
 
 ---
 
 ### Logs (/projects/proj_xxxxxxxxxx/logs)
 
-Logs 提供 Build、Deploy 与 Runtime（stdout/stderr 及 ScheduleRun lifecycle
-diagnostics）三类日志；Agent 的具体执行过程不放在 Logs 中，而放在 Session Timeline
-中。页面交互见 `docs/zh/reference/dashboard.md`。
+Logs offers three log kinds — build, deploy, and runtime (stdout/stderr plus
+ScheduleRun lifecycle diagnostics); an Agent's concrete execution belongs in the
+session timeline, not in Logs. Page interaction lives in
+`docs/en/reference/dashboard.md`.
 
 ---
 
-## 5. 架构原则
+## 5. Architecture principles
 
-跨越所有域的约束。违反任何一条都是架构决策变更，必须先讨论再动手：
+Constraints that span every domain. Violating any of them is an architecture
+decision change — discuss first, then act:
 
-1. **Fail closed。** 无法证明合规——版本窗口、workflow attestation、dispatcher
-   registration、Secret reference、manifest 版本——即拒绝并给出可操作诊断；不猜测、
-   不静默降级、不做旧协议兼容。
-2. **不可变工件。** Source Revision、Release、workflow attestation、ScheduleVersion
-   一经写入不可更改；可变的只有路由与配置。Release 不可变意味着环境变更只能重启回原
-   Release，编译期输入只在下一次 deploy 生效。
-3. **单一特权组件。** 只有 Worker 拥有宿主机权限（Docker/systemd）；API 只持久化与
-   等待状态，Agent Gateway 只转发流量，Dashboard 只读展示。
-4. **绑定优先于权重。** 路由权重只作用于新 Session；Session/Operation 绑定一旦建立，
-   promote、rollback 或权重变化都不得移动既有会话，过期绑定显式失败而不是重新路由。
-5. **Secret 单向流动。** 加密保存、只在进程启动边界解密、经 root-owned 0600 文件
-   交付；绝不回浏览器、日志、遥测、argv、build 或任何持久化产物；诊断只显示
-   configured 状态。
-6. **平台注入，源码不感知。** sandbox backend、workflow world、observer hook 由平台
-   在一次性 Release 副本中注入；导入的源码、manifest 与 lockfile 永不修改，authored
-   lifecycle 与配置必须保留。
-7. **透明代理。** Agent Gateway 不解释、不改写 Agent 的认证协议与响应字节；唯一的
-   蓄意例外是 Open 模式对无凭据请求注入 Caller Token，且绝不覆盖已有 credential。
-8. **认证归平台，授权归 Agent。** Eveland 只签发并验证自己的身份凭据；"谁能使用哪个
-   Agent"永远是 Agent 的业务逻辑，不是平台配置。
-9. **Provider 中立。** 身份与凭据的 provider 差异只能通过通用协议配置表达；
-   provider-specific 代码住在平台之外。
-10. **At-least-once 加幂等。** 后台 job 用租约与 fencing；side-effect credential 一旦
-    兑换绝不自动重放；遥测投影按事件序号幂等推进，不因重放回退状态。
-11. **平台拥有调度时钟。** Release 中的 native cron handler 是 no-op；唯一调度器把
-    每次执行固定到创建时的 target。
-12. **观测不改变行为。** 遥测失败只降级不阻断；Playground transport 不是权威观测
-    路径；Built-in 只投影读模型，明细留给外部 Destination。
-13. **版本事实外置。** spec 不携带任何版本号；扩展或收缩兼容窗口是显式产品变更，由
-    `docs/zh/reference/eve-compatibility.md` 与架构测试共同锁定。
+1. **Fail closed.** When compliance cannot be proven — version window, workflow
+   attestation, dispatcher registration, secret reference, manifest version —
+   reject with an actionable diagnostic; no guessing, no silent degradation, no
+   old-protocol compatibility.
+2. **Immutable artifacts.** Source Revisions, Releases, workflow attestations, and
+   ScheduleVersions are immutable once written; only routing and configuration are
+   mutable. Release immutability means environment changes can only restart onto
+   the original Release, and compile-time inputs take effect only on the next
+   deploy.
+3. **A single privileged component.** Only the Worker holds host privileges
+   (Docker/systemd); the API only persists and waits on state, the Agent Gateway
+   only forwards traffic, and the Dashboard displays read-only.
+4. **Bindings beat weights.** Route weights apply only to new sessions; once a
+   session/operation binding exists, promote, rollback, or weight changes never
+   move existing conversations, and an expired binding fails explicitly instead of
+   re-routing.
+5. **Secrets flow one way.** Stored encrypted, decrypted only at the process-start
+   boundary, delivered via a root-owned 0600 file; never back to the browser,
+   logs, telemetry, argv, builds, or any persisted artifact; diagnostics show only
+   the configured state.
+6. **Platform injection, source-oblivious.** The sandbox backend, workflow world,
+   and observer hook are injected by the platform into the disposable Release
+   copy; imported source, manifests, and lockfiles are never modified, and
+   authored lifecycle and configuration must be preserved.
+7. **A transparent proxy.** The Agent Gateway neither interprets nor rewrites the
+   Agent's authentication protocol or response bytes; the single deliberate
+   exception is Open mode injecting a Caller Token for credential-less requests,
+   never overwriting an existing credential.
+8. **The platform authenticates; Agents authorize.** Eveland only issues and
+   verifies its own identity credentials; "who may use which Agent" is always the
+   Agent's business logic, never platform configuration.
+9. **Provider neutrality.** Provider differences in identity and credentials are
+   expressed only through generic protocol configuration; provider-specific code
+   lives outside the platform.
+10. **At-least-once plus idempotence.** Background jobs use leases and fencing; a
+    side-effect credential, once redeemed, is never replayed automatically;
+    telemetry projection advances idempotently by event sequence and never
+    regresses state on replay.
+11. **The platform owns the cron clock.** Native cron handlers in a Release are
+    no-ops; the sole scheduler pins every execution to the target fixed at
+    creation.
+12. **Observation never changes behavior.** Telemetry failures only degrade, never
+    block; the Playground transport is not the authoritative observation path;
+    Built-in only projects read models, leaving detail to external destinations.
+13. **Version facts live outside the spec.** This spec carries no version numbers;
+    widening or narrowing the compatibility window is an explicit product change,
+    locked jointly by `docs/en/reference/eve-compatibility.md` and the
+    architecture tests.
 
 ---
 
-## 6. 运行架构
+## 6. Runtime architecture
 
-`apps/docs` 是独立于 self-hosted 平台的公共网站。生产站点发布在
-`https://eveland.ai`，由 Cloudflare Workers 承载 Next.js/Fumadocs 应用；它不与
-API、Agent Gateway、worker 或 Agent Deployment 共享运行权限。合入 `main` 且变更包含
-`apps/docs/**` 时，仓库 CI 自动构建并发布该公共网站。这个仓库自身的文档发布流程
-不改变“导入的 Eve Project 不支持 Git push 自动部署”的产品边界。
+`apps/docs` is a public website independent of the self-hosted platform. The
+production site is published at `https://eveland.ai`, a Next.js/Fumadocs app on
+Cloudflare Workers; it shares no runtime privileges with the API, Agent Gateway,
+worker, or Agent deployments. Merges to `main` touching `apps/docs/**` trigger CI
+to build and publish the public site. This repository's own docs-publishing flow
+does not change the product boundary that "imported Eve projects do not support
+Git-push auto-deploy".
 
 ```text
 Browser
@@ -404,114 +536,149 @@ Public Agent Gateway (stable/preview Host routing)
 Eve Deployment (127.0.0.1 private upstream)
 ```
 
-每个 Deployment 拥有不可变 Release、preview Host 和 runtime adapter，但不等同于一个
-永久在线进程：RuntimeInstance 记录某一代 container/unit，Deployment 可在仍可寻址、可
-continuation、受 retention protection 时进入 `stopped`。Project stable Host 是可变路由；
-原始动态端口不是产品 URL，也不公开暴露。
+Every deployment owns an immutable Release, a preview host, and a runtime adapter,
+but is not itself a permanently running process: a RuntimeInstance records one
+generation of a container/unit, and a deployment may be `stopped` while remaining
+addressable, continuable, and retention-protected. A project's stable host is a
+mutable route; raw dynamic ports are not product URLs and are never exposed
+publicly.
 
-Build/deploy 默认创建并发运行的 preview，不停止 production；promote 必须显式指向该次
-任务创建的确切 Deployment。stable route 可原子指向一个或最多两个加权 target；Session
-绑定优先于路由权重——SessionBinding/OperationBinding 未过期时 continuation、cancel、
-stream、reset 与 durable route 永远回到原 Deployment，过期 binding 返回稳定的 `410`
-`session_expired`，不得重跑权重或落到另一 Deployment。双 target 之一不可用时新 Session
-降级路由到仅存的健康 target，两个都不可用才返回 503。
+Build/deploy creates a concurrently running preview by default, never stopping
+production; promote must explicitly target the exact deployment that job created.
+The stable route can atomically point at one or at most two weighted targets;
+session bindings beat route weights — while a SessionBinding/OperationBinding is
+unexpired, continuation, cancel, stream, reset, and durable routes always return to
+the original deployment, and an expired binding returns the stable `410`
+`session_expired`, never re-running weights or landing on another deployment. When
+one of two targets is unavailable, new sessions degrade to the sole healthy target;
+only when both are unavailable does it return 503.
 
-激活是权限分离的：API 只持久化/等待状态，不获得 Docker 或 systemd 权限；Worker 是唯一
-宿主机控制器，按 Deployment 记录的 `runtimeKind` 启动 exact Release。所有访问进程的
-路径先获取有期限的 ActivationLease，同一 dormant Deployment 只允许一个 starter；最后
-一个 lease 释放或过期后 idle 再停进程，停机前必须事务式复查新 lease。就绪判定必须证明
-端口归属：端口被外来进程持有时激活立刻失败，不得依据别的进程的 HTTP 响应标记 ready；
-监听端口是 RuntimeInstance 的属性，由数据库唯一约束保证同一端口至多一个活实例。
+Activation is privilege-separated: the API only persists/waits on state and gains
+no Docker or systemd privilege; the Worker is the only host controller, starting
+the exact Release per the deployment's recorded `runtimeKind`. Every path touching
+the process first acquires a bounded ActivationLease, with exactly one starter per
+dormant deployment; after the last lease releases or expires the process stops
+after an idle period, with a mandatory transactional re-check for new leases before
+stopping. Readiness must prove port ownership: activation fails immediately when a
+foreign process holds the port — never marking ready based on another process's
+HTTP response; the listening port is a RuntimeInstance property, with a database
+uniqueness constraint guaranteeing at most one live instance per port.
 
-Worker 周期性执行 archive 与 orphan sweep：不受保护的旧 Deployment 经 claim 状态幂等
-归档；失管进程按平台状态收养或收割——平台已决定停止的进程只能收割，不得复活；平台自身
-的基础设施容器永远不在清扫范围内。健康检查失败必须先采集脱敏诊断再清理进程，诊断或
-清理失败只能追加独立错误，不能覆盖原始错误。
+The Worker periodically runs archive and the orphan sweep: unprotected old
+deployments archive idempotently through a claim state; unmanaged processes are
+adopted or reaped per platform state — processes the platform has decided to stop
+may only be reaped, never revived; the platform's own infrastructure containers are
+never in scope. A failed health check must capture masked diagnostics before
+cleanup, and diagnostics or cleanup failures may only append independent errors,
+never overwriting the original one.
 
-Host 形态、权重与绑定细则、durable route、激活与端口预留、orphan sweep 与诊断采集的
-完整契约见 `docs/zh/reference/routing.md`。
+Host shapes, weight and binding rules, durable routes, activation and port
+reservation, the orphan sweep, and diagnostics capture live in
+`docs/en/reference/routing.md`.
 
-容器运行 Eve 项目，平台负责：
+Containers run the Eve project; the platform owns:
 
-- Build 与启动
-- 健康检查
-- Secret 注入
-- durable workflow world 配置、依赖与数据库 schema
-- 日志收集
-- cron 触发
-- Session 来源归因
-- Eveland 私有 OpenTelemetry 信号
-- 容器重启
+- Build and startup
+- Health checks
+- Secret injection
+- Durable workflow world configuration, dependencies, and database schema
+- Log collection
+- Cron triggering
+- Session source attribution
+- Eveland's private OpenTelemetry signals
+- Container restarts
 
-durable workflow world 是平台 runtime contract，不是 Agent 源码 contract：每个新
-Release 无条件构建进共享 `@evelandhq/workflow-world`，worker 强制注入平台固定且经过
-Eve 兼容性验证的版本，不得要求 Agent 声明 world，也不得修改导入的 snapshot、manifest
-与 lockfile；world 必须通过当前窗口各支持线已验证 patch 的 World contract 门禁（版本
-见 `docs/zh/reference/eve-compatibility.md`）。
+The durable workflow world is a platform runtime contract, not an Agent source
+contract: every new Release builds unconditionally against the shared
+`@evelandhq/workflow-world`, with the worker force-injecting the platform-pinned,
+Eve-compatibility-verified version — never requiring the Agent to declare a world,
+and never modifying the imported snapshot, manifest, or lockfile. The world must
+pass the World contract gate against each supported line's verified patch in the
+current window (versions in `docs/en/reference/eve-compatibility.md`).
 
-runner mode 只支持 `external`，显式 `embedded` 是配置错误，必须 fail closed；恰好一个
-外部 dispatcher 以生命周期 advisory lock 保证单实例。每个 Release 持久化 immutable
-workflow attestation，所有启动路径只依据持久化 attestation 决策：legacy 或 `unknown`
-返回带稳定前缀的 managed error 并 fail closed，不得按当前环境猜测。production 的共享
-构建与 `workflow_step` activation 都以 dispatcher 的机器可读 registration 新鲜度 fail
-closed。
+The runner mode supports only `external`; an explicit `embedded` is a configuration
+error and must fail closed. Exactly one external dispatcher guarantees
+single-instance operation via a lifetime advisory lock. Every Release persists an
+immutable workflow attestation, and every start path decides solely on the
+persisted attestation: legacy or `unknown` objects return managed errors with
+stable prefixes and fail closed, never guessing from the current environment. In
+production, both shared builds and `workflow_step` activation fail closed on the
+freshness of the dispatcher's machine-readable registration.
 
-共享 workflow 使用一个数据库内的 `tenant_id` 作为强制查询边界，events 与 stream
-chunks 按 Project 分区；queue 只由平台 external dispatcher 认领，cold-start recovery
-必须按 tenant 过滤；Project 删除只 drop 自己的 partitions，不得扫描或删除其他
-tenant。world 是 Release 的 build-time 属性，不能用运行时改环境变量的方式替换仍在
-执行的 World。共享 World 对新 run 按唯一的 retention 策略链决定 class，lineage 无法
-解析时 fail closed；`persistent` 行永不改写。
+The shared workflow uses `tenant_id` within one database as the mandatory query
+boundary, with events and stream chunks partitioned per project; queues are claimed
+only by the platform's external dispatcher, cold-start recovery must filter by
+tenant, and project deletion drops only its own partitions — never scanning or
+deleting another tenant's. The world is a build-time property of the Release and
+cannot be swapped under a still-executing World by changing runtime environment
+variables. The shared World assigns each new run's class through a single complete
+retention policy chain, failing closed when lineage cannot be resolved;
+`persistent` rows are never rewritten.
 
-attestation、bootstrap、dispatcher registration、存储边界与 retention class 细节见
-`docs/zh/operations/runtime.md` 与 `docs/zh/production/workflow-dispatcher.md`。
+Attestation, bootstrap, dispatcher registration, storage boundaries, and retention
+class details live in `docs/en/operations/runtime.md` and
+`docs/en/production/workflow-dispatcher.md`.
 
-Eve Deployment 的内置执行工具必须连接到可执行的隔离 Sandbox，不能在生产式 `eve
-start` 下静默退化为缺少 optional peer 的 `just-bash`。平台注入
-`@evelandhq/sandbox-bwrap` 并替换用户编写的 Sandbox backend，但必须保留 authored
-lifecycle（`bootstrap()`、`onSession()`、`description`、`revalidationKey`）与
-`agent/sandbox/workspace/**` seeds。durable Session workspace 保存在 Release 目录之
-外，redeploy/restart 不得丢失同一 Session 的 `/workspace`；workspace template 按不可
-变 Release 隔离。Release 构建完成后必须以实际运行权限自检 Sandbox 与平台命令基线，
-不能只检查文件存在或相信 health 端点。每个 Deployment 必须具有一致的内存、CPU 和
-进程数上限；单次 `run()` 有硬截止时间，需要长期存活的 authored process 必须使用
-`spawn()` 并受 Session 生命周期管理。注入机制与 workspace 细节见
-`docs/zh/operations/runtime.md`，决策理由见 `docs/zh/reference/design/sandbox.md`。
+An Eve deployment's built-in execution tools must connect to an executable isolated
+sandbox — never silently degrading under production-style `eve start` to a
+`just-bash` missing its optional peer. The platform injects
+`@evelandhq/sandbox-bwrap` and replaces the user-authored sandbox backend while
+preserving the authored lifecycle (`bootstrap()`, `onSession()`, `description`,
+`revalidationKey`) and the `agent/sandbox/workspace/**` seeds. The durable session
+workspace lives outside the Release directory — a redeploy/restart must not lose a
+session's `/workspace` — and workspace templates are isolated per immutable
+Release. After a Release build completes, the sandbox and the platform command
+baseline must be self-checked under the actual runtime privileges — never just
+checking file existence or trusting the health endpoint. Every deployment must
+carry consistent memory, CPU, and process-count limits; a single `run()` has a hard
+deadline, and long-lived authored processes must use `spawn()` under session
+lifecycle management. Injection mechanics and workspace details live in
+`docs/en/operations/runtime.md`; the rationale in
+`docs/en/reference/design/sandbox.md`.
 
-代码依赖边界固定为：
+The code dependency boundary is fixed:
 
 ```text
 apps -> packages
 packages/db -> packages/core
-packages/core -> 不依赖其他 Eveland package
+packages/core -> depends on no other Eveland package
 apps -X-> apps
 ```
 
-`packages/core` 通过显式 subpath 分开 contracts、Eve wire protocol 与 Node-only server 工具，不提供根 barrel；Drizzle schema、migration 和唯一一份 Postgres repository 统一由 `packages/db` 持有。生产使用真实 Postgres，普通测试通过 PGlite 执行同一份 repository；多连接锁、驱动兼容和 migration 集成测试仍使用真实 Postgres。API 与 worker 只依赖 package，不互相导入。
+`packages/core` separates contracts, the Eve wire protocol, and Node-only server
+utilities through explicit subpaths, with no root barrel; the Drizzle schema,
+migrations, and the single Postgres repository are held by `packages/db`.
+Production uses real Postgres; ordinary tests run the same repository through
+PGlite, while multi-connection locking, driver compatibility, and migration
+integration tests still use real Postgres. The API and worker depend only on
+packages and never import each other.
 
 ---
 
-## 7. 非目标
+## 7. Non-goals
 
-Eveland 当前不做：
+Eveland currently does not do:
 
-- 在线代码编辑器
-- GitHub OAuth / 自动同步
-- Git push 自动部署
-- 多环境管理
-- 自定义域名
-- 多区域部署
+- An online code editor
+- GitHub OAuth / automatic sync
+- Git-push auto-deploy
+- Multi-environment management
+- Custom domains
+- Multi-region deployment
 - Kubernetes
-- 团队权限系统
-- Connection marketplace
-- 复杂计费与用量统计
-- workerd / isolate runtime
-- 完整的多租户 sandbox
+- A team permission system
+- A Connection marketplace
+- Complex billing and metering
+- workerd / isolate runtimes
+- A fully multi-tenant sandbox
 
 ---
 
-## 8. 技术栈
+## 8. Tech stack
 
-- 前端： Next.js, typescript, Tailwind /Shadcn (shadcn@latest init --preset bJxy4cpE --base base --template next)，使用系统默认字体并在 `body` 启用 `antialiased`
-- 后端： Honojs, BetterAuth, DrizzleORM, postgresql
-- 使用 nanoid('1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ') 生成ID
+- Frontend: Next.js, TypeScript, Tailwind/shadcn
+  (`shadcn@latest init --preset bJxy4cpE --base base --template next`), system
+  default fonts with `antialiased` enabled on `body`
+- Backend: Hono, Better Auth, Drizzle ORM, PostgreSQL
+- IDs generated with
+  `nanoid('1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')`
