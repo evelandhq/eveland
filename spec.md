@@ -119,85 +119,27 @@ Projects 列表是 Workspace 首页；Settings 是独立设置区域，按 Perso
 
 ### Observability (/settings/observability)
 
-Eveland 的监控以 OpenTelemetry/OTLP 为唯一传输标准。这个页面的职责是让 Admin 配置外部
-监控目标与 Agent 采集策略，不承担观测数据的展示。采集管线的架构细节——Collector 拓扑、
-receiver 端口、Docker network 与 systemd 隔离机制、凭据签发与归属校验——见
-`docs/zh/reference/observability.md`；本节只保留产品可见行为与信任边界。
+Eveland 的监控以 OpenTelemetry/OTLP 为唯一传输标准。Built-in 是平台内置且始终启用的
+Destination：它只把 Eveland 原有的运行数据投影为 Sessions、Usage 与 Instance Health
+必需的读模型，不存储原始 Span/LogRecord/Metric Point，不提供统计视图，也不引入任何
+原本不存在的监控项。Span 级观测与下钻由外部 Destination 承担，平台自身遥测的观测同样
+完全由外部 Destination 承担，Eveland 不做本地兜底；Built-in retention 不是可配置项。
 
-Built-in 是平台内置且始终启用的 Destination，不提供配置或关闭入口。它的职责只是把 Eveland
-原有的运行数据——宿主容量、token usage 与成本、Session 事件、组件心跳——改用标准 OTLP 协议
-收集，投影为 Sessions、Usage 与 Instance Health 必需的读模型。Built-in 不存储原始明细，
-不提供统计视图，也不引入任何原本不存在的监控项。页面因此只展示外部 Destination 配置与
-Agent capture 策略；不展示 Built-in 自身的状态、信号明细、平台操作统计或投递统计。
-Built-in 是否在接收遥测属于 Instance Health 的组件状态。任何 Span、LogRecord、Metric Point
-级别的观测与下钻都由外部 Destination 承担，Eveland 不做本地兜底。
-
-Managed Collector 只向 Built-in 发送 logs 与 metrics：logs 投影 Session/Usage 读模型，
-metrics 投影 Instance Health 的容量与心跳读模型。traces 没有 Built-in 读模型，只发往外部
-Destination。Collector 使用平台与 Agent 两个互不共享信任的 OTLP receiver：平台组件携带
-Agent 无法获得的 service token，Agent receiver 强制覆盖 Agent 身份 attribute，不能让 Agent
-提交 platform/runtime/capacity 身份。Collector 缺失不得阻断 Agent 启动或 cold activation。
-
-Deployment 归属不能取自 Agent 自报的 id：Worker 为每个 Deployment 签发凭据，验签通过后以
-Store 中的归属覆盖 payload 声明；验签失败或缺失的 resource 不投影或外发。凭据不设过期；
-轮换 `APP_SECRET_KEY` 作废全部 Deployment 凭据，必须用新 key 重新部署所有 Agent
-Deployment 采集才恢复——这是支持的运维流程。Deployment 之间必须无法读到彼此的凭据。
-
-由此界定的信任边界是产品承诺：Agent 无法伪造平台状态，也无法把遥测写入其他 Deployment 或
-Project；但它仍可以伪造自己 Deployment 名下的 Session、事件与 usage。要抵抗这一点需要由
+信任边界是产品承诺：平台与 Agent 使用互不共享信任的 OTLP receiver；Deployment 归属
+不取自 Agent 自报的 id，而由 Worker 签发的凭据验签后以 Store 中的归属覆盖，验签失败
+或缺失的 resource 不投影、不外发。由此 Agent 无法伪造平台状态，也无法把遥测写入其他
+Deployment 或 Project；但它仍可以伪造自己 Deployment 名下的数据——抵抗这一点需要由
 进程外的可信边界赋予 provenance，当前实现不提供该保证。
 
-Built-in 的入口是标准 OTLP/HTTP（同时接受 `application/json` 与 `application/x-protobuf`，
-标准 `partial_success`，不得定义 Eveland 私有 envelope）。拒绝计数由投影结果得出——没有
-形成读模型的 item 必须计为 rejected，不能因通用 OTLP 解析成功就 ACK；重复投递的批次去重。
+Agent 源码中的 instrumentation 是独立边界：Eveland 不修改用户监控代码，不注册或替换
+全局 provider，也不截获用户 exporter；平台只在 Eve 的保留 hook slot 注入使用私有
+provider 的 Eveland hook。遥测失败只产生限频降级告警，不得使 Eve event hook 或 Agent
+turn 失败；Collector 缺失不得阻断 Agent 启动或 cold activation；监控设置的变更只重启
+Collector，不得为此重启 Agent Deployment。外部投递只经过 service-authenticated API
+egress proxy，执行 fail-closed SSRF 策略；凭据加密保存且不回浏览器。
 
-投递至少一次且可乱序，因此投影必须按事件顺序而非到达顺序推进：晚到的、序号更旧的事件
-仍要完整入库，但不得回退 SessionNode/Session 的状态投影，也不得改写 last-observed
-Deployment/RuntimeInstance provenance。判据是 Eve 自带的 per-session `data.sequence`；
-这是一条防御性投影规则——事件缺少该序号时无从排序，投影退化为 last-writer-wins。终态不是
-"粘住"的——continuation 唤醒会话时 completed → running 是合法转换，必须依据序号而非状态
-本身来判断。Worker 心跳与 host metric 同理：重放的旧批次不得让 `observedAt` 倒退，否则
-健康的 worker 会被显示为失联。
-
-Admin 可以统一配置 Eveland 自有遥测的采集策略与额外 Destination：
-
-- Agent capture 开关、trace sampling 与 input/output content policy 只作用于 Eveland 注入的
-  私有 provider，并由运行中的 Agent 动态加载，不重启 Deployment；input 与 output content
-  默认开启，可分别关闭；reasoning 属于 output，不是独立开关
-- Session 完成与私有 Provider revision 切换最多等待两秒完成 flush/shutdown；超时或失败只
-  产生限频降级告警，不能使 Eve event hook 或 Agent turn 失败
-- Elastic 固定接收 Eveland 的全部 traces、logs、metrics 和 agent/platform/runtime/capacity domain
-- Langfuse 固定只接收 Eveland 注入的 Agent traces；管理员只配置 Langfuse Base URL，Eveland
-  派生 signal endpoint（映射契约见 `docs/zh/reference/observability.md`）
-- Custom OTLP/HTTP 可以选择 signals、domains 与加密 Header
-- 已配置的 Destination 必须可以修改：页面展示 Admin 配置的远端 URL，不展示派生 signal
-  endpoint。凭据不回浏览器，提交时留空表示保留已存储的值；Destination 的产品类型创建后
-  不可更改。无法用当前 `APP_SECRET_KEY` 解开的 Destination 仍要列出并可编辑替换，不能静默隐藏
-- 每个外部 exporter 使用独立 retry 与持久化 sending queue，一个目标失败不能阻塞 Built-in
-  或其他目标；外部投递只经过 service-authenticated API egress proxy，保存配置、探测与每次
-  转发执行同一套 fail-closed SSRF 策略（默认 HTTPS + public IP，私网仅精确 allowlist），并
-  按 Store 中当前 Destination 的 signal/domain policy 过滤
-- 平台自身遥测的观测完全由外部 Destination 承担。未启用 Elastic 或 Custom OTLP 时，
-  platform/runtime domain 的 trace 与 log 不在任何地方留存；Langfuse 只承接 Agent traces，
-  不能作为平台自身遥测的目标；Collector 自身的 internal metrics 同样只发往外部
-  Destination，Eveland 不为其投递量与 queue 压力建立本地视图
-- Worker 每五分钟使用不含业务数据的标准 OTLP 请求独立探测外部 Destination；Settings 展示
-  pending、healthy、degraded 或 paused，不把某个外部目标故障解释为 Built-in 故障
-
-系统设置中的外部凭据使用 `APP_SECRET_KEY` 加密，保存后不返回浏览器；可再次展示的只有
-Destination 的 URL 与凭据形态，凭据值本身不可读回。监控设置的变更只重启 Collector，不能
-为此重启 Agent Deployment；配置渲染、校验与 Collector 的挂载边界见
+采集管线拓扑、Destination 行为、投影与乱序规则、retention 表见
 `docs/zh/reference/observability.md`。
-
-Agent 源码中的 instrumentation 是独立边界：Eveland 不修改用户监控代码，不注册或替换全局
-TracerProvider、LoggerProvider、MeterProvider，也不截获用户 exporter。Release 准备仅在
-Eve 的平台保留 hook slot 注入使用私有 provider 的 Eveland hook；用户 provider 继续按源码
-配置向用户自己的目标发送。
-
-Built-in retention 不是可配置项：capacity sample 默认保留 30 天，Session/Usage read model
-默认保留 90 天，Worker 每日清理，运行中的 Session 不参与清理，外部 Destination 已接收的
-数据不受影响。Built-in 不存储原始 span、LogRecord 与 metric point，因此不存在明细层面的
-retention；完整 retention 表见 `docs/zh/reference/observability.md`。
 
 ### Instance Health (/settings/health)
 

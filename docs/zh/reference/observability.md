@@ -187,6 +187,10 @@ Docker 只向容器挂载自己的 policy。systemd 为每个 Deployment 使用�
 需要的 release、sandbox、policy 和 environment 路径。因此一个 Deployment 不能读取
 另一个 Deployment 的 credential。
 
+Deployment credential 不设过期；轮换 `APP_SECRET_KEY` 会作废全部 Deployment
+credential，必须用新 key 重新部署所有 Agent Deployment 采集才恢复——这是受支持的
+运维流程。
+
 这个边界可以防止 Agent 把数据归到其他 Deployment，但不能阻止 Agent 为自己的
 Deployment 构造虚假遥测。
 
@@ -217,6 +221,14 @@ API 的 service-authenticated OTLP/HTTP endpoint 对 traces、logs、metrics 均
 `partial_success` rejected count 报告，其余 item 继续处理。Batch receipt 只保存
 signal、payload hash 和接收时间，用于重投幂等与 Collector 在线证据，不保存 payload。
 
+投递至少一次且可乱序，因此投影必须按事件顺序而非到达顺序推进：晚到的、序号更旧的
+事件仍要完整入库，但不得回退 SessionNode/Session 的状态投影，也不得改写
+last-observed Deployment/RuntimeInstance provenance。判据是 Eve 自带的 per-session
+`data.sequence`；事件缺少该序号时无从排序，投影退化为 last-writer-wins。终态不是
+"粘住"的——continuation 唤醒会话时 completed → running 是合法转换，必须依据序号而非
+状态本身来判断。Worker 心跳与 host metric 同理：重放的旧批次不得让 `observedAt`
+倒退，否则健康的 worker 会被显示为失联。
+
 Retention 是固定平台默认值：
 
 | 数据                        | Retention |
@@ -246,6 +258,9 @@ Subagent 保持 span，并保留标准 GenAI model、usage 和 provider-reported
 外部目的地配置保存在 revisioned policy 中，凭据使用 `APP_SECRET_KEY` 加密。
 浏览器只能再次读取 URL、authorization 类型和 header 名称，不能读回凭据值。编辑时
 留空凭据表示保留已保存值；首次创建必须提供。
+Destination 的产品类型创建后不可更改；页面展示 Admin 配置的远端 URL，不展示派生
+signal endpoint。无法用当前 `APP_SECRET_KEY` 解开的 Destination 仍要列出并可编辑
+替换，不能静默隐藏。
 
 Collector 的动态配置只包含 Destination ID 和 service-authenticated API proxy
 endpoint，不包含远端 URL 或凭据。API egress proxy 在每次发送时：
@@ -266,6 +281,11 @@ hostname/IP allowlist 放行，不支持通配符。
 空 OTLP 请求进行健康探测，Settings 展示 `pending`、`healthy`、`degraded` 或
 `paused`。Collector self-metrics 只路由到接收 metrics 与 `platform` domain 的外部
 目的地。
+
+平台自身遥测的观测完全由外部目的地承担：未启用 Elastic 或 Custom OTLP 时，
+`platform`/`runtime` domain 的 trace 与 log 不在任何地方留存；Langfuse 只承接
+Agent traces，不能作为平台自身遥测的目标；Eveland 也不为 Collector 的投递量与
+queue 压力建立本地视图。
 
 ## 可靠性和隐私
 
