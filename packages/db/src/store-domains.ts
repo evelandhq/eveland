@@ -654,6 +654,12 @@ export interface SessionStore {
     input: {
       status: SessionStatus;
       eveSessionId?: string | null;
+      /**
+       * Operator-facing reason accompanying a `failed` status. Ignored for
+       * every other status (which clears any stored reason); omitting it on a
+       * `failed` write preserves a reason recorded earlier.
+       */
+      error?: string | null;
     },
   ): Promise<Session | null>;
   listSessions(projectId: string): Promise<Session[]>;

@@ -124,6 +124,14 @@ export default async function SessionsPage({
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={session.status} />
+                    {session.error ? (
+                      <p
+                        className="mt-1 max-w-80 truncate text-xs text-destructive"
+                        title={session.error}
+                      >
+                        {session.error}
+                      </p>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs">
                     {tokenTotal(session.usage)}

@@ -393,6 +393,13 @@
       "when": 1787364981854,
       "tag": "0055_drop_workflow_cutover",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1787556967391,
+      "tag": "0056_session_error",
+      "breakpoints": true
     }
   ]
 }

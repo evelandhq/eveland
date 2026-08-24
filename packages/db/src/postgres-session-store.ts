@@ -18,6 +18,7 @@ import {
   appendSessionEventRow,
   mergeSessionRows,
   modelUsageRowToModelUsageEvent,
+  sanitizeStoredErrorText,
 } from "./postgres-store-support.js";
 
 type PostgresSessionMutationDomain = Pick<
@@ -211,6 +212,12 @@ export function createPostgresSessionStore({
           .update(sessions)
           .set({
             status: input.status,
+            error:
+              input.status === "failed"
+                ? input.error !== undefined
+                  ? sanitizeStoredErrorText(input.error)
+                  : current!.error
+                : null,
             eveSessionId: input.eveSessionId,
             ...(binding
               ? {
@@ -262,7 +269,7 @@ export function createPostgresSessionStore({
         const nodeIds = interrupted.map((session) => session.nodeId);
         await tx
           .update(sessions)
-          .set({ status: "failed", completedAt: now })
+          .set({ status: "failed", error: sanitizeStoredErrorText(reason), completedAt: now })
           .where(and(inArray(sessions.id, sessionIds), eq(sessions.status, "running")));
         await tx
           .update(sessionNodes)

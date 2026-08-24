@@ -1068,6 +1068,10 @@ export const sessions = pgTable(
     scheduleId: text("schedule_id"),
     scheduleRunId: text("schedule_run_id").references(() => scheduleRuns.id),
     status: text("status").notNull(),
+    // Why the session is currently `failed`, in operator-facing words; null
+    // for every other status. Externally-fed text passes through
+    // sanitizeStoredErrorText before landing here.
+    error: text("error"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),

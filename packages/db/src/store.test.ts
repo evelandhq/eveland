@@ -929,6 +929,35 @@ describe("SQL Store jobs", () => {
     expect(completed).toMatchObject({ id: session.id, status: "completed" });
   });
 
+  test("stores a failure reason with `failed`, preserves it when omitted, clears it on recovery", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Failure Reason Agent", importKind: "zip" });
+    const session = await store.createSession({ projectId: project.id, trigger: "playground" });
+
+    await store.completeSession(session.id, {
+      status: "failed",
+      error: "The turn never reached the agent: connect ECONNREFUSED \u0000 127.0.0.1:4080",
+    });
+    await expect(store.getSession(session.id)).resolves.toMatchObject({
+      status: "failed",
+      // NUL sanitized on the way in, like every externally-fed error column.
+      error: "The turn never reached the agent: connect ECONNREFUSED � 127.0.0.1:4080",
+    });
+
+    // A failed write without a reason must not erase one recorded earlier.
+    await store.completeSession(session.id, { status: "failed" });
+    await expect(store.getSession(session.id)).resolves.toMatchObject({
+      error: "The turn never reached the agent: connect ECONNREFUSED � 127.0.0.1:4080",
+    });
+
+    // A later successful turn clears the stale reason with the status.
+    await store.completeSession(session.id, { status: "running", eveSessionId: "eve_retry" });
+    await expect(store.getSession(session.id)).resolves.toMatchObject({
+      status: "running",
+      error: null,
+    });
+  });
+
   test("records a model step and updates the session token totals", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Usage Agent", importKind: "zip" });

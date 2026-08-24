@@ -5,7 +5,7 @@ import type {
   RuntimeInstance,
   SessionStatus,
 } from "@evelandhq/core/contracts";
-import { getEveString, parseEveJsonObject } from "@evelandhq/core/eve";
+import { getEveString, parseEveJsonObject, sessionErrorFromEveEvent } from "@evelandhq/core/eve";
 import { assertSafeArchivePath } from "@evelandhq/core/server/archive";
 import {
   createEveVersionInfo,
@@ -275,7 +275,13 @@ export async function projectPlaygroundStreamLine(
   else if (type === "session.failed") nextStatus = "failed";
   if (!nextStatus) return currentStatus;
   await store
-    .completeSession(platformSessionId, { status: nextStatus, eveSessionId })
+    .completeSession(platformSessionId, {
+      status: nextStatus,
+      eveSessionId,
+      ...(nextStatus === "failed"
+        ? { error: sessionErrorFromEveEvent(type ?? undefined, event) }
+        : {}),
+    })
     .catch(() => null);
   return nextStatus;
 }

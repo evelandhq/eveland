@@ -482,6 +482,23 @@ describe("Agent observability ingestion repository", () => {
     expect(mergedEvents.map((event) => event.index)).toEqual([0, 1]);
   });
 
+  test("stores the agent-reported failure message on the failed Session", async () => {
+    const { store, deploymentId } = await createStore();
+    const started = await store.ingestAgentEvent(envelope(deploymentId));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "evt_2",
+        sourceSequence: 2,
+        event: { type: "session.failed", data: { message: "Tool crashed: boom" } },
+      }),
+    );
+
+    await expect(store.getSession(started.session.id)).resolves.toMatchObject({
+      status: "failed",
+      error: "Tool crashed: boom",
+    });
+  });
+
   test("projects a lost RuntimeInstance exactly once regardless of pass order", async () => {
     const runtimeLostEvents = async (
       store: Awaited<ReturnType<typeof createStore>>["store"],
@@ -529,6 +546,7 @@ describe("Agent observability ingestion repository", () => {
       expect(await runtimeLostEvents(store, ingested.session.id)).toHaveLength(1);
       await expect(store.getSession(ingested.session.id)).resolves.toMatchObject({
         status: "failed",
+        error: reason,
       });
       expect(projectId).toBeTruthy();
     }
