@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/app-shell";
 import { TimeZoneProvider } from "@/components/time-zone-provider";
+import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 import { Inter } from "next/font/google";
@@ -28,6 +29,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <AppShell>{children}</AppShell>
           </TimeZoneProvider>
         </TooltipProvider>
+        <Toaster />
       </body>
     </html>
   );
