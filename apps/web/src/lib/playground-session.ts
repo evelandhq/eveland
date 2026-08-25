@@ -1,4 +1,5 @@
 import type { FileUIPart, UserContent } from "ai";
+import type { PendingPlaygroundMessage, PendingPlaygroundTurn } from "./playground-route-auth.js";
 
 // Playground turn shaping and session sequencing. These are session
 // behaviors, not HTTP calls: keeping them out of client-api leaves that
@@ -23,6 +24,24 @@ export function createPlaygroundMessage(
       mediaType: file.mediaType,
     })),
   ];
+}
+
+/**
+ * Completes a turn interrupted by a route-auth redirect: replays the durable
+ * session that preceded the redirect (when one existed), then re-sends the
+ * message the 401 rejected. A failed replay must not swallow the user's
+ * message, so resume errors are absorbed here — they still surface through
+ * the agent hook's own error channel — and the send proceeds regardless.
+ */
+export async function resumePendingPlaygroundTurn(input: {
+  pending: PendingPlaygroundTurn;
+  resume: () => Promise<void>;
+  send: (message: PendingPlaygroundMessage) => Promise<void>;
+}): Promise<void> {
+  if (input.pending.session) {
+    await input.resume().catch(() => undefined);
+  }
+  await input.send(input.pending.message);
 }
 
 export type PlaygroundTurnCancellation = {

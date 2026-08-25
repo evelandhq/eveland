@@ -63,7 +63,11 @@ import {
   PLAYGROUND_MAX_TOTAL_FILE_BYTES,
 } from "@evelandhq/core/eve";
 import { resetPlaygroundOnPageLeave } from "@/lib/client-api";
-import { createPlaygroundTurnCanceller, createPlaygroundMessage } from "@/lib/playground-session";
+import {
+  createPlaygroundTurnCanceller,
+  createPlaygroundMessage,
+  resumePendingPlaygroundTurn,
+} from "@/lib/playground-session";
 import type { EveVersionInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PlaygroundAuthenticationSettings } from "@/components/playground-authentication-settings";
@@ -71,6 +75,7 @@ import {
   claimPendingPlaygroundTurn,
   handleRouteAuthError,
   interactionFromClientError,
+  peekPendingPlaygroundTurn,
   type PendingPlaygroundMessage,
 } from "@/lib/playground-route-auth";
 import {
@@ -102,20 +107,36 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   const resumedPendingTurn = useRef(false);
   const conversationEndRef = useRef<HTMLDivElement | null>(null);
   const followsConversationTail = useRef(true);
+  const sessionStateRef = useRef<ClientSessionState | undefined>(undefined);
+  // The peek is a render-safe read of the turn stashed before a route-auth
+  // redirect; the destructive claim happens in the ref-guarded effect below.
+  // Its session cursor must seed the hook at creation time (the store cannot
+  // adopt a session later), so `resume()` can replay the conversation the
+  // redirect interrupted.
+  const [pendingTurn] = useState(() =>
+    typeof window === "undefined"
+      ? null
+      : peekPendingPlaygroundTurn(window.sessionStorage, projectId),
+  );
   const agent = useEveAgent({
     host: `/api/eveland/projects/${projectId}/playground`,
+    initialSession: pendingTurn?.session,
     onError: (sendError) => {
-      handleRouteAuthError({
+      const redirected = handleRouteAuthError({
         error: sendError,
         message: pendingRouteAuthTurn.current,
+        session: sessionStateRef.current,
         projectId,
         redirect: (url) => window.location.assign(url),
         storage: window.sessionStorage,
       });
+      // The redirect navigation fires pagehide, and the leave reset would
+      // destroy the very session the return path resumes. Marking the reset
+      // as already sent keeps the session durable across the auth round trip.
+      if (redirected) leaveResetSent.current = true;
     },
   });
   const sessionHandle = agent.session ? client.sessions.attach(agent.session.sessionId) : null;
-  const sessionStateRef = useRef<ClientSessionState | undefined>(undefined);
   useEffect(() => {
     sessionStateRef.current = agent.session;
   }, [agent.session]);
@@ -168,9 +189,13 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   useEffect(() => {
     if (resumedPendingTurn.current) return;
     resumedPendingTurn.current = true;
-    const pendingMessage = claimPendingPlaygroundTurn(window.sessionStorage, projectId);
-    if (!pendingMessage) return;
-    void sendMessageWithRouteAuth(pendingMessage).catch((sendError) => {
+    const pending = claimPendingPlaygroundTurn(window.sessionStorage, projectId);
+    if (!pending) return;
+    void resumePendingPlaygroundTurn({
+      pending,
+      resume: () => agent.resume(),
+      send: (message) => sendMessageWithRouteAuth(message),
+    }).catch((sendError) => {
       setComposerError(toErrorMessage(sendError));
     });
   }, [projectId]);
