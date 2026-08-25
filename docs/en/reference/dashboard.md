@@ -126,7 +126,7 @@ A model filter switches the main trend chart to a single-model view. Session cou
 
 ## Project Settings (/projects/:projectId/settings)
 
-Project Settings uses in-page secondary navigation rather than a third sidebar level: General edits the display name and description, shows the immutable project slug, project ID, and source repository read-only, and hosts project deletion in its danger zone; Environment manages project Variables and Secrets (see [Agent environment](/docs/reference/agent-environment)). The old `/projects/proj_xxxxxxxxxx/secrets` path redirects to `/projects/proj_xxxxxxxxxx/settings/environment`.
+Project Settings is one centered page containing project details, Variables and Secrets, and the danger zone. Project details edits the display name and description and shows the immutable project slug, project ID, and source repository read-only. Variables and Secrets manages the project's runtime configuration (see [Agent environment](/docs/reference/agent-environment)). The old `/projects/proj_xxxxxxxxxx/secrets` path redirects to `/projects/proj_xxxxxxxxxx/settings`.
 
 ## Logs (/projects/:projectId/logs)
 

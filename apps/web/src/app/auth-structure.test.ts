@@ -201,14 +201,14 @@ describe("team management web surfaces", () => {
   // api-transport.test.ts asserts that behavior directly.
 
   test("manages project variables and secrets with the shared table and dialog pattern", () => {
-    const page = source("./projects/[projectId]/settings/environment/page.tsx");
+    const page = source("./projects/[projectId]/settings/page.tsx");
     const settingsUrl = new URL("../components/project-secrets-settings.tsx", import.meta.url);
     expect(existsSync(fileURLToPath(settingsUrl))).toBe(true);
     if (!existsSync(fileURLToPath(settingsUrl))) return;
 
     const settings = source("../components/project-secrets-settings.tsx");
     expect(page).toContain("<ProjectSecretsSettings");
-    expect(page).toContain("return <ProjectSecretsSettings");
+    expect(page).toContain("getSecrets(projectId)");
     expect(settings).toContain('aria-labelledby="variables-secrets-heading"');
     expect(settings.replace(/\s+/g, " ")).toContain(
       "Values are encrypted and never returned after saving. Saving changes restarts live deployments; otherwise, they apply the next time this project starts.",

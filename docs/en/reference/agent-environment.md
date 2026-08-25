@@ -5,7 +5,7 @@ description: Behavioral reference for project Variables/Secrets, the Shared Agen
 
 An agent process's runtime environment comes from three layers with deterministic precedence: Shared Agent Environment < project Secret/Variable < Eveland reserved variables. This page is the behavioral contract for those layers: the Environment page semantics, the Shared Agent Environment singleton, and the rules for `variable` entries participating in Release builds. Trust boundaries and encryption details live in the [security model](/docs/operations/security); the operator facts of the build trust boundary and the reserved-name list in [Worker and builds](/docs/production/worker); the distinction between the three credential kinds in [Secrets and Connections](/docs/agents/secrets-connections).
 
-## Project Variables and Secrets (/projects/:projectId/settings/environment)
+## Project Variables and Secrets (/projects/:projectId/settings)
 
 Configures the runtime variables and external keys a project needs. The page shares the unified Type/Name/Value table and dialog interaction with project creation and the Shared Agent Environment; Type distinguishes `variable` from `secret`, both value kinds are stored encrypted, and after saving only the configured state is shown — original values never return to the browser. The old `/projects/:projectId/secrets` path redirects here.
 

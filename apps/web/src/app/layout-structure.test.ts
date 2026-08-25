@@ -37,11 +37,25 @@ describe("dashboard layout boundaries", () => {
 
     expect(projectLayout).toContain("<SidebarShell");
     expect(projectLayout).toContain("<ProjectSidebar");
+    expect(projectLayout).not.toContain("<ProjectBreadcrumb");
     expect(projectSidebar).toContain('href="/projects"');
     expect(projectSidebar).toContain("<ArrowLeftIcon");
     expect(projectSidebar).toContain("<ProjectNav");
     expect(projectSidebar).not.toContain("<SidebarFooter");
     expect(projectSidebar).not.toContain("<Avatar");
+  });
+
+  test("renders project settings as one centered page", () => {
+    const settingsPage = source("./projects/[projectId]/settings/page.tsx");
+
+    expect(settingsPage).toContain('title: "Settings"');
+    expect(settingsPage).toContain('className="mx-auto flex w-full max-w-4xl flex-col gap-6"');
+    expect(settingsPage).toContain(">Settings</h2>");
+    expect(settingsPage).toContain("<ProjectGeneralSettings");
+    expect(settingsPage).toContain("<ProjectSecretsSettings");
+    expect(settingsPage).toContain("<ProjectDangerZone");
+    expect(settingsPage).toContain("<Separator");
+    expect(settingsPage).not.toContain("<ProjectSettingsNav");
   });
 
   test("gives settings a settings-only sidebar", () => {

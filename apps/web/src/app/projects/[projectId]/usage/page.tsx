@@ -22,10 +22,12 @@ export default async function ProjectUsagePage({
   ]);
 
   return (
-    <UsageExplorer
-      analytics={analytics}
-      projects={projects}
-      scope={{ type: "project", projectId }}
-    />
+    <div className="mx-auto w-full max-w-4xl">
+      <UsageExplorer
+        analytics={analytics}
+        projects={projects}
+        scope={{ type: "project", projectId }}
+      />
+    </div>
   );
 }

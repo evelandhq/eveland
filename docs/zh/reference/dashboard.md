@@ -126,7 +126,7 @@ Model 筛选把主趋势图切换为单 Model 视角。此时 Session 数表示�
 
 ## Project Settings (/projects/:projectId/settings)
 
-Project Settings 使用页面内二级导航，不在主 Sidebar 展开第三层：General 修改 Display name 与 Description，只读查看不可变 Project slug、Project ID 与 Source repository，Project 删除位于 General 的 Danger zone；Environment 管理 Project Variables 与 Secrets（见 [Agent 环境](/zh/docs/reference/agent-environment)）。旧 `/projects/proj_xxxxxxxxxx/secrets` 路径重定向到 `/projects/proj_xxxxxxxxxx/settings/environment`。
+Project Settings 是一个居中的单页，依次包含 Project 详情、Variables 与 Secrets 以及 Danger zone。Project 详情可修改 Display name 与 Description，并只读展示不可变的 Project slug、Project ID 与 Source repository。Variables 与 Secrets 管理 Project 的运行时配置（见 [Agent 环境](/zh/docs/reference/agent-environment)）。旧 `/projects/proj_xxxxxxxxxx/secrets` 路径重定向到 `/projects/proj_xxxxxxxxxx/settings`。
 
 ## Logs (/projects/:projectId/logs)
 
