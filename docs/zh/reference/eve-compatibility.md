@@ -3,11 +3,11 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.42.x` 与 `0.44.x`，验证版本为 `0.42.0` 与 `0.44.3`。Eve 0.41 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.42.x` 与 `0.44.x`，验证版本为 `0.42.0` 与 `0.44.4`。Eve 0.41 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
 项目 `package.json` 中允许的 Eve 依赖声明形式为：受支持线内的精确 Patch、锚定在受支持 Minor Patch 上的 `~`/`^` Range，以及 `0.42` / `0.42.x` / `0.42.*`、`0.44` / `0.44.x` / `0.44.*`。缺少 Eve 依赖、跨 Minor 的宽泛 Range 或任何可能解析到窗口之外的声明都会 Fail Closed。项目 Overview、Source 与 Playground 会显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本与平台要求。
 
-窗口是一组已验证的 Line，而非连续区间：Eve 0.43 在发布后四小时内即被 0.44 取代，因此被有意跳过（此前 0.40 与 0.41 同样被跳过）——声明 `0.43.x` 的项目会收到与其他不受支持版本相同的升级诊断。跳过是安全的，因为从 0.42.0 到 0.44.3 的所有 Wire Format（Message Stream、Manifest、Workflow 存储 Spec、捆绑的 Workflow SDK）逐字节相同。
+窗口是一组已验证的 Line，而非连续区间：Eve 0.43 在发布后四小时内即被 0.44 取代，因此被有意跳过（此前 0.40 与 0.41 同样被跳过）——声明 `0.43.x` 的项目会收到与其他不受支持版本相同的升级诊断。跳过是安全的，因为从 0.42.0 到 0.44.4 的所有 Wire Format（Message Stream、Manifest、Workflow 存储 Spec、捆绑的 Workflow SDK）逐字节相同。
 
 UI 仅将最新支持线 `0.44.x` 标为绿色。Eve 0.42.x 保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
@@ -36,7 +36,9 @@ UI 仅将最新支持线 `0.44.x` 标为绿色。Eve 0.42.x 保持可运行，�
 
 **Eve 0.44.3 是同一线内的 Patch 滑动。** 0.44.1 起，Eve 自身托管的 Instrumentation 会对 `private` 与 `unknown` Audience 去除模型、工具、审批与投递内容，因此 Playground 与 Agent Gateway 的 Session 通过 Agent 自带的 `otel()` 只导出元数据；Workflow Run 属性新增 `$eve.is_trace_content_visible`，并对这类 Run 省略由内容派生的 `$eve.title`。Eveland 的 Observer 与共享 World 不受影响（二者只读生命周期事件与结构性属性，不读 Eve 的 Instrumentation 内容）。动态工具的 Callback 改为按工具名与阶段绑定、不再按源码位置绑定，编辑 Callback 正文不再有让已暂存审批回放到错误代码的风险；工具已不存在的暂存调用会 Fail Closed。`useEveAgent` 新增 `resume: true` / `resume()` 与 `send(..., { turnPolicy: "steer" })`。自 0.44.3 起，Eve 客户端在 15 秒收不到 Stream 字节后会重连；因此 Gateway 默认每 5 秒写一次 Heartbeat（`EVELAND_GATEWAY_STREAM_HEARTBEAT_MS`），让只是安静的代理 Stream 保持连接，而不是逐跳重连。
 
-对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.44.3`，即便 `^0.44.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
+**Eve 0.44.4 是又一次不触及平台面的 Patch 滑动。** 顶层 `text` 为空时，Slack 入站消息现在会从 Block Kit Block 与旧式 Attachment 派生文本，警报式 Bot 消息不再以空正文到达模型。`web_fetch` 最多跟随十次重定向并对每一跳重新做 SSRF 检查，非成功的 HTTP 响应改为返回带响应体的纯文本失败结果，而不是让工具调用失败。Channel 的 `fetchFile` 回调新增可选的上下文参数，携带 Channel State。Web Chat 即使 Durable History 仍停在上一轮边界，也能恢复活跃响应。Eve 不再发出自身的 `workflow.stream.follow.read` Tracing Span。
+
+对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.44.4`，即便 `^0.44.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
 
 npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelog 与源码审阅加上完整兼容矩阵之后才会进入；移除旧 Minor 同样是显式的产品变更。
 
