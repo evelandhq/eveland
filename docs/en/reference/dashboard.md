@@ -28,7 +28,7 @@ The deletion job must wait for the project's already-running jobs to finish, the
 
 The main workspace shell applies only to Projects, Deployments, and Usage. Its top-left shows the Eveland logo, and its bottom-left shows the current user's avatar, name, and email. The whole user row is a single account-dropdown trigger whose menu offers Settings and Sign out.
 
-Project detail routes use a separate project shell. Its top-left returns to Projects, the remaining sidebar contains only that project's navigation, and it has no user footer. Settings routes likewise use a separate settings shell: its top-left returns to the workspace, its navigation is grouped into Personal and System, and it has no user footer.
+Project detail routes use a separate project shell. Its top-left returns to Projects, the remaining sidebar contains only that project's navigation, and its bottom context area shows the current Deployment state and Eve version instead of user information. A current Eve version is marked healthy; an older supported or unsupported version exposes its upgrade guidance in a tooltip. Settings routes likewise use a separate settings shell: its top-left returns to the workspace, its navigation is grouped into Personal and System, and it has no user footer.
 
 ## Profile (/settings/profile)
 

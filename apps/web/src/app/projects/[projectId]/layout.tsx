@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ProjectContent } from "@/components/project-content";
 import { ProjectSidebar } from "@/components/project-sidebar";
 import { SidebarShell } from "@/components/sidebar-shell";
-import { getProject } from "@/lib/server-api";
+import { getEveVersion, getProject } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
@@ -40,11 +40,19 @@ export default async function ProjectLayout({
   if (!project) {
     notFound();
   }
+  const eveVersion = await getEveVersion(project.id);
 
   return (
     <SidebarShell
       mobileTitle={project.name}
-      sidebar={<ProjectSidebar projectId={project.id} projectName={project.name} />}
+      sidebar={
+        <ProjectSidebar
+          deploymentStatus={project.deploymentStatus}
+          eveVersion={eveVersion}
+          projectId={project.id}
+          projectName={project.name}
+        />
+      }
     >
       <ProjectContent deletionError={project.deletionError} deletionStatus={project.deletionStatus}>
         {children}

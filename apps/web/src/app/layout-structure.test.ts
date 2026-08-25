@@ -37,11 +37,17 @@ describe("dashboard layout boundaries", () => {
 
     expect(projectLayout).toContain("<SidebarShell");
     expect(projectLayout).toContain("<ProjectSidebar");
+    expect(projectLayout).toContain("getEveVersion");
+    expect(projectLayout).toContain("deploymentStatus={project.deploymentStatus}");
+    expect(projectLayout).toContain("eveVersion={eveVersion}");
     expect(projectLayout).not.toContain("<ProjectBreadcrumb");
     expect(projectSidebar).toContain('href="/projects"');
     expect(projectSidebar).toContain("<ArrowLeftIcon");
     expect(projectSidebar).toContain("<ProjectNav");
-    expect(projectSidebar).not.toContain("<SidebarFooter");
+    expect(projectSidebar).toContain("<SidebarFooter");
+    expect(projectSidebar).toContain("<StatusBadge");
+    expect(projectSidebar).toContain("<EveVersionStatus");
+    expect(projectSidebar).toContain("tooltipWhenCurrent={false}");
     expect(projectSidebar).not.toContain("<Avatar");
   });
 

@@ -28,7 +28,7 @@ Project 删除是永久、异步操作。用户必须输入完整 Project 名称
 
 主 Workspace 外壳只应用于 Projects、Deployments 与 Usage。左上角显示 Eveland Logo；左下角显示当前用户头像、姓名和邮箱。整行是单一的 Account Dropdown trigger，菜单提供 Settings 和 Sign out。
 
-Project 详情路由使用独立的 Project 外壳：左上角返回 Projects，其余 Sidebar 只包含当前 Project 的导航，底部不显示用户信息。Settings 路由同样使用独立外壳：左上角返回 Workspace，Sidebar 内容按 Personal 与 System 分组，底部不显示用户信息。
+Project 详情路由使用独立的 Project 外壳：左上角返回 Projects，其余 Sidebar 只包含当前 Project 的导航；底部上下文区展示当前 Deployment 状态与 Eve 版本，而不是用户信息。当前 Eve 版本标记为健康；较旧但受支持或不受支持的版本通过 Tooltip 给出升级提示。Settings 路由同样使用独立外壳：左上角返回 Workspace，Sidebar 内容按 Personal 与 System 分组，底部不显示用户信息。
 
 ## Profile (/settings/profile)
 

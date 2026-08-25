@@ -60,10 +60,12 @@ export function EveVersionStatus({
   className,
   eveVersion,
   showMessage = true,
+  tooltipWhenCurrent = true,
 }: {
   className?: string;
   eveVersion: EveVersionInfo;
   showMessage?: boolean;
+  tooltipWhenCurrent?: boolean;
 }) {
   const status = getEveVersionStatus(eveVersion);
   const message = getEveVersionMessage(eveVersion, status);
@@ -90,13 +92,15 @@ export function EveVersionStatus({
     <div className={cn("flex min-w-0 flex-wrap items-center gap-2", className)}>
       {showMessage ? (
         badge
-      ) : (
+      ) : status !== "current" || tooltipWhenCurrent ? (
         // The inline message is hidden, so the reminder moves onto the badge
         // itself — an amber or red pill with no explanation is a dead end.
         <Tooltip>
           <TooltipTrigger render={badge} />
           <TooltipContent>{message}</TooltipContent>
         </Tooltip>
+      ) : (
+        badge
       )}
       {showMessage ? (
         <span
