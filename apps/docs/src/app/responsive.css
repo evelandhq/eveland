@@ -49,6 +49,7 @@
 }
 
 @supports (animation-timeline: view()) {
+  .manifesto-section,
   .proof-section,
   .foundation-section,
   .control-section,

@@ -60,6 +60,14 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
         </section>
       </div>
 
+      <section className="manifesto-section page-section">
+        <blockquote className="manifesto-quote">
+          <p className="manifesto-statement">{t.manifesto.statement}</p>
+          <p className="manifesto-substatement">{t.manifesto.substatement}</p>
+          <p className="manifesto-focus">{t.manifesto.focus}</p>
+        </blockquote>
+      </section>
+
       <section className="proof-section page-section">
         <p className="section-label">{t.proof.label}</p>
         <div>

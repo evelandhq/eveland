@@ -30,6 +30,11 @@ const copy = {
       resources: "MemoryMax · CPUQuota",
       states: ["idle", "wake", "ready"],
     },
+    manifesto: {
+      statement: "A company will eventually operate more agents than people.",
+      substatement: "Eveland is the infrastructure for that world.",
+      focus: "Today, Eveland starts with self-hosted production infrastructure for Eve agents.",
+    },
     proof: {
       label: "A deliberate production boundary",
       title: "Public traffic never becomes host control.",
@@ -132,6 +137,11 @@ const copy = {
       route: "agent.example.com",
       resources: "MemoryMax · CPUQuota",
       states: ["空闲", "按需唤醒", "就绪"],
+    },
+    manifesto: {
+      statement: "一家企业最终运营的 Agent 数量将超过员工人数。",
+      substatement: "Eveland 就是为那个世界而生的基础设施。",
+      focus: "今天，Eveland 从为 Eve Agents 提供自托管的生产级基础设施开始。",
     },
     proof: {
       label: "刻意设计的生产边界",
