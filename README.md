@@ -10,6 +10,11 @@ projects: import an Eve project from a Git repo or Zip upload, configure its run
 environment, deploy it behind a public Agent Gateway, and observe its Sessions, usage,
 schedules, and logs.
 
+> **Independent community project.** Eveland is community-maintained and is not
+> affiliated with, endorsed by, or sponsored by Vercel. Eve is an open-source
+> project from Vercel; references to Eve and Vercel describe compatibility and
+> integrations only.
+
 > **Status: pre-1.0.** Eveland is used in production by its maintainers, but the
 > 0.x line makes breaking changes in minor releases (each is documented in the
 > [CHANGELOG](CHANGELOG.md) and in
@@ -69,6 +74,8 @@ Open the Dashboard at `http://localhost:3000` and the public documentation site 
 | Product contract (principles + reference)     | [`spec.md`](spec.md) + [`docs/*/reference`](docs/en/reference/) (bilingual)                     |
 | Working conventions for coding agents         | [`AGENTS.md`](AGENTS.md)                                                                        |
 | How to contribute                             | [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                            |
+| Project direction                             | [`ROADMAP.md`](ROADMAP.md)                                                                      |
+| Community support                             | [`SUPPORT.md`](SUPPORT.md)                                                                      |
 | Reporting security issues                     | [`SECURITY.md`](SECURITY.md)                                                                    |
 | Design decisions (the "why")                  | [`docs/en/reference/design/`](docs/en/reference/design/)                                        |
 
@@ -85,8 +92,10 @@ standalone if the site is unavailable.
 
 ## Getting help
 
+- **Questions and deployment help** — [GitHub Discussions](https://github.com/evelandhq/eveland/discussions)
 - **Bugs and feature requests** — [GitHub issues](https://github.com/evelandhq/eveland/issues)
 - **Security vulnerabilities** — [`SECURITY.md`](SECURITY.md); never a public issue
+- **Support scope and expectations** — [`SUPPORT.md`](SUPPORT.md)
 - **Contributing** — [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
   [Code of Conduct](CODE_OF_CONDUCT.md)
 
@@ -203,7 +212,7 @@ binding.
 
 ### License
 
-Copyright (C) 2026 Jinzhou Chen.
+Copyright (C) 2026 Jinzhou Chen and contributors.
 
 Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE);
 third-party attributions are listed in [`NOTICE`](NOTICE). Two deliberate

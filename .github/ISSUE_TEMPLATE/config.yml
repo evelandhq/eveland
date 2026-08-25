@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Questions and deployment help
+    url: https://github.com/evelandhq/eveland/discussions
+    about: Ask usage, installation, and operational questions in GitHub Discussions.
   - name: Security vulnerability
     url: https://github.com/evelandhq/eveland/security/advisories/new
     about: Report security problems privately — never in a public issue.
