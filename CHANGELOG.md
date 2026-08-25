@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.41.0](https://github.com/evelandhq/eveland/compare/v0.40.0...v0.41.0) (2026-08-25)
+
+
+### Features
+
+* **web:** resume the Playground conversation across route-auth redirects ([#390](https://github.com/evelandhq/eveland/issues/390)) ([495c76d](https://github.com/evelandhq/eveland/commit/495c76d091947775454be4e0f41fc917c51bd722))
+
+
+### Bug Fixes
+
+* **deps:** resolve all 26 open Dependabot alerts (12 high) ([#384](https://github.com/evelandhq/eveland/issues/384)) ([c8d266a](https://github.com/evelandhq/eveland/commit/c8d266aa24b14be78c47b3a2413fe661331b6ef1))
+* slide the 0.44 line to Eve 0.44.4 ([#389](https://github.com/evelandhq/eveland/issues/389)) ([1aabd6a](https://github.com/evelandhq/eveland/commit/1aabd6ac8938edf945daf5fc4f9d97e1eccd46ac))
+
 ## [0.40.0](https://github.com/evelandhq/eveland/compare/v0.39.1...v0.40.0) (2026-08-24)
 
 
