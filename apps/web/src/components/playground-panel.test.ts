@@ -4,7 +4,53 @@ import {
   cancelPlaygroundTurn,
   createPlaygroundTurnCanceller,
   createPlaygroundMessage,
+  resumePendingPlaygroundTurn,
 } from "../lib/playground-session.js";
+
+describe("Playground route-auth turn resume", () => {
+  test("replays the interrupted session before re-sending the message", async () => {
+    const calls: string[] = [];
+    await resumePendingPlaygroundTurn({
+      pending: { message: "follow-up", session: { sessionId: "sess_1", streamIndex: 7 } },
+      resume: async () => {
+        calls.push("resume");
+      },
+      send: async (message) => {
+        calls.push(`send:${String(message)}`);
+      },
+    });
+
+    expect(calls).toEqual(["resume", "send:follow-up"]);
+  });
+
+  test("skips the replay when the redirect predated any session", async () => {
+    const calls: string[] = [];
+    await resumePendingPlaygroundTurn({
+      pending: { message: "hello" },
+      resume: async () => {
+        calls.push("resume");
+      },
+      send: async () => {
+        calls.push("send");
+      },
+    });
+
+    expect(calls).toEqual(["send"]);
+  });
+
+  test("still sends the message when the replay fails", async () => {
+    const send = vi.fn(async () => undefined);
+    await resumePendingPlaygroundTurn({
+      pending: { message: "hello", session: { sessionId: "sess_1", streamIndex: 0 } },
+      resume: async () => {
+        throw new Error("replay failed");
+      },
+      send,
+    });
+
+    expect(send).toHaveBeenCalledWith("hello");
+  });
+});
 
 describe("Playground message composition", () => {
   test("sends plain text directly and converts uploaded files to Eve user-content parts", () => {
