@@ -57,7 +57,7 @@ export function LoginForm({ nextPath = "/projects" }: { nextPath?: string }) {
           {error ? <FieldError>{error}</FieldError> : null}
         </Field>
         <Field>
-          <Button type="submit" className="rounded-full" disabled={pending}>
+          <Button type="submit" disabled={pending}>
             <LogInIcon data-icon="inline-start" />
             {pending ? "Signing in…" : "Sign in"}
           </Button>

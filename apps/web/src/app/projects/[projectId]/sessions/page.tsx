@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DateTime } from "@/components/date-time";
 import { getSchedules, getSessionsPage } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Table,
@@ -149,7 +150,7 @@ export default async function SessionsPage({
         <div className="flex justify-end">
           <Link
             href={historyHref(query, sessionPage.nextCursor)}
-            className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
           >
             Older sessions
           </Link>

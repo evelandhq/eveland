@@ -138,12 +138,7 @@ export function DeploymentActions({
   return (
     <div className="flex flex-col items-end gap-1">
       {retryingImport && !canDeploy && canSync ? (
-        <Button
-          type="button"
-          className="rounded-full font-semibold"
-          onClick={retryImport}
-          disabled={busy}
-        >
+        <Button type="button" onClick={retryImport} disabled={busy}>
           {pending === "retry" ? (
             <Spinner data-icon="inline-start" />
           ) : (
@@ -154,13 +149,7 @@ export function DeploymentActions({
       ) : (
         <Dialog open={open} onOpenChange={changeOpen}>
           <DialogTrigger
-            render={
-              <Button
-                type="button"
-                className="rounded-full font-semibold"
-                disabled={busy || (!canDeploy && !canSync)}
-              />
-            }
+            render={<Button type="button" disabled={busy || (!canDeploy && !canSync)} />}
           >
             {importActive ? (
               <Spinner data-icon="inline-start" />

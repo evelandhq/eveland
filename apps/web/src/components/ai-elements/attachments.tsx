@@ -321,22 +321,14 @@ export const AttachmentRemove = ({
     <Button
       aria-label={label}
       className={cn(
-        variant === "grid" && [
-          "absolute top-2 right-2 size-6 rounded-full p-0",
-          "bg-background/80 backdrop-blur-sm",
-          "opacity-0 transition-opacity group-hover:opacity-100",
-          "hover:bg-background",
-          "[&>svg]:size-3",
-        ],
-        variant === "inline" && [
-          "size-5 rounded p-0",
-          "opacity-0 transition-opacity group-hover:opacity-100",
-          "[&>svg]:size-2.5",
-        ],
-        variant === "list" && ["size-8 shrink-0 rounded p-0", "[&>svg]:size-4"],
+        variant === "grid" &&
+          "absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100",
+        variant === "inline" && "opacity-0 transition-opacity group-hover:opacity-100",
+        variant === "list" && "shrink-0",
         className,
       )}
       onClick={handleClick}
+      size={variant === "inline" ? "icon-xs" : variant === "grid" ? "icon-sm" : "icon"}
       type="button"
       variant="ghost"
       {...props}

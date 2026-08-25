@@ -36,7 +36,6 @@ export function ProjectNav({ projectId }: { projectId: string }) {
   // boundary readers never needed — nine items scan fine as a single column.
   return (
     <ProjectNavigationMenu
-      className="gap-px"
       items={items}
       pathname={pathname}
       scheduleAttention={attention}
@@ -46,20 +45,18 @@ export function ProjectNav({ projectId }: { projectId: string }) {
 }
 
 function ProjectNavigationMenu({
-  className,
   items,
   pathname,
   scheduleAttention,
   scheduleHref,
 }: {
-  className?: string;
   items: ReadonlyArray<ReturnType<typeof getProjectNavigationItems>[number]>;
   pathname: string;
   scheduleAttention: number;
   scheduleHref: string;
 }) {
   return (
-    <SidebarMenu className={className}>
+    <SidebarMenu>
       {items.map((item) => {
         const Icon = item.icon;
         return (
@@ -73,9 +70,7 @@ function ProjectNavigationMenu({
               <span>{item.label}</span>
             </SidebarMenuButton>
             {item.href === scheduleHref && scheduleAttention > 0 ? (
-              <SidebarMenuBadge className="bg-destructive-subtle text-destructive-foreground">
-                {scheduleAttention}
-              </SidebarMenuBadge>
+              <SidebarMenuBadge>{scheduleAttention}</SidebarMenuBadge>
             ) : null}
           </SidebarMenuItem>
         );

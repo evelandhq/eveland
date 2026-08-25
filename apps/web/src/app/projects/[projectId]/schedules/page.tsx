@@ -6,6 +6,7 @@ import { getScheduleAttention, getScheduleRuns, getSchedules } from "@/lib/serve
 import { AcknowledgeScheduleRuns } from "@/components/acknowledge-schedule-runs";
 import { RunScheduleAction } from "@/components/run-schedule-action";
 import { StatusBadge } from "@/components/status-badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Table,
@@ -155,7 +156,7 @@ export default async function SchedulesPage({
           {query.schedule ? (
             <Link
               href={`/projects/${projectId}/schedules#recent-runs`}
-              className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
             >
               All schedules
             </Link>
@@ -249,7 +250,7 @@ export default async function SchedulesPage({
           <div className="mt-4 flex justify-end">
             <Link
               href={runHistoryHref(query, runPage.nextCursor)}
-              className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
             >
               Older runs
             </Link>

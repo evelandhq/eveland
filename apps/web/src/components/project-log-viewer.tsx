@@ -109,11 +109,7 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
             aria-label="Filter project logs"
           >
             {LOG_FILTERS.map((option) => (
-              <ToggleGroupItem
-                key={option.value}
-                value={option.value}
-                className="h-auto min-w-0 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-input hover:bg-transparent hover:text-muted-foreground aria-pressed:border-transparent aria-pressed:bg-primary aria-pressed:text-primary-foreground hover:aria-pressed:bg-primary hover:aria-pressed:text-primary-foreground"
-              >
+              <ToggleGroupItem key={option.value} value={option.value}>
                 {option.label} <span className="tabular-nums">{counts[option.value]}</span>
               </ToggleGroupItem>
             ))}
@@ -122,7 +118,6 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
           <Button
             variant="outline"
             size="sm"
-            className="rounded-full"
             aria-label={
               order === "desc"
                 ? "Newest first. Switch to oldest first"

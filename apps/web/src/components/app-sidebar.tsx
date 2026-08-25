@@ -85,12 +85,9 @@ export function AppSidebar() {
   const memberInitials = memberLabel.slice(0, 2).toUpperCase();
 
   return (
-    // The sidebar shares the canvas background, so a divider would be a second
-    // separator for a boundary the layout already makes obvious. The variant
-    // prefix has to match the one Sidebar sets, or tailwind-merge keeps both.
-    <Sidebar className="group-data-[side=left]:border-r-0" collapsible="icon">
+    <Sidebar collapsible="icon">
       <SidebarHeader>
-        <SidebarMenu className="gap-px">
+        <SidebarMenu>
           {/* The logo row is the constant anchor at the top of every context:
               it names the product and IS the way back up to the workspace. */}
           <SidebarMenuItem>
@@ -106,13 +103,7 @@ export function AppSidebar() {
                   other project without surfacing through the list page. */}
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  render={
-                    <SidebarMenuButton
-                      size="lg"
-                      className="border bg-background group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent"
-                      tooltip="Switch project"
-                    />
-                  }
+                  render={<SidebarMenuButton size="lg" tooltip="Switch project" />}
                 >
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-success-subtle text-success-foreground">
                     <FolderIcon className="size-3.5" />
@@ -153,7 +144,7 @@ export function AppSidebar() {
             <SidebarGroup key={group.label}>
               <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu className="gap-px">
+                <SidebarMenu>
                   {group.items.map((item) => {
                     const Icon = item.icon;
 
@@ -183,7 +174,7 @@ export function AppSidebar() {
         ) : (
           <SidebarGroup>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-px">
+              <SidebarMenu>
                 {globalNavigationItems.map((item) => {
                   const Icon = item.icon;
 
@@ -206,7 +197,7 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter>
-        <SidebarMenu className="gap-px">
+        <SidebarMenu>
           {/* Version above the account row, as quiet small print — no icon,
               no divider. The account row keeps the bottom anchor position. */}
           <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">

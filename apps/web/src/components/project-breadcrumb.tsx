@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PlayIcon } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { getProjectNavigationItems } from "@/lib/navigation";
 
 /**
@@ -55,9 +56,9 @@ export function ProjectBreadcrumb({
         </div>
         <Link
           href={`/projects/${projectId}/playground`}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+          className={buttonVariants({ variant: "outline", size: "sm", className: "shrink-0" })}
         >
-          <PlayIcon aria-hidden="true" className="size-3.5" />
+          <PlayIcon aria-hidden="true" data-icon="inline-start" />
           Open playground
         </Link>
       </div>
