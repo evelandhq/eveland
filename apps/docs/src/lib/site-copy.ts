@@ -95,7 +95,7 @@ const copy = {
       secondary: "View on GitHub",
     },
     footer: {
-      line: "Team-owned infrastructure for Eve agents.",
+      line: "Independent, community-maintained infrastructure for Eve agents. Not affiliated with Vercel.",
       product: "Platform",
       resources: "Resources",
       home: "Overview",
@@ -198,7 +198,7 @@ const copy = {
       secondary: "在 GitHub 查看",
     },
     footer: {
-      line: "团队自有的 Eve Agent 基础设施。",
+      line: "由社区独立维护的 Eve Agent 基础设施，与 Vercel 无隶属关系。",
       product: "平台",
       resources: "资源",
       home: "概览",

@@ -64,5 +64,7 @@ outbound). There is no CLA.
 
 ## Getting help
 
+- Usage and deployment questions: [GitHub Discussions](https://github.com/evelandhq/eveland/discussions)
 - Bugs and feature requests: [GitHub issues](https://github.com/evelandhq/eveland/issues)
+- Support scope and expectations: [`SUPPORT.md`](SUPPORT.md)
 - Security problems: see [SECURITY.md](SECURITY.md) — never open a public issue
