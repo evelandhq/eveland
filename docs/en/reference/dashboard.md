@@ -24,9 +24,11 @@ Project deletion is permanent and asynchronous. The user must type the full proj
 
 The deletion job must wait for the project's already-running jobs to finish, then stop all `running` or `draining` deployments. It then deletes releases per each deployment's recorded `runtimeKind`, cleans platform-managed source, build, agent observability policy, and durable sandbox workspaces, and finally cascade-deletes routes, SessionBindings, OperationBindings, sessions, usage, schedules, secrets, logs, and project data. The platform must never delete external source paths outside `EVELAND_DATA_DIR`. External resource cleanup cannot share a transaction with Postgres; on failure some processes or artifacts may already be stopped or removed, but the project record and its error state must survive to support idempotent retry.
 
-## The Settings shell
+## Navigation shells
 
-The bottom-left of the sidebar shows the current user's avatar, name, and email. The whole row is a single account-dropdown trigger; the menu offers Settings and Sign out. Settings opens a separate settings area reusing the main sidebar's position and components; once inside, the top-left offers a way back to the workspace, and the sidebar groups navigation into Personal and System.
+The main workspace shell applies only to Projects, Deployments, and Usage. Its top-left shows the Eveland logo, and its bottom-left shows the current user's avatar, name, and email. The whole user row is a single account-dropdown trigger whose menu offers Settings and Sign out.
+
+Project detail routes use a separate project shell. Its top-left returns to Projects, the remaining sidebar contains only that project's navigation, and it has no user footer. Settings routes likewise use a separate settings shell: its top-left returns to the workspace, its navigation is grouped into Personal and System, and it has no user footer.
 
 ## Profile (/settings/profile)
 

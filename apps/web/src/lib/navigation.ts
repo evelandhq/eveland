@@ -115,12 +115,6 @@ export function getProjectNavigationItems(projectId: string) {
   ] as const;
 }
 
-export function getProjectIdFromPathname(pathname: string): string | null {
-  const [, root, projectId] = pathname.split("/");
-
-  return root === "projects" && projectId && projectId !== "new" ? projectId : null;
-}
-
 export function isNavigationItemActive(pathname: string, href: string): boolean {
   const segments = href.split("/").filter(Boolean);
   const isProjectOverview = segments[0] === "projects" && segments.length === 2;

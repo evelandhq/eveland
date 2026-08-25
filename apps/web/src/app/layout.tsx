@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { AppShell } from "@/components/app-shell";
 import { TimeZoneProvider } from "@/components/time-zone-provider";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -22,7 +21,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className="antialiased">
         <TooltipProvider>
           <TimeZoneProvider initialTimeZone={member?.displayTimezone ?? null}>
-            <AppShell>{children}</AppShell>
+            {children}
           </TimeZoneProvider>
         </TooltipProvider>
         <Toaster />

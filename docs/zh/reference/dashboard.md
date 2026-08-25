@@ -24,9 +24,11 @@ Project 删除是永久、异步操作。用户必须输入完整 Project 名称
 
 删除 job 必须等待同一 Project 已运行的 job 结束，再停止所有 `running` 或 `draining` Deployment。随后按各 Deployment 记录的 `runtimeKind` 删除 Release，清理平台管理的 source、build、Agent observability policy 与 durable sandbox workspace，最后级联删除 routes、SessionBindings、OperationBindings、Sessions、usage、Schedules、Secrets、日志和 Project 数据。平台不得删除 `EVELAND_DATA_DIR` 之外的外部源码路径。外部资源清理无法与 Postgres 组成同一事务；失败时部分进程或 artifact 可能已经停止或移除，但 Project 记录和错误状态必须保留以支持幂等重试。
 
-## Settings 外壳
+## 导航外壳
 
-Sidebar 左下角显示当前用户头像、姓名和邮箱。整行是单一的 Account Dropdown trigger；菜单提供 Settings 和 Sign out。Settings 进入独立设置区域并复用主 Sidebar 的位置与组件；进入后左上角提供返回 Workspace 的入口，Sidebar 内容按 Personal 与 System 分组导航。
+主 Workspace 外壳只应用于 Projects、Deployments 与 Usage。左上角显示 Eveland Logo；左下角显示当前用户头像、姓名和邮箱。整行是单一的 Account Dropdown trigger，菜单提供 Settings 和 Sign out。
+
+Project 详情路由使用独立的 Project 外壳：左上角返回 Projects，其余 Sidebar 只包含当前 Project 的导航，底部不显示用户信息。Settings 路由同样使用独立外壳：左上角返回 Workspace，Sidebar 内容按 Personal 与 System 分组，底部不显示用户信息。
 
 ## Profile (/settings/profile)
 

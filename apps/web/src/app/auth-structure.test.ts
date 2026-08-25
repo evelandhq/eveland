@@ -168,19 +168,19 @@ describe("team management web surfaces", () => {
     expect(inviteForm).toContain("<Input");
   });
 
-  test("reuses the application sidebar for settings navigation", () => {
-    const sidebar = source("../components/app-sidebar.tsx");
+  test("keeps settings navigation in its own sidebar without an account footer", () => {
+    const sidebar = source("../components/settings-sidebar.tsx");
 
-    expect(sidebar).toContain('pathname.startsWith("/settings")');
     expect(sidebar).toContain("settingsNavigationGroups.map");
-    // The logo row is the constant way back up to the workspace from any
-    // context, settings included.
-    expect(sidebar).toContain('<Link href="/projects" />');
+    expect(sidebar).toContain('href="/projects"');
+    expect(sidebar).not.toContain("<SidebarFooter");
+    expect(sidebar).not.toContain("<Avatar");
   });
 
-  test("opens settings and sign out from one semantic account menu trigger", () => {
-    const sidebar = source("../components/app-sidebar.tsx");
+  test("keeps settings and sign out in the main sidebar account menu", () => {
+    const sidebar = source("../components/main-sidebar.tsx");
 
+    expect(sidebar).toContain("<SidebarFooter>");
     expect(sidebar).toContain("<DropdownMenu");
     expect(sidebar).toContain("<DropdownMenuTrigger");
     expect(sidebar).toContain("<DropdownMenuGroup");

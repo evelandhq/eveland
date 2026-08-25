@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  getProjectIdFromPathname,
   getProjectNavigationItems,
   getSettingsNavigationGroups,
   globalNavigationItems,
@@ -65,12 +64,6 @@ describe("sidebar navigation", () => {
     expect(settingsDestinations(getSettingsNavigationGroups("admin"))).toEqual(
       settingsNavigationGroups.flatMap((group) => group.items.map((item) => item.href)),
     );
-  });
-
-  test("switches to project navigation for project routes but not the new-project route", () => {
-    expect(getProjectIdFromPathname("/projects/project-123/usage")).toBe("project-123");
-    expect(getProjectIdFromPathname("/projects/new")).toBeNull();
-    expect(getProjectIdFromPathname("/usage")).toBeNull();
   });
 
   test("orders daily project destinations before management destinations", () => {
