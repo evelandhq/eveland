@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ProjectDeletionNotice } from "@/components/project-deletion-notice";
-import { ProjectDeletionPoller } from "@/components/project-deletion-poller";
-import { PageContainer } from "@/components/page-container";
+import { ProjectContent } from "@/components/project-content";
 import { ProjectSidebar } from "@/components/project-sidebar";
 import { SidebarShell } from "@/components/sidebar-shell";
 import { getProject } from "@/lib/server-api";
@@ -48,15 +46,9 @@ export default async function ProjectLayout({
       mobileTitle={project.name}
       sidebar={<ProjectSidebar projectId={project.id} projectName={project.name} />}
     >
-      <div className="min-h-[calc(100svh-3rem)] bg-background">
-        <PageContainer className="gap-4">
-          <ProjectDeletionPoller active={project.deletionStatus === "deleting"} />
-          <ProjectDeletionNotice status={project.deletionStatus} error={project.deletionError} />
-          <fieldset disabled={project.deletionStatus === "deleting"} className="contents">
-            {children}
-          </fieldset>
-        </PageContainer>
-      </div>
+      <ProjectContent deletionError={project.deletionError} deletionStatus={project.deletionStatus}>
+        {children}
+      </ProjectContent>
     </SidebarShell>
   );
 }

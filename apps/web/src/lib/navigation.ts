@@ -1,8 +1,8 @@
 import {
   ActivityIcon,
   BoxIcon,
-  BracesIcon,
   ChartNoAxesColumnIcon,
+  CodeIcon,
   HistoryIcon,
   HeartPulseIcon,
   InfoIcon,
@@ -110,7 +110,7 @@ export function getProjectNavigationItems(projectId: string) {
       icon: RocketIcon,
       section: "manage",
     },
-    { href: `${projectHref}/source`, label: "Source", icon: BracesIcon, section: "manage" },
+    { href: `${projectHref}/source`, label: "Source", icon: CodeIcon, section: "manage" },
     { href: `${projectHref}/settings`, label: "Settings", icon: SettingsIcon, section: "manage" },
   ] as const;
 }

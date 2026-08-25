@@ -23,6 +23,29 @@ const treeStyles = {
   "--trees-selected-fg-override": "var(--secondary-foreground)",
 } as CSSProperties;
 
+const sourceFileTreeCss = `
+  [data-file-tree-search-container] {
+    box-sizing: border-box;
+    height: 32px;
+    margin: 0;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--trees-border-color);
+    align-items: center;
+    flex: none;
+  }
+
+  [data-file-tree-search-input] {
+    box-sizing: border-box;
+    height: 31px;
+    margin: 0;
+    padding: 0;
+    line-height: 31px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+`;
+
 export function SourceFileTree({
   paths,
   projectId,
@@ -63,6 +86,7 @@ export function SourceFileTree({
     },
     paths,
     search: true,
+    unsafeCSS: sourceFileTreeCss,
   });
 
   useEffect(() => {
