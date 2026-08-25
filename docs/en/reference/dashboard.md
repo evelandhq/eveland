@@ -132,7 +132,7 @@ Project Settings is one centered page containing project details, Variables and 
 
 Logs offers three log kinds: build logs; deploy logs; and runtime stdout/stderr plus ScheduleRun lifecycle diagnostics. An agent's concrete execution belongs in the session timeline, not in Logs.
 
-The Logs page defaults to newest-first, offering text search, kind filtering, and sort-order toggling inside a fixed-height scroll area. Multi-line or overlong records default to a compact summary, expandable per row to the full original text.
+The Logs page defaults to newest-first, with kind tabs on the left and text search on the right above a fixed-height scroll area. Each record defaults to a single-line summary; multi-line or overlong records can be expanded per row to show the full original text.
 
 ## Deeper reference
 

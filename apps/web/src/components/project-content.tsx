@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { PageContainer } from "@/components/page-container";
 import { ProjectDeletionNotice } from "@/components/project-deletion-notice";
 import { ProjectDeletionPoller } from "@/components/project-deletion-poller";
+import { cn } from "@/lib/utils";
 
 export function ProjectContent({
   children,
@@ -15,6 +16,7 @@ export function ProjectContent({
   deletionStatus: "deleting" | "failed" | null;
 }) {
   const pathname = usePathname();
+  const fillsViewport = pathname.endsWith("/logs");
 
   return (
     <>
@@ -31,7 +33,7 @@ export function ProjectContent({
         </div>
       ) : (
         <div className="min-h-[calc(100svh-3rem)] bg-background">
-          <PageContainer className="gap-4">
+          <PageContainer className={cn("gap-4", fillsViewport && "h-[calc(100svh-3rem)] md:h-svh")}>
             <ProjectDeletionNotice status={deletionStatus} error={deletionError} />
             <fieldset disabled={deletionStatus === "deleting"} className="contents">
               {children}

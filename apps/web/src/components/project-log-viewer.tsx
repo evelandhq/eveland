@@ -1,10 +1,9 @@
 "use client";
 
-import { ChevronDownIcon, ChevronsUpDownIcon, SearchIcon, TerminalIcon, XIcon } from "lucide-react";
+import { ChevronDownIcon, SearchIcon, TerminalIcon, XIcon } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { useDisplayTimezone } from "@/components/time-zone-provider";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Empty,
@@ -20,13 +19,8 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  selectProjectLogs,
-  type LogLine,
-  type ProjectLogFilter,
-  type ProjectLogOrder,
-} from "@/lib/api";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { selectProjectLogs, type LogLine, type ProjectLogFilter } from "@/lib/api";
 import { formatDateTime } from "@/lib/date-time";
 
 const LOG_FILTERS = [
@@ -39,7 +33,6 @@ const LOG_FILTERS = [
 export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
   const [filter, setFilter] = useState<ProjectLogFilter>("all");
   const [query, setQuery] = useState("");
-  const [order, setOrder] = useState<ProjectLogOrder>("desc");
   const deferredQuery = useDeferredValue(query);
   const counts = useMemo(
     () => ({
@@ -51,13 +44,13 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
     [logs],
   );
   const visibleLogs = useMemo(
-    () => selectProjectLogs(logs, { type: filter, query: deferredQuery, order }),
-    [deferredQuery, filter, logs, order],
+    () => selectProjectLogs(logs, { type: filter, query: deferredQuery, order: "desc" }),
+    [deferredQuery, filter, logs],
   );
 
   if (logs.length === 0) {
     return (
-      <Empty className="min-h-96 rounded-xl border bg-card">
+      <Empty className="min-h-96 flex-1 rounded-xl border bg-card">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <TerminalIcon />
@@ -72,9 +65,27 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-        <InputGroup className="xl:max-w-xl">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Tabs
+          value={filter}
+          onValueChange={(value) => {
+            if (LOG_FILTERS.some((option) => option.value === value)) {
+              setFilter(value as ProjectLogFilter);
+            }
+          }}
+          className="min-w-0 overflow-x-auto overflow-y-hidden"
+        >
+          <TabsList className="h-7!" aria-label="Filter project logs">
+            {LOG_FILTERS.map((option) => (
+              <TabsTrigger key={option.value} value={option.value} className="text-xs">
+                {option.label} <span className="tabular-nums">{counts[option.value]}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
+        <InputGroup className="w-full shrink-0 sm:ml-auto sm:w-64">
           <InputGroupAddon>
             <SearchIcon />
           </InputGroupAddon>
@@ -96,46 +107,13 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
             </InputGroupAddon>
           ) : null}
         </InputGroup>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 xl:ml-auto xl:justify-end">
-          {/* Filter chips: the pressed chip is the primary fill, the rest stay
-              quiet outlines. */}
-          <ToggleGroup
-            value={[filter]}
-            onValueChange={(values) => {
-              const value = values[0] as ProjectLogFilter | undefined;
-              if (value) setFilter(value);
-            }}
-            aria-label="Filter project logs"
-          >
-            {LOG_FILTERS.map((option) => (
-              <ToggleGroupItem key={option.value} value={option.value}>
-                {option.label} <span className="tabular-nums">{counts[option.value]}</span>
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label={
-              order === "desc"
-                ? "Newest first. Switch to oldest first"
-                : "Oldest first. Switch to newest first"
-            }
-            onClick={() => setOrder((current) => (current === "desc" ? "asc" : "desc"))}
-          >
-            <ChevronsUpDownIcon data-icon="inline-start" />
-            {order === "desc" ? "Newest first" : "Oldest first"}
-          </Button>
-        </div>
       </div>
 
       <section
-        className="overflow-hidden rounded-xl border bg-card"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card"
         aria-label="Project log stream"
       >
-        <header className="grid grid-cols-[6.5rem_4.75rem_minmax(0,1fr)] items-center gap-3 border-b bg-muted/40 px-4 py-2 text-xs text-muted-foreground sm:grid-cols-[9.5rem_5.5rem_minmax(0,1fr)]">
+        <header className="grid grid-cols-[7.25rem_4.5rem_minmax(0,1fr)] items-center gap-3 border-b bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
           <span>Timestamp</span>
           <span>Type</span>
           <span className="flex items-center justify-between gap-3">
@@ -145,7 +123,7 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
         </header>
 
         {visibleLogs.length === 0 ? (
-          <Empty className="min-h-96">
+          <Empty className="min-h-0 flex-1">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <SearchIcon />
@@ -155,12 +133,7 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
             </EmptyHeader>
           </Empty>
         ) : (
-          // Fill the page. The offset is everything above the scroll area plus
-          // the container's bottom padding, measured rather than guessed:
-          // project header + PageContainer py-6 + this card's own header =
-          // 158px, plus 24px of breathing room below = 182px. Mobile adds back
-          // the 3rem app header the desktop layout hides.
-          <ScrollArea className="h-[calc(100svh-14.375rem)] min-h-96 md:h-[calc(100svh-11.375rem)]">
+          <ScrollArea className="min-h-0 flex-1">
             <ol className="divide-y font-mono text-xs">
               {visibleLogs.map((log) => (
                 <ProjectLogRow key={log.id} log={log} />
@@ -196,10 +169,8 @@ function ProjectLogRow({ log }: { log: LogLine }) {
       <span>
         <Badge variant="outline">{log.type}</Badge>
       </span>
-      <span className="flex min-w-0 items-start gap-2">
-        <span className="line-clamp-2 min-w-0 flex-1 break-words text-left leading-5">
-          {compactLine}
-        </span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate min-w-0 flex-1 text-left leading-5">{compactLine}</span>
         {isExpandable ? (
           <ChevronDownIcon className="mt-0.5 shrink-0 transition-transform group-data-[panel-open]/trigger:rotate-180" />
         ) : null}
@@ -212,19 +183,19 @@ function ProjectLogRow({ log }: { log: LogLine }) {
       {isExpandable ? (
         <Collapsible>
           <CollapsibleTrigger
-            className="group/trigger grid w-full grid-cols-[6.5rem_4.75rem_minmax(0,1fr)] items-start gap-3 px-4 py-2.5 text-left sm:grid-cols-[9.5rem_5.5rem_minmax(0,1fr)]"
+            className="group/trigger grid w-full grid-cols-[7.25rem_4.5rem_minmax(0,1fr)] items-center gap-3 px-4 py-2 text-left"
             aria-label={`Show full log from ${fullTimestamp}`}
           >
             {row}
           </CollapsibleTrigger>
-          <CollapsibleContent className="border-t bg-muted/25 px-4 py-3 sm:pl-[16rem]">
+          <CollapsibleContent className="border-t bg-muted/25 px-4 py-3 sm:pl-[14.25rem]">
             <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5">
               {log.line}
             </pre>
           </CollapsibleContent>
         </Collapsible>
       ) : (
-        <div className="grid grid-cols-[6.5rem_4.75rem_minmax(0,1fr)] items-start gap-3 px-4 py-2.5 sm:grid-cols-[9.5rem_5.5rem_minmax(0,1fr)]">
+        <div className="grid grid-cols-[7.25rem_4.5rem_minmax(0,1fr)] items-center gap-3 px-4 py-2">
           {row}
         </div>
       )}
