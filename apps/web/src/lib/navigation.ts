@@ -1,5 +1,6 @@
 import {
   ActivityIcon,
+  AlarmClockIcon,
   BoxIcon,
   ChartNoAxesColumnIcon,
   CodeIcon,
@@ -13,8 +14,6 @@ import {
   LockKeyholeIcon,
   PlayIcon,
   RadioTowerIcon,
-  RocketIcon,
-  ScrollTextIcon,
   SettingsIcon,
   UsersIcon,
   type LucideIcon,
@@ -100,14 +99,14 @@ export function getProjectNavigationItems(projectId: string) {
     {
       href: `${projectHref}/schedules`,
       label: "Schedules",
-      icon: ScrollTextIcon,
+      icon: AlarmClockIcon,
       section: "daily",
     },
     { href: `${projectHref}/usage`, label: "Usage", icon: ChartNoAxesColumnIcon, section: "daily" },
     {
       href: `${projectHref}/deployments`,
       label: "Deployments",
-      icon: RocketIcon,
+      icon: BoxIcon,
       section: "manage",
     },
     { href: `${projectHref}/source`, label: "Source", icon: CodeIcon, section: "manage" },

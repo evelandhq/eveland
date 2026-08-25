@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { AlarmClockIcon, BoxIcon } from "lucide-react";
 import {
   getProjectNavigationItems,
   getSettingsNavigationGroups,
@@ -120,6 +121,13 @@ describe("sidebar navigation", () => {
         section: "manage",
       },
     ]);
+  });
+
+  test("uses the requested project navigation icons", () => {
+    const items = getProjectNavigationItems("project-123");
+
+    expect(items.find((item) => item.label === "Deployments")?.icon).toBe(BoxIcon);
+    expect(items.find((item) => item.label === "Schedules")?.icon).toBe(AlarmClockIcon);
   });
 
   test("keeps nested project pages active without activating the overview item", () => {
