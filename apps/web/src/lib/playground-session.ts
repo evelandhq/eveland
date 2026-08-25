@@ -50,11 +50,3 @@ export function createPlaygroundTurnCanceller(): (
     return inFlight;
   };
 }
-
-export async function resetPlaygroundConversation(input: {
-  session: { reset(): Promise<unknown> };
-  clear: () => void;
-}): Promise<void> {
-  await input.session.reset();
-  input.clear();
-}

@@ -4,7 +4,6 @@ import {
   cancelPlaygroundTurn,
   createPlaygroundTurnCanceller,
   createPlaygroundMessage,
-  resetPlaygroundConversation,
 } from "../lib/playground-session.js";
 
 describe("Playground message composition", () => {
@@ -95,28 +94,6 @@ describe("Playground message composition", () => {
     expect(cancel).toHaveBeenCalledTimes(2);
     resolveCancel?.();
     await third;
-  });
-
-  test("resets the durable Playground session before clearing the conversation", async () => {
-    const order: string[] = [];
-    await resetPlaygroundConversation({
-      session: {
-        reset: vi.fn(async () => {
-          order.push("server");
-        }),
-      },
-      clear: () => {
-        order.push("client");
-      },
-    });
-
-    expect(order).toEqual(["server", "client"]);
-    await expect(
-      resetPlaygroundConversation({
-        session: { reset: vi.fn(async () => Promise.reject(new Error("reset failed"))) },
-        clear: vi.fn(),
-      }),
-    ).rejects.toThrow("reset failed");
   });
 
   test("sends a keepalive reset when a started Playground leaves the page", async () => {

@@ -17,6 +17,7 @@ export function ProjectContent({
 }) {
   const pathname = usePathname();
   const fillsViewport = pathname.endsWith("/logs");
+  const isPlayground = pathname.endsWith("/playground");
 
   return (
     <>
@@ -33,7 +34,13 @@ export function ProjectContent({
         </div>
       ) : (
         <div className="min-h-[calc(100svh-3rem)] bg-background">
-          <PageContainer className={cn("gap-4", fillsViewport && "h-[calc(100svh-3rem)] md:h-svh")}>
+          <PageContainer
+            className={cn(
+              "gap-4",
+              fillsViewport && "h-[calc(100svh-3rem)] md:h-svh",
+              isPlayground && "min-h-[calc(100svh-3rem)] py-0 md:min-h-svh",
+            )}
+          >
             <ProjectDeletionNotice status={deletionStatus} error={deletionError} />
             <fieldset disabled={deletionStatus === "deleting"} className="contents">
               {children}
