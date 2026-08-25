@@ -378,7 +378,7 @@ function PlaygroundDisplayItemView({
 }) {
   if (item.kind === "activity") {
     return (
-      <AgentActivity count={item.parts.length} status={item.status}>
+      <AgentActivity compact count={item.parts.length} status={item.status}>
         {item.parts.map((part, index) => (
           <PlaygroundActivityPartView
             isBusy={isBusy}
@@ -426,7 +426,9 @@ function PlaygroundActivityPartView({
   }) => Promise<void>;
 }) {
   if (part.type === "reasoning") {
-    return <AgentActivityReasoning isStreaming={part.state === "streaming"} text={part.text} />;
+    return (
+      <AgentActivityReasoning compact isStreaming={part.state === "streaming"} text={part.text} />
+    );
   }
   if (part.type === "authorization") {
     return <AuthorizationPrompt part={part} />;
@@ -468,6 +470,7 @@ function PlaygroundTool({
 
   return (
     <AgentActivityTool
+      compact
       errorText={errorText}
       input={part.input}
       kind={action?.kind === "subagent-call" ? "subagent" : "tool"}

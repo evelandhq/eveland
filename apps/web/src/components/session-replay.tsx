@@ -146,7 +146,7 @@ type ActivityGroup = Extract<TranscriptDisplayItem, { kind: "activity" }>;
 
 function ActivityBlock({ activity }: { activity: ActivityGroup }) {
   return (
-    <AgentActivity count={activity.items.length} status={activity.status}>
+    <AgentActivity compact count={activity.items.length} status={activity.status}>
       {activity.items.map((item, index) => (
         <ActivityItemView item={item} key={activityItemKey(item, index)} />
       ))}
@@ -156,7 +156,7 @@ function ActivityBlock({ activity }: { activity: ActivityGroup }) {
 
 function ActivityItemView({ item }: { item: TranscriptActivityItem }) {
   if (item.kind === "reasoning") {
-    return <AgentActivityReasoning text={item.text} />;
+    return <AgentActivityReasoning compact text={item.text} />;
   }
   if (item.kind === "tool") {
     return item.call.isSubagent ? (
@@ -184,6 +184,7 @@ function ActivityItemView({ item }: { item: TranscriptActivityItem }) {
 function ToolActivity({ call }: { call: TranscriptToolCall }) {
   return (
     <AgentActivityTool
+      compact
       errorText={call.errorText ?? undefined}
       input={call.input}
       name={call.name}

@@ -62,4 +62,15 @@ describe("project Playground surface", () => {
     expect(panel).toContain("pb-5 pt-2");
     expect(panel).toContain("[&_[data-slot=input-group]]:shadow-md");
   });
+
+  test("uses the same compact activity surfaces in Playground and session replay", () => {
+    const panel = source("../components/playground-panel.tsx");
+    const replay = source("../components/session-replay.tsx");
+
+    for (const transcript of [panel, replay]) {
+      expect(transcript).toMatch(/<AgentActivity\s+compact/);
+      expect(transcript).toMatch(/<AgentActivityReasoning\s+compact/);
+      expect(transcript).toMatch(/<AgentActivityTool\s+compact/);
+    }
+  });
 });
