@@ -1,11 +1,13 @@
 ---
 title: Why Eveland
-description: Run 100 agents in your own infrastructure.
+description: A company will eventually operate more agents than people. Eveland is the infrastructure for that world.
 ---
 
-**Run 100 agents in your own infrastructure.**
+> **A company will eventually operate more agents than people.**
+>
+> **Eveland is the infrastructure for that world.**
 
-This is Eveland's core purpose: enabling teams to operate fleets of agents at organizational scale, directly inside the infrastructure and data environments they already control.
+Today, Eveland starts with self-hosted production infrastructure for Eve agents: enabling teams to operate fleets of agents at organizational scale, directly inside the infrastructure and data environments they already control.
 
 ## A hundred agents, not one
 
@@ -17,7 +19,7 @@ more agents than people.
 That ratio breaks tools built for the singular case. A deployment
 pipeline per agent, a login page per agent, a chat frontend per agent, a
 monitoring dashboard per agent — none of it survives multiplication by a
-hundred. Eve's default self-hosting story runs one node with one agent: it is a
+hundred. A single-node default runs one node with one agent: it is a
 fine way to run _an_ agent, but no way to run a fleet. Eveland is built for
 the plural from day one. Import a project, and deployment, routing,
 secrets, schedules, identity, chat, and observability are already there:

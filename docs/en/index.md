@@ -1,9 +1,11 @@
 ---
 title: Overview
-description: Deploy and operate Eve agents for your team on infrastructure you control.
+description: Self-hosted production infrastructure for agents on systems you control.
 ---
 
-Eveland is a self-hosted deployment and operations platform for teams that already build with [Eve](https://eve.dev). Eve defines the agent; Eveland gives that agent a production home with releases, previews, stable routing, runtime isolation, schedules, and session observability. The founding argument — why run agents on your own infrastructure at all — is in [Why Eveland](/docs/why).
+A company will eventually operate more agents than people. Eveland is the infrastructure for that world.
+
+Today, Eveland starts with self-hosted production infrastructure for [Eve](https://eve.dev) agents: giving your fleet a production home with immutable releases, concurrent previews, stable traffic routing, runtime isolation, durable schedules, and transparent session observability. The founding argument — why run agents on your own infrastructure at all — is in [Why Eveland](/docs/why).
 
 ## What Eveland owns
 
