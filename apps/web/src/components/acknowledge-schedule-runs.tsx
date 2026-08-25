@@ -6,7 +6,7 @@ import { CheckIcon } from "lucide-react";
 import { acknowledgeScheduleRuns } from "@/lib/client-api";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { toastManager } from "@/components/ui/toast";
+import { toast } from "@/components/ui/toast";
 
 /**
  * Marks failed scheduled runs as reviewed (#294). Without `runIds`, the
@@ -42,7 +42,7 @@ export function AcknowledgeScheduleRuns({
         try {
           const acknowledged = await acknowledgeScheduleRuns(projectId, runIds);
           if (!runIds) {
-            toastManager.add({
+            toast.add({
               type: "success",
               title: "Failures reviewed",
               description: `Marked ${acknowledged} failed ${
@@ -52,7 +52,7 @@ export function AcknowledgeScheduleRuns({
           }
           startRefresh(() => router.refresh());
         } catch (cause) {
-          toastManager.add({
+          toast.add({
             type: "error",
             title: "Could not mark as reviewed",
             description: cause instanceof Error ? cause.message : "Request failed.",

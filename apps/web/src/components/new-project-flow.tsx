@@ -574,7 +574,7 @@ export function NewProjectFlow() {
                 <Button
                   type="submit"
                   size="lg"
-                  className="w-full rounded-full"
+                  className="w-full"
                   disabled={
                     pending ||
                     (sourceKind === "git"
@@ -936,12 +936,11 @@ export function NewProjectFlow() {
                         <Button
                           type="button"
                           variant="outline"
-                          className="rounded-full"
                           onClick={() => setEnvironmentDialogOpen(false)}
                         >
                           Cancel
                         </Button>
-                        <Button type="submit" className="rounded-full">
+                        <Button type="submit">
                           {editingEnvironmentVariableId === null ? "Add entry" : "Save changes"}
                         </Button>
                       </DialogFooter>
@@ -968,7 +967,7 @@ export function NewProjectFlow() {
               <Button
                 type="submit"
                 size="lg"
-                className="w-full rounded-full"
+                className="w-full"
                 disabled={
                   pending ||
                   nameInvalid ||
@@ -1107,7 +1106,7 @@ export function NewProjectFlow() {
                 </div>
                 <Link
                   href={`/projects/${project.id}`}
-                  className={cn(buttonVariants(), "w-full rounded-full sm:w-fit")}
+                  className={cn(buttonVariants(), "w-full sm:w-fit")}
                 >
                   View project details
                   <ArrowRightIcon data-icon="inline-end" />

@@ -3,6 +3,7 @@ import { AcknowledgeScheduleRuns } from "@/components/acknowledge-schedule-runs"
 import { DateTime } from "@/components/date-time";
 import { getScheduleRun } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -141,7 +142,7 @@ export default async function ScheduleRunPage({
       <div>
         <Link
           href={`/projects/${projectId}/sessions?trigger=${run.trigger}&schedule=${run.scheduleId}`}
-          className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+          className={buttonVariants({ variant: "outline", size: "sm" })}
         >
           Back to history
         </Link>

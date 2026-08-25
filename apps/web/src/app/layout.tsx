@@ -1,14 +1,9 @@
 import type { Metadata } from "next";
-import { AppShell } from "@/components/app-shell";
 import { TimeZoneProvider } from "@/components/time-zone-provider";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
-import { Inter } from "next/font/google";
-import { cn } from "@/lib/utils";
 import { getCurrentMemberOrNull } from "@/lib/server-api";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: {
@@ -22,11 +17,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const member = await getCurrentMemberOrNull();
 
   return (
-    <html lang="en" className={cn("font-sans", "font-sans", inter.variable)}>
+    <html lang="en">
       <body className="antialiased">
         <TooltipProvider>
           <TimeZoneProvider initialTimeZone={member?.displayTimezone ?? null}>
-            <AppShell>{children}</AppShell>
+            {children}
           </TimeZoneProvider>
         </TooltipProvider>
         <Toaster />

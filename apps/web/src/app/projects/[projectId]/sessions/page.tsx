@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DateTime } from "@/components/date-time";
 import { getSchedules, getSessionsPage } from "@/lib/server-api";
 import { StatusBadge } from "@/components/status-badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Table,
@@ -59,9 +60,14 @@ export default async function SessionsPage({
   return (
     // The heading carries the page-level usage numbers on its right, so the
     // table below stays purely tabular.
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-        <h2 className="text-base font-semibold">Sessions</h2>
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">Sessions</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Observed Agent executions and their reported usage.
+          </p>
+        </div>
         <dl className="flex flex-wrap items-center gap-5 text-right">
           <div>
             <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -82,7 +88,7 @@ export default async function SessionsPage({
             </dd>
           </div>
         </dl>
-      </div>
+      </header>
       {sessionPage.sessions.length === 0 ? (
         <Empty>
           <EmptyHeader>
@@ -149,7 +155,7 @@ export default async function SessionsPage({
         <div className="flex justify-end">
           <Link
             href={historyHref(query, sessionPage.nextCursor)}
-            className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
           >
             Older sessions
           </Link>

@@ -6,6 +6,7 @@ import { getScheduleAttention, getScheduleRuns, getSchedules } from "@/lib/serve
 import { AcknowledgeScheduleRuns } from "@/components/acknowledge-schedule-runs";
 import { RunScheduleAction } from "@/components/run-schedule-action";
 import { StatusBadge } from "@/components/status-badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Table,
@@ -49,15 +50,14 @@ export default async function SchedulesPage({
     : undefined;
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Not a page description — this one states a convention you would
-          otherwise get wrong: Markdown and TypeScript schedules come from the
-          promoted scheduler target, and cron is UTC while the timestamps
-          below are rendered in your display timezone. */}
-      <p className="text-sm text-muted-foreground">
-        Markdown and TypeScript schedules run from the promoted scheduler target. Cron definitions
-        use UTC; run timestamps use your display timezone.
-      </p>
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+      <header>
+        <h2 className="text-2xl font-semibold tracking-tight">Schedules</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Markdown and TypeScript schedules run from the promoted scheduler target. Cron definitions
+          use UTC; run timestamps use your display timezone.
+        </p>
+      </header>
       {attention > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive-subtle px-4 py-3">
           <p className="text-sm text-destructive-foreground">
@@ -145,9 +145,9 @@ export default async function SchedulesPage({
       <section id="recent-runs" className="scroll-mt-4">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold">
+            <h3 className="text-base font-semibold">
               {selectedSchedule ? `Recent runs · ${selectedSchedule.schedule.key}` : "Recent runs"}
-            </h2>
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               The latest schedule executions, including runs that produced no Session.
             </p>
@@ -155,7 +155,7 @@ export default async function SchedulesPage({
           {query.schedule ? (
             <Link
               href={`/projects/${projectId}/schedules#recent-runs`}
-              className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
             >
               All schedules
             </Link>
@@ -249,7 +249,7 @@ export default async function SchedulesPage({
           <div className="mt-4 flex justify-end">
             <Link
               href={runHistoryHref(query, runPage.nextCursor)}
-              className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-secondary"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
             >
               Older runs
             </Link>

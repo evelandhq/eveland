@@ -6,7 +6,7 @@ import { PlayIcon } from "lucide-react";
 import { runSchedule } from "@/lib/client-api";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { toastManager } from "@/components/ui/toast";
+import { toast } from "@/components/ui/toast";
 
 export function RunScheduleAction({
   projectId,
@@ -46,7 +46,7 @@ export function RunScheduleAction({
           setError(null);
           try {
             await runSchedule(projectId, scheduleId);
-            toastManager.add({
+            toast.add({
               type: "success",
               title: "Run queued",
               description: `${scheduleKey} will start shortly and appear under Recent runs.`,

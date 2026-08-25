@@ -168,19 +168,19 @@ describe("team management web surfaces", () => {
     expect(inviteForm).toContain("<Input");
   });
 
-  test("reuses the application sidebar for settings navigation", () => {
-    const sidebar = source("../components/app-sidebar.tsx");
+  test("keeps settings navigation in its own sidebar without an account footer", () => {
+    const sidebar = source("../components/settings-sidebar.tsx");
 
-    expect(sidebar).toContain('pathname.startsWith("/settings")');
     expect(sidebar).toContain("settingsNavigationGroups.map");
-    // The logo row is the constant way back up to the workspace from any
-    // context, settings included.
-    expect(sidebar).toContain('<Link href="/projects" />');
+    expect(sidebar).toContain('href="/projects"');
+    expect(sidebar).not.toContain("<SidebarFooter");
+    expect(sidebar).not.toContain("<Avatar");
   });
 
-  test("opens settings and sign out from one semantic account menu trigger", () => {
-    const sidebar = source("../components/app-sidebar.tsx");
+  test("keeps settings and sign out in the main sidebar account menu", () => {
+    const sidebar = source("../components/main-sidebar.tsx");
 
+    expect(sidebar).toContain("<SidebarFooter>");
     expect(sidebar).toContain("<DropdownMenu");
     expect(sidebar).toContain("<DropdownMenuTrigger");
     expect(sidebar).toContain("<DropdownMenuGroup");
@@ -201,14 +201,14 @@ describe("team management web surfaces", () => {
   // api-transport.test.ts asserts that behavior directly.
 
   test("manages project variables and secrets with the shared table and dialog pattern", () => {
-    const page = source("./projects/[projectId]/settings/environment/page.tsx");
+    const page = source("./projects/[projectId]/settings/page.tsx");
     const settingsUrl = new URL("../components/project-secrets-settings.tsx", import.meta.url);
     expect(existsSync(fileURLToPath(settingsUrl))).toBe(true);
     if (!existsSync(fileURLToPath(settingsUrl))) return;
 
     const settings = source("../components/project-secrets-settings.tsx");
     expect(page).toContain("<ProjectSecretsSettings");
-    expect(page).toContain("return <ProjectSecretsSettings");
+    expect(page).toContain("getSecrets(projectId)");
     expect(settings).toContain('aria-labelledby="variables-secrets-heading"');
     expect(settings.replace(/\s+/g, " ")).toContain(
       "Values are encrypted and never returned after saving. Saving changes restarts live deployments; otherwise, they apply the next time this project starts.",

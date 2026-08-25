@@ -24,9 +24,11 @@ Project deletion is permanent and asynchronous. The user must type the full proj
 
 The deletion job must wait for the project's already-running jobs to finish, then stop all `running` or `draining` deployments. It then deletes releases per each deployment's recorded `runtimeKind`, cleans platform-managed source, build, agent observability policy, and durable sandbox workspaces, and finally cascade-deletes routes, SessionBindings, OperationBindings, sessions, usage, schedules, secrets, logs, and project data. The platform must never delete external source paths outside `EVELAND_DATA_DIR`. External resource cleanup cannot share a transaction with Postgres; on failure some processes or artifacts may already be stopped or removed, but the project record and its error state must survive to support idempotent retry.
 
-## The Settings shell
+## Navigation shells
 
-The bottom-left of the sidebar shows the current user's avatar, name, and email. The whole row is a single account-dropdown trigger; the menu offers Settings and Sign out. Settings opens a separate settings area reusing the main sidebar's position and components; once inside, the top-left offers a way back to the workspace, and the sidebar groups navigation into Personal and System.
+The main workspace shell applies only to Projects, Deployments, and Usage. Its top-left shows the Eveland logo, and its bottom-left shows the current user's avatar, name, and email. The whole user row is a single account-dropdown trigger whose menu offers Settings and Sign out.
+
+Project detail routes use a separate project shell. Its top-left returns to Projects, the remaining sidebar contains only that project's navigation, and its bottom context area shows the current Deployment state and Eve version instead of user information. A current Eve version is marked healthy; an older supported or unsupported version exposes its upgrade guidance in a tooltip. Settings routes likewise use a separate settings shell: its top-left returns to the workspace, its navigation is grouped into Personal and System, and it has no user footer.
 
 ## Profile (/settings/profile)
 
@@ -124,13 +126,13 @@ A model filter switches the main trend chart to a single-model view. Session cou
 
 ## Project Settings (/projects/:projectId/settings)
 
-Project Settings uses in-page secondary navigation rather than a third sidebar level: General edits the display name and description, shows the immutable project slug, project ID, and source repository read-only, and hosts project deletion in its danger zone; Environment manages project Variables and Secrets (see [Agent environment](/docs/reference/agent-environment)). The old `/projects/proj_xxxxxxxxxx/secrets` path redirects to `/projects/proj_xxxxxxxxxx/settings/environment`.
+Project Settings is one centered page containing project details, Variables and Secrets, and the danger zone. Project details edits the display name and description and shows the immutable project slug, project ID, and source repository read-only. Variables and Secrets manages the project's runtime configuration (see [Agent environment](/docs/reference/agent-environment)). The old `/projects/proj_xxxxxxxxxx/secrets` path redirects to `/projects/proj_xxxxxxxxxx/settings`.
 
 ## Logs (/projects/:projectId/logs)
 
 Logs offers three log kinds: build logs; deploy logs; and runtime stdout/stderr plus ScheduleRun lifecycle diagnostics. An agent's concrete execution belongs in the session timeline, not in Logs.
 
-The Logs page defaults to newest-first, offering text search, kind filtering, and sort-order toggling inside a fixed-height scroll area. Multi-line or overlong records default to a compact summary, expandable per row to the full original text.
+The Logs page defaults to newest-first, with kind tabs on the left and text search on the right above a fixed-height scroll area. Each record defaults to a single-line summary; multi-line or overlong records can be expanded per row to show the full original text.
 
 ## Deeper reference
 

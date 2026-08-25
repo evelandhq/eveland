@@ -396,7 +396,7 @@ export function IdentitySettings({
                 </FieldContent>
               </Field>
               <Field>
-                <Button type="submit" className="rounded-full" disabled={pending !== null}>
+                <Button type="submit" disabled={pending !== null}>
                   {pending === "return-target" ? (
                     <Spinner data-icon="inline-start" />
                   ) : (
@@ -507,7 +507,7 @@ export function IdentitySettings({
                   </FieldDescription>
                 </Field>
                 <Field>
-                  <Button type="submit" className="rounded-full" disabled={pending !== null}>
+                  <Button type="submit" disabled={pending !== null}>
                     {pending === "provider" ? (
                       <Spinner data-icon="inline-start" />
                     ) : (
@@ -632,7 +632,7 @@ export function IdentitySettings({
                   </FieldDescription>
                 </Field>
                 <Field>
-                  <Button type="submit" className="rounded-full" disabled={pending !== null}>
+                  <Button type="submit" disabled={pending !== null}>
                     {pending === "realm" ? (
                       <Spinner data-icon="inline-start" />
                     ) : (
@@ -918,7 +918,7 @@ function OidcProviderCard({
               ) : null}
             </div>
             <Field orientation="horizontal">
-              <Button type="submit" className="rounded-full" disabled={pending !== null}>
+              <Button type="submit" disabled={pending !== null}>
                 {pending === "oidc-provider" ? (
                   <Spinner data-icon="inline-start" />
                 ) : (
@@ -1071,7 +1071,7 @@ function OidcRealmsCard({
               </Field>
             </div>
             <Field>
-              <Button type="submit" className="rounded-full" disabled={pending !== null}>
+              <Button type="submit" disabled={pending !== null}>
                 {pending === "oidc-realm" ? (
                   <Spinner data-icon="inline-start" />
                 ) : (

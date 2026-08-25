@@ -5,7 +5,7 @@ description: Project Variables/Secrets、Shared Agent Environment 与 Build 可�
 
 Agent 进程的运行时环境来自三层，确定性优先级为 Shared Agent Environment < Project Secret/Variable < Eveland 保留变量。本页是这三层的行为契约：Environment 页面语义、Shared Agent Environment 单例，以及 `variable` 参与 Release build 的规则。信任边界与加密细节见[安全模型](/zh/docs/operations/security)；构建信任边界与保留名单的运维事实见 [Worker 与构建](/zh/docs/production/worker)；三类凭据的区分见[密钥与 Connection](/zh/docs/agents/secrets-connections)。
 
-## Project Variables 与 Secrets (/projects/:projectId/settings/environment)
+## Project Variables 与 Secrets (/projects/:projectId/settings)
 
 用于配置项目运行需要的运行时变量与外部 Key。页面与新建项目、Shared Agent Environment 使用统一的 Type、Name、Value 表格和弹框交互；Type 区分 `variable` 与 `secret`，两种 Value 都加密保存且保存后只显示已配置状态，不向浏览器返回原值。旧 `/projects/:projectId/secrets` 路径重定向到本页。
 

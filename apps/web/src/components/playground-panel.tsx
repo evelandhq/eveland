@@ -17,11 +17,13 @@ import {
   type AgentActivityToolStatus,
 } from "@/components/agent-activity";
 import {
+  ArrowUpIcon,
   ArrowUpRightIcon,
+  BotIcon,
   CheckCircle2Icon,
-  MessageCircleIcon,
-  PaperclipIcon,
   PlugZapIcon,
+  PlusIcon,
+  ShieldIcon,
   XCircleIcon,
 } from "lucide-react";
 import {
@@ -40,19 +42,10 @@ import {
   ConfirmationRequest,
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
-  PromptInputActionAddAttachments,
-  PromptInputActionMenu,
-  PromptInputActionMenuContent,
-  PromptInputActionMenuTrigger,
+  PromptInputButton,
   PromptInputFooter,
   PromptInputHeader,
   PromptInputSubmit,
@@ -61,7 +54,7 @@ import {
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { InputGroup, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import {
   PLAYGROUND_ATTACHMENT_ACCEPT,
@@ -70,11 +63,7 @@ import {
   PLAYGROUND_MAX_TOTAL_FILE_BYTES,
 } from "@evelandhq/core/eve";
 import { resetPlaygroundOnPageLeave } from "@/lib/client-api";
-import {
-  createPlaygroundTurnCanceller,
-  createPlaygroundMessage,
-  resetPlaygroundConversation,
-} from "@/lib/playground-session";
+import { createPlaygroundTurnCanceller, createPlaygroundMessage } from "@/lib/playground-session";
 import type { EveVersionInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PlaygroundAuthenticationSettings } from "@/components/playground-authentication-settings";
@@ -89,7 +78,7 @@ import {
   type PlaygroundActivityPart,
   type PlaygroundDisplayItem,
 } from "@/lib/playground-activity";
-import { EveVersionStatus, getEveVersionStatus } from "@/components/eve-version-status";
+import { getEveVersionStatus } from "@/components/eve-version-status";
 
 type PlaygroundPanelProps = {
   projectId: string;
@@ -99,7 +88,7 @@ type PlaygroundPanelProps = {
 export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps) {
   // The hook owns the session (created on the first turn). Once its ID is
   // known, the standalone Client mints an I/O-free `sessions.attach` handle
-  // for out-of-band durable cancel/reset; before then, Stop aborts the local
+  // for out-of-band durable cancel; before then, Stop aborts the local
   // request rather than waiting forever for the first response.
   const [client] = useState(
     () => new Client({ host: `/api/eveland/projects/${projectId}/playground` }),
@@ -108,10 +97,11 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   const leaveResetSent = useRef(false);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
   const [cancelTurn] = useState(() => createPlaygroundTurnCanceller());
   const activeTurnAbortController = useRef<AbortController | null>(null);
   const resumedPendingTurn = useRef(false);
+  const conversationEndRef = useRef<HTMLDivElement | null>(null);
+  const followsConversationTail = useRef(true);
   const agent = useEveAgent({
     host: `/api/eveland/projects/${projectId}/playground`,
     onError: (sendError) => {
@@ -129,6 +119,25 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   useEffect(() => {
     sessionStateRef.current = agent.session;
   }, [agent.session]);
+
+  useEffect(() => {
+    const updateFollowState = () => {
+      const scroller = document.scrollingElement;
+      if (!scroller) return;
+      followsConversationTail.current =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 160;
+    };
+
+    updateFollowState();
+    window.addEventListener("scroll", updateFollowState, { passive: true });
+    return () => window.removeEventListener("scroll", updateFollowState);
+  }, []);
+
+  useEffect(() => {
+    if (followsConversationTail.current) {
+      conversationEndRef.current?.scrollIntoView({ block: "end" });
+    }
+  }, [agent.data.messages, agent.status]);
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const versionError = eveVersion.supported
     ? null
@@ -185,72 +194,40 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   }, [projectId]);
 
   return (
-    <div className="flex h-[calc(100svh-8.5rem)] min-h-[36rem] flex-col overflow-hidden">
-      <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-1 pt-3 text-xs text-muted-foreground sm:px-6">
-        <span>Eve Agent</span>
-        <EveVersionStatus eveVersion={eveVersion} showMessage={false} />
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            disabled={isBusy || isResetting || agent.data.messages.length === 0}
-            onClick={async () => {
-              setComposerError(null);
-              setIsResetting(true);
-              try {
-                if (sessionHandle) {
-                  await resetPlaygroundConversation({
-                    session: sessionHandle,
-                    clear: agent.reset,
-                  });
-                } else {
-                  agent.reset();
+    <div className="flex min-h-[calc(100svh-3rem)] flex-col md:min-h-svh">
+      <div
+        aria-live="polite"
+        className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 py-10"
+        role="log"
+      >
+        {agent.data.messages.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center">
+            <BotIcon aria-hidden="true" className="mb-2 size-7 text-muted-foreground" />
+            <h1 className="text-2xl font-semibold tracking-tight">Playground</h1>
+            <p className="text-sm text-muted-foreground">
+              Chat with this Agent to test its capabilities.
+            </p>
+          </div>
+        ) : (
+          agent.data.messages.map((message) => (
+            <PlaygroundMessage
+              isBusy={isBusy}
+              key={message.id}
+              message={message}
+              onInputResponse={async (response) => {
+                setComposerError(null);
+                try {
+                  await agent.respond([response]);
+                } catch (responseError) {
+                  setComposerError(toErrorMessage(responseError));
                 }
-                leaveResetSent.current = false;
-              } catch (resetError) {
-                setComposerError(toErrorMessage(resetError));
-              } finally {
-                setIsResetting(false);
-              }
-            }}
-            size="sm"
-            variant="outline"
-          >
-            New conversation
-          </Button>
-          <PlaygroundAuthenticationSettings projectId={projectId} />
-        </div>
-      </div>
-      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col pt-3 sm:px-6">
-        <Conversation className="min-h-0 rounded-xl border">
-          <ConversationContent className="w-full px-4 py-6">
-            {agent.data.messages.length === 0 ? (
-              <ConversationEmptyState
-                description="Messages, live thinking, tool calls, approvals, and attachments stay together in this page."
-                icon={<MessageCircleIcon />}
-                title="Start a fresh conversation"
-              />
-            ) : (
-              agent.data.messages.map((message) => (
-                <PlaygroundMessage
-                  isBusy={isBusy}
-                  key={message.id}
-                  message={message}
-                  onInputResponse={async (response) => {
-                    setComposerError(null);
-                    try {
-                      await agent.respond([response]);
-                    } catch (responseError) {
-                      setComposerError(toErrorMessage(responseError));
-                    }
-                  }}
-                />
-              ))
-            )}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
+              }}
+            />
+          ))
+        )}
       </div>
 
-      <div className="mx-auto w-full max-w-3xl shrink-0 bg-background pt-2 sm:px-6">
+      <div className="sticky bottom-0 z-10 mx-auto w-full max-w-2xl shrink-0 bg-background pb-5 pt-2">
         {routeAuthRedirect ? (
           <Alert className="mb-2">
             <AlertTitle>Redirecting for authorization</AlertTitle>
@@ -278,7 +255,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           </Alert>
         ) : null}
         <PromptInput
-          className="[&_[data-slot=input-group]]:rounded-xl"
+          className="[&_[data-slot=input-group]]:rounded-xl [&_[data-slot=input-group]]:shadow-md"
           accept={PLAYGROUND_ATTACHMENT_ACCEPT}
           globalDrop={eveVersion.supported}
           maxFileSize={PLAYGROUND_MAX_FILE_BYTES}
@@ -311,23 +288,22 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           />
           <PromptInputFooter>
             <PromptInputTools>
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger
-                  disabled={isBusy || !eveVersion.supported}
-                  tooltip="Attach files"
-                >
-                  <PaperclipIcon />
-                </PromptInputActionMenuTrigger>
-                <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments
-                    disabled={isBusy || !eveVersion.supported}
-                    label="Upload files"
-                  />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
-              <span className="text-xs text-muted-foreground">Up to 4 files · 10 MiB total</span>
+              <ComposerAttachmentButton disabled={isBusy || !eveVersion.supported} />
+              <PlaygroundAuthenticationSettings
+                projectId={projectId}
+                tooltip="Configure Playground authentication"
+                trigger={
+                  <PromptInputButton
+                    aria-label="Playground authentication"
+                    title="Playground authentication"
+                  >
+                    <ShieldIcon />
+                  </PromptInputButton>
+                }
+              />
             </PromptInputTools>
             <PromptInputSubmit
+              className="rounded-full"
               disabled={!eveVersion.supported || isCancelling}
               onStop={() => {
                 if (isCancelling) return;
@@ -345,13 +321,13 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
                   });
               }}
               status={agent.status}
-            />
+            >
+              <ArrowUpIcon />
+            </PromptInputSubmit>
           </PromptInputFooter>
         </PromptInput>
-        <p className="py-2 text-center text-xs text-muted-foreground">
-          A new page load starts a new conversation.
-        </p>
       </div>
+      <div ref={conversationEndRef} />
     </div>
   );
 }
@@ -402,7 +378,7 @@ function PlaygroundDisplayItemView({
 }) {
   if (item.kind === "activity") {
     return (
-      <AgentActivity count={item.parts.length} status={item.status}>
+      <AgentActivity compact count={item.parts.length} status={item.status}>
         {item.parts.map((part, index) => (
           <PlaygroundActivityPartView
             isBusy={isBusy}
@@ -450,7 +426,9 @@ function PlaygroundActivityPartView({
   }) => Promise<void>;
 }) {
   if (part.type === "reasoning") {
-    return <AgentActivityReasoning isStreaming={part.state === "streaming"} text={part.text} />;
+    return (
+      <AgentActivityReasoning compact isStreaming={part.state === "streaming"} text={part.text} />
+    );
   }
   if (part.type === "authorization") {
     return <AuthorizationPrompt part={part} />;
@@ -492,6 +470,7 @@ function PlaygroundTool({
 
   return (
     <AgentActivityTool
+      compact
       errorText={errorText}
       input={part.input}
       kind={action?.kind === "subagent-call" ? "subagent" : "tool"}
@@ -683,6 +662,22 @@ function ComposerAttachments() {
         ))}
       </Attachments>
     </PromptInputHeader>
+  );
+}
+
+function ComposerAttachmentButton({ disabled }: { disabled: boolean }) {
+  const attachments = usePromptInputAttachments();
+
+  return (
+    <PromptInputButton
+      aria-label="Add attachments"
+      disabled={disabled}
+      onClick={attachments.openFileDialog}
+      title="Add attachments"
+      tooltip="Add attachments · Up to 4 files, 10 MiB total"
+    >
+      <PlusIcon />
+    </PromptInputButton>
   );
 }
 

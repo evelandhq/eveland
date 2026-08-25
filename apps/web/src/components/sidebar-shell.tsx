@@ -1,25 +1,26 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { AppSidebar } from "@/components/app-sidebar";
+import type { ReactNode } from "react";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const focusedRoute =
-    pathname === "/new" || pathname === "/login" || pathname.startsWith("/accept-invite");
-
-  if (focusedRoute) return children;
-
+export function SidebarShell({
+  children,
+  mobileTitle,
+  sidebar,
+}: {
+  children: ReactNode;
+  mobileTitle: string;
+  sidebar: ReactNode;
+}) {
   return (
     <SidebarProvider>
-      <AppSidebar />
+      {sidebar}
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 px-4 md:hidden">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-4" />
-          <span className="text-sm font-medium">Eveland</span>
+          <span className="truncate text-sm font-medium">{mobileTitle}</span>
         </header>
         <Separator className="md:hidden" />
         {children}

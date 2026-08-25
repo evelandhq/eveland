@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/table";
 import type { Project } from "@/lib/api";
 import { formatDate, formatDateTime, formatTime } from "@/lib/date-time";
+import { cn } from "@/lib/utils";
 import {
   completionRate,
   costCoverage,
@@ -180,7 +181,14 @@ export function UsageExplorer({ analytics, projects, scope }: UsageExplorerProps
           <p className="text-xs text-muted-foreground">
             {scope.type === "workspace" ? "Workspace overview" : "Project analytics"}
           </p>
-          <Heading className="mt-1 text-[17px] font-semibold tracking-tight">Usage</Heading>
+          <Heading
+            className={cn(
+              "mt-1 font-semibold tracking-tight",
+              scope.type === "project" ? "text-2xl" : "text-[17px]",
+            )}
+          >
+            Usage
+          </Heading>
           <p className="mt-1 text-sm text-muted-foreground">
             Traffic, model consumption, reliability, and provider-reported cost.
           </p>

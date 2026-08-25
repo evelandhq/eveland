@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Settings2Icon } from "lucide-react";
 import type {
   AgentAuthMethodDescriptor,
@@ -20,6 +21,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { agentAuthValuesFromConfig, serializeAgentAuthConfig } from "@/lib/agent-auth-form";
 import {
   getAgentAuthMethods,
@@ -31,7 +33,15 @@ import {
   type AgentAuthSecretReferenceOption,
 } from "@/lib/client-api";
 
-export function PlaygroundAuthenticationSettings({ projectId }: { projectId: string }) {
+export function PlaygroundAuthenticationSettings({
+  projectId,
+  trigger,
+  tooltip,
+}: {
+  projectId: string;
+  trigger?: ReactElement;
+  tooltip?: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [methods, setMethods] = useState<AgentAuthMethodDescriptor[]>([]);
   const [connection, setConnection] = useState<AgentConnectionView | null>(null);
@@ -95,6 +105,15 @@ export function PlaygroundAuthenticationSettings({ projectId }: { projectId: str
     }
   }
 
+  const triggerControl = trigger ? (
+    <DialogTrigger render={trigger} />
+  ) : (
+    <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
+      <Settings2Icon data-icon="inline-start" />
+      Playground authentication
+    </DialogTrigger>
+  );
+
   return (
     <Dialog
       open={open}
@@ -103,10 +122,14 @@ export function PlaygroundAuthenticationSettings({ projectId }: { projectId: str
         if (nextOpen) void load();
       }}
     >
-      <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-        <Settings2Icon data-icon="inline-start" />
-        Playground authentication
-      </DialogTrigger>
+      {tooltip ? (
+        <Tooltip>
+          <TooltipTrigger render={triggerControl} />
+          <TooltipContent>{tooltip}</TooltipContent>
+        </Tooltip>
+      ) : (
+        triggerControl
+      )}
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Playground authentication</DialogTitle>
@@ -161,7 +184,7 @@ export function PlaygroundAuthenticationSettings({ projectId }: { projectId: str
               onReferenceValuesChange={setReferenceValues}
             />
             <DialogFooter>
-              <Button type="submit" className="rounded-full" disabled={saving}>
+              <Button type="submit" disabled={saving}>
                 {saving ? (
                   <Spinner data-icon="inline-start" />
                 ) : (

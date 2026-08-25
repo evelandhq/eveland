@@ -9,7 +9,9 @@ Playground 用于直接测试当前 Deployment。本页是它的行为契约：t
 
 用户输入消息后，Dashboard 使用 Eve canonical session protocol，经 API 和仅内部可达、带 service credential 的 Agent Gateway Playground path 请求当前 Deployment。对话内容、reasoning、tool 调用与人工输入都按 NDJSON 增量流式展示。公开 Agent 流量使用 canonical stable/preview Host；Agent Gateway 不替代 Agent 自己的 Authorization/Cookie 认证。
 
-每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换。用户点击 New conversation 时，Dashboard 必须先完成 canonical session reset，再清空本地对话；离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录（`trigger = playground`），但 Playground transport 不替代 Eveland 私有 OTLP 信号的权威观测路径。
+每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换或页内会话重置入口。离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录（`trigger = playground`），但 Playground transport 不替代 Eveland 私有 OTLP 信号的权威观测路径。
+
+Dashboard 将 Playground 呈现为全页聊天界面。Transcript 参与页面的自然滚动，不再形成嵌套的滚动面板；Composer 则保持在视口底部可用。其紧凑操作可直接打开附件选择器与 Playground authentication 设置。
 
 Playground 中可查看当前 Session 的：对话内容；实时 reasoning / thinking（原始 reasoning 不由 Playground 持久化）；tool 调用与返回结果；错误；HITL（确认/拒绝、选项、自由文本和外部授权提示）；当前 turn 的图片、PDF、文本和代码附件。
 

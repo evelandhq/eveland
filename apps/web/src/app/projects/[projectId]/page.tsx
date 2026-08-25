@@ -25,6 +25,9 @@ import {
 import { completionRate, formatTokenCount, formatUsd, usageCoverage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
+export const metadata = {
+  title: "Overview",
+};
 
 export default async function ProjectOverviewPage({
   params,
@@ -51,7 +54,14 @@ export default async function ProjectOverviewPage({
     )[0];
 
   return (
-    <div className="flex min-w-0 flex-col gap-8">
+    <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-8">
+      <header>
+        <h2 className="text-2xl font-semibold tracking-tight">Overview</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Current status, recent activity, and usage for this project.
+        </p>
+      </header>
+
       {/* One bordered card for the project's current context: the endpoint —
           the one value you actually paste somewhere — gets the size on top, and
           the provenance facts sit below a hairline as a quiet four-up grid. */}

@@ -37,12 +37,14 @@ export default async function ProjectDeploymentsPage({
   const stableRoute = overview.routes.find((route) => route.kind === "project") ?? null;
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* The heading stays for screen readers only — sighted readers already
-          have it in the breadcrumb, and the description restated what the
-          buttons beside it do. */}
-      <header className="flex flex-wrap items-end justify-end gap-4">
-        <h2 className="sr-only">Deployments</h2>
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">Deployments</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Build releases, manage previews, and control production traffic.
+          </p>
+        </div>
         <DeploymentActions
           projectId={projectId}
           canSync={project?.importKind === "git" && Boolean(project?.gitUrl)}

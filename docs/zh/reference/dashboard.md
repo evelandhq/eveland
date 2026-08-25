@@ -24,9 +24,11 @@ Project 删除是永久、异步操作。用户必须输入完整 Project 名称
 
 删除 job 必须等待同一 Project 已运行的 job 结束，再停止所有 `running` 或 `draining` Deployment。随后按各 Deployment 记录的 `runtimeKind` 删除 Release，清理平台管理的 source、build、Agent observability policy 与 durable sandbox workspace，最后级联删除 routes、SessionBindings、OperationBindings、Sessions、usage、Schedules、Secrets、日志和 Project 数据。平台不得删除 `EVELAND_DATA_DIR` 之外的外部源码路径。外部资源清理无法与 Postgres 组成同一事务；失败时部分进程或 artifact 可能已经停止或移除，但 Project 记录和错误状态必须保留以支持幂等重试。
 
-## Settings 外壳
+## 导航外壳
 
-Sidebar 左下角显示当前用户头像、姓名和邮箱。整行是单一的 Account Dropdown trigger；菜单提供 Settings 和 Sign out。Settings 进入独立设置区域并复用主 Sidebar 的位置与组件；进入后左上角提供返回 Workspace 的入口，Sidebar 内容按 Personal 与 System 分组导航。
+主 Workspace 外壳只应用于 Projects、Deployments 与 Usage。左上角显示 Eveland Logo；左下角显示当前用户头像、姓名和邮箱。整行是单一的 Account Dropdown trigger，菜单提供 Settings 和 Sign out。
+
+Project 详情路由使用独立的 Project 外壳：左上角返回 Projects，其余 Sidebar 只包含当前 Project 的导航；底部上下文区展示当前 Deployment 状态与 Eve 版本，而不是用户信息。当前 Eve 版本标记为健康；较旧但受支持或不受支持的版本通过 Tooltip 给出升级提示。Settings 路由同样使用独立外壳：左上角返回 Workspace，Sidebar 内容按 Personal 与 System 分组，底部不显示用户信息。
 
 ## Profile (/settings/profile)
 
@@ -124,13 +126,13 @@ Model 筛选把主趋势图切换为单 Model 视角。此时 Session 数表示�
 
 ## Project Settings (/projects/:projectId/settings)
 
-Project Settings 使用页面内二级导航，不在主 Sidebar 展开第三层：General 修改 Display name 与 Description，只读查看不可变 Project slug、Project ID 与 Source repository，Project 删除位于 General 的 Danger zone；Environment 管理 Project Variables 与 Secrets（见 [Agent 环境](/zh/docs/reference/agent-environment)）。旧 `/projects/proj_xxxxxxxxxx/secrets` 路径重定向到 `/projects/proj_xxxxxxxxxx/settings/environment`。
+Project Settings 是一个居中的单页，依次包含 Project 详情、Variables 与 Secrets 以及 Danger zone。Project 详情可修改 Display name 与 Description，并只读展示不可变的 Project slug、Project ID 与 Source repository。Variables 与 Secrets 管理 Project 的运行时配置（见 [Agent 环境](/zh/docs/reference/agent-environment)）。旧 `/projects/proj_xxxxxxxxxx/secrets` 路径重定向到 `/projects/proj_xxxxxxxxxx/settings`。
 
 ## Logs (/projects/:projectId/logs)
 
 Logs 提供三类日志：Build Log；Deploy Log；Runtime stdout/stderr 与 ScheduleRun lifecycle diagnostics。Agent 的具体执行过程不放在 Logs 中，而放在 Session Timeline 中。
 
-Logs 页面默认按时间倒序展示最新记录，在固定高度的滚动区域内提供文本搜索、类型筛选和升降序切换。多行或超长记录默认显示紧凑摘要，用户可按行展开查看完整原文。
+Logs 页面默认按时间倒序展示最新记录，在固定高度滚动区域上方的左侧提供类型 Tabs，右侧提供文本搜索。每条记录默认只显示一行摘要；多行或超长记录可按行展开查看完整原文。
 
 ## 深入参考
 

@@ -208,11 +208,8 @@ export default async function ProjectsPage({
               ) : null}
             </p>
           </div>
-          <Link
-            href="/new"
-            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            <PlusIcon className="size-4" />
+          <Link href="/new" className={buttonVariants()}>
+            <PlusIcon data-icon="inline-start" />
             New project
           </Link>
         </div>
@@ -228,12 +225,9 @@ export default async function ProjectsPage({
                   href={filter.key === "all" ? "/projects" : `/projects?state=${filter.key}`}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                    active
-                      ? "border-transparent bg-primary text-primary-foreground"
-                      : "border-border text-muted-foreground hover:border-input",
+                    buttonVariants({ variant: active ? "default" : "outline", size: "xs" }),
                     !active && filter.key === "attention" && count > 0
-                      ? "border-warning/40 text-warning-foreground"
+                      ? "text-warning-foreground"
                       : undefined,
                   )}
                 >

@@ -1,8 +1,9 @@
 import {
   ActivityIcon,
+  AlarmClockIcon,
   BoxIcon,
-  BracesIcon,
   ChartNoAxesColumnIcon,
+  CodeIcon,
   HistoryIcon,
   HeartPulseIcon,
   InfoIcon,
@@ -13,8 +14,6 @@ import {
   LockKeyholeIcon,
   PlayIcon,
   RadioTowerIcon,
-  RocketIcon,
-  ScrollTextIcon,
   SettingsIcon,
   UsersIcon,
   type LucideIcon,
@@ -100,25 +99,19 @@ export function getProjectNavigationItems(projectId: string) {
     {
       href: `${projectHref}/schedules`,
       label: "Schedules",
-      icon: ScrollTextIcon,
+      icon: AlarmClockIcon,
       section: "daily",
     },
     { href: `${projectHref}/usage`, label: "Usage", icon: ChartNoAxesColumnIcon, section: "daily" },
     {
       href: `${projectHref}/deployments`,
       label: "Deployments",
-      icon: RocketIcon,
+      icon: BoxIcon,
       section: "manage",
     },
-    { href: `${projectHref}/source`, label: "Source", icon: BracesIcon, section: "manage" },
+    { href: `${projectHref}/source`, label: "Source", icon: CodeIcon, section: "manage" },
     { href: `${projectHref}/settings`, label: "Settings", icon: SettingsIcon, section: "manage" },
   ] as const;
-}
-
-export function getProjectIdFromPathname(pathname: string): string | null {
-  const [, root, projectId] = pathname.split("/");
-
-  return root === "projects" && projectId && projectId !== "new" ? projectId : null;
 }
 
 export function isNavigationItemActive(pathname: string, href: string): boolean {
