@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowLeftIcon, SproutIcon } from "lucide-react";
+import { ArrowLeftIcon } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 import { NewProjectFlow } from "@/components/new-project-flow";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,7 +18,7 @@ export default function NewProjectPage() {
           Back
         </Link>
         <div className="flex items-center gap-2 text-sm font-semibold">
-          <SproutIcon className="size-4" />
+          <BrandMark className="size-4" />
           New project
         </div>
         <div aria-hidden="true" />

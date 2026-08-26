@@ -35,7 +35,7 @@
 .brand-mark {
   width: 25px;
   height: 25px;
-  fill: currentColor;
+  color: var(--ink);
 }
 
 .header-links,
@@ -139,8 +139,8 @@
 .preview-badge {
   padding: 3px 7px;
   border-radius: 999px;
-  background: #fff0ec;
-  color: #d84c2b;
+  background: #eaf1fe;
+  color: #1d4ed8;
   font-size: 9px;
   font-weight: 680;
   letter-spacing: 0.06em;
@@ -196,6 +196,40 @@
   align-items: center;
   gap: 10px;
   margin-top: 30px;
+}
+
+.hero-install {
+  margin-top: 26px;
+  max-width: 560px;
+  border: 1px solid var(--line, #e4e2df);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.hero-install pre {
+  margin: 0;
+  padding: 14px 18px;
+  overflow-x: auto;
+  background: #0f0f0f;
+  color: #d6d4d0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.8;
+  text-align: left;
+}
+
+.hero-install-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.hero-install-link svg {
+  width: 13px;
+  height: 13px;
 }
 
 .button {
@@ -408,7 +442,7 @@
 }
 
 .stage-event code {
-  color: #ff967d;
+  color: #8fb3f6;
 }
 
 .stage-event span {
@@ -651,7 +685,7 @@
 
 .live-indicator {
   margin-left: auto;
-  color: #ff967d;
+  color: #8fb3f6;
 }
 
 .event-list {
@@ -684,7 +718,7 @@
 }
 
 .event-row code {
-  color: #ff967d;
+  color: #8fb3f6;
 }
 
 .event-row span {
@@ -849,7 +883,7 @@
 
 .topology-plane header b,
 .topology-runtime header b {
-  color: #ff9a82;
+  color: #8fb3f6;
   font-weight: 520;
 }
 
@@ -949,7 +983,7 @@
 }
 
 .topology-runtime li:last-child {
-  color: #ff9a82;
+  color: #8fb3f6;
 }
 
 /* Production principles use rows, not cards. */

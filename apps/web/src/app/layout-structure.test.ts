@@ -25,7 +25,7 @@ describe("dashboard layout boundaries", () => {
     expect(rootLayout).not.toContain("<AppShell");
     expect(mainLayout).toContain("<SidebarShell");
     expect(mainLayout).toContain("<MainSidebar");
-    expect(mainSidebar).toContain("<SproutIcon");
+    expect(mainSidebar).toContain("<BrandMark");
     expect(mainSidebar).toContain("globalNavigationItems.map");
     expect(mainSidebar).toContain("<SidebarFooter>");
     expect(mainSidebar).toContain("<AvatarFallback>");

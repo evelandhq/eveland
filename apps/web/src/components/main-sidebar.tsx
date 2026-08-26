@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ChevronsUpDownIcon, LogOutIcon, SettingsIcon, SproutIcon } from "lucide-react";
+import { ChevronsUpDownIcon, LogOutIcon, SettingsIcon } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 import { EVELAND_VERSION } from "@evelandhq/core/build-info";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -60,7 +61,7 @@ export function MainSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton render={<Link href="/projects" />} tooltip="Eveland">
-              <SproutIcon />
+              <BrandMark />
               <span className="font-semibold">Eveland</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

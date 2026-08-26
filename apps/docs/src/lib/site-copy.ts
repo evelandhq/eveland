@@ -6,17 +6,19 @@ export const githubUrl = "https://github.com/evelandhq/eveland";
 const copy = {
   en: {
     meta: {
-      title: "Eveland — Run your team's Eve agents",
-      description: "Deploy and operate Eve agents for your team on infrastructure you control.",
+      title: "Eveland — Open-source, self-hosted platform for Eve agents",
+      description:
+        "Open-source, self-hosted production infrastructure for agents built on Vercel's Eve framework: immutable releases, stable routes, isolated systemd runtimes.",
     },
     nav: { docs: "Docs", github: "GitHub", getStarted: "Deploy Eveland", language: "中文" },
     preview: "Preview",
     hero: {
-      eyebrow: "Production runtime for Eve",
+      eyebrow: "Open-source production runtime for Vercel's Eve",
       title: "Run your team's Eve agents.\nOn your infrastructure.",
-      body: "Install one self-hosted platform, deploy immutable previews, route stable traffic, and run every Agent inside an isolated systemd service.",
+      body: "Install one open-source, self-hosted platform, deploy immutable previews, route stable traffic, and run every Agent inside an isolated systemd service.",
       primary: "Deploy Eveland",
       secondary: "Production architecture",
+      installCaption: "Full production checklist",
     },
     system: {
       edge: "Public edge",
@@ -114,17 +116,19 @@ const copy = {
   },
   zh: {
     meta: {
-      title: "Eveland — 运行团队自己的 Eve Agents",
-      description: "在自己的基础设施上为团队部署和运营 Eve Agents。",
+      title: "Eveland — 开源自托管的 Eve Agents 运行平台",
+      description:
+        "开源、自托管的生产级基础设施：为基于 Vercel Eve 框架的 Agents 提供不可变 Release、稳定路由与隔离的 systemd 运行时。",
     },
     nav: { docs: "文档", github: "GitHub", getStarted: "部署 Eveland", language: "English" },
     preview: "预览版",
     hero: {
-      eyebrow: "面向 Eve 的生产运行时",
+      eyebrow: "面向 Vercel Eve 的开源生产运行时",
       title: "运行团队自己的 Eve Agents。\n就在你的基础设施上。",
-      body: "部署一套自托管平台，构建不可变 Preview，路由稳定流量，并让每个 Agent 在隔离的 systemd Service 中运行。",
+      body: "部署一套开源自托管平台，构建不可变 Preview，路由稳定流量，并让每个 Agent 在隔离的 systemd Service 中运行。",
       primary: "部署 Eveland",
       secondary: "查看生产架构",
+      installCaption: "完整生产部署清单",
     },
     system: {
       edge: "公开入口",
