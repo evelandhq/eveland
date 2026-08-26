@@ -125,6 +125,30 @@ describe("projectDiscoveryManifest", () => {
     });
   });
 
+  test("projects the Eve 0.45.1+ v15 manifest, ignoring the added memories list", () => {
+    // v15 adds `memories` (memory-provider modules, ModuleSourceRef + slot)
+    // for the new eve/memory feature; every entity list the projection
+    // consumes is unchanged from v14.
+    const projection = projectDiscoveryManifest({
+      ...nestedManifest,
+      version: 15,
+      memories: [
+        {
+          sourceKind: "module",
+          logicalPath: "memory/recall.ts",
+          sourceId: "memory/recall.ts",
+          slot: "recall",
+        },
+      ],
+    });
+
+    expect(projection).toMatchObject({
+      manifestVersion: 15,
+      instructions: ["agent/instructions.md"],
+      hooks: ["agent/hooks/root-observer.ts"],
+    });
+  });
+
   test("projects effective Extension schedules and subagents under their mount namespace", () => {
     const extensionManifest = {
       ...nestedManifest,

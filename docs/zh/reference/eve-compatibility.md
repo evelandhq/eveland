@@ -3,7 +3,7 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.44.x` 与 `0.45.x`，验证版本为 `0.44.4` 与 `0.45.0`。Eve 0.43 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.44.x` 与 `0.45.x`，验证版本为 `0.44.4` 与 `0.45.2`。Eve 0.43 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
 项目 `package.json` 中允许的 Eve 依赖声明形式为：受支持线内的精确 Patch、锚定在受支持 Minor Patch 上的 `~`/`^` Range，以及 `0.44` / `0.44.x` / `0.44.*`、`0.45` / `0.45.x` / `0.45.*`。缺少 Eve 依赖、跨 Minor 的宽泛 Range 或任何可能解析到窗口之外的声明都会 Fail Closed。项目 Overview、Source 与 Playground 会显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本与平台要求。
 
@@ -38,9 +38,9 @@ UI 仅将最新支持线 `0.45.x` 标为绿色。Eve 0.44.x 保持可运行，�
 
 **Eve 0.44.4 是又一次不触及平台面的 Patch 滑动。** 顶层 `text` 为空时，Slack 入站消息现在会从 Block Kit Block 与旧式 Attachment 派生文本，警报式 Bot 消息不再以空正文到达模型。`web_fetch` 最多跟随十次重定向并对每一跳重新做 SSRF 检查，非成功的 HTTP 响应改为返回带响应体的纯文本失败结果，而不是让工具调用失败。Channel 的 `fetchFile` 回调新增可选的上下文参数，携带 Channel State。Web Chat 即使 Durable History 仍停在上一轮边界，也能恢复活跃响应。Eve 不再发出自身的 `workflow.stream.follow.read` Tracing Span。
 
-**Eve 0.45 通过单一权威 Source Graph 编译全部来源；Eveland 托管的 Wire Format 均未变化。** Message Stream、Session Inbox、Workflow 存储 Spec 与捆绑的 Workflow SDK 和 0.44.4 逐字节相同；Discovery Manifest 升到 v14（纯加法，见上方基线条目）。Agent 作者需要知道的变化：`eve/tools/defaults` 入口被移除，改为按工具拆分的 `eve/tools/<name>` 子路径；`defineBashTool` / `defineReadFileTool` / `defineWriteFileTool` / `defineGlobTool` / `defineGrepTool` 工厂被移除——请改为再导出提供的工具定义。持久 Subagent Session 成为默认且 `experimental.subagentPersistentSessions` 配置键被移除（`false` 不再是退出方式）：Subagent 工具暴露 `agentId`，已完成的子 Session 仍可接收后续消息，`<agents>` 列表自动发布给模型。框架默认的 Config、Sandbox、Home、Health 与 Inspection 路由可被同名 Authored 文件替换，Channel 路由可用 `disableRoute()` 移除。此前一轮审批未决时，后续 Turn 的工具保持可用。前端客户端新增 `resuming` 生命周期状态，表示 Attached Session 正在确认是否有进行中的 Turn。Agent Trace 在 Workflow 执行开始前就确立身份（Agent Trace Schema v2，不再每 200 Turn 轮换），存在采样 Trace 时 Workflow 行携带 `$eve.trace_id`——Eveland 的 Observer 管线不受影响。
+**Eve 0.45 通过单一权威 Source Graph 编译全部来源；Eveland 托管的 Wire Format 均未变化。** Message Stream、Session Inbox、Workflow 存储 Spec 与捆绑的 Workflow SDK 和 0.44.4 逐字节相同；Discovery Manifest 升到 v14（纯加法，见上方基线条目）；0.45.1/0.45.2 两个 Patch 又将其升到 v15，新增同样是纯加法的 `memories` 列表，对应新的一等 Memory Provider（`eve/memory`）。Memory 使用者注意：`fileMemory()` 只在 `eve dev`（进程内）与配置好的 Vercel Deployment（Blob）下自动解析存储后端；在 Eveland Deployment 上必须显式传入 Backend，否则 Agent 会在运行时失败。Agent 作者需要知道的变化：`eve/tools/defaults` 入口被移除，改为按工具拆分的 `eve/tools/<name>` 子路径；`defineBashTool` / `defineReadFileTool` / `defineWriteFileTool` / `defineGlobTool` / `defineGrepTool` 工厂被移除——请改为再导出提供的工具定义。持久 Subagent Session 成为默认且 `experimental.subagentPersistentSessions` 配置键被移除（`false` 不再是退出方式）：Subagent 工具暴露 `agentId`，已完成的子 Session 仍可接收后续消息，`<agents>` 列表自动发布给模型。框架默认的 Config、Sandbox、Home、Health 与 Inspection 路由可被同名 Authored 文件替换，Channel 路由可用 `disableRoute()` 移除。此前一轮审批未决时，后续 Turn 的工具保持可用。前端客户端新增 `resuming` 生命周期状态，表示 Attached Session 正在确认是否有进行中的 Turn。Agent Trace 在 Workflow 执行开始前就确立身份（Agent Trace Schema v2，不再每 200 Turn 轮换），存在采样 Trace 时 Workflow 行携带 `$eve.trace_id`——Eveland 的 Observer 管线不受影响。
 
-对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.45.0`，即便 `^0.45.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
+对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.45.2`，即便 `^0.45.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
 
 npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelog 与源码审阅加上完整兼容矩阵之后才会进入；移除旧 Minor 同样是显式的产品变更。
 
