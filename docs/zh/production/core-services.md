@@ -33,12 +33,11 @@ pnpm --filter @evelandhq/api db:migrate
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-这会以生产配置启动 Dashboard、API、Agent Gateway 与 Postgres。另有两个服务来自基础 `docker-compose.yml` 且没有 Profile 门控，因此同一条命令也会启动它们：
+这会以生产配置启动 Dashboard、API、Agent Gateway 与 Postgres，外加来自基础 `docker-compose.yml` 的**托管 OpenTelemetry Collector**，其由 Worker 生成的配置从 `/var/lib/eveland/otel` 以只读方式挂载。
 
-- **托管 OpenTelemetry Collector**，其由 Worker 生成的配置从 `/var/lib/eveland/otel` 以只读方式挂载；
-- 一个携带基础文件开发配置的**容器化 Workflow Dispatcher**。生产共享 Workflow 数据库由[安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher) 中的宿主机 Dispatcher 驱动。
+基础文件中的容器化 Workflow Dispatcher 携带的是开发配置，因此 Overlay 将它门控在一个此命令永不启用的 Profile 之后。每套安装恰好运行一个 Dispatcher：生产环境即[安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher) 中的宿主机 Dispatcher。
 
-Overlay 不启动容器化 Worker；`--profile docker-worker` 仅为尚未迁移到宿主机 Worker 的遗留 Docker Runtime 安装恢复它。
+Overlay 同样不启动容器化 Worker；`--profile docker-worker` 仅为尚未迁移到宿主机 Worker 的遗留 Docker Runtime 安装恢复它。
 
 API、Agent Gateway 与 Dashboard 使用 Host Networking 运行，以便通过宿主机 Loopback 端口访问 Deployment；Postgres 保持桥接并向宿主机发布 `5432`。API 容器以完全相同的绝对路径 Bind Mount `/var/lib/eveland`，与宿主机 Worker 的 `EVELAND_DATA_DIR` 一致——参见[共享数据契约](/zh/docs/production)。
 

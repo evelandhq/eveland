@@ -33,12 +33,11 @@ Every variable, default, and consumer is listed in the [environment-variable ref
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-This starts the Dashboard, API, Agent Gateway, and Postgres with production settings. Two more services come from the base `docker-compose.yml` with no profile gate, so the same command also starts them:
+This starts the Dashboard, API, Agent Gateway, and Postgres with production settings, plus the **managed OpenTelemetry Collector** from the base `docker-compose.yml`, whose Worker-generated configuration is mounted read-only from `/var/lib/eveland/otel`.
 
-- the **managed OpenTelemetry Collector**, whose Worker-generated configuration is mounted read-only from `/var/lib/eveland/otel`;
-- a **containerized workflow dispatcher** carrying the base file's development configuration. The production shared workflow database is driven by the host dispatcher installed in [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
+The base file's containerized workflow dispatcher carries development configuration, so the overlay gates it behind a profile this command never enables. Each installation runs exactly one dispatcher: in production that is the host dispatcher installed in [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
 
-The overlay does not start a containerized Worker; `--profile docker-worker` restores it only for legacy Docker-runtime installs that have not migrated to the host Worker.
+The overlay does not start a containerized Worker either; `--profile docker-worker` restores it only for legacy Docker-runtime installs that have not migrated to the host Worker.
 
 API, Agent Gateway, and Dashboard run with host networking so they can reach Deployments on the host's loopback ports; Postgres stays bridged and publishes `5432` to the host. The API container bind-mounts `/var/lib/eveland` at that same absolute path, matching the host Worker's `EVELAND_DATA_DIR` — see the [shared data contract](/docs/production).
 

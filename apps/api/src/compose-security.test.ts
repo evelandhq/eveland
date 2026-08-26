@@ -54,6 +54,18 @@ describe("Compose controller security boundaries", () => {
 });
 
 describe("Compose production runtime environment", () => {
+  it("gates the development workflow dispatcher out of the production stack", () => {
+    // Exactly one dispatcher per installation: production uses the host systemd
+    // service, so the overlay must keep the base file's development dispatcher
+    // behind a profile the documented production command never enables.
+    expect(serviceBlock(productionCompose, "workflow-dispatcher")).toContain(
+      'profiles: ["dev-dispatcher"]',
+    );
+
+    // The base file stays profile-free so plain `docker compose up` runs it in dev.
+    expect(serviceBlock(developmentCompose, "workflow-dispatcher")).not.toContain("profiles:");
+  });
+
   it("runs the production web build and server under NODE_ENV=production", () => {
     const web = serviceBlock(productionCompose, "web");
 
