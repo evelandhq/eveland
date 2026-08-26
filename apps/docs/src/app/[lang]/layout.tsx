@@ -39,11 +39,13 @@ export async function generateMetadata({
       title: t.meta.title,
       description: t.meta.description,
       url: localizedHref(lang),
+      images: [{ url: "/opengraph-image.png", width: 1200, height: 600, alt: t.meta.title }],
     },
     twitter: {
       card: "summary_large_image",
       title: t.meta.title,
       description: t.meta.description,
+      images: ["/opengraph-image.png"],
     },
   };
 }

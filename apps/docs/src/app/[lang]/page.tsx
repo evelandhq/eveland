@@ -5,9 +5,8 @@ import { DeploymentFlow } from "@/components/deployment-flow";
 import { ProductionFoundations } from "@/components/production-foundations";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { RuntimeStage } from "@/components/runtime-stage";
 import { isLanguage } from "@/lib/i18n";
-import { getSiteCopy } from "@/lib/site-copy";
+import { getSiteCopy, githubUrl, siteUrl } from "@/lib/site-copy";
 import { localizedHref } from "@/lib/urls";
 
 export async function generateMetadata({
@@ -28,9 +27,25 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
   const productionHref = localizedHref(lang, "/docs/production");
   const architectureHref = localizedHref(lang, "/docs/reference/architecture");
   const repositoryHref = "https://github.com/evelandhq/eveland";
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Eveland",
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "Linux",
+    description: t.meta.description,
+    url: `${siteUrl}${localizedHref(lang)}`,
+    license: "https://www.gnu.org/licenses/agpl-3.0.html",
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    sameAs: [githubUrl],
+  };
 
   return (
     <main className="marketing-page">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <div className="hero-shell">
         <SiteHeader lang={lang} />
         <section className="hero">
@@ -55,8 +70,21 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
                 <ArrowRight aria-hidden="true" />
               </Link>
             </div>
+            <div className="hero-install">
+              <pre>
+                <code>{`git clone https://github.com/evelandhq/eveland && cd eveland
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`}</code>
+              </pre>
+              <Link className="hero-install-link" href={productionHref}>
+                {t.hero.installCaption}
+                <ArrowRight aria-hidden="true" />
+              </Link>
+            </div>
           </div>
-          <RuntimeStage lang={lang} />
+          <figure className="product-shot hero-shot">
+            <img src="/dashboard-projects.png" width={1440} height={480} alt={t.product.alt} />
+          </figure>
         </section>
       </div>
 

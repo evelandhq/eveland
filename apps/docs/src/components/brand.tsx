@@ -13,9 +13,13 @@ export function Brand({
 }) {
   const content = (
     <>
-      <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M5 7.5h22v5H10v4h14v5H10v3h17v5H5z" />
-        <circle cx="25" cy="9.8" r="2.4" />
+      {/* Adapted from the "Constellation" logomark in Untitled UI's free logo
+          library (https://www.untitledui.com/logos). See NOTICE. */}
+      <svg className="brand-mark" viewBox="0 0 44 48" fill="none" aria-hidden="true">
+        <g fill="currentColor">
+          <path d="M17 10l4.8 11.2L33 26l-11.2 4.8L17 42l-4.8-11.2L1 26l11.2-4.8z" />
+          <path d="M35 5l2.4 5.6L43 13l-5.6 2.4L35 21l-2.4-5.6L27 13l5.6-2.4z" opacity=".45" />
+        </g>
       </svg>
       {!compact && <span>eveland</span>}
     </>

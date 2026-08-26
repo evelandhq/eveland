@@ -6,34 +6,27 @@ export const githubUrl = "https://github.com/evelandhq/eveland";
 const copy = {
   en: {
     meta: {
-      title: "Eveland — Run your team's Eve agents",
-      description: "Deploy and operate Eve agents for your team on infrastructure you control.",
+      title: "Eveland — Open-source, self-hosted platform for Eve agents",
+      description:
+        "Open-source, self-hosted production infrastructure for agents built on Vercel's Eve framework: immutable releases, stable routes, isolated systemd runtimes.",
     },
     nav: { docs: "Docs", github: "GitHub", getStarted: "Deploy Eveland", language: "中文" },
     preview: "Preview",
     hero: {
-      eyebrow: "Production runtime for Eve",
-      title: "Run your team's Eve agents.\nOn your infrastructure.",
-      body: "Install one self-hosted platform, deploy immutable previews, route stable traffic, and run every Agent inside an isolated systemd service.",
+      eyebrow: "Open-source production runtime for Vercel's Eve",
+      title: "Run 100 agents on your own server.",
+      body: "Reliable, isolated, traceable: immutable releases, stable routing, and a dedicated systemd runtime for every Eve agent — open source, self-hosted.",
       primary: "Deploy Eveland",
       secondary: "Production architecture",
-    },
-    system: {
-      edge: "Public edge",
-      plane: "Core services",
-      planeServices: "Dashboard · API · Agent Gateway · Postgres",
-      host: "Linux host",
-      worker: "Host Worker",
-      runtime: "systemd Agent runtime",
-      runtimeDetail: "private loopback · bwrap workspace",
-      route: "agent.example.com",
-      resources: "MemoryMax · CPUQuota",
-      states: ["idle", "wake", "ready"],
+      installCaption: "Full production checklist",
     },
     manifesto: {
       statement: "A company will eventually operate more agents than people.",
       substatement: "Eveland is the infrastructure for that world.",
-      focus: "Today, Eveland starts with self-hosted production infrastructure for Eve agents.",
+      focus: "Not a hosted service — AGPL-3.0, community-maintained, yours to run.",
+    },
+    product: {
+      alt: "Eveland dashboard listing agent projects with run counts, success rates, and p95 latency",
     },
     proof: {
       label: "A deliberate production boundary",
@@ -114,34 +107,27 @@ const copy = {
   },
   zh: {
     meta: {
-      title: "Eveland — 运行团队自己的 Eve Agents",
-      description: "在自己的基础设施上为团队部署和运营 Eve Agents。",
+      title: "Eveland — 开源自托管的 Eve Agents 运行平台",
+      description:
+        "开源、自托管的生产级基础设施：为基于 Vercel Eve 框架的 Agents 提供不可变 Release、稳定路由与隔离的 systemd 运行时。",
     },
     nav: { docs: "文档", github: "GitHub", getStarted: "部署 Eveland", language: "English" },
     preview: "预览版",
     hero: {
-      eyebrow: "面向 Eve 的生产运行时",
-      title: "运行团队自己的 Eve Agents。\n就在你的基础设施上。",
-      body: "部署一套自托管平台，构建不可变 Preview，路由稳定流量，并让每个 Agent 在隔离的 systemd Service 中运行。",
+      eyebrow: "面向 Vercel Eve 的开源生产运行时",
+      title: "在自己的服务器上运行 100 个 Agents。",
+      body: "可靠、隔离、可追溯：为每个 Eve Agent 提供不可变 Release、稳定路由与专属的 systemd 运行时——开源、自托管。",
       primary: "部署 Eveland",
       secondary: "查看生产架构",
-    },
-    system: {
-      edge: "公开入口",
-      plane: "核心服务",
-      planeServices: "Dashboard · API · Agent Gateway · Postgres",
-      host: "Linux 宿主机",
-      worker: "宿主机 Worker",
-      runtime: "systemd Agent Runtime",
-      runtimeDetail: "私有 Loopback · bwrap Workspace",
-      route: "agent.example.com",
-      resources: "MemoryMax · CPUQuota",
-      states: ["空闲", "按需唤醒", "就绪"],
+      installCaption: "完整生产部署清单",
     },
     manifesto: {
       statement: "一家企业最终运营的 Agent 数量将超过员工人数。",
       substatement: "Eveland 就是为那个世界而生的基础设施。",
-      focus: "今天，Eveland 从为 Eve Agents 提供自托管的生产级基础设施开始。",
+      focus: "不是托管服务：AGPL-3.0 开源、社区维护、由你自己运行。",
+    },
+    product: {
+      alt: "Eveland Dashboard 项目列表，展示运行次数、成功率与 p95 延迟",
     },
     proof: {
       label: "刻意设计的生产边界",

@@ -10,7 +10,7 @@
   --paper: #ffffff;
   --surface: #f7f7f5;
   --surface-deep: #efefec;
-  --accent: #ff5c35;
+  --accent: #2563eb;
   --line: rgba(8, 8, 8, 0.12);
   --muted: #737373;
   --fd-primary: #111111;
@@ -54,6 +54,6 @@ a {
 }
 
 ::selection {
-  background: #ffd4c9;
+  background: #cbdefb;
   color: var(--ink);
 }
