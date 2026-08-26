@@ -15,8 +15,8 @@ registerGatewayTestCleanup();
 function version(version: string, deploymentId: string): EveVersionInfo {
   return {
     version,
-    expected: "0.42.x or 0.44.x",
-    supportedRanges: ["0.42.x", "0.44.x"],
+    expected: "0.44.x or 0.45.x",
+    supportedRanges: ["0.44.x", "0.45.x"],
     supported: true,
     sourceRevisionId: `src-${deploymentId}`,
   };
@@ -57,7 +57,7 @@ describe("Gateway durable Eve routes", () => {
       ],
     });
     const repo = repository([weighted]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.42.0", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.44.4", deploymentId));
     const activationClient = {
       activate: vi.fn(async ({ deploymentId }: { deploymentId: string }) => ({
         leaseId: `lease-${deploymentId}`,
@@ -183,7 +183,7 @@ describe("Gateway durable Eve routes", () => {
       ],
     });
     const repo = repository([weighted]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.42.0", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.44.4", deploymentId));
     const activationClient = {
       activate: vi.fn(async ({ deploymentId }: { deploymentId: string }) => ({
         leaseId: `lease-${deploymentId}`,
@@ -232,7 +232,7 @@ describe("Gateway durable Eve routes", () => {
   test("expires an idle create-once route instead of silently moving its retry", async () => {
     const stable = route();
     const repo = repository([stable]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.42.0", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.44.4", deploymentId));
     repo.operationBindings.push({
       id: "opbind_expired",
       projectId: "proj_1",

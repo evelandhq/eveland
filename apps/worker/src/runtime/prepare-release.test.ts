@@ -18,7 +18,7 @@ test("copies source into a prepared release and injects observers without modify
   await mkdir(path.join(sourcePath, "agent", "subagents", "child"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.42.0" } }),
+    JSON.stringify({ dependencies: { eve: "0.44.4" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -54,7 +54,7 @@ test("injects the Extension integrator only when the source declares an Extensio
   await mkdir(path.join(sourcePath, "agent", "extensions"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.42.0" } }),
+    JSON.stringify({ dependencies: { eve: "0.44.4" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -78,7 +78,7 @@ test("injects the scheduler adapter only into the disposable release", async () 
   await mkdir(path.join(sourcePath, "agent", "schedules"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.42.0" } }),
+    JSON.stringify({ dependencies: { eve: "0.44.4" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -116,7 +116,7 @@ export default {
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.42.0" } }),
+    JSON.stringify({ dependencies: { eve: "0.44.4" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(path.join(sourcePath, "agent", "agent.ts"), authoredConfig);
@@ -161,7 +161,7 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.42.0" } }),
+    JSON.stringify({ dependencies: { eve: "0.44.4" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
 
@@ -192,7 +192,7 @@ test("wraps every Eve-supported authored agent module extension", async () => {
     await mkdir(sourcePath, { recursive: true });
     await writeFile(
       path.join(sourcePath, "package.json"),
-      JSON.stringify({ dependencies: { eve: "0.42.0" } }),
+      JSON.stringify({ dependencies: { eve: "0.44.4" } }),
     );
     await writeFile(path.join(sourcePath, "instructions.md"), "root");
     await writeFile(

@@ -27,7 +27,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-test("builds Extension schedules and observed Extension subagents with the real Eve 0.42 compiler", async () => {
+test("builds Extension schedules and observed Extension subagents with the real Eve 0.44 compiler", async () => {
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-release-"));
   roots.push(releaseDir);
   const extensionPackageRoot = path.join(releaseDir, "packages/crm");
@@ -172,15 +172,15 @@ test("builds Extension schedules and observed Extension subagents with the real 
   }
 }, 120_000);
 
-test("keeps the Extension integrator compatible with the oldest supported Eve 0.42 manifest", async () => {
+test("keeps the Extension integrator compatible with the oldest supported Eve 0.44 manifest", async () => {
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-oldest-"));
   roots.push(releaseDir);
   const extensionPackageRoot = path.join(releaseDir, "packages/crm");
-  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.42.0", false);
+  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.44.4", false);
   await execFileAsync(process.execPath, [oldestEveBin, "extension", "build"], {
     cwd: extensionPackageRoot,
   });
-  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.42.0");
+  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.44.4");
 
   await injectObserverHooks({ releaseDir });
   await injectSchedulerAdapter({ releaseDir });
@@ -204,7 +204,7 @@ test("keeps the Extension integrator compatible with the oldest supported Eve 0.
 async function writeFixtureExtension(
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.42.0",
+  eveVersion = "0.44.4",
   includeScheduleSubagents = true,
 ): Promise<void> {
   await write(
@@ -258,7 +258,7 @@ async function writeConsumer(
   releaseDir: string,
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.42.0",
+  eveVersion = "0.44.4",
 ): Promise<void> {
   await write(
     releaseDir,

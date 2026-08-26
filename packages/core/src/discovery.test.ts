@@ -105,6 +105,26 @@ describe("projectDiscoveryManifest", () => {
     });
   });
 
+  test("projects the Eve 0.45+ v14 manifest, ignoring the added instrumentation module", () => {
+    // v14 only adds an optional single-file instrumentation module reference;
+    // every entity list the projection consumes is unchanged from v13.
+    const projection = projectDiscoveryManifest({
+      ...nestedManifest,
+      version: 14,
+      instrumentation: {
+        sourceKind: "module",
+        logicalPath: "instrumentation.ts",
+        sourceId: "instrumentation.ts",
+      },
+    });
+
+    expect(projection).toMatchObject({
+      manifestVersion: 14,
+      instructions: ["agent/instructions.md"],
+      hooks: ["agent/hooks/root-observer.ts"],
+    });
+  });
+
   test("projects effective Extension schedules and subagents under their mount namespace", () => {
     const extensionManifest = {
       ...nestedManifest,

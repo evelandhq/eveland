@@ -345,7 +345,10 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
                     setIsCancelling(false);
                   });
               }}
-              status={agent.status}
+              // While an attached session checks for an in-flight turn
+              // (eve 0.45 "resuming"), the composer stays idle: active-turn
+              // controls appear only once the turn is confirmed.
+              status={agent.status === "resuming" ? "ready" : agent.status}
             >
               <ArrowUpIcon />
             </PromptInputSubmit>
