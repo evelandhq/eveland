@@ -201,10 +201,11 @@ The operator-facing versioning policy and upgrade/rollback procedure live in
 
 ### Public docs deployment
 
-`apps/docs` is deployed as the `eveland-docs` Cloudflare Worker at
-`https://eveland.ai` through the OpenNext adapter. Build or preview the Worker
-runtime locally with `pnpm --filter @evelandhq/docs build:cloudflare` and
-`preview:cloudflare`. The `Deploy docs` GitHub Actions workflow deploys after a
+`apps/docs` is a fully static Next.js export served by the `eveland-docs`
+Cloudflare Worker (Workers Assets only, no server bundle) at
+`https://eveland.ai`. The en-at-root URL scheme lives in
+`apps/docs/public/_redirects`, evaluated at the edge. Build or preview locally
+with `pnpm --filter @evelandhq/docs build:cloudflare` and `preview:cloudflare`. The `Deploy docs` GitHub Actions workflow deploys after a
 push to `main` when the pushed changes include `apps/docs/**` or `docs/**`; it
 requires the `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` repository
 secrets. `apps/docs/wrangler.jsonc` owns the Worker name and custom-domain

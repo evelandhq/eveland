@@ -21,34 +21,33 @@ describe("Eveland public website contract", () => {
     expect(source("../source.config.ts")).toContain('dir: "../../docs"');
   });
 
-  test("targets the eveland.ai Cloudflare Worker", () => {
+  test("targets eveland.ai as a static Workers Assets site", () => {
     const packageJson = source("../package.json");
     const wrangler = source("../wrangler.jsonc");
 
-    expect(packageJson).toContain("opennextjs-cloudflare build");
-    expect(packageJson).toContain('"deploy:cloudflare": "opennextjs-cloudflare deploy"');
-    expect(packageJson).toContain('"@opennextjs/cloudflare"');
+    expect(packageJson).toContain('"build:cloudflare": "pnpm generate:llm-pages && next build"');
     expect(packageJson).toContain('"wrangler"');
+    expect(packageJson).not.toContain("opennextjs");
     expect(wrangler).toContain('"name": "eveland-docs"');
-    expect(wrangler).toContain('"main": ".open-next/worker.js"');
-    expect(wrangler).toContain('"nodejs_compat"');
-    expect(wrangler).toContain('"directory": ".open-next/assets"');
+    expect(wrangler).not.toContain('"main"');
+    expect(wrangler).toContain('"directory": "out"');
+    expect(wrangler).toContain('"not_found_handling": "404-page"');
     expect(wrangler).toContain('"pattern": "eveland.ai"');
     expect(wrangler).toContain('"custom_domain": true');
-    expect(source("../open-next.config.ts")).toContain("defineCloudflareConfig");
     expect(source("../public/_headers")).toContain("/_next/static/*");
-    expect(source("../next.config.mjs")).toContain("async rewrites()");
-    expect(source("../next.config.mjs")).toContain('destination: "/en/docs/:path*"');
+    expect(source("../next.config.mjs")).toContain('output: "export"');
   });
 
-  test("serves prerendered docs from Workers Static Assets", () => {
-    const openNext = source("../open-next.config.ts");
+  test("keeps English at the root through edge redirects", () => {
+    const redirects = source("../public/_redirects");
 
-    expect(openNext).toContain(
-      'from "@opennextjs/cloudflare/overrides/incremental-cache/static-assets-incremental-cache"',
-    );
-    expect(openNext).toContain("incrementalCache: staticAssetsIncrementalCache");
-    expect(openNext).toContain("enableCacheInterception: true");
+    expect(redirects).toContain("/en / 301");
+    expect(redirects).toContain("/en/docs /docs 301");
+    expect(redirects).toContain("/en/docs/* /docs/:splat 301");
+    expect(redirects).toContain("/ /en 200");
+    expect(redirects).toContain("/docs /en/docs 200");
+    expect(redirects).toContain("/docs/* /en/docs/:splat 200");
+    expect(source("../src/app/api/search/route.ts")).toContain("staticGET");
   });
 
   test("deploys docs changes pushed to main", () => {
@@ -255,9 +254,7 @@ describe("Eveland public website contract", () => {
 
     expect(packageJson).toContain('"generate:llm-pages": "node scripts/generate-llm-pages.mjs"');
     expect(packageJson).toContain('"build": "pnpm generate:llm-pages && next build"');
-    expect(packageJson).toContain(
-      '"build:cloudflare": "pnpm generate:llm-pages && opennextjs-cloudflare build"',
-    );
+    expect(packageJson).toContain('"build:cloudflare": "pnpm generate:llm-pages && next build"');
     expect(generator).toContain('from "fumadocs-core/content/md/frontmatter"');
     expect(generator).toContain("export async function generateLlmPages");
     expect(generator).toContain("# ${title} (${pageUrl})");

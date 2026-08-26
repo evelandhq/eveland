@@ -67,7 +67,12 @@ export default async function LocaleLayout({
       suppressHydrationWarning
     >
       <body>
-        <RootProvider i18n={i18nProvider(translations, lang)}>{children}</RootProvider>
+        <RootProvider
+          i18n={i18nProvider(translations, lang)}
+          search={{ options: { type: "static" } }}
+        >
+          {children}
+        </RootProvider>
       </body>
     </html>
   );
