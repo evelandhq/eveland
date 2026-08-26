@@ -73,8 +73,8 @@ export default async function HomePage({ params }: { params: Promise<{ lang: str
             <div className="hero-install">
               <pre>
                 <code>{`git clone https://github.com/evelandhq/eveland && cd eveland
-cp .env.example .env
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`}</code>
+git checkout $(git describe --tags --abbrev=0)
+pnpm install --frozen-lockfile`}</code>
               </pre>
               <Link className="hero-install-link" href={productionHref}>
                 {t.hero.installCaption}
