@@ -69,8 +69,8 @@ describe("Eveland public website contract", () => {
     for (const workflow of ["ci.yml", "deploy-docs.yml", "systemd-smoke.yml"]) {
       const sourceText = source(`../../../.github/workflows/${workflow}`);
 
-      expect(sourceText).toContain("actions/setup-node@v6");
-      expect(sourceText).not.toContain("actions/setup-node@v4");
+      expect(sourceText).toContain("actions/setup-node@v7");
+      expect(sourceText).not.toContain("actions/setup-node@v6");
       expect(sourceText).toContain("node-version: 24");
     }
   });
