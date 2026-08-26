@@ -2,14 +2,14 @@ import type { MiddlewareHandler } from "hono";
 import type { AuthPrincipal } from "@evelandhq/core/contracts";
 import type { createBetterAuthRuntime } from "./auth.js";
 import type { ApiApp } from "./app-types.js";
-import { acceptInvitationSchema } from "./app-schemas.js";
+import { acceptInvitationSchema, previewInvitationSchema } from "./app-schemas.js";
 import { authErrorResponse, getSetCookies } from "./app-support.js";
 
 type BetterAuthRuntime = ReturnType<typeof createBetterAuthRuntime>;
 
 export type ControlPlaneAuthBoundaryPort = Pick<
   BetterAuthRuntime,
-  "handler" | "acceptInvitation" | "authenticate"
+  "handler" | "acceptInvitation" | "previewInvitation" | "authenticate"
 >;
 
 const allowedAuthPaths = new Set([
@@ -31,6 +31,27 @@ export function registerControlPlaneAuthBoundary(input: {
     const path = new URL(c.req.url).pathname;
     if (!allowedAuthPaths.has(path)) return c.notFound();
     return auth.handler(c.req.raw);
+  });
+
+  // The accept page renders profile creation for a new email and a sign-in
+  // flow for an account that already exists (a removed member being
+  // re-invited). POST keeps the single-use token out of URLs and access logs.
+  app.post("/invitations/preview", async (c) => {
+    const parsed = previewInvitationSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: "Invalid invitation preview",
+          issues: parsed.error.issues,
+        },
+        400,
+      );
+    }
+    try {
+      return c.json(await auth.previewInvitation(parsed.data.token));
+    } catch (error) {
+      return authErrorResponse(c, error);
+    }
   });
 
   app.post("/invitations/accept", async (c) => {

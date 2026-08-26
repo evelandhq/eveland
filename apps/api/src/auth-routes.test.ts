@@ -351,6 +351,88 @@ describe("control-plane auth routes", () => {
     });
   });
 
+  test("walks a removed member through an explicit rejoin with their existing password", async () => {
+    const { app } = await createAuthApp();
+    const { cookie: adminCookie } = await signIn(app);
+    const issued = await invite(app, adminCookie, "rejoiner@example.com");
+    const accepted = await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        token: new URL(issued.body.inviteUrl).searchParams.get("token")!,
+        name: "Rejoiner",
+        password: "rejoiner-password",
+      }),
+    });
+    expect(accepted.status).toBe(200);
+    const members = await (
+      await app.request("/members", { headers: { cookie: adminCookie } })
+    ).json();
+    const memberId = members.members.find(
+      (member: { email: string }) => member.email === "rejoiner@example.com",
+    ).userId as string;
+    expect(
+      (
+        await app.request(`/members/${memberId}`, {
+          method: "DELETE",
+          headers: { cookie: adminCookie },
+        })
+      ).status,
+    ).toBe(204);
+
+    const reissued = await invite(app, adminCookie, "rejoiner@example.com");
+    const token = new URL(reissued.body.inviteUrl).searchParams.get("token")!;
+
+    // The public preview tells the accept page which flow to render, but only
+    // for a valid pending token.
+    const preview = await app.request("/invitations/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    expect(preview.status).toBe(200);
+    await expect(preview.json()).resolves.toEqual({
+      email: "rejoiner@example.com",
+      existingAccount: true,
+    });
+    expect(
+      (
+        await app.request("/invitations/preview", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: "invitation_guess" }),
+        })
+      ).status,
+    ).toBe(404);
+
+    const wrongPassword = await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, password: "a-brand-new-password" }),
+    });
+    expect(wrongPassword.status).toBe(401);
+    await expect(wrongPassword.json()).resolves.toEqual({
+      error: "Incorrect password for your existing account",
+    });
+
+    const rejoined = await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, password: "rejoiner-password" }),
+    });
+    expect(rejoined.status).toBe(200);
+    const rejoinedCookie = rejoined.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+    await expect(
+      (await app.request("/auth/session", { headers: { cookie: rejoinedCookie } })).json(),
+    ).resolves.toEqual({
+      member: expect.objectContaining({
+        email: "rejoiner@example.com",
+        name: "Rejoiner",
+        role: "member",
+      }),
+    });
+  });
+
   test("protects the last admin and revokes a removed member's Better Auth sessions", async () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
