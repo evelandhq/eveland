@@ -9,34 +9,6 @@
   }
 }
 
-@keyframes underline-in {
-  to {
-    transform: rotate(-1deg) scaleX(1);
-  }
-}
-
-@keyframes stage-in {
-  from {
-    opacity: 0;
-    transform: translateY(30px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes command-in {
-  from {
-    opacity: 0;
-    transform: translateX(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 @keyframes event-reveal {
   from {
     opacity: 0;
@@ -72,20 +44,6 @@
 @media (max-width: 1080px) {
   .hero {
     padding-top: 68px;
-  }
-
-  .runtime-stage {
-    grid-template-columns: 1fr;
-  }
-
-  .runtime-code {
-    border-radius: 12px 12px 0 0;
-  }
-
-  .runtime-events {
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    border-left: 0;
-    border-radius: 0 0 12px 12px;
   }
 
   .flow-section,
@@ -171,31 +129,6 @@
     width: 100%;
   }
 
-  .runtime-stage {
-    margin-top: 48px;
-    padding: 5px;
-    border-radius: 14px;
-  }
-
-  .runtime-code {
-    min-height: 320px;
-  }
-
-  .command-list {
-    padding: 26px 18px;
-  }
-
-  .command-list code {
-    overflow: hidden;
-    font-size: 10px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .stage-event {
-    grid-template-columns: 56px 1fr;
-  }
-
   .proof-section,
   .section-intro {
     grid-template-columns: 1fr;
@@ -259,14 +192,6 @@
   .footer-columns {
     gap: 28px;
   }
-
-  .topology-row {
-    grid-template-columns: 1fr;
-  }
-
-  .topology-bridge {
-    padding: 5px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -285,11 +210,6 @@
 }
 
 @media (max-width: 1080px) {
-  .topology-handoff {
-    min-height: 54px;
-    flex-direction: row;
-  }
-
   .foundation-list li > div {
     grid-template-columns: 1fr 1fr;
   }
@@ -300,19 +220,6 @@
 }
 
 @media (max-width: 760px) {
-  .runtime-stage {
-    min-height: auto;
-  }
-
-  .topology-plane,
-  .topology-runtime {
-    min-height: 250px;
-  }
-
-  .topology-runtime ol {
-    gap: 12px;
-  }
-
   .foundation-section {
     padding: 94px 0 104px;
   }

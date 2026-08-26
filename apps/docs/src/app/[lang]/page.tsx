@@ -5,7 +5,6 @@ import { DeploymentFlow } from "@/components/deployment-flow";
 import { ProductionFoundations } from "@/components/production-foundations";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { RuntimeStage } from "@/components/runtime-stage";
 import { isLanguage } from "@/lib/i18n";
 import { getSiteCopy, githubUrl, siteUrl } from "@/lib/site-copy";
 import { localizedHref } from "@/lib/urls";
@@ -83,7 +82,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`}</code>
               </Link>
             </div>
           </div>
-          <RuntimeStage lang={lang} />
+          <figure className="product-shot hero-shot">
+            <img src="/dashboard-projects.png" width={1440} height={480} alt={t.product.alt} />
+          </figure>
         </section>
       </div>
 

@@ -197,14 +197,12 @@ describe("Eveland public website contract", () => {
     const page = source("./app/[lang]/page.tsx");
     const copy = source("./lib/site-copy.ts");
 
-    expect(page).toContain("<RuntimeStage");
     expect(page).toContain("<DeploymentFlow");
     expect(page).toContain("productionHref");
     expect(page).toContain("github.com/evelandhq/eveland");
     expect(copy).toContain('href: "/docs/production"');
     expect(copy).toContain('href: "/zh/docs/production"');
     expect(copy).toContain("systemd");
-    expect(copy).toContain("按需唤醒");
   });
 
   test("mirrors the Eve documentation shell with the system font stack", () => {
