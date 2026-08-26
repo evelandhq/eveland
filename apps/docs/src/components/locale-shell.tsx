@@ -1,24 +1,13 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { RootProvider } from "fumadocs-ui/provider/next";
 import { i18nProvider } from "fumadocs-ui/i18n";
-import { i18n, isLanguage } from "@/lib/i18n";
+import type { Language } from "@/lib/i18n";
 import { translations } from "@/lib/layout.shared";
 import { getSiteCopy, siteUrl } from "@/lib/site-copy";
 import { localizedHref } from "@/lib/urls";
-import "../global.css";
+import "@/app/global.css";
 
-export function generateStaticParams() {
-  return i18n.languages.map((lang) => ({ lang }));
-}
-
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ lang: string }>;
-}): Promise<Metadata> {
-  const { lang } = await params;
-  if (!isLanguage(lang)) return {};
+export function localeMetadata(lang: Language): Metadata {
   const t = getSiteCopy(lang);
 
   return {
@@ -50,16 +39,13 @@ export async function generateMetadata({
   };
 }
 
-export default async function LocaleLayout({
+export function LocaleShell({
+  lang,
   children,
-  params,
 }: Readonly<{
+  lang: Language;
   children: React.ReactNode;
-  params: Promise<{ lang: string }>;
 }>) {
-  const { lang } = await params;
-  if (!isLanguage(lang)) notFound();
-
   return (
     <html
       lang={lang === "zh" ? "zh-CN" : "en"}

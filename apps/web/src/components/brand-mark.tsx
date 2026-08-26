@@ -1,7 +1,5 @@
 import type { SVGProps } from "react";
 
-// Adapted from the "Constellation" logomark in Untitled UI's free logo
-// library (https://www.untitledui.com/logos). See NOTICE.
 export function BrandMark(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 44 48" fill="none" aria-hidden="true" {...props}>

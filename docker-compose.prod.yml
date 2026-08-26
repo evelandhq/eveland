@@ -93,6 +93,13 @@ services:
       EVELAND_RELEASE_CHANNEL: "${EVELAND_RELEASE_CHANNEL:-stable}"
       EVELAND_REVISION: "${EVELAND_REVISION:-unknown}"
 
+  workflow-dispatcher:
+    # Exactly one dispatcher may drive the production shared workflow database:
+    # the host systemd service (docs/en/production/workflow-dispatcher.md). Gate
+    # the base file's development dispatcher behind a profile the production
+    # command never enables so the merged config cannot start a second one.
+    profiles: ["dev-dispatcher"]
+
   web:
     restart: unless-stopped
     network_mode: host

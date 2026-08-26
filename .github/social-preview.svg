@@ -25,8 +25,6 @@
 
   <g transform="translate(80 72)">
     <rect width="58" height="58" rx="13" fill="#ffffff"/>
-    <!-- Adapted from the "Constellation" logomark in Untitled UI's free logo library
-         (https://www.untitledui.com/logos). See NOTICE. -->
     <g fill="#080808" transform="translate(29 29) scale(1.18) translate(-22 -23.5)">
       <path d="M17 10l4.8 11.2L33 26l-11.2 4.8L17 42l-4.8-11.2L1 26l11.2-4.8z"/>
       <path d="M35 5l2.4 5.6L43 13l-5.6 2.4L35 21l-2.4-5.6L27 13l5.6-2.4z" opacity=".45"/>

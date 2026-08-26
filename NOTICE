@@ -19,16 +19,6 @@ This distribution includes material from third parties:
 - scripts/pre-commit-fmt.mjs — adapted from vercel/eve
   (https://github.com/vercel/eve), licensed under the Apache License 2.0.
 
-- The Eveland star brand mark (apps/docs/src/app/icon.svg,
-  apps/web/src/app/icon.svg, the inline SVGs in
-  apps/docs/src/components/brand.tsx and
-  apps/web/src/components/brand-mark.tsx, and .github/social-preview.svg) —
-  adapted from the "Constellation" logomark in Untitled UI's free logo
-  library (https://www.untitledui.com/logos), which is free for personal
-  and commercial use without attribution. Used here as an interim product
-  mark; not to be extracted from this repository for redistribution as a
-  standalone asset pack.
-
 Notable runtime dependencies and their licenses (installed from npm, not
 vendored here):
 

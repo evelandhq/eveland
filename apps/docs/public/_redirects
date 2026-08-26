@@ -1,8 +1,5 @@
-# Canonical URLs keep English at the root (mirrors the former Next.js
-# redirects/rewrites, which output:"export" does not support).
+# English pages export at the root; /en/* survives only as legacy 301s for
+# URLs indexed before the prefix-less scheme.
 /en / 301
 /en/docs /docs 301
 /en/docs/* /docs/:splat 301
-/ /en 200
-/docs /en/docs 200
-/docs/* /en/docs/:splat 200
