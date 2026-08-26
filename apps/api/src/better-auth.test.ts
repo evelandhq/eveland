@@ -178,6 +178,132 @@ describe("Better Auth runtime", () => {
     expect(accepted.headers.get("set-cookie")).toContain(`${SESSION_COOKIE_NAME}=`);
   });
 
+  test("previews whether an invitation belongs to an existing account only after validating the token", async () => {
+    const { database, runtime } = await createTestRuntime();
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
+    const { cookie } = await signIn(runtime);
+    const request = new Request("http://localhost:4000/invitations", { headers: { cookie } });
+
+    const fresh = await runtime.invite(request, "newcomer@example.com");
+    await expect(runtime.previewInvitation(fresh.token)).resolves.toEqual({
+      email: "newcomer@example.com",
+      existingAccount: false,
+    });
+
+    const rejoining = await runtime.invite(request, "rejoiner@example.com");
+    const accepted = await runtime.acceptInvitation({
+      token: rejoining.token,
+      name: "Rejoiner",
+      password: "rejoiner-password",
+    });
+    await runtime.removeMember(request, accepted.principal.userId);
+    const reissued = await runtime.invite(request, "rejoiner@example.com");
+    await expect(runtime.previewInvitation(reissued.token)).resolves.toEqual({
+      email: "rejoiner@example.com",
+      existingAccount: true,
+    });
+
+    await expect(runtime.previewInvitation("invitation_unknown")).rejects.toMatchObject({
+      message: "Invitation not found",
+      status: 404,
+    });
+    await database.db.insert(invitations).values({
+      id: "invitation_expired",
+      organizationId: "team_local",
+      email: "rejoiner@example.com",
+      role: "member",
+      status: "pending",
+      expiresAt: new Date(Date.now() - 60_000),
+      inviterId: "user_local_admin",
+    });
+    await expect(runtime.previewInvitation("invitation_expired")).rejects.toMatchObject({
+      message: "Invitation is no longer pending",
+      status: 409,
+    });
+  });
+
+  test("re-invited existing accounts rejoin with their current password and keep their profile", async () => {
+    const { database, runtime } = await createTestRuntime();
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
+    const { cookie } = await signIn(runtime);
+    const request = new Request("http://localhost:4000/invitations", { headers: { cookie } });
+
+    const issued = await runtime.invite(request, "member@example.com");
+    const accepted = await runtime.acceptInvitation({
+      token: issued.token,
+      name: "Original Name",
+      password: "original-password",
+    });
+    await runtime.removeMember(request, accepted.principal.userId);
+    const reissued = await runtime.invite(request, "member@example.com");
+
+    // A "new" password must not sign the user in, reset the stored credential,
+    // or consume the invitation.
+    await expect(
+      runtime.acceptInvitation({ token: reissued.token, password: "a-brand-new-password" }),
+    ).rejects.toMatchObject({
+      message: "Incorrect password for your existing account",
+      status: 401,
+    });
+    const invitationRows = await database.db.select().from(invitations);
+    expect(invitationRows.find((row) => row.id === reissued.token)).toMatchObject({
+      status: "pending",
+    });
+
+    const rejoined = await runtime.acceptInvitation({
+      token: reissued.token,
+      name: "Attempted Rename",
+      password: "original-password",
+    });
+
+    expect(rejoined.principal).toMatchObject({
+      email: "member@example.com",
+      name: "Original Name",
+      role: "member",
+    });
+    await expect(database.db.select().from(teamMemberships)).resolves.toHaveLength(2);
+    await expect(database.db.select().from(users)).resolves.toContainEqual(
+      expect.objectContaining({ email: "member@example.com", name: "Original Name" }),
+    );
+  });
+
+  test("new-account acceptance still requires a name and the password policy", async () => {
+    const { runtime } = await createTestRuntime();
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
+    const { cookie } = await signIn(runtime);
+    const request = new Request("http://localhost:4000/invitations", { headers: { cookie } });
+    const issued = await runtime.invite(request, "newcomer@example.com");
+
+    await expect(
+      runtime.acceptInvitation({ token: issued.token, password: "newcomer-password" }),
+    ).rejects.toMatchObject({ message: "Name is required", status: 400 });
+    await expect(
+      runtime.acceptInvitation({ token: issued.token, name: "Newcomer", password: "too-short" }),
+    ).rejects.toMatchObject({
+      message: "Password must be at least 12 characters",
+      status: 400,
+    });
+
+    const accepted = await runtime.acceptInvitation({
+      token: issued.token,
+      name: "Newcomer",
+      password: "newcomer-password",
+    });
+    expect(accepted.principal).toMatchObject({ email: "newcomer@example.com", role: "member" });
+  });
+
   test("lists only invitations that can still be accepted", async () => {
     const { database, runtime } = await createTestRuntime();
     await runtime.bootstrapDefaultAdmin({

@@ -46,7 +46,7 @@ Personal settings list the current user's saved Git HTTPS host credentials, show
 
 Members lives in the Settings System group and no longer appears in the workspace global navigation. Roles: `admin` holds all project permissions and can invite, remove members, and change roles; `member` can manage projects, secrets, and deployments, but not members.
 
-The page shows active members and pending invitations. Admins can: create seven-day, single-use invitation links by email; refresh an invitation to rotate its token and extend validity; copy or revoke invitation links; set members to Admin/Member; and remove members (removal immediately revokes all their login sessions; team projects are not deleted). The last admin can be neither removed nor demoted. Invitation links use 256-bit opaque random identifiers and expire immediately on acceptance.
+The page shows active members and pending invitations. Admins can: create seven-day, single-use invitation links by email; refresh an invitation to rotate its token and extend validity; copy or revoke invitation links; set members to Admin/Member; and remove members (removal immediately revokes all their login sessions; team projects are not deleted). The last admin can be neither removed nor demoted. Invitation links use 256-bit opaque random identifiers and expire immediately on acceptance. Removal preserves the underlying user account: accepting an invitation for a brand-new email creates the member profile and password, while an invitation for an email that already has an account presents an explicit rejoin flow that signs in with the existing password — accepting never resets or replaces it.
 
 ## About (/settings/about)
 

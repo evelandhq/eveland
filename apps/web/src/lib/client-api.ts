@@ -296,9 +296,26 @@ export async function inviteMember(
   });
 }
 
+export type InvitationPreview = {
+  email: string;
+  /** True when the invited email belongs to an account that already exists
+   * (a removed member being re-invited); the accept page then renders a
+   * sign-in flow instead of profile creation. */
+  existingAccount: boolean;
+};
+
+// POST keeps the single-use token out of URLs and access logs.
+export async function previewInvitation(token: string): Promise<InvitationPreview> {
+  return clientRequest("/invitations/preview", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+}
+
 export async function acceptInvitation(input: {
   token: string;
-  name: string;
+  name?: string;
   password: string;
 }): Promise<CurrentMember> {
   const data = await clientRequest<{ member: CurrentMember }>("/invitations/accept", {

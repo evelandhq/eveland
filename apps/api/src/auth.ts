@@ -374,33 +374,61 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     return response.headers;
   }
 
-  async function acceptInvitation(input: { token: string; name: string; password: string }) {
+  async function findPendingInvitation(token: string) {
     const context = await auth.$context;
     const invitation = await context.adapter.findOne<{
       id: string;
       email: string;
       status: string;
       expiresAt: Date;
-    }>({ model: "invitation", where: [{ field: "id", value: input.token }] });
+    }>({ model: "invitation", where: [{ field: "id", value: token }] });
     if (!invitation) throw new AuthFlowError("Invitation not found", 404);
     if (invitation.status !== "pending" || invitation.expiresAt.getTime() <= Date.now()) {
       throw new AuthFlowError("Invitation is no longer pending", 409);
     }
-    const existing = await context.internalAdapter.findUserByEmail(invitation.email, {
-      includeAccounts: true,
-    });
+    return invitation;
+  }
+
+  // Removing a member keeps the user and credential rows, so a re-invited
+  // email may belong to a live account. The invitation token gates this
+  // answer: without a valid pending token the caller learns nothing about
+  // account existence.
+  async function previewInvitation(token: string) {
+    const invitation = await findPendingInvitation(token);
+    const context = await auth.$context;
+    const existing = await context.internalAdapter.findUserByEmail(invitation.email);
+    return { email: invitation.email, existingAccount: Boolean(existing) };
+  }
+
+  async function acceptInvitation(input: { token: string; name?: string; password: string }) {
+    const invitation = await findPendingInvitation(input.token);
+    const context = await auth.$context;
+    const existing = await context.internalAdapter.findUserByEmail(invitation.email);
     if (!existing) {
+      const name = input.name?.trim();
+      if (!name) throw new AuthFlowError("Name is required", 400);
+      if (input.password.length < 12) {
+        throw new AuthFlowError("Password must be at least 12 characters", 400);
+      }
       await auth.api.createUser({
-        body: { email: invitation.email, name: input.name, password: input.password, role: "user" },
+        body: { email: invitation.email, name, password: input.password, role: "user" },
       });
     }
 
+    // Rejoining never touches the stored credential or profile: the account
+    // keeps its password and name, and a failed sign-in leaves the
+    // invitation pending for another attempt.
     const signInResponse = await auth.api.signInEmail({
       body: { email: invitation.email, password: input.password },
       headers: new Headers({ origin: options.webOrigin }),
       asResponse: true,
     });
-    if (!signInResponse.ok) throw new AuthFlowError("Invalid email or password", 401);
+    if (!signInResponse.ok) {
+      throw new AuthFlowError(
+        existing ? "Incorrect password for your existing account" : "Invalid email or password",
+        401,
+      );
+    }
     const cookie = responseCookies(signInResponse.headers)
       .map((value) => value.split(";", 1)[0])
       .join("; ");
@@ -455,6 +483,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     resolveInternalIdentity,
     invite,
     acceptInvitation,
+    previewInvitation,
     listMembers,
     listInvitations,
     reissueInvitation,

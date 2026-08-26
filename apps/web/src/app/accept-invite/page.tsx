@@ -21,7 +21,7 @@ export default async function AcceptInvitePage({
             <UsersIcon />
           </div>
           <CardTitle>Join the Eveland team</CardTitle>
-          <CardDescription>Create your member profile to accept this invitation.</CardDescription>
+          <CardDescription>Accept this invitation to join the team.</CardDescription>
         </CardHeader>
         <CardContent>
           {token ? (

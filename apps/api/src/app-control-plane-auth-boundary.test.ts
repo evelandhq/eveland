@@ -39,6 +39,15 @@ test("composes the exact public auth surface before the protected control plane"
       })
     ).status,
   ).toBe(400);
+  expect(
+    (
+      await app.request("/invitations/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      })
+    ).status,
+  ).toBe(400);
 
   for (const path of [
     "/api/auth/sign-up/email",

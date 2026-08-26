@@ -173,10 +173,18 @@ export const memberRoleSchema = z.object({
   role: z.enum(["admin", "member"]),
 });
 
+export const previewInvitationSchema = z.object({
+  token: z.string().min(1),
+});
+
+// Name and password policy depend on whether the invited email already has an
+// account, which only the auth runtime can see -- it enforces both (name plus
+// the 12-character minimum for new accounts; the stored credential for
+// existing ones).
 export const acceptInvitationSchema = z.object({
   token: z.string().min(1),
-  name: z.string().trim().min(1),
-  password: z.string().min(12),
+  name: z.string().trim().min(1).optional(),
+  password: z.string().min(1),
 });
 
 export const profileImageSchema = z.string().superRefine((value, context) => {
