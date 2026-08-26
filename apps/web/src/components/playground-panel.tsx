@@ -4,28 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FileUIPart } from "ai";
 import { Client, type ClientSessionState } from "eve/client";
 import { useEveAgent } from "eve/react";
-import type {
-  EveAuthorizationPart,
-  EveDynamicToolPart,
-  EveMessage,
-  EveMessageInputRequest,
-} from "eve/react";
-import {
-  AgentActivity,
-  AgentActivityReasoning,
-  AgentActivityTool,
-  type AgentActivityToolStatus,
-} from "@/components/agent-activity";
-import {
-  ArrowUpIcon,
-  ArrowUpRightIcon,
-  BotIcon,
-  CheckCircle2Icon,
-  PlugZapIcon,
-  PlusIcon,
-  ShieldIcon,
-  XCircleIcon,
-} from "lucide-react";
+import { BotIcon, BrainIcon, PlusIcon, ShieldIcon, SquareIcon } from "lucide-react";
 import {
   Attachment,
   AttachmentInfo,
@@ -34,15 +13,12 @@ import {
   Attachments,
 } from "@/components/ai-elements/attachments";
 import {
-  Confirmation,
-  ConfirmationAccepted,
-  ConfirmationAction,
-  ConfirmationActions,
-  ConfirmationRejected,
-  ConfirmationRequest,
-  ConfirmationTitle,
-} from "@/components/ai-elements/confirmation";
-import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+  ConversationTopFade,
+} from "@/components/ai-elements/conversation";
+import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputButton,
@@ -53,9 +29,8 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { buttonVariants } from "@/components/ui/button";
-import { InputGroup, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import {
   PLAYGROUND_ATTACHMENT_ACCEPT,
   PLAYGROUND_MAX_FILE_BYTES,
@@ -69,7 +44,7 @@ import {
   resumePendingPlaygroundTurn,
 } from "@/lib/playground-session";
 import type { EveVersionInfo } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { AgentMessage } from "@/components/agent-message";
 import { PlaygroundAuthenticationSettings } from "@/components/playground-authentication-settings";
 import {
   claimPendingPlaygroundTurn,
@@ -78,11 +53,6 @@ import {
   peekPendingPlaygroundTurn,
   type PendingPlaygroundMessage,
 } from "@/lib/playground-route-auth";
-import {
-  groupPlaygroundParts,
-  type PlaygroundActivityPart,
-  type PlaygroundDisplayItem,
-} from "@/lib/playground-activity";
 import { getEveVersionStatus } from "@/components/eve-version-status";
 
 type PlaygroundPanelProps = {
@@ -101,12 +71,11 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   const pendingRouteAuthTurn = useRef<PendingPlaygroundMessage | null>(null);
   const leaveResetSent = useRef(false);
   const [composerError, setComposerError] = useState<string | null>(null);
+  const [hasInputText, setHasInputText] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelTurn] = useState(() => createPlaygroundTurnCanceller());
   const activeTurnAbortController = useRef<AbortController | null>(null);
   const resumedPendingTurn = useRef(false);
-  const conversationEndRef = useRef<HTMLDivElement | null>(null);
-  const followsConversationTail = useRef(true);
   const sessionStateRef = useRef<ClientSessionState | undefined>(undefined);
   // The peek is a render-safe read of the turn stashed before a route-auth
   // redirect; the destructive claim happens in the ref-guarded effect below.
@@ -141,25 +110,11 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
     sessionStateRef.current = agent.session;
   }, [agent.session]);
 
-  useEffect(() => {
-    const updateFollowState = () => {
-      const scroller = document.scrollingElement;
-      if (!scroller) return;
-      followsConversationTail.current =
-        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 160;
-    };
-
-    updateFollowState();
-    window.addEventListener("scroll", updateFollowState, { passive: true });
-    return () => window.removeEventListener("scroll", updateFollowState);
-  }, []);
-
-  useEffect(() => {
-    if (followsConversationTail.current) {
-      conversationEndRef.current?.scrollIntoView({ block: "end" });
-    }
-  }, [agent.data.messages, agent.status]);
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
+  // While an attached session checks for an in-flight turn (eve 0.45
+  // "resuming"), the composer stays idle: active-turn controls appear only
+  // once the turn is confirmed.
+  const isResuming = agent.status === "resuming";
   const versionError = eveVersion.supported
     ? null
     : `Detected Eve ${eveVersion.version ?? "Unknown"}; Eveland requires ${eveVersion.expected}. Upgrade the project's eve dependency before deploying.`;
@@ -172,12 +127,23 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
     ? null
     : (versionError ?? composerError ?? agent.error?.message ?? null);
 
-  async function sendMessageWithRouteAuth(message: PendingPlaygroundMessage) {
+  const lastMessage = agent.data.messages.at(-1);
+  const isPendingAssistantShell =
+    lastMessage?.role === "assistant" &&
+    lastMessage.parts.every((part) => part.type === "step-start");
+  const showPendingThinking =
+    isBusy &&
+    (agent.status === "submitted" || lastMessage?.role !== "assistant" || isPendingAssistantShell);
+
+  async function sendMessageWithRouteAuth(
+    message: PendingPlaygroundMessage,
+    options?: { turnPolicy?: "steer" },
+  ) {
     const abortController = new AbortController();
     activeTurnAbortController.current = abortController;
     pendingRouteAuthTurn.current = message;
     try {
-      await agent.send(message, { signal: abortController.signal });
+      await agent.send(message, { signal: abortController.signal, ...options });
     } finally {
       if (activeTurnAbortController.current === abortController) {
         activeTurnAbortController.current = null;
@@ -218,41 +184,65 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
     };
   }, [projectId]);
 
-  return (
-    <div className="flex min-h-[calc(100svh-3rem)] flex-col md:min-h-svh">
-      <div
-        aria-live="polite"
-        className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 py-10"
-        role="log"
-      >
-        {agent.data.messages.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center">
-            <BotIcon aria-hidden="true" className="mb-2 size-7 text-muted-foreground" />
-            <h1 className="text-2xl font-semibold tracking-tight">Playground</h1>
-            <p className="text-sm text-muted-foreground">
-              Chat with this Agent to test its capabilities.
-            </p>
-          </div>
-        ) : (
-          agent.data.messages.map((message) => (
-            <PlaygroundMessage
-              isBusy={isBusy}
-              key={message.id}
-              message={message}
-              onInputResponse={async (response) => {
-                setComposerError(null);
-                try {
-                  await agent.respond([response]);
-                } catch (responseError) {
-                  setComposerError(toErrorMessage(responseError));
-                }
-              }}
-            />
-          ))
-        )}
-      </div>
+  const requestCancellation = () => {
+    if (isCancelling) return;
+    setComposerError(null);
+    setIsCancelling(true);
+    void cancelTurn({
+      session: sessionHandle,
+      abort: () => activeTurnAbortController.current?.abort(),
+    })
+      .catch((cancelError) => {
+        setComposerError(toErrorMessage(cancelError));
+      })
+      .finally(() => {
+        setIsCancelling(false);
+      });
+  };
 
-      <div className="sticky bottom-0 z-10 mx-auto w-full max-w-2xl shrink-0 bg-background pb-5 pt-2">
+  return (
+    <div className="flex h-[calc(100svh-3rem)] flex-col overflow-hidden md:h-svh">
+      <Conversation aria-live="polite" className="min-h-0 flex-1">
+        <ConversationTopFade />
+        <ConversationContent className="mx-auto w-full max-w-2xl gap-6 px-4 py-10">
+          {agent.data.messages.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center">
+              <BotIcon aria-hidden="true" className="mb-2 size-7 text-muted-foreground" />
+              <h1 className="text-2xl font-semibold tracking-tight">Playground</h1>
+              <p className="text-sm text-muted-foreground">
+                Chat with this Agent to test its capabilities.
+              </p>
+            </div>
+          ) : (
+            agent.data.messages.map((message, index) =>
+              showPendingThinking &&
+              isPendingAssistantShell &&
+              message.id === lastMessage?.id ? null : (
+                <AgentMessage
+                  canRespond={!isBusy && !isResuming}
+                  isStreaming={
+                    agent.status === "streaming" && index === agent.data.messages.length - 1
+                  }
+                  key={message.id}
+                  message={message}
+                  onInputResponses={async (inputResponses) => {
+                    setComposerError(null);
+                    try {
+                      await agent.respond(inputResponses);
+                    } catch (responseError) {
+                      setComposerError(toErrorMessage(responseError));
+                    }
+                  }}
+                />
+              ),
+            )
+          )}
+          {showPendingThinking ? <PendingThinking /> : null}
+        </ConversationContent>
+        <ConversationScrollButton className="bottom-4" />
+      </Conversation>
+
+      <div className="mx-auto w-full max-w-2xl shrink-0 px-4 pb-5 pt-2">
         {routeAuthRedirect ? (
           <Alert className="mb-2">
             <AlertTitle>Redirecting for authorization</AlertTitle>
@@ -280,7 +270,6 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           </Alert>
         ) : null}
         <PromptInput
-          className="[&_[data-slot=input-group]]:rounded-xl [&_[data-slot=input-group]]:shadow-md"
           accept={PLAYGROUND_ATTACHMENT_ACCEPT}
           globalDrop={eveVersion.supported}
           maxFileSize={PLAYGROUND_MAX_FILE_BYTES}
@@ -290,16 +279,20 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           onSubmit={async ({ files, text }) => {
             if (
               !eveVersion.supported ||
-              isBusy ||
+              isResuming ||
               (text.trim().length === 0 && files.length === 0)
             ) {
               return;
             }
 
+            setHasInputText(false);
             setComposerError(null);
+            // While a turn is running, a submitted draft steers the active
+            // turn instead of queueing behind it.
+            const options = isBusy ? { turnPolicy: "steer" as const } : undefined;
             try {
               assertAttachmentTotal(files);
-              await sendMessageWithRouteAuth(createPlaygroundMessage(text, files));
+              await sendMessageWithRouteAuth(createPlaygroundMessage(text, files), options);
             } catch (sendError) {
               setComposerError(toErrorMessage(sendError));
               throw sendError;
@@ -308,12 +301,13 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
         >
           <ComposerAttachments />
           <PromptInputTextarea
-            disabled={isBusy || !eveVersion.supported}
+            disabled={!eveVersion.supported || isResuming}
+            onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
             placeholder="Ask the deployed agent..."
           />
           <PromptInputFooter>
             <PromptInputTools>
-              <ComposerAttachmentButton disabled={isBusy || !eveVersion.supported} />
+              <ComposerAttachmentButton disabled={!eveVersion.supported} />
               <PlaygroundAuthenticationSettings
                 projectId={projectId}
                 tooltip="Configure Playground authentication"
@@ -327,349 +321,55 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
                 }
               />
             </PromptInputTools>
-            <PromptInputSubmit
-              className="rounded-full"
-              disabled={!eveVersion.supported || isCancelling}
-              onStop={() => {
-                if (isCancelling) return;
-                setComposerError(null);
-                setIsCancelling(true);
-                void cancelTurn({
-                  session: sessionHandle,
-                  abort: () => activeTurnAbortController.current?.abort(),
-                })
-                  .catch((cancelError) => {
-                    setComposerError(toErrorMessage(cancelError));
-                  })
-                  .finally(() => {
-                    setIsCancelling(false);
-                  });
-              }}
-              // While an attached session checks for an in-flight turn
-              // (eve 0.45 "resuming"), the composer stays idle: active-turn
-              // controls appear only once the turn is confirmed.
-              status={agent.status === "resuming" ? "ready" : agent.status}
-            >
-              <ArrowUpIcon />
-            </PromptInputSubmit>
+            <ComposerAction
+              disabled={!eveVersion.supported || isResuming || isCancelling}
+              hasInputText={hasInputText}
+              isBusy={isBusy}
+              onCancel={requestCancellation}
+            />
           </PromptInputFooter>
         </PromptInput>
       </div>
-      <div ref={conversationEndRef} />
     </div>
   );
 }
 
-function PlaygroundMessage({
-  message,
+function ComposerAction({
+  disabled,
+  hasInputText,
   isBusy,
-  onInputResponse,
+  onCancel,
 }: {
-  message: EveMessage;
-  isBusy: boolean;
-  onInputResponse: (response: {
-    requestId: string;
-    optionId?: string;
-    text?: string;
-  }) => Promise<void>;
+  readonly disabled: boolean;
+  readonly hasInputText: boolean;
+  readonly isBusy: boolean;
+  readonly onCancel: () => void;
 }) {
-  const displayItems = groupPlaygroundParts(message.parts, message.metadata?.status);
+  const attachments = usePromptInputAttachments();
+  const canSubmit = hasInputText || attachments.files.length > 0;
+
+  if (!isBusy || canSubmit) {
+    return <PromptInputSubmit disabled={disabled} />;
+  }
 
   return (
-    <Message from={message.role}>
-      <MessageContent className="group-[.is-user]:rounded-2xl group-[.is-user]:rounded-br-sm group-[.is-user]:bg-muted group-[.is-user]:px-3.5 group-[.is-user]:py-2.5">
-        {displayItems.map((item, index) => (
-          <PlaygroundDisplayItemView
-            item={item}
-            isBusy={isBusy}
-            key={playgroundDisplayItemKey(message.id, item, index)}
-            onInputResponse={onInputResponse}
-          />
-        ))}
+    <PromptInputButton aria-label="Stop" disabled={disabled} onClick={onCancel} variant="outline">
+      <SquareIcon className="size-3 fill-current" />
+    </PromptInputButton>
+  );
+}
+
+function PendingThinking() {
+  return (
+    <Message aria-live="polite" from="assistant">
+      <MessageContent>
+        <div className="mb-4 flex w-full items-center gap-2 text-muted-foreground text-sm">
+          <BrainIcon className="size-4" />
+          <Shimmer duration={1}>Thinking</Shimmer>
+        </div>
       </MessageContent>
     </Message>
   );
-}
-
-function PlaygroundDisplayItemView({
-  item,
-  isBusy,
-  onInputResponse,
-}: {
-  item: PlaygroundDisplayItem;
-  isBusy: boolean;
-  onInputResponse: (response: {
-    requestId: string;
-    optionId?: string;
-    text?: string;
-  }) => Promise<void>;
-}) {
-  if (item.kind === "activity") {
-    return (
-      <AgentActivity compact count={item.parts.length} status={item.status}>
-        {item.parts.map((part, index) => (
-          <PlaygroundActivityPartView
-            isBusy={isBusy}
-            key={playgroundActivityPartKey(part, index)}
-            onInputResponse={onInputResponse}
-            part={part}
-          />
-        ))}
-      </AgentActivity>
-    );
-  }
-
-  const { part } = item;
-  if (part.type === "text") {
-    return <MessageResponse isAnimating={part.state === "streaming"}>{part.text}</MessageResponse>;
-  }
-  const attachment = {
-    type: "file" as const,
-    id: `${part.filename ?? part.mediaType}:${part.size ?? 0}`,
-    filename: part.filename,
-    mediaType: part.mediaType,
-    url: part.url ?? "",
-  };
-  return (
-    <Attachments variant="inline">
-      <Attachment data={attachment}>
-        <AttachmentPreview />
-        <AttachmentInfo showMediaType />
-      </Attachment>
-    </Attachments>
-  );
-}
-
-function PlaygroundActivityPartView({
-  part,
-  isBusy,
-  onInputResponse,
-}: {
-  part: PlaygroundActivityPart;
-  isBusy: boolean;
-  onInputResponse: (response: {
-    requestId: string;
-    optionId?: string;
-    text?: string;
-  }) => Promise<void>;
-}) {
-  if (part.type === "reasoning") {
-    return (
-      <AgentActivityReasoning compact isStreaming={part.state === "streaming"} text={part.text} />
-    );
-  }
-  if (part.type === "authorization") {
-    return <AuthorizationPrompt part={part} />;
-  }
-  return <PlaygroundTool isBusy={isBusy} onInputResponse={onInputResponse} part={part} />;
-}
-
-function PlaygroundTool({
-  part,
-  isBusy,
-  onInputResponse,
-}: {
-  part: EveDynamicToolPart;
-  isBusy: boolean;
-  onInputResponse: (response: {
-    requestId: string;
-    optionId?: string;
-    text?: string;
-  }) => Promise<void>;
-}) {
-  const request = part.toolMetadata?.eve?.inputRequest;
-  const response = part.toolMetadata?.eve?.inputResponse;
-  const action = part.toolMetadata?.eve;
-  const selectedOption = request?.options?.find((option) => option.id === response?.optionId);
-  const respondedApproval =
-    part.state === "approval-responded" && response
-      ? {
-          id: part.approval.id,
-          approved: !isRejectOption(selectedOption?.id, selectedOption?.style),
-          reason: response.text,
-        }
-      : part.approval
-        ? part.approval.approved === undefined
-          ? { id: part.approval.id }
-          : { id: part.approval.id, approved: part.approval.approved, reason: part.approval.reason }
-        : undefined;
-  const output = part.state === "output-available" ? part.output : undefined;
-  const errorText = part.state === "output-error" ? part.errorText : undefined;
-
-  return (
-    <AgentActivityTool
-      compact
-      errorText={errorText}
-      input={part.input}
-      kind={action?.kind === "subagent-call" ? "subagent" : "tool"}
-      name={action?.name ?? part.toolName}
-      openOnAttention={part.state === "approval-requested"}
-      output={output}
-      status={playgroundToolStatus(part)}
-    >
-      {request ? (
-        <Confirmation approval={respondedApproval} state={part.state}>
-          <ConfirmationTitle>{request.prompt}</ConfirmationTitle>
-          <ConfirmationRequest>
-            <HitlResponseForm disabled={isBusy} onRespond={onInputResponse} request={request} />
-          </ConfirmationRequest>
-          <ConfirmationAccepted>
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CheckCircle2Icon /> {selectedOption?.label ?? response?.text ?? "Response submitted"}
-            </p>
-          </ConfirmationAccepted>
-          <ConfirmationRejected>
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <XCircleIcon /> {selectedOption?.label ?? "Request declined"}
-            </p>
-          </ConfirmationRejected>
-        </Confirmation>
-      ) : null}
-    </AgentActivityTool>
-  );
-}
-
-function playgroundToolStatus(part: EveDynamicToolPart): AgentActivityToolStatus {
-  if (part.state === "output-available") return "completed";
-  if (part.state === "output-error") return "failed";
-  if (part.state === "output-denied") return "cancelled";
-  return "pending";
-}
-
-function HitlResponseForm({
-  request,
-  disabled,
-  onRespond,
-}: {
-  request: EveMessageInputRequest;
-  disabled: boolean;
-  onRespond: (response: { requestId: string; optionId?: string; text?: string }) => Promise<void>;
-}) {
-  const [text, setText] = useState("");
-  const [isResponding, setIsResponding] = useState(false);
-  const hasOptions = Boolean(request.options?.length);
-  const allowText = request.display === "text" || request.allowFreeform || !hasOptions;
-
-  async function respond(response: { requestId: string; optionId?: string; text?: string }) {
-    setIsResponding(true);
-    try {
-      await onRespond(response);
-    } finally {
-      setIsResponding(false);
-    }
-  }
-
-  return (
-    <div className="mt-3 flex flex-col gap-3">
-      {hasOptions ? (
-        <ConfirmationActions className="flex-wrap">
-          {request.options?.map((option) => (
-            <ConfirmationAction
-              disabled={disabled || isResponding}
-              key={option.id}
-              onClick={() => void respond({ requestId: request.requestId, optionId: option.id })}
-              variant={
-                option.style === "danger"
-                  ? "destructive"
-                  : option.style === "primary"
-                    ? "default"
-                    : "outline"
-              }
-            >
-              {option.label}
-            </ConfirmationAction>
-          ))}
-        </ConfirmationActions>
-      ) : null}
-      {allowText ? (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const trimmed = text.trim();
-            if (trimmed.length > 0) {
-              void respond({ requestId: request.requestId, text: trimmed });
-            }
-          }}
-        >
-          <InputGroup>
-            <InputGroupInput
-              aria-label="Response"
-              disabled={disabled || isResponding}
-              onChange={(event) => setText(event.target.value)}
-              placeholder="Type your response..."
-              value={text}
-            />
-            <InputGroupButton
-              disabled={disabled || isResponding || text.trim().length === 0}
-              type="submit"
-              variant="secondary"
-            >
-              Respond
-            </InputGroupButton>
-          </InputGroup>
-        </form>
-      ) : null}
-    </div>
-  );
-}
-
-function AuthorizationPrompt({ part }: { part: EveAuthorizationPart }) {
-  const isCompleted = part.state === "completed";
-  return (
-    <Alert>
-      <PlugZapIcon />
-      <AlertTitle>{part.displayName}</AlertTitle>
-      <AlertDescription className="flex flex-col gap-3">
-        <p>
-          {isCompleted
-            ? part.outcome === "authorized"
-              ? "Connection authorized."
-              : (part.reason ?? `Authorization ${part.outcome}.`)
-            : part.description}
-        </p>
-        {!isCompleted && part.authorization?.instructions ? (
-          <p>{part.authorization.instructions}</p>
-        ) : null}
-        {!isCompleted && part.authorization?.userCode ? (
-          <p>
-            Code:{" "}
-            <span className="font-mono font-medium text-foreground">
-              {part.authorization.userCode}
-            </span>
-          </p>
-        ) : null}
-        {!isCompleted && part.authorization?.url ? (
-          <a
-            className={cn(buttonVariants({ size: "sm" }), "w-fit")}
-            href={part.authorization.url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Continue authorization <ArrowUpRightIcon />
-          </a>
-        ) : null}
-      </AlertDescription>
-    </Alert>
-  );
-}
-
-function playgroundDisplayItemKey(
-  messageId: string,
-  item: PlaygroundDisplayItem,
-  index: number,
-): string {
-  if (item.kind === "part") {
-    return `${messageId}:${item.part.type}:${index}`;
-  }
-  const firstPart = item.parts[0];
-  return `${messageId}:activity:${index}:${firstPart ? playgroundActivityPartKey(firstPart, 0) : "empty"}`;
-}
-
-function playgroundActivityPartKey(part: PlaygroundActivityPart, index: number): string {
-  if (part.type === "dynamic-tool") return part.toolCallId;
-  if (part.type === "authorization")
-    return `authorization:${part.turnId}:${part.stepIndex}:${part.name}`;
-  return `reasoning:${part.stepIndex ?? index}`;
 }
 
 function ComposerAttachments() {
@@ -707,10 +407,6 @@ function ComposerAttachmentButton({ disabled }: { disabled: boolean }) {
       <PlusIcon />
     </PromptInputButton>
   );
-}
-
-function isRejectOption(id: string | undefined, style: string | undefined): boolean {
-  return style === "danger" || Boolean(id && /^(deny|reject|decline|cancel|no)$/i.test(id));
 }
 
 function assertAttachmentTotal(files: readonly FileUIPart[]): void {
