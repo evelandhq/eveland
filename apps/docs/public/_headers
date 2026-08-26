@@ -1,2 +1,8 @@
 /_next/static/*
   Cache-Control: public,max-age=31536000,immutable
+
+# The exported search index has no file extension, so it gets no content type
+# by default; without one Cloudflare serves the ~6.8 MB JSON uncompressed.
+/api/search
+  Content-Type: application/json; charset=utf-8
+  Cache-Control: public,max-age=3600
