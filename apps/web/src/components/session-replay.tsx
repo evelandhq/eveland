@@ -1,27 +1,28 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BotIcon, ChevronDownIcon, MessageCircleIcon, XCircleIcon } from "lucide-react";
+import { BotIcon, ChevronRightIcon, MessageCircleIcon, XCircleIcon } from "lucide-react";
 import {
   buildSessionTranscript,
-  groupTranscriptItems,
   type SessionTranscript,
-  type TranscriptActivityItem,
-  type TranscriptDisplayItem,
+  type TranscriptItem,
   type TranscriptNode,
   type TranscriptToolCall,
   type TranscriptTurn,
 } from "@evelandhq/core/transcript";
 import { DateTime } from "@/components/date-time";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
+import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { SessionTrace } from "@/components/session-trace";
 import {
-  AgentActivity,
-  AgentActivityReasoning,
-  AgentActivityTool,
-  shortenActivityText,
-  useAgentActivityAutoCollapse,
-} from "@/components/agent-activity";
+  BashToolContent,
+  Tool,
+  ToolContent,
+  ToolHeader,
+  ToolInput,
+  ToolOutput,
+  type ToolPart,
+} from "@/components/ai-elements/tool";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
@@ -108,8 +109,6 @@ function ChatView({ transcript }: { transcript: SessionTranscript }) {
 }
 
 function TurnView({ nested = false, turn }: { nested?: boolean; turn: TranscriptTurn }) {
-  const displayItems = groupTranscriptItems(turn);
-
   return (
     <div className={cn("flex flex-col", nested ? "gap-3" : "gap-4")}>
       <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
@@ -121,48 +120,37 @@ function TurnView({ nested = false, turn }: { nested?: boolean; turn: Transcript
         {turn.status === "cancelled" ? <span className="font-medium">cancelled</span> : null}
         <Separator className="flex-1" />
       </div>
-      {displayItems.map((item, index) => (
-        <DisplayItemView item={item} key={displayItemKey(item, index)} />
+      {turn.items.map((item, index) => (
+        <TranscriptItemView item={item} key={transcriptItemKey(item, index)} />
       ))}
     </div>
   );
 }
 
-function DisplayItemView({ item }: { item: TranscriptDisplayItem }) {
+function TranscriptItemView({ item }: { item: TranscriptItem }) {
   if (item.kind === "user" || item.kind === "assistant") {
     if (!item.text) return null;
     return (
       <Message from={item.kind}>
-        <MessageContent className="group-[.is-user]:rounded-2xl group-[.is-user]:rounded-br-sm group-[.is-user]:bg-muted group-[.is-user]:px-3.5 group-[.is-user]:py-2.5">
+        <MessageContent>
           <MessageResponse>{item.text}</MessageResponse>
         </MessageContent>
       </Message>
     );
   }
-  return <ActivityBlock activity={item} />;
-}
-
-type ActivityGroup = Extract<TranscriptDisplayItem, { kind: "activity" }>;
-
-function ActivityBlock({ activity }: { activity: ActivityGroup }) {
-  return (
-    <AgentActivity compact count={activity.items.length} status={activity.status}>
-      {activity.items.map((item, index) => (
-        <ActivityItemView item={item} key={activityItemKey(item, index)} />
-      ))}
-    </AgentActivity>
-  );
-}
-
-function ActivityItemView({ item }: { item: TranscriptActivityItem }) {
   if (item.kind === "reasoning") {
-    return <AgentActivityReasoning compact text={item.text} />;
+    return (
+      <Reasoning isStreaming={false}>
+        <ReasoningTrigger />
+        <ReasoningContent>{item.text}</ReasoningContent>
+      </Reasoning>
+    );
   }
   if (item.kind === "tool") {
     return item.call.isSubagent ? (
       <SubagentTask call={item.call} />
     ) : (
-      <ToolActivity call={item.call} />
+      <ToolCallView call={item.call} />
     );
   }
   return (
@@ -181,45 +169,61 @@ function ActivityItemView({ item }: { item: TranscriptActivityItem }) {
   );
 }
 
-function ToolActivity({ call }: { call: TranscriptToolCall }) {
+function toolPartState(status: TranscriptToolCall["status"]): ToolPart["state"] {
+  switch (status) {
+    case "completed":
+      return "output-available";
+    case "failed":
+      return "output-error";
+    case "cancelled":
+      return "output-denied";
+    case "pending":
+      return "input-available";
+  }
+}
+
+function ToolCallView({ call }: { call: TranscriptToolCall }) {
   return (
-    <AgentActivityTool
-      compact
-      errorText={call.errorText ?? undefined}
-      input={call.input}
-      name={call.name}
-      output={call.output ?? undefined}
-      status={call.status}
-    />
+    <Tool>
+      <ToolHeader
+        state={toolPartState(call.status)}
+        title={call.name}
+        toolName={call.name}
+        type="dynamic-tool"
+      />
+      <ToolContent>
+        {call.name === "bash" ? (
+          <BashToolContent
+            errorText={call.errorText ?? undefined}
+            input={call.input}
+            output={call.output}
+          />
+        ) : (
+          <>
+            <ToolInput input={call.input} />
+            <ToolOutput errorText={call.errorText ?? undefined} output={call.output} />
+          </>
+        )}
+      </ToolContent>
+    </Tool>
   );
 }
 
 function SubagentTask({ call }: { call: TranscriptToolCall }) {
   const node = call.child;
   const unresolved = node?.resolutionStatus === "unresolved";
-  const status: ActivityGroup["status"] = unresolved
-    ? "cancelled"
-    : call.status === "pending"
-      ? "running"
-      : call.status === "failed"
-        ? "failed"
-        : call.status === "cancelled"
-          ? "cancelled"
-          : "completed";
-  const [open, setOpen] = useAgentActivityAutoCollapse(status);
+  const running = !unresolved && call.status === "pending";
   const actionCount = node ? nodeActivityCount(node) : 0;
   const preview = node ? lastAssistantMessage(node) : null;
-  const stateLabel = unresolved ? "unresolved" : status === "running" ? "working" : status;
+  const stateLabel = unresolved ? "unresolved" : running ? "working" : call.status;
 
   return (
-    <Collapsible className="group/subagent" onOpenChange={setOpen} open={open}>
-      <CollapsibleTrigger className="flex w-full items-start gap-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground">
-        <BotIcon className="mt-0.5 size-3.5 shrink-0" />
+    <Collapsible className="group" defaultOpen={running || call.status === "failed"}>
+      <CollapsibleTrigger className="flex w-full items-center gap-2 py-0.5 text-left text-muted-foreground transition-colors hover:text-foreground">
+        <BotIcon className="size-4 shrink-0" />
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate font-medium text-foreground">
-              {node?.agentName ?? node?.agentId ?? call.name}
-            </span>
+          <span className="flex items-center gap-1.5 text-sm">
+            <span className="truncate">{node?.agentName ?? node?.agentId ?? call.name}</span>
             <span>· {stateLabel}</span>
             {actionCount > 0 ? (
               <span>
@@ -227,12 +231,14 @@ function SubagentTask({ call }: { call: TranscriptToolCall }) {
               </span>
             ) : null}
           </span>
-          {preview ? <span className="mt-0.5 block truncate">{preview}</span> : null}
+          {preview ? (
+            <span className="mt-0.5 block truncate text-xs">{shortenText(preview)}</span>
+          ) : null}
         </span>
-        {status === "running" ? (
-          <Spinner className="size-3.5" />
+        {running ? (
+          <Spinner className="size-3.5 shrink-0" />
         ) : (
-          <ChevronDownIcon className="mt-0.5 size-3.5 shrink-0 transition-transform group-data-[panel-open]/subagent:rotate-180" />
+          <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[panel-open]:rotate-90" />
         )}
       </CollapsibleTrigger>
       <CollapsibleContent className="ml-1.5 mt-2 border-l border-border pl-4 data-[ending-style]:animate-out data-[starting-style]:animate-in">
@@ -292,7 +298,7 @@ function SubagentTranscript({ node }: { node: TranscriptNode }) {
 function lastAssistantMessage(node: TranscriptNode): string | null {
   for (let index = node.turns.length - 1; index >= 0; index -= 1) {
     const turn = node.turns[index]!;
-    if (turn.assistantMessage) return shortenActivityText(turn.assistantMessage);
+    if (turn.assistantMessage) return turn.assistantMessage;
   }
   return null;
 }
@@ -301,21 +307,20 @@ function nodeActivityCount(node: TranscriptNode): number {
   return node.turns.reduce(
     (total, turn) =>
       total +
-      groupTranscriptItems(turn).reduce(
-        (count, item) => count + (item.kind === "activity" ? item.items.length : 0),
+      turn.items.reduce(
+        (count, item) => count + (item.kind === "user" || item.kind === "assistant" ? 0 : 1),
         0,
       ),
     0,
   );
 }
 
-function displayItemKey(item: TranscriptDisplayItem, index: number): string {
-  if (item.kind === "activity")
-    return `activity-${index}-${item.items[0] ? activityItemKey(item.items[0], 0) : "empty"}`;
-  return `${item.kind}-${item.eventAt}-${index}`;
+function shortenText(value: string, limit = 96): string {
+  const collapsed = value.replaceAll(/\s+/g, " ").trim();
+  return collapsed.length > limit ? `${collapsed.slice(0, limit - 1)}…` : collapsed;
 }
 
-function activityItemKey(item: TranscriptActivityItem, index: number): string {
+function transcriptItemKey(item: TranscriptItem, index: number): string {
   if (item.kind === "tool") return item.call.callId ?? `tool-${item.call.eventAt}-${index}`;
   return `${item.kind}-${item.eventAt}-${index}`;
 }

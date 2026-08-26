@@ -33,7 +33,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ChatStatus, FileUIPart, SourceDocumentUIPart } from "ai";
-import { CornerDownLeftIcon, ImageIcon, Monitor, PlusIcon, SquareIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, ImageIcon, Monitor, PlusIcon, SquareIcon, XIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import type {
   ChangeEvent,
@@ -861,8 +861,16 @@ export const PromptInput = ({
         title="Upload files"
         type="file"
       />
-      <form className={cn("w-full", className)} onSubmit={handleSubmit} ref={formRef} {...props}>
-        <InputGroup className="overflow-hidden">{children}</InputGroup>
+      <form className="w-full" onSubmit={handleSubmit} ref={formRef} {...props}>
+        <InputGroup
+          className={cn(
+            "overflow-hidden rounded-2xl bg-card/80 shadow-sm backdrop-blur-md",
+            "focus-within:border-foreground! has-[[data-slot=input-group-control]:focus-visible]:border-foreground!",
+            className,
+          )}
+        >
+          {children}
+        </InputGroup>
       </form>
     </>
   );
@@ -987,7 +995,7 @@ export const PromptInputTextarea = ({
 
   return (
     <InputGroupTextarea
-      className={cn("field-sizing-content max-h-48 min-h-16", className)}
+      className={cn("field-sizing-content max-h-48 min-h-18 text-sm!", className)}
       name="message"
       onCompositionEnd={handleCompositionEnd}
       onCompositionStart={handleCompositionStart}
@@ -1049,7 +1057,11 @@ export const PromptInputButton = ({
 
   const button = (
     <InputGroupButton
-      className={cn(className)}
+      className={cn(
+        "rounded-full",
+        variant === "outline" && "bg-card hover:bg-card dark:hover:bg-input/30",
+        className,
+      )}
       size={newSize}
       type="button"
       variant={variant}
@@ -1127,7 +1139,7 @@ export const PromptInputSubmit = ({
 }: PromptInputSubmitProps) => {
   const isGenerating = status === "submitted" || status === "streaming";
 
-  let Icon = children ?? <CornerDownLeftIcon className="size-4" />;
+  let Icon = children ?? <ArrowUpIcon className="size-4" />;
 
   if (status === "submitted") {
     Icon = <Spinner />;
