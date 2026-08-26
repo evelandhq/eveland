@@ -4,6 +4,26 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.42.0](https://github.com/evelandhq/eveland/compare/v0.41.0...v0.42.0) (2026-08-26)
+
+
+### Features
+
+* **docs:** switch eveland.ai to a fully static export on Workers Assets ([#395](https://github.com/evelandhq/eveland/issues/395)) ([6f1e679](https://github.com/evelandhq/eveland/commit/6f1e6799488ba2b2bb6d3a21545bf07d26d44cb5))
+* **site:** star brand mark, blue accent, and homepage redesign with SEO pass ([#392](https://github.com/evelandhq/eveland/issues/392)) ([adb7332](https://github.com/evelandhq/eveland/commit/adb733200514e56b40fc2e176dc79623dfe00f57))
+* support Eve 0.45.0 and drop the 0.42 line ([#398](https://github.com/evelandhq/eveland/issues/398)) ([37877fa](https://github.com/evelandhq/eveland/commit/37877faecc7a844da80ac6c764fac8a871e5ced1))
+* **web:** rebuild Playground and session replay on eve's Web Chat surfaces ([#399](https://github.com/evelandhq/eveland/issues/399)) ([ed66d0d](https://github.com/evelandhq/eveland/commit/ed66d0ded8136f034c3365883fa2b61956127bd3))
+
+
+### Bug Fixes
+
+* **auth:** give re-invited existing accounts an explicit rejoin flow ([#400](https://github.com/evelandhq/eveland/issues/400)) ([22effc6](https://github.com/evelandhq/eveland/commit/22effc63e60e1e25a432cd5b05db4753b15614b5)), closes [#383](https://github.com/evelandhq/eveland/issues/383)
+* **compose:** keep the development dispatcher out of the production stack ([b57d9b1](https://github.com/evelandhq/eveland/commit/b57d9b151c4919bc51b0e5d7a1f4eb359cc4a34e))
+* **docs:** export English routes at the root instead of rewriting /en ([b57d9b1](https://github.com/evelandhq/eveland/commit/b57d9b151c4919bc51b0e5d7a1f4eb359cc4a34e))
+* **docs:** serve the og image as a static asset to fit the Worker size limit ([#394](https://github.com/evelandhq/eveland/issues/394)) ([e27a59b](https://github.com/evelandhq/eveland/commit/e27a59bf6b921156b194b5de73be85ae8de363f8))
+* **docs:** serve the static search index as compressible JSON ([#396](https://github.com/evelandhq/eveland/issues/396)) ([89df28f](https://github.com/evelandhq/eveland/commit/89df28f074f3161ba92dd5a11a3b812eeb14fbb0))
+* **site:** make the homepage install snippet a safe stable-release start ([b57d9b1](https://github.com/evelandhq/eveland/commit/b57d9b151c4919bc51b0e5d7a1f4eb359cc4a34e))
+
 ## [0.41.0](https://github.com/evelandhq/eveland/compare/v0.40.0...v0.41.0) (2026-08-25)
 
 
