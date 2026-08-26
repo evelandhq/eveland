@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.45.0
+  eve: 0.45.2
 catalogs:
   eve-matrix:
     eve-oldest: npm:eve@0.44.4
@@ -47,7 +47,7 @@ overrides:
 # `eve`, `@evelandhq/sandbox-bwrap`, and `@evelandhq/workflow-world` are
 # excluded by name rather than by version because they are frequently released
 # first-party packages. The exact @workflow/* entries are the reviewed spec-v6
-# graph required by Eve 0.45.0 (unchanged since 0.38.3: eve's @workflow bumps
+# graph required by Eve 0.45.2 (unchanged since 0.38.3: eve's @workflow bumps
 # through 0.45 are devDependencies only); the @ai-sdk and ai entries are
 # likewise pinned third-party decisions.
 minimumReleaseAgeExclude:
