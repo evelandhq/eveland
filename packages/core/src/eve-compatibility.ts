@@ -1,21 +1,21 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.42.x",
-      verifiedVersion: "0.42.0",
+      range: "0.44.x",
+      verifiedVersion: "0.44.4",
       dependencyName: "eve-oldest",
     },
     {
-      range: "0.44.x",
-      verifiedVersion: "0.44.4",
+      range: "0.45.x",
+      verifiedVersion: "0.45.0",
       dependencyName: "eve",
     },
   ],
-  // 0.43 was superseded by 0.44 four hours after release and never hosted a
-  // real deployment, so the window skips it (as 0.40/0.41 were skipped before
-  // it). The range is the union of the supported lines, not their hull -- a
-  // hull would admit the gap.
-  peerDependencyRange: ">=0.42.0 <0.43.0 || >=0.44.0 <0.45.0",
+  // 0.44 and 0.45 are consecutive minors, so the window is a single
+  // contiguous run again (0.40/0.41 and 0.43 were skipped in earlier
+  // windows). The range stays the union of the supported lines, not their
+  // hull -- the distinction matters again the next time a line is skipped.
+  peerDependencyRange: ">=0.44.0 <0.46.0",
 } as const;
 
 export type SupportedEveVersionRange =

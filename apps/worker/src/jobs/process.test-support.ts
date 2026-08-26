@@ -57,7 +57,7 @@ export async function recordReadyDispatcherFixture(
   });
 }
 
-export async function createFixtureEveProject(eveVersion = "0.42.0"): Promise<string> {
+export async function createFixtureEveProject(eveVersion = "0.44.4"): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-eve-"));
   await mkdir(path.join(root, "agent", "schedules"), { recursive: true });
   await writeFile(

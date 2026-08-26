@@ -17,7 +17,7 @@ describe("scanEveSource", () => {
         await mkdir(path.join(sourcePath, "agent"), { recursive: true });
         await writeFile(
           path.join(sourcePath, "package.json"),
-          JSON.stringify({ dependencies: { eve: "^0.42.0" } }),
+          JSON.stringify({ dependencies: { eve: "^0.44.4" } }),
         );
         await writeFile(path.join(sourcePath, "agent", "instructions.md"), "You are concise.");
         await writeFile(path.join(sourcePath, lockfile), "x".repeat(256 * 1024 + 1));
@@ -40,7 +40,7 @@ describe("scanEveSource", () => {
       await mkdir(path.join(sourcePath, "agent"), { recursive: true });
       await writeFile(
         path.join(sourcePath, "package.json"),
-        JSON.stringify({ dependencies: { eve: "^0.42.0" } }),
+        JSON.stringify({ dependencies: { eve: "^0.44.4" } }),
       );
       await writeFile(path.join(sourcePath, "agent", "instructions.md"), "You are concise.");
       await writeFile(
@@ -64,7 +64,7 @@ describe("scanEveSource", () => {
       await mkdir(path.join(sourcePath, "agent"), { recursive: true });
       await writeFile(
         path.join(sourcePath, "package.json"),
-        '{"name":"agent\\u0000name","dependencies":{"eve":"^0.42.0"}}',
+        '{"name":"agent\\u0000name","dependencies":{"eve":"^0.44.4"}}',
       );
       await writeFile(path.join(sourcePath, "agent", "instructions.md"), "You are concise.");
 
