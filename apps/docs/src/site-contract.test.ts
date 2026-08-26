@@ -38,15 +38,15 @@ describe("Eveland public website contract", () => {
     expect(source("../next.config.mjs")).toContain('output: "export"');
   });
 
-  test("keeps English at the root through edge redirects", () => {
+  test("exports English at the root and only 301s legacy /en URLs", () => {
     const redirects = source("../public/_redirects");
 
     expect(redirects).toContain("/en / 301");
     expect(redirects).toContain("/en/docs /docs 301");
     expect(redirects).toContain("/en/docs/* /docs/:splat 301");
-    expect(redirects).toContain("/ /en 200");
-    expect(redirects).toContain("/docs /en/docs 200");
-    expect(redirects).toContain("/docs/* /en/docs/:splat 200");
+    // Never serve /en content on prefix-less URLs via 200 rewrites: the
+    // exported HTML embeds its own path and hydration breaks (React #418).
+    expect(redirects).not.toContain(" 200");
     expect(source("../src/app/api/search/route.ts")).toContain("staticGET");
   });
 
@@ -113,8 +113,10 @@ describe("Eveland public website contract", () => {
   test("publishes English and Chinese locale routes", () => {
     expect(source("./lib/i18n.ts")).toContain('languages: ["en", "zh"]');
     expect(source("./lib/i18n.ts")).toContain('defaultLanguage: "en"');
-    expect(existsSync(path("./app/[lang]/page.tsx"))).toBe(true);
-    expect(existsSync(path("./app/[lang]/docs/[[...slug]]/page.tsx"))).toBe(true);
+    expect(existsSync(path("./app/(en)/page.tsx"))).toBe(true);
+    expect(existsSync(path("./app/(en)/docs/[[...slug]]/page.tsx"))).toBe(true);
+    expect(existsSync(path("./app/(zh)/zh/page.tsx"))).toBe(true);
+    expect(existsSync(path("./app/(zh)/zh/docs/[[...slug]]/page.tsx"))).toBe(true);
   });
 
   test("localizes the documentation chrome and production diagrams", () => {
@@ -193,7 +195,7 @@ describe("Eveland public website contract", () => {
   });
 
   test("makes production deployment the primary homepage journey", () => {
-    const page = source("./app/[lang]/page.tsx");
+    const page = source("./components/home-page.tsx");
     const copy = source("./lib/site-copy.ts");
 
     expect(page).toContain("<DeploymentFlow");
@@ -207,7 +209,7 @@ describe("Eveland public website contract", () => {
   test("mirrors the Eve documentation shell with the system font stack", () => {
     const globalStyles = source("./app/global.css");
     const docsStyles = source("./app/documentation.css");
-    const docsLayout = source("./app/[lang]/docs/layout.tsx");
+    const docsLayout = source("./components/docs-shell.tsx");
     const docsHeader = source("./components/docs-header.tsx");
 
     expect(docsLayout).toContain("<DocsHeader");
@@ -239,7 +241,7 @@ describe("Eveland public website contract", () => {
   });
 
   test("shows Fumadocs page actions for every localized document", () => {
-    const page = source("./app/[lang]/docs/[[...slug]]/page.tsx");
+    const page = source("./components/docs-slug-page.tsx");
 
     expect(page).toContain("MarkdownCopyButton");
     expect(page).toContain("ViewOptionsPopover");
@@ -275,7 +277,7 @@ describe("Eveland public website contract", () => {
   });
 
   test("declares smooth scrolling and provides a site icon", () => {
-    expect(source("./app/[lang]/layout.tsx")).toContain('data-scroll-behavior="smooth"');
+    expect(source("./components/locale-shell.tsx")).toContain('data-scroll-behavior="smooth"');
     expect(existsSync(path("./app/icon.svg"))).toBe(true);
   });
 });

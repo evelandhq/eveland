@@ -11,12 +11,12 @@ import {
 import { getMDXComponents } from "@/components/mdx";
 import { source } from "@/lib/source";
 
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ lang: string; slug?: string[] }>;
-}) {
-  const { lang, slug } = await params;
+import type { Language } from "@/lib/i18n";
+
+export type DocsSlugParams = Promise<{ slug?: string[] }>;
+
+export async function DocsSlugPage({ lang, params }: { lang: Language; params: DocsSlugParams }) {
+  const { slug } = await params;
   const page = source.getPage(slug, lang);
   if (!page) notFound();
   const MDX = page.data.body;
@@ -50,16 +50,15 @@ export default async function Page({
   );
 }
 
-export function generateStaticParams() {
-  return source.generateParams();
+export function docsStaticParams(lang: Language) {
+  return source
+    .generateParams()
+    .filter((entry) => entry.lang === lang)
+    .map(({ slug }) => ({ slug }));
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ lang: string; slug?: string[] }>;
-}): Promise<Metadata> {
-  const { lang, slug } = await params;
+export async function docsMetadata(lang: Language, params: DocsSlugParams): Promise<Metadata> {
+  const { slug } = await params;
   const page = source.getPage(slug, lang);
   if (!page) notFound();
 

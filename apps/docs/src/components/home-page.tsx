@@ -5,24 +5,16 @@ import { DeploymentFlow } from "@/components/deployment-flow";
 import { ProductionFoundations } from "@/components/production-foundations";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { isLanguage } from "@/lib/i18n";
+import type { Language } from "@/lib/i18n";
 import { getSiteCopy, githubUrl, siteUrl } from "@/lib/site-copy";
 import { localizedHref } from "@/lib/urls";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ lang: string }>;
-}): Promise<Metadata> {
-  const { lang } = await params;
-  if (!isLanguage(lang)) return {};
+export function homeMetadata(lang: Language): Metadata {
   const t = getSiteCopy(lang);
   return { title: { absolute: t.meta.title }, description: t.meta.description };
 }
 
-export default async function HomePage({ params }: { params: Promise<{ lang: string }> }) {
-  const { lang: candidate } = await params;
-  const lang = isLanguage(candidate) ? candidate : "en";
+export function HomePage({ lang }: { lang: Language }) {
   const t = getSiteCopy(lang);
   const productionHref = localizedHref(lang, "/docs/production");
   const architectureHref = localizedHref(lang, "/docs/reference/architecture");
