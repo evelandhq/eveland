@@ -2,24 +2,11 @@ import { createMDX } from "fumadocs-mdx/next";
 
 const withMDX = createMDX();
 
+// The site is fully static: `output: "export"` emits plain files served by
+// Cloudflare Workers Assets, so there is no server bundle to hit the Worker
+// size limit. The en-at-root URL scheme (formerly Next redirects/rewrites)
+// lives in public/_redirects, which Workers Assets evaluates at the edge.
 export default withMDX({
   reactStrictMode: true,
-  async redirects() {
-    return [
-      { source: "/en", destination: "/", permanent: true },
-      { source: "/en/docs", destination: "/docs", permanent: true },
-      { source: "/en/docs/:path*", destination: "/docs/:path*", permanent: true },
-    ];
-  },
-  async rewrites() {
-    return {
-      beforeFiles: [],
-      afterFiles: [
-        { source: "/", destination: "/en" },
-        { source: "/docs", destination: "/en/docs" },
-        { source: "/docs/:path*", destination: "/en/docs/:path*" },
-      ],
-      fallback: [],
-    };
-  },
+  output: "export",
 });

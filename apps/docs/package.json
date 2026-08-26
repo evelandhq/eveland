@@ -8,15 +8,13 @@
     "generate:llm-pages": "node scripts/generate-llm-pages.mjs",
     "dev": "pnpm generate:llm-pages && next dev --port 3001",
     "build": "pnpm generate:llm-pages && next build",
-    "build:cloudflare": "pnpm generate:llm-pages && opennextjs-cloudflare build",
-    "preview:cloudflare": "pnpm generate:llm-pages && opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy:cloudflare": "opennextjs-cloudflare deploy",
+    "build:cloudflare": "pnpm generate:llm-pages && next build",
+    "preview:cloudflare": "pnpm build:cloudflare && wrangler dev",
     "typecheck": "next typegen && fumadocs-mdx && tsc -p tsconfig.json --noEmit",
     "test": "vitest run src",
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
-    "@orama/tokenizers": "3.1.18",
     "fumadocs-core": "16.14.0",
     "fumadocs-mdx": "15.3.0",
     "fumadocs-ui": "16.14.0",
@@ -26,7 +24,6 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "^1.20.2",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/mdx": "^2.0.14",
     "@types/node": "^26.2.0",

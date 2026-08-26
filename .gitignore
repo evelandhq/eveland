@@ -1,7 +1,7 @@
 node_modules/
 .next/
-.open-next/
 .wrangler/
+apps/docs/out/
 .source/
 apps/docs/public/docs.md
 apps/docs/public/docs/
