@@ -4,6 +4,15 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.43.0](https://github.com/evelandhq/eveland/compare/v0.42.0...v0.43.0) (2026-08-27)
+
+
+### Features
+
+* **sdk:** add eveland/memory — a fileMemory() storage backend ([#404](https://github.com/evelandhq/eveland/issues/404)) ([dcffa92](https://github.com/evelandhq/eveland/commit/dcffa920f6bfe9fdc447ed6cbeb788c0e4af51c5))
+* support Eve 0.45.2 and widen discovery manifest to v15 ([#402](https://github.com/evelandhq/eveland/issues/402)) ([c4a0fe5](https://github.com/evelandhq/eveland/commit/c4a0fe519a5443b0953c4e035ce09aaeb7097bdf))
+* **worker:** inject EVELAND_MEMORY_ROOT into every deployment ([#405](https://github.com/evelandhq/eveland/issues/405)) ([1e5b96f](https://github.com/evelandhq/eveland/commit/1e5b96fd5e70f8ffce578fbe5a10d0dfc6fad103))
+
 ## [0.42.0](https://github.com/evelandhq/eveland/compare/v0.41.0...v0.42.0) (2026-08-26)
 
 
