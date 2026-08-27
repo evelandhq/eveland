@@ -2,14 +2,24 @@ import type { MiddlewareHandler } from "hono";
 import type { AuthPrincipal } from "@evelandhq/core/contracts";
 import type { createBetterAuthRuntime } from "./auth.js";
 import type { ApiApp } from "./app-types.js";
-import { acceptInvitationSchema, previewInvitationSchema } from "./app-schemas.js";
+import {
+  acceptInvitationSchema,
+  passwordResetCompleteSchema,
+  passwordResetPreviewSchema,
+  previewInvitationSchema,
+} from "./app-schemas.js";
 import { authErrorResponse, getSetCookies } from "./app-support.js";
 
 type BetterAuthRuntime = ReturnType<typeof createBetterAuthRuntime>;
 
 export type ControlPlaneAuthBoundaryPort = Pick<
   BetterAuthRuntime,
-  "handler" | "acceptInvitation" | "previewInvitation" | "authenticate"
+  | "handler"
+  | "acceptInvitation"
+  | "previewInvitation"
+  | "previewPasswordReset"
+  | "completePasswordReset"
+  | "authenticate"
 >;
 
 const allowedAuthPaths = new Set([
@@ -71,6 +81,46 @@ export function registerControlPlaneAuthBoundary(input: {
         c.header("set-cookie", cookie, { append: true });
       }
       return c.json({ member: session.principal });
+    } catch (error) {
+      return authErrorResponse(c, error);
+    }
+  });
+
+  // The reset page mirrors the accept page: account details render only after
+  // the single-use token validates, and POST keeps the token out of URLs and
+  // access logs. The raw Better Auth recovery endpoints stay 404'd above.
+  app.post("/password-reset/preview", async (c) => {
+    const parsed = passwordResetPreviewSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: "Invalid password reset preview",
+          issues: parsed.error.issues,
+        },
+        400,
+      );
+    }
+    try {
+      return c.json(await auth.previewPasswordReset(parsed.data.token));
+    } catch (error) {
+      return authErrorResponse(c, error);
+    }
+  });
+
+  app.post("/password-reset/complete", async (c) => {
+    const parsed = passwordResetCompleteSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: "Invalid password reset",
+          issues: parsed.error.issues,
+        },
+        400,
+      );
+    }
+    try {
+      await auth.completePasswordReset(parsed.data);
+      return c.body(null, 204);
     } catch (error) {
       return authErrorResponse(c, error);
     }

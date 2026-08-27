@@ -48,12 +48,32 @@ test("composes the exact public auth surface before the protected control plane"
       })
     ).status,
   ).toBe(400);
+  expect(
+    (
+      await app.request("/password-reset/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      })
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await app.request("/password-reset/complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      })
+    ).status,
+  ).toBe(400);
 
   for (const path of [
     "/api/auth/sign-up/email",
     "/api/auth/change-password",
     "/api/auth/update-user",
     "/api/auth/organization/remove-member",
+    "/api/auth/forget-password",
+    "/api/auth/reset-password",
   ]) {
     expect(
       (
@@ -100,6 +120,10 @@ test("composes the exact public auth surface before the protected control plane"
       },
     },
     { path: "/members/user_test", init: { method: "DELETE" } },
+    {
+      path: "/members/user_test/password-reset",
+      init: { method: "POST" },
+    },
     { path: "/invitations" },
     {
       path: "/invitations",

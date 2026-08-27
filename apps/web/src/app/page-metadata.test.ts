@@ -13,6 +13,7 @@ const titledPages = [
   ["./login/page.tsx", "Sign in"],
   ["./new/page.tsx", "New project"],
   ["./(main)/projects/page.tsx", "Projects"],
+  ["./reset-password/page.tsx", "Reset password"],
   ["./(main)/usage/page.tsx", "Usage"],
   ["./settings/about/page.tsx", "About"],
   ["./settings/git-credentials/page.tsx", "Git credentials"],

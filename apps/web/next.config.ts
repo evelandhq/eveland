@@ -46,6 +46,7 @@ export const browserApiSubtrees = [
   "git-credentials",
   "invitations",
   "members",
+  "password-reset",
   "platform",
   "profile",
   "projects",

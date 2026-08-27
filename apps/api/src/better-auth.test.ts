@@ -344,6 +344,152 @@ describe("Better Auth runtime", () => {
   });
 });
 
+describe("admin-initiated password reset", () => {
+  async function setupWithMember() {
+    const { database, runtime } = await createTestRuntime();
+    await runtime.bootstrapDefaultAdmin({
+      email: "admin@example.com",
+      name: "Admin",
+      password: "admin-password",
+    });
+    const { cookie } = await signIn(runtime);
+    const adminRequest = new Request("http://localhost:4000/members", { headers: { cookie } });
+    const issued = await runtime.invite(adminRequest, "member@example.com");
+    const accepted = await runtime.acceptInvitation({
+      token: issued.token,
+      name: "Member",
+      password: "member-password",
+    });
+    const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+    return {
+      database,
+      runtime,
+      adminRequest,
+      memberId: accepted.principal.userId,
+      memberCookie,
+    };
+  }
+
+  function signInMember(runtime: ReturnType<typeof createBetterAuthRuntime>, password: string) {
+    return runtime.handler(
+      new Request("http://localhost:4000/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+        body: JSON.stringify({ email: "member@example.com", password }),
+      }),
+    );
+  }
+
+  test("a single-use reset link sets a new credential and revokes every session", async () => {
+    const { database, runtime, adminRequest, memberId, memberCookie } = await setupWithMember();
+
+    const issued = await runtime.issuePasswordReset(adminRequest, memberId);
+
+    expect(issued.email).toBe("member@example.com");
+    expect(new Date(issued.expiresAt).getTime() - Date.now()).toBeGreaterThan(23 * 60 * 60 * 1_000);
+    // Only the token's hash is stored: a database leak yields no usable link.
+    const [verificationRow, ...extraRows] = await database.db.select().from(authVerifications);
+    expect(extraRows).toHaveLength(0);
+    expect(verificationRow?.identifier).toMatch(/^eveland-password-reset:/);
+    expect(verificationRow?.identifier).not.toContain(issued.token);
+    expect(verificationRow?.value).toBe(memberId);
+
+    await expect(runtime.previewPasswordReset(issued.token)).resolves.toEqual({
+      email: "member@example.com",
+    });
+    await expect(
+      runtime.completePasswordReset({ token: issued.token, password: "a-replacement-password" }),
+    ).resolves.toEqual({ email: "member@example.com" });
+
+    // Whoever held the old credential is signed out everywhere.
+    await expect(
+      runtime.authenticate(
+        new Request("http://localhost:4000/projects", { headers: { cookie: memberCookie } }),
+      ),
+    ).resolves.toBeNull();
+    expect((await signInMember(runtime, "member-password")).status).toBe(401);
+    expect((await signInMember(runtime, "a-replacement-password")).status).toBe(200);
+
+    // The link died with its first use.
+    await expect(runtime.previewPasswordReset(issued.token)).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(
+      runtime.completePasswordReset({ token: issued.token, password: "another-new-password" }),
+    ).rejects.toMatchObject({ message: "Reset link is invalid or has expired", status: 404 });
+  });
+
+  test("issuing a new link invalidates every outstanding link for the member", async () => {
+    const { runtime, adminRequest, memberId } = await setupWithMember();
+
+    const first = await runtime.issuePasswordReset(adminRequest, memberId);
+    const second = await runtime.issuePasswordReset(adminRequest, memberId);
+
+    await expect(runtime.previewPasswordReset(first.token)).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(
+      runtime.completePasswordReset({ token: first.token, password: "a-replacement-password" }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      runtime.completePasswordReset({ token: second.token, password: "a-replacement-password" }),
+    ).resolves.toEqual({ email: "member@example.com" });
+  });
+
+  test("expired links and links for ex-members stop working", async () => {
+    const { database, runtime, adminRequest, memberId } = await setupWithMember();
+
+    const expired = await runtime.issuePasswordReset(adminRequest, memberId);
+    // The reset row is the only verification row in this scoped store.
+    await database.db.update(authVerifications).set({ expiresAt: new Date(Date.now() - 60_000) });
+    await expect(runtime.previewPasswordReset(expired.token)).rejects.toMatchObject({
+      message: "Reset link is invalid or has expired",
+      status: 404,
+    });
+    await expect(
+      runtime.completePasswordReset({ token: expired.token, password: "a-replacement-password" }),
+    ).rejects.toMatchObject({ status: 404 });
+
+    // A link issued before removal must not outlive the membership.
+    const orphaned = await runtime.issuePasswordReset(adminRequest, memberId);
+    await runtime.removeMember(adminRequest, memberId);
+    await expect(runtime.previewPasswordReset(orphaned.token)).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(
+      runtime.completePasswordReset({ token: orphaned.token, password: "a-replacement-password" }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  test("only admins issue links, only for current members, and policy failures spare the link", async () => {
+    const { runtime, adminRequest, memberId, memberCookie } = await setupWithMember();
+
+    const memberRequest = new Request("http://localhost:4000/members", {
+      headers: { cookie: memberCookie },
+    });
+    await expect(runtime.issuePasswordReset(memberRequest, memberId)).rejects.toMatchObject({
+      message: "Admin access required",
+      status: 403,
+    });
+    await expect(runtime.issuePasswordReset(adminRequest, "user_unknown")).rejects.toMatchObject({
+      message: "Member not found",
+      status: 404,
+    });
+
+    const issued = await runtime.issuePasswordReset(adminRequest, memberId);
+    await expect(
+      runtime.completePasswordReset({ token: issued.token, password: "too-short" }),
+    ).rejects.toMatchObject({
+      message: "Password must be at least 12 characters",
+      status: 400,
+    });
+    // A rejected password must not burn the single-use link.
+    await expect(
+      runtime.completePasswordReset({ token: issued.token, password: "a-replacement-password" }),
+    ).resolves.toEqual({ email: "member@example.com" });
+  });
+});
+
 describe("last-admin concurrency", () => {
   // Forces the classic check-then-act interleaving deterministically: while
   // armed, writes against the member model wait until BOTH racing flows have

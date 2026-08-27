@@ -575,4 +575,114 @@ describe("control-plane auth routes", () => {
       ).status,
     ).toBe(409);
   });
+
+  test("keeps Better Auth's own recovery endpoints unroutable", async () => {
+    const { app } = await createAuthApp();
+
+    // Recovery goes through Eveland-owned /password-reset routes only; the
+    // raw endpoints would bypass admin issuance and forced session revocation.
+    for (const path of ["/api/auth/forget-password", "/api/auth/reset-password"]) {
+      expect(
+        (
+          await app.request(path, {
+            method: "POST",
+            headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+            body: JSON.stringify({ email: "admin@example.com" }),
+          })
+        ).status,
+      ).toBe(404);
+    }
+  });
+
+  test("an admin-issued reset link recovers a locked-out member end to end", async () => {
+    const { app } = await createAuthApp();
+    const { cookie: adminCookie } = await signIn(app);
+    const issued = await invite(app, adminCookie);
+    const accepted = await app.request("/invitations/accept", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        token: new URL(issued.body.inviteUrl).searchParams.get("token")!,
+        name: "Member",
+        password: "member-password",
+      }),
+    });
+    const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+    const members = await (
+      await app.request("/members", { headers: { cookie: adminCookie } })
+    ).json();
+    const memberId = members.members.find(
+      (member: { email: string }) => member.email === "member@example.com",
+    ).userId as string;
+
+    // Members cannot issue reset links, not even for themselves.
+    expect(
+      (
+        await app.request(`/members/${memberId}/password-reset`, {
+          method: "POST",
+          headers: { cookie: memberCookie },
+        })
+      ).status,
+    ).toBe(403);
+
+    const created = await app.request(`/members/${memberId}/password-reset`, {
+      method: "POST",
+      headers: { cookie: adminCookie },
+    });
+    expect(created.status).toBe(201);
+    const reset = (await created.json()) as {
+      resetUrl: string;
+      expiresAt: string;
+      email: string;
+    };
+    expect(reset.email).toBe("member@example.com");
+    const resetToken = new URL(reset.resetUrl).searchParams.get("token")!;
+    expect(reset.resetUrl).toContain("http://localhost:3000/reset-password?token=");
+
+    const previewed = await app.request("/password-reset/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: resetToken }),
+    });
+    expect(previewed.status).toBe(200);
+    await expect(previewed.json()).resolves.toEqual({ email: "member@example.com" });
+
+    expect(
+      (
+        await app.request("/password-reset/complete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: resetToken, password: "a-replacement-password" }),
+        })
+      ).status,
+    ).toBe(204);
+
+    // Completion revoked every session and replaced the credential.
+    expect((await app.request("/auth/session", { headers: { cookie: memberCookie } })).status).toBe(
+      401,
+    );
+    expect((await signIn(app, "member@example.com", "member-password")).response.status).toBe(401);
+    const recovered = await signIn(app, "member@example.com", "a-replacement-password");
+    expect(recovered.response.status).toBe(200);
+
+    // The consumed link is dead for both preview and completion.
+    expect(
+      (
+        await app.request("/password-reset/preview", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: resetToken }),
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await app.request("/password-reset/complete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: resetToken, password: "another-new-password" }),
+        })
+      ).status,
+    ).toBe(404);
+  });
 });

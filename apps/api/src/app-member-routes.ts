@@ -22,6 +22,7 @@ export type MemberRoutesAuthPort = Pick<
   | "revokeInvitation"
   | "updateMemberRole"
   | "removeMember"
+  | "issuePasswordReset"
 >;
 
 export function registerMemberRoutes(input: {
@@ -128,6 +129,24 @@ export function registerMemberRoutes(input: {
         parsed.data.role,
       );
       return c.json({ member });
+    } catch (error) {
+      return authErrorResponse(c, error);
+    }
+  });
+
+  // Same contract as invitation create/resend: the response carries the URL
+  // the admin shares out-of-band, and the raw token never appears elsewhere.
+  app.post("/members/:userId/password-reset", async (c) => {
+    try {
+      const issued = await auth.issuePasswordReset(c.req.raw, c.req.param("userId"));
+      return c.json(
+        {
+          resetUrl: `${webOrigin}/reset-password?token=${encodeURIComponent(issued.token)}`,
+          expiresAt: issued.expiresAt,
+          email: issued.email,
+        },
+        201,
+      );
     } catch (error) {
       return authErrorResponse(c, error);
     }

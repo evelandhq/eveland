@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const publicPaths = new Set(["/login", "/accept-invite"]);
+const publicPaths = new Set(["/login", "/accept-invite", "/reset-password"]);
 
 export function proxy(request: NextRequest) {
   const isPublic = publicPaths.has(request.nextUrl.pathname);
