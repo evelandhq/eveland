@@ -3,8 +3,8 @@
 - 状态：**v1 全量完成（2026-08-27）**。Phase 1（spike + 真实管线端到端）、Phase 2
   （worker 注入 + RuntimeInstance token + 控制面存储/API + 平台服务 + compose）、
   控制面 UI（一级板块 Overview/Models/API Keys/Providers）、双语行为契约文档
-  （docs/{en,zh}/reference/model-gateway.md）全部落地；本地 docker 端到端绿
-  （MODEL GATEWAY E2E OK …revoke=401），Lima ladder 已登记 model-gateway-e2e 步骤。
+  （docs/{en,zh}/reference/model-gateway.md）全部落地；双运行时端到端全绿：本地 docker 与 **Lima 完整 ladder（9/9 步）** 都打出
+  `MODEL GATEWAY E2E OK … revoke=401`（2026-08-27），既有 8 步无回归。
   - 3a（封锁推理路径）由 e2e 事实性满足：字符串模型解析到 eveland gateway，唯一
     上游是 e2e 自己的 mock provider，无任何 Vercel 凭据存在；显式的全域名封锁
     （3b）仍 gated on 上游 vercel/eve#2636（build 期 catalog 元数据）。
