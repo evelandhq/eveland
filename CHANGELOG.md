@@ -4,6 +4,20 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.44.0](https://github.com/evelandhq/eveland/compare/v0.43.0...v0.44.0) (2026-08-27)
+
+
+### Features
+
+* **auth:** add admin-issued single-use password reset links ([#411](https://github.com/evelandhq/eveland/issues/411)) ([cb4d86f](https://github.com/evelandhq/eveland/commit/cb4d86f439f9406f1a22cc92e87f0ae3c9b34f0d))
+
+
+### Bug Fixes
+
+* correlate opaque session-create failures ([#408](https://github.com/evelandhq/eveland/issues/408)) ([2842e26](https://github.com/evelandhq/eveland/commit/2842e26f9d0dd2db5763a214543243f38cc6a83a))
+* **sdk:** publish npm-compatible peer metadata ([#413](https://github.com/evelandhq/eveland/issues/413)) ([9c43aec](https://github.com/evelandhq/eveland/commit/9c43aeca4a5746804a1013b9d0ee6083080986f7))
+* **web:** keep user messages readable in light theme ([3abe685](https://github.com/evelandhq/eveland/commit/3abe685faabd35010a27737bab586e401c0b79db))
+
 ## [0.43.0](https://github.com/evelandhq/eveland/compare/v0.42.0...v0.43.0) (2026-08-27)
 
 
