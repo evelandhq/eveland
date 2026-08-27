@@ -16,6 +16,7 @@ import {
   RadioTowerIcon,
   SettingsIcon,
   UsersIcon,
+  WaypointsIcon,
   type LucideIcon,
   CircleUserRoundIcon,
 } from "lucide-react";
@@ -40,6 +41,7 @@ export type SettingsNavigationGroup = {
 export const globalNavigationItems = [
   { href: "/projects", label: "Projects", icon: LayoutGridIcon },
   { href: "/deployments", label: "Deployments", icon: BoxIcon },
+  { href: "/model-gateway", label: "Model Gateway", icon: WaypointsIcon },
   { href: "/usage", label: "Usage", icon: ChartNoAxesColumnIcon },
 ] as const;
 

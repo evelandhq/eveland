@@ -17,6 +17,7 @@ describe("sidebar navigation", () => {
     expect(globalNavigationItems.map(({ href, label }) => ({ href, label }))).toEqual([
       { href: "/projects", label: "Projects" },
       { href: "/deployments", label: "Deployments" },
+      { href: "/model-gateway", label: "Model Gateway" },
       { href: "/usage", label: "Usage" },
     ]);
   });
