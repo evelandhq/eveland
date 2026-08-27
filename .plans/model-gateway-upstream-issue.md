@@ -1,7 +1,6 @@
-# Draft upstream issue (vercel/eve) — NOT yet filed
+# Upstream issue (vercel/eve) — FILED 2026-08-27: https://github.com/vercel/eve/issues/2636
 
-> File against vercel/eve after review. Companion to `.plans/model-gateway.md`
-> Phase 1 ("并行发上游 issue").
+> Filed as vercel/eve#2636. Companion to `.plans/model-gateway.md` Phase 1.
 
 ## Title
 
