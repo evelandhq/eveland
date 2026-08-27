@@ -1,3 +1,7 @@
+import {
+  hashModelGatewayToken,
+  mintModelGatewayToken,
+} from "@evelandhq/core/server/model-gateway-token";
 import type { Store } from "@evelandhq/db";
 import { access } from "node:fs/promises";
 
@@ -19,6 +23,7 @@ import type { RuntimeJob } from "./types.js";
 // The narrow persistence port this handler and its launch helpers need.
 type RestartDeploymentStore = Pick<
   Store,
+  | "adoptRuntimeInstance"
   | "appendLog"
   | "getCurrentDeployment"
   | "getDeployment"
@@ -128,6 +133,7 @@ export async function handleRestartDeploymentJob(
 
   await adapter.stopProcess(deployment.containerName);
   let restarted = false;
+  let restartInstanceId: string | undefined;
   try {
     // The restarted process binds deployment.hostPort directly; retire any
     // instance endpoint claims before replacing the process.
@@ -151,14 +157,35 @@ export async function handleRestartDeploymentJob(
       prerequisites: launchPrerequisites,
       staleRelease: release,
     });
-    await adapter.startProcess(
-      createDeploymentStartInput({
-        processName: deployment.containerName,
-        releaseRef: release.imageTag,
-        port: deployment.hostPort,
-        launchContext,
-      }),
+    // Restart bypasses the activation manager, so it mints its own
+    // instance-bound Model Gateway token. The instance row is adopted before
+    // the process starts: the token must be resolvable from the first turn,
+    // and the old instances were just stopped, revoking theirs.
+    const modelGatewayToken = mintModelGatewayToken();
+    const restartInstance = await store.adoptRuntimeInstance(
+      deployment.id,
+      { endpointHost: "127.0.0.1", endpointPort: deployment.hostPort },
+      undefined,
+      { modelGatewayTokenHash: hashModelGatewayToken(modelGatewayToken) },
     );
+    if (!restartInstance) {
+      throw new Error("Another live RuntimeInstance appeared while restarting; retry the restart.");
+    }
+    restartInstanceId = restartInstance.id;
+    const startInput = createDeploymentStartInput({
+      processName: deployment.containerName,
+      releaseRef: release.imageTag,
+      port: deployment.hostPort,
+      launchContext,
+    });
+    await adapter.startProcess({
+      ...startInput,
+      env: {
+        ...startInput.env,
+        EVELAND_RUNTIME_INSTANCE_ID: restartInstance.id,
+        AI_GATEWAY_API_KEY: modelGatewayToken,
+      },
+    });
     restarted = true;
     await waitForOwnedHttpHealth({
       host: "127.0.0.1",
@@ -178,6 +205,17 @@ export async function handleRestartDeploymentJob(
         "restart",
         launchPrerequisites.secretValues,
       );
+    }
+    if (restartInstanceId !== undefined) {
+      // Leaving the live statuses also revokes the freshly minted token.
+      await store
+        .updateRuntimeInstance(restartInstanceId, {
+          status: "failed",
+          endpointHost: null,
+          endpointPort: null,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        .catch(() => undefined);
     }
     await settleDeploymentStatus(store, deployment.id, "stopped").catch(() => undefined);
     throw error;

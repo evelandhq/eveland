@@ -1,0 +1,17 @@
+{
+  "name": "eveland-model-gateway-e2e-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "eve build",
+    "start": "eve start"
+  },
+  "dependencies": {
+    "ai": "^7.0.0",
+    "eve": "catalog:"
+  },
+  "engines": {
+    "node": "24.x"
+  }
+}

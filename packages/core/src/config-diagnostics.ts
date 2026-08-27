@@ -492,6 +492,11 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     ),
     required: true,
   },
+  urlEntry(
+    "EVELAND_MODEL_GATEWAY_URL",
+    ["worker"],
+    "Deployment-facing Model Gateway origin injected into every Deployment; unset leaves the Model Gateway disabled and string models on their default resolution.",
+  ),
   entry(
     "EVELAND_SCHEDULER_PLANNER_BATCH_SIZE",
     ["worker"],

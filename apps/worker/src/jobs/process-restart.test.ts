@@ -6,6 +6,7 @@ import { type RuntimeAdapter } from "../runtime/types.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { hashModelGatewayToken } from "@evelandhq/core/server/model-gateway-token";
 import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import { createFixtureEveProject, sharedWorkflowWorldAttestation } from "./process.test-support.js";
 
@@ -99,6 +100,26 @@ describe("processNextJob", () => {
         line: `Deployment running on 127.0.0.1:${deployment.hostPort}.`,
       }),
     ]);
+
+    // The restarted process also rotates the instance-bound Model Gateway
+    // token: old instances were stopped (revoking theirs), and the fresh one
+    // resolves to the restart-launched RuntimeInstance.
+    const startedEnv = (
+      runtimeCalls.find((call) => call.name === "startProcess")!.input as {
+        env: Record<string, string>;
+      }
+    ).env;
+    expect(startedEnv.AI_GATEWAY_API_KEY).toMatch(/^emg_[A-Za-z0-9_-]{40,}$/);
+    expect(startedEnv.EVELAND_RUNTIME_INSTANCE_ID).toMatch(/^rti_/);
+    await expect(
+      store.findLiveRuntimeInstanceByModelGatewayTokenHash(
+        hashModelGatewayToken(startedEnv.AI_GATEWAY_API_KEY!),
+      ),
+    ).resolves.toMatchObject({
+      runtimeInstanceId: startedEnv.EVELAND_RUNTIME_INSTANCE_ID,
+      deploymentId: deployment.id,
+      projectId: project.id,
+    });
   });
 
   test("fails a restart closed when the deployment's workflow topology is unclassified", async () => {

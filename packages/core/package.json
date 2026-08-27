@@ -35,6 +35,7 @@
     "./server/config-diagnostics": "./src/server/config-diagnostics.ts",
     "./server/dev-secrets": "./src/server/dev-secrets.ts",
     "./server/eve-fixture": "./src/server/eve-fixture.ts",
+    "./server/model-gateway-token": "./src/server/model-gateway-token.ts",
     "./server/observability": "./src/server/observability.ts",
     "./server/secrets": "./src/server/secrets.ts",
     "./server/scheduler-dispatch": "./src/server/scheduler-dispatch.ts"

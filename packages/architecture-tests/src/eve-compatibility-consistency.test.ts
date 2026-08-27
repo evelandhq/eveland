@@ -238,6 +238,7 @@ describe("Eve compatibility repository contract", () => {
       "apps/worker/src/integration/fixtures/connections-e2e/package.json",
       "apps/worker/src/integration/fixtures/identity-e2e/package.json",
       "apps/worker/src/integration/fixtures/observer-e2e/package.json",
+      "infra/integration/fixtures/model-gateway/package.json",
       "infra/integration/fixtures/schedule-scale-zero/package.json",
       "infra/integration/fixtures/workflow-wake/package.json",
     ]);

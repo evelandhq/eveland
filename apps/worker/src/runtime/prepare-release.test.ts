@@ -44,6 +44,17 @@ test("copies source into a prepared release and injects observers without modify
   await expect(readFile(path.join(sourcePath, "agent", "instructions.md"), "utf8")).resolves.toBe(
     "root",
   );
+
+  expect(result.modelGateway).toEqual({
+    injectedFiles: ["agent/hooks/eveland-model-gateway.js"],
+    runtimeFile: ".eveland/model-gateway/runtime.mjs",
+  });
+  await expect(
+    readFile(path.join(buildDir, "agent/hooks/eveland-model-gateway.js"), "utf8"),
+  ).resolves.toContain("../../.eveland/model-gateway/runtime.mjs");
+  await expect(
+    readFile(path.join(buildDir, ".eveland/model-gateway/runtime.mjs"), "utf8"),
+  ).resolves.toContain("AI_SDK_DEFAULT_PROVIDER");
 });
 
 test("injects the Extension integrator only when the source declares an Extension mount", async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { hashModelGatewayToken } from "@evelandhq/core/server/model-gateway-token";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { JobLeaseLostError, processNextJob } from "./process.js";
 import { dispatchJob } from "./job-registry.js";
@@ -391,6 +392,25 @@ describe("processNextJob", () => {
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
       expect.objectContaining({ line: "build ok" }),
     );
+
+    // The initial deploy start also mints an instance-bound Model Gateway
+    // token and binds its hash to an adopted RuntimeInstance.
+    const deployStartEnv = (
+      runtimeCalls.find((call) => call.name === "startProcess")!.input as {
+        env: Record<string, string>;
+      }
+    ).env;
+    expect(deployStartEnv.AI_GATEWAY_API_KEY).toMatch(/^emg_[A-Za-z0-9_-]{40,}$/);
+    const deployedForToken = await store.getCurrentDeployment(project.id);
+    await expect(
+      store.findLiveRuntimeInstanceByModelGatewayTokenHash(
+        hashModelGatewayToken(deployStartEnv.AI_GATEWAY_API_KEY!),
+      ),
+    ).resolves.toMatchObject({
+      deploymentId: deployedForToken!.id,
+      projectId: project.id,
+    });
+
     // The built release's eve discovery manifest is recorded on the release --
     // never on the shared source revision, which stays the import-time preview.
     const recordedDeployment = await store.getCurrentDeployment(project.id);

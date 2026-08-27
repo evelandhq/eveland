@@ -107,7 +107,7 @@ export function createPostgresRuntimeStore({ db }: PostgresStoreContext): Runtim
       return rows.map(runtimeInstanceRowToRuntimeInstance);
     },
 
-    async adoptRuntimeInstance(deploymentId, endpoint, now = new Date()) {
+    async adoptRuntimeInstance(deploymentId, endpoint, now = new Date(), options = {}) {
       try {
         return await db.transaction(async (tx) => {
           // Same deployment-level lock acquireActivationLease takes, so adoption
@@ -146,6 +146,9 @@ export function createPostgresRuntimeStore({ db }: PostgresStoreContext): Runtim
               endpointPort: endpoint.endpointPort,
               startedAt: now,
               readyAt: now,
+              ...(options.modelGatewayTokenHash !== undefined
+                ? { modelGatewayTokenHash: options.modelGatewayTokenHash }
+                : {}),
             })
             .returning();
           return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
@@ -189,12 +192,38 @@ export function createPostgresRuntimeStore({ db }: PostgresStoreContext): Runtim
           ...(input.endpointHost !== undefined ? { endpointHost: input.endpointHost } : {}),
           ...(input.endpointPort !== undefined ? { endpointPort: input.endpointPort } : {}),
           ...(input.error !== undefined ? { lastError: sanitizeStoredErrorText(input.error) } : {}),
+          ...(input.modelGatewayTokenHash !== undefined
+            ? { modelGatewayTokenHash: input.modelGatewayTokenHash }
+            : {}),
           ...(input.status === "ready" ? { readyAt: now } : {}),
           ...(input.status === "stopped" || input.status === "failed" ? { stoppedAt: now } : {}),
         })
         .where(eq(runtimeInstances.id, runtimeInstanceId))
         .returning();
       return row ? runtimeInstanceRowToRuntimeInstance(row) : null;
+    },
+
+    async findLiveRuntimeInstanceByModelGatewayTokenHash(tokenHash) {
+      const [row] = await db
+        .select({
+          runtimeInstanceId: runtimeInstances.id,
+          deploymentId: runtimeInstances.deploymentId,
+          projectId: deployments.projectId,
+        })
+        .from(runtimeInstances)
+        .innerJoin(deployments, eq(deployments.id, runtimeInstances.deploymentId))
+        .where(
+          and(
+            eq(runtimeInstances.modelGatewayTokenHash, tokenHash),
+            or(
+              eq(runtimeInstances.status, "starting"),
+              eq(runtimeInstances.status, "ready"),
+              eq(runtimeInstances.status, "draining"),
+            ),
+          ),
+        )
+        .limit(1);
+      return row ?? null;
     },
 
     async reserveRuntimeInstancePort(runtimeInstanceId, port) {

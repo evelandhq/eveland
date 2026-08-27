@@ -844,8 +844,13 @@ export const runtimeInstances = pgTable(
     readyAt: timestamp("ready_at", { withTimezone: true }),
     stoppedAt: timestamp("stopped_at", { withTimezone: true }),
     lastError: text("last_error"),
+    // SHA-256 of the per-instance Model Gateway runtime token; the token
+    // itself never persists. Validity is tied to the live statuses, so
+    // stop/failure/archive revokes it with no extra write.
+    modelGatewayTokenHash: text("model_gateway_token_hash"),
   },
   (table) => [
+    uniqueIndex("runtime_instances_model_gateway_token_hash_idx").on(table.modelGatewayTokenHash),
     uniqueIndex("runtime_instances_deployment_generation_idx").on(
       table.deploymentId,
       table.generation,

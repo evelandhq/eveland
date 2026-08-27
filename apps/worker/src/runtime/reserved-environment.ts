@@ -25,6 +25,7 @@ export const RESERVED_RUNTIME_ENVIRONMENT_KEYS: readonly string[] = [
   // could set it would point the agent's durable memory at an unprovisioned
   // path -- or, worse, at a directory shared with another tenant.
   "EVELAND_MEMORY_ROOT",
+  "EVELAND_MODEL_GATEWAY_URL",
   "EVELAND_PROJECT_ID",
   "EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES",
   "EVELAND_SANDBOX_MAX_OUTPUT_BYTES",

@@ -5,6 +5,10 @@ import type {
   RuntimeInstance,
   RuntimeKind,
 } from "@evelandhq/core/contracts";
+import {
+  hashModelGatewayToken,
+  mintModelGatewayToken,
+} from "@evelandhq/core/server/model-gateway-token";
 import { RuntimeInstanceDrainingError, type Store } from "@evelandhq/db";
 
 // The narrow persistence port every activation-manager entry point shares.
@@ -214,6 +218,15 @@ export async function startRuntimeInstance(
     throw new Error(`RuntimeInstance cannot start from ${current.status}.`);
   try {
     const port = await resolveInstancePort(store, input, current);
+    // Instance-bound Model Gateway runtime token: minted fresh for every
+    // start, the raw value exists only in this process env, and the hash on
+    // the instance row dies with the instance (stop/failure revokes it).
+    const modelGatewayToken = mintModelGatewayToken();
+    await store.updateRuntimeInstance(
+      runtimeInstanceId,
+      { status: "starting", modelGatewayTokenHash: hashModelGatewayToken(modelGatewayToken) },
+      now(),
+    );
     const start =
       input.runtime.ensureProcess?.bind(input.runtime) ??
       input.runtime.startProcess.bind(input.runtime);
@@ -223,6 +236,7 @@ export async function startRuntimeInstance(
       env: {
         ...input.startInput.env,
         EVELAND_RUNTIME_INSTANCE_ID: runtimeInstanceId,
+        AI_GATEWAY_API_KEY: modelGatewayToken,
       },
     });
     await waitForOwnedHttpHealth({

@@ -826,6 +826,7 @@ export interface RuntimeStore {
     deploymentId: string,
     endpoint: { endpointHost: string; endpointPort: number },
     now?: Date,
+    options?: { modelGatewayTokenHash?: string },
   ): Promise<RuntimeInstance | null>;
   updateRuntimeInstance(
     runtimeInstanceId: string,
@@ -834,9 +835,20 @@ export interface RuntimeStore {
       endpointHost?: string | null;
       endpointPort?: number | null;
       error?: string | null;
+      modelGatewayTokenHash?: string;
     },
     now?: Date,
   ): Promise<RuntimeInstance | null>;
+  /**
+   * Resolves a Model Gateway runtime token hash to the live RuntimeInstance
+   * it was minted for. Only instances in a live status resolve — leaving the
+   * live statuses is the revocation.
+   */
+  findLiveRuntimeInstanceByModelGatewayTokenHash(tokenHash: string): Promise<{
+    runtimeInstanceId: string;
+    deploymentId: string;
+    projectId: string;
+  } | null>;
   /**
    * Claims a loopback port for a starting RuntimeInstance before the process
    * binds it. Returns false when another live instance already holds the port

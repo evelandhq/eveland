@@ -73,6 +73,29 @@ test("rejects a body that is not a call-options object", async () => {
   expect(body.error.type).toBe("invalid_request_error");
 });
 
+test("accepts eve's own gateway caching hint and strips it before the provider", async () => {
+  // eve's runtime sends providerOptions.gateway.caching = "auto" with every
+  // string-model call; rejecting it would break every real agent. For a BYOK
+  // direct call the hint is meaningless, so it is accepted and stripped —
+  // deliberately, as a supported option, unlike the rejected routing options.
+  const { model, calls } = fakeModel();
+  const { baseURL } = await startModelGateway({
+    authenticate: () => true,
+    resolveModel: () => model,
+  });
+  const response = await fetch(`${baseURL}/language-model`, {
+    method: "POST",
+    headers: protocolHeaders(),
+    body: JSON.stringify({
+      prompt: userPrompt,
+      providerOptions: { gateway: { caching: "auto" }, anthropic: { keep: true } },
+    }),
+  });
+  expect(response.status).toBe(200);
+  expect(calls.generate).toHaveLength(1);
+  expect(calls.generate[0]?.providerOptions).toEqual({ anthropic: { keep: true } });
+});
+
 test("rejects request-scoped gateway provider options such as byok", async () => {
   const { model, calls } = fakeModel();
   const { baseURL } = await startModelGateway({

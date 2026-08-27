@@ -110,6 +110,14 @@ limactl shell "$VM" -- sudo bash -c "
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/gateway-e2e.mts
 
+  # Model Gateway proof: a bare string model ("zai/glm-5.3-flash") runs a real
+  # turn with NO mock model — the injected hook runtime resolves it through the
+  # in-process Eveland Model Gateway using the Worker-minted instance token,
+  # the BYOK key stays gateway-side, and stopping the instance revokes the token.
+  EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
+    EVELAND_DATA_DIR=/var/lib/eveland-data \
+    corepack pnpm exec tsx infra/integration/model-gateway-e2e.mts
+
   # Identity Provider handoff proof: an Agent authenticating with the workspace
   # SDK's evelandIdentity() only, deployed for real, driven through the Gateway.
   # Open access injects a verifiable Caller Token; Eveland Internal refuses

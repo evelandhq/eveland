@@ -5,6 +5,7 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "exports": {
+    "./inject": "./src/injector.ts",
     "./register": "./src/register.ts"
   },
   "scripts": {
@@ -13,7 +14,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/gateway": "4.0.59"
+    "@ai-sdk/gateway": "4.0.59",
+    "esbuild": "^0.28.2"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

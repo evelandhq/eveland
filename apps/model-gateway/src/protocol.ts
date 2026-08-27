@@ -53,10 +53,15 @@ export function parseCallOptionsBody(raw: unknown): ParsedCallOptions {
         typeof gatewayOptions === "object" && gatewayOptions !== null
           ? Object.keys(gatewayOptions)
           : [];
-      if (keys.length > 0) {
+      // eve's runtime attaches `caching: "auto"` to every string-model call;
+      // for a direct BYOK call the hint is meaningless, so it is a SUPPORTED
+      // option with strip semantics. Everything else (byok, order, only,
+      // models, serviceTier, ...) stays a hard 400 — never silently ignored.
+      const unsupported = keys.filter((key) => key !== "caching");
+      if (unsupported.length > 0) {
         return {
           ok: false,
-          message: `Request-scoped gateway options are not supported on this model gateway: ${keys.join(", ")}.`,
+          message: `Request-scoped gateway options are not supported on this model gateway: ${unsupported.join(", ")}.`,
         };
       }
       const { gateway: _gateway, ...rest } = providerOptions as Record<string, unknown>;

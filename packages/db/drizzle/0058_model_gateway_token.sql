@@ -1,0 +1,2 @@
+ALTER TABLE "runtime_instances" ADD COLUMN "model_gateway_token_hash" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "runtime_instances_model_gateway_token_hash_idx" ON "runtime_instances" USING btree ("model_gateway_token_hash");

@@ -1,3 +1,4 @@
+import { hashModelGatewayToken } from "@evelandhq/core/server/model-gateway-token";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test, vi } from "vitest";
 import { ensureDeploymentActive, reconcileRuntimeInstances } from "./activation-manager.js";
@@ -173,6 +174,21 @@ describe("ensureDeploymentActive", () => {
         }),
       }),
     );
+
+    // The start also mints an instance-bound Model Gateway token: the raw
+    // token goes only into the process env, its hash onto the instance row.
+    const startedEnv = (
+      (ensureProcess.mock.calls[0] as unknown[])[0] as { env: Record<string, string> }
+    ).env;
+    expect(startedEnv.AI_GATEWAY_API_KEY).toMatch(/^emg_[A-Za-z0-9_-]{40,}$/);
+    const resolved = await store.findLiveRuntimeInstanceByModelGatewayTokenHash(
+      hashModelGatewayToken(startedEnv.AI_GATEWAY_API_KEY!),
+    );
+    expect(resolved).toMatchObject({
+      runtimeInstanceId: activations[0]!.runtimeInstance.id,
+      deploymentId: deployment.id,
+      projectId: project.id,
+    });
   });
 
   test("releases every concurrent lease when the elected starter fails", async () => {

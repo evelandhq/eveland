@@ -1,6 +1,10 @@
 import { OBSERVER_RUNTIME_CONTRACT } from "@evelandhq/agent-observer";
 import type { Job } from "@evelandhq/core/contracts";
 import {
+  hashModelGatewayToken,
+  mintModelGatewayToken,
+} from "@evelandhq/core/server/model-gateway-token";
+import {
   assessDispatcherReadiness,
   resolveDispatcherHeartbeatTtlMs,
 } from "@evelandhq/core/workflow-dispatch";
@@ -41,6 +45,7 @@ import type { ProcessJobOptions } from "./process-types.js";
 type BuildDeployStore = LaunchInputStore &
   Pick<
     Store,
+    | "adoptRuntimeInstance"
     | "getProject"
     | "getCurrentSourceRevision"
     | "getCurrentDeployment"
@@ -241,14 +246,21 @@ export async function handleBuildDeployJob(
   let deploymentRecorded = false;
   try {
     options.signal?.throwIfAborted();
-    const started = await runtime.startProcess(
-      createDeploymentStartInput({
-        processName,
-        releaseRef: build.releaseRef,
-        port: hostPort,
-        launchContext,
-      }),
-    );
+    // Instance-bound Model Gateway token for the initial start. The
+    // Deployment row does not exist yet, so the RuntimeInstance that owns the
+    // hash is adopted right after recordDeployment below — a window no
+    // external traffic can reach, because routes are recorded later still.
+    const modelGatewayToken = mintModelGatewayToken();
+    const deployStartInput = createDeploymentStartInput({
+      processName,
+      releaseRef: build.releaseRef,
+      port: hostPort,
+      launchContext,
+    });
+    const started = await runtime.startProcess({
+      ...deployStartInput,
+      env: { ...deployStartInput.env, AI_GATEWAY_API_KEY: modelGatewayToken },
+    });
     startedProcess = processName;
     await waitForOwnedHttpHealth({
       host: "127.0.0.1",
@@ -282,6 +294,12 @@ export async function handleBuildDeployJob(
         : {}),
     });
     deploymentRecorded = true;
+    await store.adoptRuntimeInstance(
+      deployment.id,
+      { endpointHost: "127.0.0.1", endpointPort: hostPort },
+      undefined,
+      { modelGatewayTokenHash: hashModelGatewayToken(modelGatewayToken) },
+    );
     if (releaseSummary) {
       await store.appendLog({
         projectId: job.projectId,

@@ -2,6 +2,10 @@ import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { injectObserverHooks, type ObserverInjectionResult } from "@evelandhq/agent-observer";
 import { injectSchedulerAdapter, type SchedulerInjectionResult } from "@evelandhq/agent-scheduler";
+import {
+  injectModelGatewayRuntime,
+  type ModelGatewayInjectionResult,
+} from "@evelandhq/model-gateway-runtime/inject";
 import { execa } from "execa";
 import { injectExtensionIntegrator } from "./extension-integration.js";
 import {
@@ -14,6 +18,7 @@ export type PreparedReleaseResult = ObserverInjectionResult & {
   extensionIntegratorFile?: string;
   workflowWorld?: WorkflowWorldInjectionResult;
   scheduler: SchedulerInjectionResult;
+  modelGateway: ModelGatewayInjectionResult;
 };
 
 export async function prepareReleaseTree(input: {
@@ -33,6 +38,7 @@ export async function prepareReleaseTree(input: {
     ? await injectWorkflowWorld({ releaseDir: buildDir, config: input.workflowWorld })
     : undefined;
   const scheduler = await injectSchedulerAdapter({ releaseDir: buildDir });
+  const modelGateway = await injectModelGatewayRuntime({ releaseDir: buildDir });
   const extensionIntegratorFile = (await hasExtensionMountSources(buildDir))
     ? await injectExtensionIntegrator(buildDir)
     : undefined;
@@ -41,6 +47,7 @@ export async function prepareReleaseTree(input: {
     ...(extensionIntegratorFile ? { extensionIntegratorFile } : {}),
     ...(workflowWorld ? { workflowWorld } : {}),
     scheduler,
+    modelGateway,
   };
 }
 

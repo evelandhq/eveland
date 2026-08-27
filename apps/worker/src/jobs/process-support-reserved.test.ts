@@ -56,6 +56,9 @@ async function composeOnEvelandWorld() {
       // fixed in-container mount); without the option the compose falls back
       // to the worker-visible default derived from EVELAND_DATA_DIR.
       memoryRootDir: "/var/lib/eveland-memory",
+      // Deployment-facing Model Gateway origin; absent = feature off, so the
+      // legacy compose above deliberately omits it (staged rollout).
+      modelGatewayUrl: "http://host.docker.internal:4090",
     },
     {
       EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,

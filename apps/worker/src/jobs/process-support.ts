@@ -266,6 +266,10 @@ export async function composeDeploymentEnv(
   const schedulerRuntimeSecret =
     options.schedulerRuntimeSecret ?? resolveSchedulerRuntimeSecret(workerEnv);
   const schedulerRedeemUrl = options.schedulerRedeemUrl ?? workerEnv.EVELAND_SCHEDULER_REDEEM_URL;
+  // Staged rollout gate: the Model Gateway URL reaches deployments only when
+  // the operator configures it; absent, string models keep their default
+  // resolution and nothing about existing deployments changes.
+  const modelGatewayUrl = options.modelGatewayUrl ?? workerEnv.EVELAND_MODEL_GATEWAY_URL;
   const appSecretKey = options.appSecretKey ?? workerEnv.APP_SECRET_KEY ?? devSecretKey;
   const identityConfiguration = resolveIdentityDeploymentConfiguration({
     dataDir: options.dataDir ?? workerEnv.EVELAND_DATA_DIR ?? ".eveland-data",
@@ -321,6 +325,7 @@ export async function composeDeploymentEnv(
       : {}),
     ...(schedulerRuntimeSecret ? { EVELAND_SCHEDULER_RUNTIME_SECRET: schedulerRuntimeSecret } : {}),
     ...(schedulerRedeemUrl ? { EVELAND_SCHEDULER_REDEEM_URL: schedulerRedeemUrl } : {}),
+    ...(modelGatewayUrl ? { EVELAND_MODEL_GATEWAY_URL: modelGatewayUrl } : {}),
     ...(isProduction ? { NODE_ENV: "production" } : {}),
   };
   const env = mergeRuntimeEnvironment({

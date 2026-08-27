@@ -176,6 +176,12 @@ importers:
       '@ai-sdk/provider':
         specifier: ^4.0.7
         version: 4.0.7
+      '@evelandhq/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@evelandhq/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.3)
@@ -346,6 +352,9 @@ importers:
       '@evelandhq/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@evelandhq/model-gateway-runtime':
+        specifier: workspace:*
+        version: link:../../packages/model-gateway-runtime
       '@evelandhq/platform-observability':
         specifier: workspace:*
         version: link:../../packages/platform-observability
@@ -576,6 +585,9 @@ importers:
       '@ai-sdk/gateway':
         specifier: 4.0.59
         version: 4.0.59(zod@4.4.3)
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
     devDependencies:
       vitest:
         specifier: ^4.1.11
