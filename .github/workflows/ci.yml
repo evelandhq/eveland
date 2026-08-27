@@ -141,7 +141,8 @@ jobs:
           mkdir -p /tmp/sdk-smoke && cd /tmp/sdk-smoke
           npm init -y >/dev/null
           npm install --no-audit --no-fund /tmp/eveland-sdk/eveland-*.tgz
-          node -e "import('eveland/auth').then((m) => { if (typeof m.evelandIdentity !== 'function') throw new Error('evelandIdentity export missing'); console.log('sdk import ok'); })"
+          node -e "import('eveland/auth').then((m) => { if (typeof m.evelandIdentity !== 'function') throw new Error('evelandIdentity export missing'); console.log('sdk auth import ok'); })"
+          node -e "import('eveland/memory').then((m) => { if (typeof m.evelandMemoryBackend !== 'function') throw new Error('evelandMemoryBackend export missing'); console.log('sdk memory import ok'); })"
 
   build:
     runs-on: ubuntu-latest
