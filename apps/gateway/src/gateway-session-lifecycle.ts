@@ -169,7 +169,7 @@ function declaredLengthExceedsMetadataCap(response: Response): boolean {
 }
 
 /** Read at most `maxBytes`; anything larger yields null instead of a buffer. */
-async function readBodyWithin(
+export async function readBodyWithin(
   body: ReadableStream<Uint8Array> | null,
   maxBytes: number,
 ): Promise<string | null> {

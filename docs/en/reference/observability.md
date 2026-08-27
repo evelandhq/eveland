@@ -136,6 +136,17 @@ like `node:http` first and HTTP instrumentation can produce neither server spans
 `module.registerHooks()` path on supported Node versions and keeps an async-hook
 fallback for earlier Node 24 minors.
 
+For an initial Eve session response that is a JSON 500 with an `errorId`, the Agent
+Gateway emits `eveland.gateway.session_create_failed`. Its attributes correlate the
+client-visible Eve error id with the platform request, Project, Deployment, activated
+RuntimeInstance, upstream status, and the HMAC operation key when present; the raw
+operation id is never exported. Reading the error uses a bounded response clone and
+never rewrites the Agent's status or response bytes. The workflow dispatcher's
+registration heartbeat also emits `workflow_dispatcher.capacity`, plus
+`workflow_dispatcher.tenant_saturated` for each Project at its in-flight cap, so the
+same failure window can be compared with global and per-tenant saturation. Failure of
+either telemetry emission remains isolated from request and dispatch behavior.
+
 ## Agent runtime policy
 
 Admin configuration is stored in a revisioned observability policy in Postgres. Worker

@@ -33,16 +33,21 @@ export function createApiActivationClient(input: {
       }
       const value = (await response.json().catch(() => null)) as {
         lease?: { id?: unknown };
-        runtimeInstance?: { endpointPort?: unknown };
+        runtimeInstance?: { id?: unknown; endpointPort?: unknown };
       } | null;
       if (
         !value ||
         typeof value.lease?.id !== "string" ||
+        typeof value.runtimeInstance?.id !== "string" ||
         typeof value.runtimeInstance?.endpointPort !== "number"
       ) {
         throw new Error("Control API returned an invalid activation result.");
       }
-      return { leaseId: value.lease.id, endpointPort: value.runtimeInstance.endpointPort };
+      return {
+        leaseId: value.lease.id,
+        runtimeInstanceId: value.runtimeInstance.id,
+        endpointPort: value.runtimeInstance.endpointPort,
+      };
     },
     async renew(leaseId) {
       const response = await fetch(

@@ -25,6 +25,8 @@ Eve 返回 sessionId 后持久化 `SessionBinding`。continuation、cancel、str
 
 Eve 的 durable route（create-once、task-input、MCP invocation）使用同一固定目标规则。initial create 携带非空 `operationId` 时，Agent Gateway 必须先以独立 Agent Gateway secret 做 HMAC，按 `(projectId, operationKey)` 首写胜出地持久化 `OperationBinding`，且不得保存或记录原始 operation ID；重复 create 即使遇到 promote、rollback、weight 归零或 dormant target 也回到首次目标。该绑定只决定 Deployment，不解释 Eve 基于 Agent principal 的幂等/授权语义；不同 principal 的同名 ID 最多共享目标，仍由 Agent 自己隔离结果。
 
+Gateway 不为 Agent 失败伪造重试语义。initial Eve create 返回带 `errorId` 的 JSON 500 时，Gateway 原样转发 status 与 body，只增加保留的 `x-eveland-request-id` response header，并通过有界 clone 在平台遥测中关联 Project、Deployment、已激活 RuntimeInstance 与 HMAC operation key；原始 `operationId` 仍不落库、不进日志。typed retryable response 或已提交 run 的采纳属于 Eve 协议职责，Gateway 不能从通用 500 猜测异常类型。
+
 MCP `agent_start` 成功后把 response `structuredContent.invocationId` 写为 SessionBinding，`agent_get`、`agent_update` 与 `agent_cancel` 按该 invocation ID 回到原 Deployment。`POST /eve/v1/task-input/:token` 的 token 对 Agent Gateway 完全 opaque，不得落库；同一 Project 的 Deployment 共享其 durable workflow world，因此 callback 可在 route targets 中任一窗口内的 Deployment 恢复，并通过正常 ActivationLease 唤醒 dormant target。当前窗口内的每条线都支持这些 durable route，不再维护按操作区分的版本下限；选定 target 不在支持窗口内时返回 409，不能降级成普通不持久的转发。
 
 ## Deployment 生命周期与归档

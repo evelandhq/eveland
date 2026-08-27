@@ -44,6 +44,60 @@ function runnerDeps(overrides: Record<string, unknown> = {}) {
 }
 
 describe("eveland workflow dispatcher runner", () => {
+  test("exports per-tenant saturation with every heartbeat", async () => {
+    const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
+    const { startService: baseStartService } = fakeServiceFactory(state);
+    const startService = vi.fn(async (options: DispatcherServiceOptions) => {
+      const service = await baseStartService(options);
+      return {
+        ...service,
+        config: {
+          ...service.config,
+          concurrency: 8,
+          maxInFlightPerTenant: 2,
+        },
+        runtime: {
+          fairness: {
+            snapshot: () => ({ p_saturated: 2, p_active: 1 }),
+          },
+        },
+      } as unknown as DispatcherService;
+    });
+    const capacityTelemetry = { emit: vi.fn(), shutdown: vi.fn(async () => {}) };
+    const fetchImplementation = vi.fn(async () => Response.json({ registration: {} }));
+
+    await startEvelandWorkflowDispatcher(
+      { WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test" },
+      capacityTelemetry,
+      { ...runnerDeps({ fetchImplementation }), startService } as never,
+    );
+
+    expect(capacityTelemetry.emit).toHaveBeenCalledWith({
+      severity: "info",
+      eventName: "workflow_dispatcher.capacity",
+      body: "workflow dispatcher capacity snapshot",
+      attributes: {
+        "dispatcher.in_flight": 3,
+        "dispatcher.concurrency": 8,
+        "dispatcher.available": 5,
+        "dispatcher.max_in_flight_per_tenant": 2,
+        "dispatcher.saturated_tenants": 1,
+      },
+    });
+    expect(capacityTelemetry.emit).toHaveBeenCalledWith({
+      severity: "warn",
+      eventName: "workflow_dispatcher.tenant_saturated",
+      body: "tenant reached the workflow dispatcher in-flight cap",
+      attributes: {
+        "eveland.project.id": "p_saturated",
+        "dispatcher.tenant.in_flight": 2,
+        "dispatcher.max_in_flight_per_tenant": 2,
+        "dispatcher.in_flight": 3,
+        "dispatcher.concurrency": 8,
+      },
+    });
+  });
+
   test("registers machine-readably without credentials", async () => {
     const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
     const { startService } = fakeServiceFactory(state);

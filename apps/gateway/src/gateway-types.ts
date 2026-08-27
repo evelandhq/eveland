@@ -27,9 +27,20 @@ export type GatewayActivationClient = {
   activate(
     input: { deploymentId: string; kind: "public_request" | "stream" | "turn"; ownerId: string },
     signal: AbortSignal,
-  ): Promise<{ leaseId: string; endpointPort: number }>;
+  ): Promise<{ leaseId: string; runtimeInstanceId?: string; endpointPort: number }>;
   renew(leaseId: string): Promise<void>;
   release(leaseId: string): Promise<void>;
+};
+
+export type GatewayTelemetryEvent = {
+  severity: "debug" | "info" | "warn" | "error";
+  eventName: string;
+  body: string;
+  attributes?: Record<string, string | number | boolean>;
+};
+
+export type GatewayTelemetry = {
+  emit(event: GatewayTelemetryEvent): void;
 };
 
 export type GatewayAppOptions = {
@@ -55,5 +66,6 @@ export type GatewayAppOptions = {
   activationRenewIntervalMs?: number;
   playgroundSessionIdleTtlMs?: number;
   apiSessionIdleTtlMs?: number;
+  telemetry?: GatewayTelemetry;
   now?: () => Date;
 };

@@ -169,6 +169,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       request: context.req.raw,
       routingBody: routingBody.body,
       upstreamPath: `${evePath}${requestUrl.search}`,
+      telemetry: options.telemetry,
       policy: {
         bodyLimitBytes: PLAYGROUND_MAX_TRANSPORT_BYTES,
         timeoutMs: Number(process.env.EVELAND_PLAYGROUND_TIMEOUT_MS ?? 120_000),
@@ -289,6 +290,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       request: context.req.raw,
       routingBody: routingBody.body,
       upstreamPath: `${requestUrl.pathname}${requestUrl.search}`,
+      telemetry: options.telemetry,
       policy: {
         bodyLimitBytes: maxRequestBodyBytes,
         // Socket idle timeout, not a total deadline: streaming NDJSON keeps
