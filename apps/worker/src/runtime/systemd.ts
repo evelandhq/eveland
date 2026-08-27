@@ -39,6 +39,8 @@ export type SystemdStartInput = {
   cpuQuota: string;
   tasksMax?: number;
   sandboxCacheDir: string;
+  /** Host path of the per-project agent memory root, granted read-write. */
+  memoryRootDir: string;
   dataDir: string;
   observabilityPolicyDir: string;
   accessRepairScriptPath: string;
@@ -57,6 +59,7 @@ export function buildDynamicUserAccessRepairScript(input: {
   deploymentUser: string;
   releaseDir: string;
   sandboxCacheDir: string;
+  memoryRootDir: string;
 }): string {
   // systemd registers every DynamicUser= allocation under
   // /run/systemd/dynamic-uid/ before ExecStartPre= runs, with
@@ -76,7 +79,7 @@ current_uid="$(readlink ${shellQuote(
   )} 2>/dev/null || true)"
 previous_uid="$(cat ${dynamicUserUidMarkerMount} 2>/dev/null || true)"
 if [ -z "$current_uid" ] || [ "$current_uid" != "$previous_uid" ]; then
-  chmod -R g+rwX,g-s -- ${shellQuote(input.releaseDir)} ${shellQuote(input.sandboxCacheDir)}
+  chmod -R g+rwX,g-s -- ${shellQuote(input.releaseDir)} ${shellQuote(input.sandboxCacheDir)} ${shellQuote(input.memoryRootDir)}
   printf '%s\\n' "$current_uid" > ${dynamicUserUidMarkerMount}
 fi
 `;
@@ -145,6 +148,7 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     // --property=ReadWritePaths=/tmp --property=ReadWritePaths=/var/tmp` followed by
     // `systemctl show -p ReadWritePaths`, which reported "ReadWritePaths=/tmp /var/tmp".
     `--property=ReadWritePaths=${input.sandboxCacheDir}`,
+    `--property=ReadWritePaths=${input.memoryRootDir}`,
     `--property=ReadWritePaths=${dynamicUserUidMarkerMount}`,
     // Each unit gets a distinct dynamic UID. The data-root mask then limits the
     // paths visible to that identity to this Deployment's own release, cache,
@@ -152,6 +156,10 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     `--property=TemporaryFileSystem=${input.dataDir}:ro`,
     `--property=BindPaths=${input.releaseDir}`,
     `--property=BindPaths=${input.sandboxCacheDir}`,
+    // The memory root's process-visible value travels in the EnvironmentFile
+    // (composeDeploymentEnv reserves EVELAND_MEMORY_ROOT), so unlike the
+    // sandbox cache there is no Environment= line -- only the grant.
+    `--property=BindPaths=${input.memoryRootDir}`,
     `--property=BindPaths=${input.dynamicUserUidMarkerPath}:${dynamicUserUidMarkerMount}`,
     // EnvironmentFile= also lives under the masked data root. Whether systemd
     // resolves it before or inside the unit's namespace varies with the other
@@ -565,9 +573,20 @@ export function createSystemdAdapter(
           deploymentUser: resolveSystemdDeploymentUser(input.processName),
           releaseDir: input.releaseRef,
           sandboxCacheDir: input.sandboxCacheDir,
+          memoryRootDir: input.memoryRootDir,
         }),
         { mode: 0o700 },
       );
+
+      // Provisioned on every start rather than at build time like the sandbox
+      // cache: restart, cold activation, and schedule wake all launch without
+      // a rebuild, and the ProtectSystem=strict unit cannot create the
+      // directory itself. Group access is what lets the DynamicUser= identity
+      // write through the g+rwX grant; the dir is small, so the recursive pass
+      // is cheap and keeps documents writable across dynamic-uid changes.
+      await mkdir(input.memoryRootDir, { recursive: true });
+      await execa("chown", ["-R", `${config.user}:`, input.memoryRootDir]);
+      await execa("chmod", ["-R", "g+rwX,g-s", input.memoryRootDir]);
 
       let result;
       try {
@@ -583,6 +602,7 @@ export function createSystemdAdapter(
             cpuQuota: config.cpuQuota,
             tasksMax: config.tasksMax,
             sandboxCacheDir: input.sandboxCacheDir,
+            memoryRootDir: input.memoryRootDir,
             dataDir,
             observabilityPolicyDir: input.observabilityPolicyDir,
             accessRepairScriptPath,

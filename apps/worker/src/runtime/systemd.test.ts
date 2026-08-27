@@ -74,6 +74,7 @@ describe("buildSystemdRunArgs", () => {
       memoryMax: "2G",
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
       dataDir: "/var/lib/eveland-data",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       accessRepairScriptPath: "/data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh",
@@ -107,10 +108,12 @@ describe("buildSystemdRunArgs", () => {
       "--property=ProtectSystem=strict",
       "--property=ReadWritePaths=/data/builds/proj_123/rel_789",
       "--property=ReadWritePaths=/var/lib/eveland-data/sandbox/proj_123",
+      "--property=ReadWritePaths=/var/lib/eveland-data/memory/proj_123",
       "--property=ReadWritePaths=/run/eveland/dynamic-user-uid",
       "--property=TemporaryFileSystem=/var/lib/eveland-data:ro",
       "--property=BindPaths=/data/builds/proj_123/rel_789",
       "--property=BindPaths=/var/lib/eveland-data/sandbox/proj_123",
+      "--property=BindPaths=/var/lib/eveland-data/memory/proj_123",
       "--property=BindPaths=/var/lib/eveland-data/observability/proj_123/dep_456/.dynamic-user-uid:/run/eveland/dynamic-user-uid",
       "--property=BindReadOnlyPaths=/data/deployment-env/eveland-proj_123-dep_456.env",
       "--property=BindReadOnlyPaths=/data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh:/run/eveland/prepare-dynamic-user-access",
@@ -139,6 +142,7 @@ describe("buildSystemdRunArgs", () => {
       cpuQuota: "200%",
       tasksMax: 64,
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
       dataDir: "/var/lib/eveland-data",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       accessRepairScriptPath: "/data/deployment-env/eveland-proj_123-dep_456.prepare-access.sh",
@@ -162,6 +166,7 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
       memoryMax: "2G",
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/p",
+      memoryRootDir: "/var/lib/eveland-data/memory/p",
       dataDir: "/var/lib/eveland-data",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/p/d",
       accessRepairScriptPath: "/env/p.prepare-access.sh",
@@ -171,6 +176,14 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
 
     expect(args).toContain("--property=ReadWritePaths=/rel");
     expect(args).toContain("--property=ReadWritePaths=/var/lib/eveland-data/sandbox/p");
+    // The memory root is granted the same way; its value reaches the process
+    // through the EnvironmentFile (composeDeploymentEnv reserves it), so no
+    // Environment= line exists to be overridden.
+    expect(args).toContain("--property=ReadWritePaths=/var/lib/eveland-data/memory/p");
+    expect(args).toContain("--property=BindPaths=/var/lib/eveland-data/memory/p");
+    expect(args.some((arg) => arg.startsWith("--property=Environment=EVELAND_MEMORY_ROOT"))).toBe(
+      false,
+    );
     expect(args).toContain(
       "--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/p",
     );
@@ -193,6 +206,7 @@ describe("buildSystemdRunArgs (sibling isolation)", () => {
       memoryMax: "2G",
       cpuQuota: "200%",
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/p",
+      memoryRootDir: "/var/lib/eveland-data/memory/p",
       dataDir: "/var/lib/eveland-data",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/p/d",
       accessRepairScriptPath: "/var/lib/eveland-data/deployment-env/p.prepare-access.sh",
@@ -205,7 +219,8 @@ describe("buildSystemdRunArgs (sibling isolation)", () => {
     // under the same data root stays hidden behind the tmpfs.
     expect(args).toContain("--property=BindPaths=/var/lib/eveland-data/builds/p/rel");
     expect(args).toContain("--property=BindPaths=/var/lib/eveland-data/sandbox/p");
-    expect(args.filter((arg) => arg.startsWith("--property=BindPaths="))).toHaveLength(3);
+    expect(args).toContain("--property=BindPaths=/var/lib/eveland-data/memory/p");
+    expect(args.filter((arg) => arg.startsWith("--property=BindPaths="))).toHaveLength(4);
     // The env file carries every project secret and also lives under the mask,
     // so it must be reopened or the Deployment starts with no configuration.
     expect(args.filter((arg) => arg.startsWith("--property=BindReadOnlyPaths="))).toEqual([
@@ -535,6 +550,7 @@ describe("createSystemdAdapter startProcess", () => {
       env: {},
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
@@ -566,18 +582,21 @@ describe("createSystemdAdapter startProcess", () => {
     expect(vi.mocked(execa).mock.calls.at(-1)?.[0]).toBe("systemd-run");
   });
 
-  test("repairs both persistent roots in one pass only after the dynamic uid changes", () => {
+  test("repairs every persistent root in one pass only after the dynamic uid changes", () => {
     const script = buildDynamicUserAccessRepairScript({
       deploymentUser: "eveland-d-123",
       releaseDir: "/data/release with spaces",
       sandboxCacheDir: "/data/cache",
+      memoryRootDir: "/data/memory",
     });
 
     expect(script).toContain(
       'if [ -z "$current_uid" ] || [ "$current_uid" != "$previous_uid" ]; then',
     );
     expect(script.match(/chmod -R/g)).toHaveLength(1);
-    expect(script).toContain("chmod -R g+rwX,g-s -- '/data/release with spaces' '/data/cache'");
+    expect(script).toContain(
+      "chmod -R g+rwX,g-s -- '/data/release with spaces' '/data/cache' '/data/memory'",
+    );
     expect(script.indexOf("chmod -R")).toBeLessThan(script.indexOf("printf '%s\\n'"));
   });
 
@@ -586,6 +605,7 @@ describe("createSystemdAdapter startProcess", () => {
       deploymentUser: "eveland-d-123",
       releaseDir: "/data/release",
       sandboxCacheDir: "/data/cache",
+      memoryRootDir: "/data/memory",
     });
 
     expect(script).toContain("readlink '/run/systemd/dynamic-uid/direct:eveland-d-123'");
@@ -607,6 +627,7 @@ describe("createSystemdAdapter startProcess", () => {
       },
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
@@ -638,6 +659,7 @@ describe("createSystemdAdapter startProcess", () => {
       env: {},
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
@@ -671,6 +693,7 @@ describe("createSystemdAdapter startProcess", () => {
       env: {},
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
@@ -702,6 +725,7 @@ describe("createSystemdAdapter startProcess", () => {
         env: {},
         commandContext: { hasLockfile: true },
         sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
         observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       }),
     ).rejects.toThrow(/eveland-proj_other-dep_999\.service/);
@@ -1414,6 +1438,7 @@ describe("createSystemdAdapter startProcess failure cleanup", () => {
         env: { OPENAI_API_KEY: "secret" },
         commandContext: { hasLockfile: true },
         sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
         observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       }),
     ).rejects.toThrow(/transient service unit/);

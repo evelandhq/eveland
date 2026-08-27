@@ -178,6 +178,7 @@ describe("buildDockerRunArgs", () => {
       internalPort: 3000,
       hostPort: 43123,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
+      memoryRootDir: "/host/eveland/memory/proj_123",
       observabilityPolicyDir: "/host/eveland/observability/proj_123/dep_456",
       envFilePath: "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
       command: "npm run start",
@@ -217,6 +218,8 @@ describe("buildDockerRunArgs", () => {
       "/host/eveland/observability/proj_123/dep_456:/run/eveland/observability:ro",
       "--volume",
       "/host/eveland/sandbox/proj_123:/var/lib/eveland-sandbox",
+      "--volume",
+      "/host/eveland/memory/proj_123:/var/lib/eveland-memory",
       "--env",
       "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
       "--env",
@@ -241,6 +244,7 @@ describe("buildDockerRunArgs", () => {
       cpuQuota: "50%",
       tasksMax: 64,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
+      memoryRootDir: "/host/eveland/memory/proj_123",
       observabilityPolicyDir: "/host/eveland/observability/proj_123/dep_456",
       envFilePath: "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
       command: "npm run start",
@@ -258,6 +262,7 @@ describe("buildDockerRunArgs", () => {
       internalPort: 3000,
       hostPort: 43125,
       sandboxCacheDir: "/host/eveland/sandbox/proj_123",
+      memoryRootDir: "/host/eveland/memory/proj_123",
       observabilityPolicyDir: "/host/eveland/observability/proj_123/dep_456",
       envFilePath: "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
       command: "npm run start",
@@ -601,6 +606,7 @@ describe("createDockerAdapter", () => {
       env: { OPENAI_API_KEY: "sk-test-123456" },
       commandContext: { hasLockfile: true },
       sandboxCacheDir,
+      memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
@@ -703,6 +709,7 @@ describe("createDockerAdapter", () => {
           hasLockfile: true,
         },
         sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
         observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       }),
     ).resolves.toMatchObject({ log: "agent started" });
@@ -762,6 +769,7 @@ describe("createDockerAdapter", () => {
       env: {},
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+      memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
       observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
     });
 
@@ -800,6 +808,7 @@ describe("createDockerAdapter", () => {
         env: {},
         commandContext: { hasLockfile: true },
         sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
         observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
       }),
     ).rejects.toThrow(/published by eveland-proj_other/);
@@ -1051,6 +1060,7 @@ describe("docker deployment secrets", () => {
       env: { OPENAI_API_KEY: "sk-secret-value", WORKFLOW_POSTGRES_URL: "postgres://u:p@host/db" },
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/host/sandbox/proj_sec",
+      memoryRootDir: "/host/memory/proj_sec",
       observabilityPolicyDir: "/host/observability/proj_sec",
     });
 
@@ -1085,6 +1095,7 @@ describe("docker deployment secrets", () => {
       env: { OPENAI_API_KEY: "sk-secret-value" },
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/host/sandbox/proj_sec",
+      memoryRootDir: "/host/memory/proj_sec",
       observabilityPolicyDir: "/host/observability/proj_sec",
     });
     const envFilePath = path.join(

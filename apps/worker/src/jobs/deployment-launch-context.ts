@@ -8,9 +8,11 @@ import {
   prepareDeploymentObservability,
   warnStaleObserverRelease,
 } from "./process-observability.js";
+import { DOCKER_MEMORY_ROOT_MOUNT_DIR } from "../runtime/docker.js";
 import {
   composeDeploymentEnv,
   devSecretKey,
+  resolveMemoryRootDirs,
   resolveRuntimeCommandContext,
   resolveSandboxCacheDirs,
 } from "./process-support.js";
@@ -29,6 +31,7 @@ export type DeploymentLaunchPrerequisites = Readonly<{
   secretValues: string[];
   commandContext: RuntimeCommandContext;
   sandboxCacheDirs: AdapterVisibleDirectories;
+  memoryRootDirs: AdapterVisibleDirectories;
   observabilityPolicyDirs: AdapterVisibleDirectories;
   observability: Readonly<{
     appSecretKey: string;
@@ -43,6 +46,7 @@ export type DeploymentLaunchContext = Readonly<{
   secretValues: string[];
   commandContext: RuntimeCommandContext;
   sandboxCacheDirs: AdapterVisibleDirectories;
+  memoryRootDirs: AdapterVisibleDirectories;
   observabilityPolicyDirs: AdapterVisibleDirectories;
 }>;
 
@@ -72,6 +76,9 @@ export function createDeploymentStartInput(input: DeploymentStartInput): Process
     sandboxCacheDir: usesHostVisiblePaths
       ? input.launchContext.sandboxCacheDirs.hostDir
       : input.launchContext.sandboxCacheDirs.workerDir,
+    memoryRootDir: usesHostVisiblePaths
+      ? input.launchContext.memoryRootDirs.hostDir
+      : input.launchContext.memoryRootDirs.workerDir,
     observabilityPolicyDir: usesHostVisiblePaths
       ? input.launchContext.observabilityPolicyDirs.hostDir
       : input.launchContext.observabilityPolicyDirs.workerDir,
@@ -92,10 +99,20 @@ export async function resolveDeploymentLaunchPrerequisites(input: {
   // Resolve sequentially: environment bootstrap errors should remain visible
   // before source metadata errors, matching the existing launch paths.
   const appSecretKey = input.options.appSecretKey ?? input.workerEnv.APP_SECRET_KEY ?? devSecretKey;
+  const memoryRootDirs = resolveMemoryRootDirs(input.workerEnv, input.projectId);
   const { env, secretValues } = await composeDeploymentEnv(
     input.store,
     input.projectId,
-    { ...input.options, appSecretKey },
+    {
+      ...input.options,
+      appSecretKey,
+      // The reserved EVELAND_MEMORY_ROOT must be the path the deployed process
+      // itself can open: Docker containers see the fixed mount, systemd units
+      // see the bind-granted worker path.
+      memoryRootDir:
+        input.options.memoryRootDir ??
+        (input.runtimeKind === "docker" ? DOCKER_MEMORY_ROOT_MOUNT_DIR : memoryRootDirs.workerDir),
+    },
     input.workerEnv,
   );
   const commandContext = await resolveRuntimeCommandContext(
@@ -112,6 +129,7 @@ export async function resolveDeploymentLaunchPrerequisites(input: {
     secretValues,
     commandContext,
     sandboxCacheDirs: resolveSandboxCacheDirs(input.workerEnv, input.projectId),
+    memoryRootDirs,
     observabilityPolicyDirs: resolveAgentObservabilityDirs(
       input.workerEnv,
       input.projectId,
@@ -125,9 +143,15 @@ export async function resolveDeploymentLaunchPrerequisites(input: {
 }
 
 export async function ensureDeploymentLaunchSandbox(
-  prerequisites: Pick<DeploymentLaunchPrerequisites, "sandboxCacheDirs">,
+  prerequisites: Pick<DeploymentLaunchPrerequisites, "sandboxCacheDirs" | "memoryRootDirs">,
 ): Promise<void> {
   await mkdir(prerequisites.sandboxCacheDirs.workerDir, { recursive: true });
+  // Provisioned alongside the sandbox cache: the Docker daemon would create a
+  // missing bind source itself, but as a root-owned directory at the *host*
+  // path -- which is not the worker-visible path when the worker runs inside
+  // Compose -- and the systemd unit runs under ProtectSystem=strict and cannot
+  // create it at all.
+  await mkdir(prerequisites.memoryRootDirs.workerDir, { recursive: true });
 }
 
 export async function materializeDeploymentLaunchContext(input: {
@@ -162,6 +186,7 @@ export async function materializeDeploymentLaunchContext(input: {
     secretValues: input.prerequisites.secretValues,
     commandContext: input.prerequisites.commandContext,
     sandboxCacheDirs: input.prerequisites.sandboxCacheDirs,
+    memoryRootDirs: input.prerequisites.memoryRootDirs,
     observabilityPolicyDirs: {
       workerDir: observability.workerDir,
       hostDir: observability.hostDir,

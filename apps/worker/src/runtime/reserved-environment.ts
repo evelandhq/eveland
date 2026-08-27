@@ -21,6 +21,10 @@
 export const RESERVED_RUNTIME_ENVIRONMENT_KEYS: readonly string[] = [
   "EVELAND_IDENTITY_ISSUER",
   "EVELAND_IDENTITY_JWKS_URL",
+  // Where the deployed process persists fileMemory() documents. A project that
+  // could set it would point the agent's durable memory at an unprovisioned
+  // path -- or, worse, at a directory shared with another tenant.
+  "EVELAND_MEMORY_ROOT",
   "EVELAND_PROJECT_ID",
   "EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES",
   "EVELAND_SANDBOX_MAX_OUTPUT_BYTES",
