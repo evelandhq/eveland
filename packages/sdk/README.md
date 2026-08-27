@@ -1,7 +1,8 @@
 # `eveland/auth`
 
-The public Eveland SDK currently provides Eve channel authentication for
-Eveland's short-lived, project-bound Caller Tokens.
+The public Eveland SDK provides Eve channel authentication for
+Eveland's short-lived, project-bound Caller Tokens, and a storage backend for
+Eve's `fileMemory()` ([`eveland/memory`](#evelandmemory), below).
 
 ```ts
 import { evelandIdentity } from "eveland/auth";
@@ -67,6 +68,58 @@ the log. Run the Agent with `EVE_LOG_LEVEL=debug` to see them, or pass
 ```ts
 evelandIdentity({ logger: (message, fields) => log.debug(message, fields) });
 ```
+
+# `eveland/memory`
+
+Eve 0.45 introduced first-class memory. Its default provider, `fileMemory()`,
+resolves storage from the environment — process-local during `eve dev`, Vercel
+Blob on Vercel — and **requires an explicit backend everywhere else, including
+every Eveland deployment**. This entry point supplies that backend:
+
+```ts
+import { defineMemory } from "eve/memory";
+import { fileMemory } from "eve/memory/file";
+import { byPrincipal } from "eve/memory/scope";
+import { evelandMemoryBackend } from "eveland/memory";
+
+export default defineMemory({
+  scope: byPrincipal,
+  provider: fileMemory({ backend: evelandMemoryBackend() }),
+});
+```
+
+The memory _behavior_ — recall formatting, the `save_memory`/`remove_memory`
+tools, document limits — stays Eve's. This backend owns only where the
+documents persist, which is the seam Eve designed for platforms
+(`MemoryDocumentBackend`). It stores one versioned document per Eve memory
+scope key under a directory, with compare-and-swap writes, so memories survive
+restarts and redeploys.
+
+`evelandMemoryBackend()` reads the directory from `EVELAND_MEMORY_ROOT` (or
+takes it as `evelandMemoryBackend({ root })`). When neither is set it returns
+`undefined`, and `fileMemory({ backend: undefined })` falls through to Eve's
+own environment defaults — so the snippet above is portable: it works unchanged
+under `eve dev`, on Vercel, and on Eveland.
+
+Until Eveland injects `EVELAND_MEMORY_ROOT` natively, set it yourself as a
+project Variable (or in the Shared Agent Environment) pointing at a directory
+the agent process can reach — on systemd runtimes any operator-created host
+directory works; keep one directory per project, because Eve scope keys carry
+no project identity.
+
+Prefer a one-word provider? Wrap it in your own code, where `fileMemory`
+resolves from your project's own Eve:
+
+```ts
+const evelandMemory = (options?: FileMemoryOptions) =>
+  fileMemory({ ...options, backend: evelandMemoryBackend() });
+```
+
+The backend intentionally imports nothing from `eve`: it is two functions over
+plain data, and Eve recognizes its conflict error structurally across bundle
+boundaries. The SDK's tests pin that structural contract (types, conflict
+narrowing, and a save/recall round trip through the real `fileMemory()`)
+against the newest Eve in the hosted window.
 
 ## Versioning
 

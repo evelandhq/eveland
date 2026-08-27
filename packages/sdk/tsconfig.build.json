@@ -5,6 +5,6 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["src/auth.ts"],
+  "include": ["src/auth.ts", "src/memory.ts"],
   "exclude": ["src/**/*.test.ts"]
 }
