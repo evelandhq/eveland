@@ -93,6 +93,24 @@ services:
       EVELAND_RELEASE_CHANNEL: "${EVELAND_RELEASE_CHANNEL:-stable}"
       EVELAND_REVISION: "${EVELAND_REVISION:-unknown}"
 
+  model-gateway:
+    restart: unless-stopped
+    network_mode: host
+    ports: !override []
+    command: sh -lc "corepack enable && pnpm install && cd apps/model-gateway && NODE_ENV=production pnpm exec tsx --import=@evelandhq/platform-observability/register --env-file=../../.env src/server.ts"
+    environment:
+      CI: "true"
+      DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
+      MODEL_GATEWAY_PORT: 4090
+      # Host networking: bind loopback only. systemd Agent deployments share
+      # the host network namespace and reach it at 127.0.0.1:4090.
+      MODEL_GATEWAY_HOST: 127.0.0.1
+      EVELAND_MODEL_GATEWAY_SECRET_KEY: "${EVELAND_MODEL_GATEWAY_SECRET_KEY:?set EVELAND_MODEL_GATEWAY_SECRET_KEY}"
+      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:4318
+      EVELAND_OTLP_SERVICE_TOKEN: "${EVELAND_OTLP_SERVICE_TOKEN:?set EVELAND_OTLP_SERVICE_TOKEN}"
+      EVELAND_RELEASE_CHANNEL: "${EVELAND_RELEASE_CHANNEL:-stable}"
+      EVELAND_REVISION: "${EVELAND_REVISION:-unknown}"
+
   workflow-dispatcher:
     # Exactly one dispatcher may drive the production shared workflow database:
     # the host systemd service (docs/en/production/workflow-dispatcher.md). Gate

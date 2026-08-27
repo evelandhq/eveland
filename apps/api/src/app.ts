@@ -13,6 +13,10 @@ import {
   registerSystemIdentityRoutes,
 } from "./app-identity-routes.js";
 import { registerAgentCatalogRoutes } from "./app-agent-catalog-routes.js";
+import {
+  defaultVerifyProviderKey,
+  registerModelGatewayRoutes,
+} from "./app-model-gateway-routes.js";
 import { registerProjectRoutes } from "./app-project-routes.js";
 import { registerQueryRoutes } from "./app-query-routes.js";
 import { registerSecretRoutes } from "./app-secret-routes.js";
@@ -66,6 +70,13 @@ export function createApp(
   }
   const appSecretKey = options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
   assertValidSecretKey(appSecretKey);
+  // Deliberately independent of APP_SECRET_KEY (see the Model Gateway plan):
+  // the API can encrypt provider credentials it can no longer read once this
+  // key rotates away, and the Model Gateway never learns APP_SECRET_KEY.
+  const modelGatewaySecretKey =
+    options.modelGatewaySecretKey ??
+    process.env.EVELAND_MODEL_GATEWAY_SECRET_KEY ??
+    "eveland-dev-model-gateway-key-00";
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3000";
@@ -146,6 +157,12 @@ export function createApp(
     });
   }
 
+  registerModelGatewayRoutes({
+    app,
+    store,
+    modelGatewaySecretKey,
+    verifyProviderKey: options.modelGatewayVerifyProviderKey ?? defaultVerifyProviderKey(),
+  });
   registerAgentAuthRoutes({ app, store, agentAuth });
 
   registerProjectRoutes({ app, store, options, dataDir, appSecretKey, sourcePreflightTtlMs });

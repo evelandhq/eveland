@@ -3,6 +3,7 @@ export const EVELAND_VERSION = "0.42.0"; // x-release-please-version
 export const evelandComponents = [
   "api",
   "gateway",
+  "model-gateway",
   "web",
   "worker",
   "workflow-dispatcher",

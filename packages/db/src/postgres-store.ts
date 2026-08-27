@@ -9,6 +9,7 @@ import { createPostgresIdentityStore } from "./postgres-identity-store.js";
 import { createPostgresObservabilityStore } from "./postgres-observability-store.js";
 import { createPostgresOtlpStore } from "./postgres-otel-store.js";
 import { createPostgresProjectStore } from "./postgres-project-store.js";
+import { createPostgresModelGatewayStore } from "./postgres-model-gateway-store.js";
 import { createPostgresRuntimeStore } from "./postgres-runtime-store.js";
 import { createPostgresScheduleStore } from "./postgres-schedule-store.js";
 import { createPostgresSecretStore } from "./postgres-secret-store.js";
@@ -39,6 +40,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
     ...createPostgresUsageStore(context),
     ...createPostgresScheduleStore(context),
     ...createPostgresRuntimeStore(context),
+    ...createPostgresModelGatewayStore(context),
     ...createPostgresInstanceHealthStore(context),
     ...createPostgresWorkflowDispatcherStore(context),
     ...createPostgresObservabilityStore(context),

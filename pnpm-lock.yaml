@@ -182,6 +182,9 @@ importers:
       '@evelandhq/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@evelandhq/platform-observability':
+        specifier: workspace:*
+        version: link:../../packages/platform-observability
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.3)

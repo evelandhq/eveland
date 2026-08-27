@@ -945,7 +945,84 @@ export interface ObservabilityStore {
   }>;
 }
 
-export type Store = ProjectStore &
+export type ModelGatewayProviderConnectionRecord = {
+  id: string;
+  providerId: string;
+  name: string;
+  baseUrl: string;
+  /** Opaque envelope encrypted under EVELAND_MODEL_GATEWAY_SECRET_KEY. */
+  encryptedApiKey: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ModelGatewayModelRouteRecord = {
+  id: string;
+  /** Canonical model id agents write, e.g. "zai/glm-5.3-flash". */
+  modelId: string;
+  /** providerId of the serving connection. */
+  providerId: string;
+  providerModelId: string;
+  displayName: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ModelGatewayRegistryEventRecord = {
+  id: string;
+  kind: string;
+  subject: string;
+  detail: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+/**
+ * The Model Gateway's BYOK registry: provider connections (encrypted platform
+ * credentials) and the canonical-model route table Eveland owns as routing
+ * truth. Every mutation appends an audit event; the trail never contains
+ * credentials.
+ */
+export interface ModelGatewayRegistryStore {
+  upsertModelGatewayProviderConnection(
+    input: { providerId: string; name: string; baseUrl: string; encryptedApiKey: string },
+    now?: Date,
+  ): Promise<ModelGatewayProviderConnectionRecord>;
+  listModelGatewayProviderConnections(): Promise<ModelGatewayProviderConnectionRecord[]>;
+  deleteModelGatewayProviderConnection(providerId: string, now?: Date): Promise<boolean>;
+  upsertModelGatewayModelRoute(
+    input: {
+      modelId: string;
+      providerId: string;
+      providerModelId: string;
+      displayName?: string;
+    },
+    now?: Date,
+  ): Promise<ModelGatewayModelRouteRecord>;
+  listModelGatewayModelRoutes(): Promise<ModelGatewayModelRouteRecord[]>;
+  deleteModelGatewayModelRoute(modelId: string, now?: Date): Promise<boolean>;
+  /** Newest first. */
+  listModelGatewayRegistryEvents(limit: number): Promise<ModelGatewayRegistryEventRecord[]>;
+  mintModelGatewayApiKey(
+    input: { userId: string; name: string; tokenHash: string },
+    now?: Date,
+  ): Promise<ModelGatewayApiKeyRecord>;
+  listModelGatewayApiKeys(): Promise<ModelGatewayApiKeyRecord[]>;
+  revokeModelGatewayApiKey(id: string, now?: Date): Promise<boolean>;
+  findActiveModelGatewayApiKeyByHash(
+    tokenHash: string,
+  ): Promise<{ id: string; userId: string } | null>;
+}
+
+export type ModelGatewayApiKeyRecord = {
+  id: string;
+  userId: string;
+  name: string;
+  createdAt: string;
+  revokedAt: string | null;
+};
+
+export type Store = ModelGatewayRegistryStore &
+  ProjectStore &
   CatalogStore &
   SourceStore &
   GitCredentialStore &

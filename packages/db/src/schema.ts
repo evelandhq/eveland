@@ -1271,3 +1271,85 @@ export const logs = pgTable(
     index("logs_project_created_idx").on(table.projectId, table.createdAt),
   ],
 );
+
+/**
+ * Model Gateway BYOK provider connections: the platform-level provider
+ * credentials the data plane replays requests with. `encryptedApiKey` is an
+ * AES-256-GCM envelope under EVELAND_MODEL_GATEWAY_SECRET_KEY — deliberately
+ * NOT APP_SECRET_KEY, so the model gateway service can never decrypt project
+ * secrets and vice versa.
+ */
+export const modelGatewayProviderConnections = pgTable(
+  "model_gateway_provider_connections",
+  {
+    id: text("id").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    name: text("name").notNull(),
+    baseUrl: text("base_url").notNull(),
+    encryptedApiKey: text("encrypted_api_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("model_gateway_provider_id_idx").on(table.providerId)],
+);
+
+/**
+ * The route registry: canonical model id -> (provider connection, provider's
+ * own model id). Eveland owns this table as the routing truth; any external
+ * catalog is only a sync input.
+ */
+export const modelGatewayModelRoutes = pgTable(
+  "model_gateway_model_routes",
+  {
+    id: text("id").primaryKey(),
+    modelId: text("model_id").notNull(),
+    connectionId: text("connection_id")
+      .notNull()
+      .references(() => modelGatewayProviderConnections.id, { onDelete: "cascade" }),
+    providerModelId: text("provider_model_id").notNull(),
+    displayName: text("display_name"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("model_gateway_model_routes_model_id_idx").on(table.modelId),
+    index("model_gateway_model_routes_connection_idx").on(table.connectionId),
+  ],
+);
+
+/** Append-only audit trail of registry mutations; never contains credentials. */
+export const modelGatewayRegistryEvents = pgTable(
+  "model_gateway_registry_events",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    subject: text("subject").notNull(),
+    detail: jsonb("detail"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("model_gateway_registry_events_created_idx").on(table.createdAt)],
+);
+
+/**
+ * Personal Model Gateway API keys, minted by members from the dashboard:
+ * usable wherever a caller can reach the gateway (e.g. local `eve dev` once
+ * the origin is configurable). Only the SHA-256 hash persists; revocation is
+ * a timestamp, never a delete, so the trail stays auditable.
+ */
+export const modelGatewayApiKeys = pgTable(
+  "model_gateway_api_keys",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("model_gateway_api_keys_token_hash_idx").on(table.tokenHash),
+    index("model_gateway_api_keys_user_idx").on(table.userId),
+  ],
+);

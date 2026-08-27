@@ -414,6 +414,20 @@
       "when": 1787803160008,
       "tag": "0058_model_gateway_token",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1787804786524,
+      "tag": "0059_model_gateway_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1787804925148,
+      "tag": "0060_model_gateway_api_keys",
+      "breakpoints": true
     }
   ]
 }

@@ -391,6 +391,24 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "agent.localhost",
   ),
   entry("GATEWAY_PORT", ["gateway"], "TCP port used by the public Agent Gateway.", "4080"),
+  entry(
+    "MODEL_GATEWAY_PORT",
+    ["model-gateway"],
+    "TCP port used by the Model Gateway data plane. Keep it private: Agent deployments reach it via loopback or the Docker host gateway, never a public route.",
+    "4090",
+  ),
+  entry(
+    "MODEL_GATEWAY_HOST",
+    ["model-gateway"],
+    "Bind address of the Model Gateway. Loopback on a bare host; 0.0.0.0 inside a container whose port publish stays loopback-only.",
+    "127.0.0.1",
+  ),
+  entry(
+    "MODEL_GATEWAY_MAX_CONCURRENT_PER_SUBJECT",
+    ["model-gateway"],
+    "Cap on concurrently running model calls per caller (project or personal key), so one Agent cannot exhaust the shared BYOK provider quota.",
+    "8",
+  ),
   {
     name: "EVELAND_GATEWAY_AFFINITY_SECRET",
     components: ["gateway"],
@@ -497,6 +515,16 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     ["worker"],
     "Deployment-facing Model Gateway origin injected into every Deployment; unset leaves the Model Gateway disabled and string models on their default resolution.",
   ),
+  {
+    name: "EVELAND_MODEL_GATEWAY_SECRET_KEY",
+    components: ["api", "model-gateway"],
+    sensitivity: "secret",
+    purpose:
+      "Encrypts BYOK provider credentials at rest. Deliberately independent of APP_SECRET_KEY so the Model Gateway can never decrypt project secrets, and the API never holds the only key to both.",
+    fallback: developmentSecret,
+    required: production,
+    warning: productionSecretWarning,
+  },
   entry(
     "EVELAND_SCHEDULER_PLANNER_BATCH_SIZE",
     ["worker"],

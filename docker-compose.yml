@@ -126,6 +126,36 @@ services:
       # sources, runtime state, and encrypted secret material from the public proxy.
       - eveland-gateway-data-mask:/workspace/.eveland-data
 
+  model-gateway:
+    image: node:24-alpine
+    working_dir: /workspace
+    command: sh -lc "corepack enable && pnpm install && pnpm --filter @evelandhq/model-gateway dev"
+    depends_on:
+      - postgres
+    environment:
+      CI: "true"
+      NODE_ENV: development
+      MODEL_GATEWAY_PORT: 4090
+      # Bind all interfaces inside the container; privacy comes from the
+      # loopback-only port publish below and the absence of any public route.
+      MODEL_GATEWAY_HOST: 0.0.0.0
+      DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
+      EVELAND_MODEL_GATEWAY_SECRET_KEY: ${EVELAND_MODEL_GATEWAY_SECRET_KEY:-eveland-dev-model-gateway-key-00}
+      EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
+      EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
+      EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
+      EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
+    ports:
+      # Loopback-only on purpose: Agent containers reach it through the Docker
+      # host gateway (EVELAND_MODEL_GATEWAY_URL=http://host.docker.internal:4090)
+      # while nothing routes it publicly.
+      - "127.0.0.1:4090:4090"
+    volumes:
+      - .:/workspace
+      # Same shielding as the Agent Gateway: hide imported project sources and
+      # runtime state from the process that terminates untrusted model traffic.
+      - eveland-model-gateway-data-mask:/workspace/.eveland-data
+
   workflow-dispatcher:
     image: node:24-alpine
     working_dir: /workspace
@@ -254,3 +284,4 @@ volumes:
   eveland-otel-collector:
   eveland-workflow-dispatcher-data-mask:
   eveland-gateway-data-mask:
+  eveland-model-gateway-data-mask:

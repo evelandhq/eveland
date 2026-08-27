@@ -26,6 +26,8 @@ export type AppOptions = {
   webOrigin?: string;
   cookieDomain?: string;
   appSecretKey?: string;
+  modelGatewaySecretKey?: string;
+  modelGatewayVerifyProviderKey?: (input: { baseUrl: string; apiKey: string }) => Promise<boolean>;
   identityIssuer?: string;
   identityAllowedOrigins?: string[];
   identityOidcProtocol?: IdentityOidcProtocol;

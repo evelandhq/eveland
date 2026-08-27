@@ -1,43 +1,59 @@
+import { platformObservability } from "./observability.js";
 import { serve } from "@hono/node-server";
+import { formatBuildInfo } from "@evelandhq/core/build-info";
+import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
+import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
+import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { createModelGatewayApp } from "./app.js";
-import { spikeConnectionsFromEnv, spikeResolver } from "./spike-config.js";
+import { createModelGatewayAuthenticator } from "./instance-token-auth.js";
+import { createStoreBackedModelRegistry } from "./store-registry.js";
 
 /**
- * Spike composition root for manual runs. Phase 2 replaces this with the
- * platform service: encrypted provider connections, RuntimeInstance-bound
- * token verification, the persisted route registry, and observability.
+ * The Model Gateway data plane: authenticates instance tokens and personal
+ * API keys against the Store, resolves canonical model ids through the
+ * Store-backed BYOK registry, and replays calls to the configured providers.
+ *
+ * Private by design: bind loopback on a bare host; in Compose the container
+ * binds 0.0.0.0 and privacy comes from the 127.0.0.1-only port publish plus
+ * the absence of any public route.
  */
 const port = Number(process.env.MODEL_GATEWAY_PORT ?? 4090);
+const host = process.env.MODEL_GATEWAY_HOST ?? "127.0.0.1";
+const buildInfo = createBuildInfoFromEnv("model-gateway", process.env);
 
-const tokens = new Set(
-  (process.env.MODEL_GATEWAY_TOKENS ?? "")
-    .split(",")
-    .map((token) => token.trim())
-    .filter((token) => token !== ""),
+const secretKey = resolveSecretWithDevFallback(
+  process.env,
+  process.env.EVELAND_MODEL_GATEWAY_SECRET_KEY,
+  // Exactly 32 bytes, as the AES-256-GCM envelope requires.
+  "eveland-dev-model-gateway-key-00",
 );
-if (tokens.size === 0) {
+if (!secretKey) {
   throw new Error(
-    "MODEL_GATEWAY_TOKENS is required (comma-separated runtime tokens); the model gateway is fail-closed.",
+    "EVELAND_MODEL_GATEWAY_SECRET_KEY is required unless NODE_ENV is explicitly development.",
   );
 }
 
-const connections = spikeConnectionsFromEnv(process.env);
-if (connections.length === 0) {
-  throw new Error(
-    "No provider key configured: set ZAI_API_KEY and/or DEEPSEEK_API_KEY; the model gateway is fail-closed.",
-  );
-}
-
-const resolver = spikeResolver(connections);
+const { store, close } = createStoreFromEnv();
+const registry = createStoreBackedModelRegistry({ store, secretKey });
 const app = createModelGatewayApp({
-  authenticate: (token) => tokens.has(token),
-  resolveModel: resolver.resolveModel,
-  listModels: resolver.listModels,
+  authenticate: createModelGatewayAuthenticator(store),
+  resolveModel: registry.resolveModel,
+  listModels: registry.listModels,
+  maxConcurrentPerSubject: Number(process.env.MODEL_GATEWAY_MAX_CONCURRENT_PER_SUBJECT ?? 8),
 });
 
-serve({ fetch: app.fetch, port, hostname: "127.0.0.1" });
-console.log(
-  `eveland model-gateway (spike) listening on http://127.0.0.1:${port} with providers: ${connections
-    .map((connection) => connection.id)
-    .join(", ")}`,
-);
+const server = serve({ fetch: app.fetch, port, hostname: host });
+console.log(`${formatBuildInfo(buildInfo)} model-gateway listening on http://${host}:${port}`);
+platformObservability.emitLog({
+  severity: "info",
+  eventName: "eveland.model-gateway.ready",
+  body: `model-gateway listening on ${host}:${port}`,
+});
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    server.close(() => {
+      void Promise.all([close(), platformObservability.shutdown()]).finally(() => process.exit(0));
+    });
+  });
+}
