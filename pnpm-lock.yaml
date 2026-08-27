@@ -604,7 +604,7 @@ importers:
   packages/sdk:
     devDependencies:
       eve:
-        specifier: 'catalog:'
+        specifier: 0.45.2
         version: 0.45.2(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(ai@7.0.73(zod@4.4.3))(aws4fetch@1.0.20)(chokidar@5.0.0)(dotenv@17.4.2)(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9))(jiti@2.7.0)(lru-cache@11.5.2)(miniflare@4.20260708.1(@types/node@26.2.0))(rollup@4.62.5)(vite@7.3.6(@types/node@26.2.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.12)(yaml@2.9.0))(wrangler@4.125.0(@types/node@26.2.0))
       vitest:
         specifier: ^4.1.11
