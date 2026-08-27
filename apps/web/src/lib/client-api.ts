@@ -339,6 +339,32 @@ export async function revokeInvitation(invitationId: string): Promise<void> {
   await clientRequest(`/invitations/${invitationId}`, { method: "DELETE" });
 }
 
+export async function createPasswordReset(
+  userId: string,
+): Promise<{ resetUrl: string; expiresAt: string; email: string }> {
+  return clientRequest(`/members/${userId}/password-reset`, { method: "POST" });
+}
+
+// POST keeps the single-use token out of URLs and access logs.
+export async function previewPasswordReset(token: string): Promise<{ email: string }> {
+  return clientRequest("/password-reset/preview", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function completePasswordReset(input: {
+  token: string;
+  password: string;
+}): Promise<void> {
+  await clientRequest("/password-reset/complete", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function updateMemberRole(userId: string, role: Member["role"]): Promise<Member> {
   const data = await clientRequest<{ member: Member }>(`/members/${userId}`, {
     method: "PATCH",

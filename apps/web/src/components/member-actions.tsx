@@ -2,18 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldIcon, UserMinusIcon, UserRoundIcon } from "lucide-react";
+import { KeyRoundIcon, ShieldIcon, UserMinusIcon, UserRoundIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { removeMember, updateMemberRole, type Member } from "@/lib/client-api";
+import { createPasswordReset, removeMember, updateMemberRole, type Member } from "@/lib/client-api";
 
 export function MemberActions({ member, isLastAdmin }: { member: Member; isLastAdmin: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function changeRole() {
     setPending(true);
     setError(null);
+    setNotice(null);
     try {
       await updateMemberRole(member.userId, member.role === "admin" ? "member" : "admin");
       router.refresh();
@@ -24,10 +26,28 @@ export function MemberActions({ member, isLastAdmin }: { member: Member; isLastA
     }
   }
 
+  // Mirrors "Refresh & copy" on invitations: issuing rotates any outstanding
+  // reset link for the member and puts the fresh URL on the clipboard.
+  async function resetPassword() {
+    setPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await createPasswordReset(member.userId);
+      await navigator.clipboard.writeText(result.resetUrl);
+      setNotice("Reset link copied — single use, valid for 24 hours.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create a reset link");
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function remove() {
     if (!window.confirm(`Remove ${member.email} from the team?`)) return;
     setPending(true);
     setError(null);
+    setNotice(null);
     try {
       await removeMember(member.userId);
       router.refresh();
@@ -58,6 +78,16 @@ export function MemberActions({ member, isLastAdmin }: { member: Member; isLastA
         <Button
           type="button"
           size="sm"
+          variant="outline"
+          onClick={resetPassword}
+          disabled={pending}
+        >
+          <KeyRoundIcon data-icon="inline-start" />
+          Reset password
+        </Button>
+        <Button
+          type="button"
+          size="sm"
           variant="destructive"
           onClick={remove}
           disabled={pending || isLastAdmin}
@@ -66,6 +96,7 @@ export function MemberActions({ member, isLastAdmin }: { member: Member; isLastA
           Remove
         </Button>
       </div>
+      {notice ? <p className="text-xs text-muted-foreground">{notice}</p> : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );

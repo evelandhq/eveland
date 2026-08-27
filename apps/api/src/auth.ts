@@ -13,6 +13,8 @@ import type {
 
 export const SESSION_COOKIE_NAME = "eveland_session";
 const INVITATION_DURATION_MS = 7 * 24 * 60 * 60 * 1_000;
+const PASSWORD_RESET_DURATION_MS = 24 * 60 * 60 * 1_000;
+const PASSWORD_RESET_IDENTIFIER_PREFIX = "eveland-password-reset:";
 const DEFAULT_ORGANIZATION_ID = "team_local";
 const DEFAULT_ORGANIZATION_SLUG = "eveland";
 const organizationAccessControl = createAccessControl(defaultStatements);
@@ -374,6 +376,97 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     return response.headers;
   }
 
+  // Password recovery follows the invitation pattern (#401): an admin issues a
+  // single-use, expiring reset link and shares it out-of-band — no mailer, and
+  // the raw Better Auth recovery endpoints stay 404'd by the allowlist. Only
+  // the token's hash is stored, so a database leak never yields a usable link.
+  async function issuePasswordReset(request: Request, userId: string) {
+    await requireAdmin(request);
+    const context = await auth.$context;
+    const member = await findResettableMember(userId);
+    if (!member) throw new AuthFlowError("Member not found", 404);
+    // Issuing replaces: every outstanding link for this user dies here, so at
+    // most one reset link is live per member.
+    const outstanding = await context.adapter.findMany<{ identifier: string }>({
+      model: "verification",
+      where: [{ field: "value", value: userId }],
+    });
+    for (const row of outstanding) {
+      if (row.identifier.startsWith(PASSWORD_RESET_IDENTIFIER_PREFIX)) {
+        await context.internalAdapter.deleteVerificationByIdentifier(row.identifier);
+      }
+    }
+    const token = `pwreset_${randomBytes(32).toString("base64url")}`;
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_DURATION_MS);
+    await context.internalAdapter.createVerificationValue({
+      identifier: passwordResetIdentifier(token),
+      value: userId,
+      expiresAt,
+    });
+    return { token, expiresAt: expiresAt.toISOString(), email: member.email };
+  }
+
+  // The token gates the answer: without a valid, unexpired link the caller
+  // learns nothing — the same hardening the invitation preview has.
+  async function previewPasswordReset(token: string) {
+    const context = await auth.$context;
+    const row = await context.internalAdapter.findVerificationValue(passwordResetIdentifier(token));
+    if (!row || row.expiresAt.getTime() <= Date.now()) {
+      throw new AuthFlowError("Reset link is invalid or has expired", 404);
+    }
+    const member = await findResettableMember(row.value);
+    if (!member) throw new AuthFlowError("Reset link is invalid or has expired", 404);
+    return { email: member.email };
+  }
+
+  async function completePasswordReset(input: { token: string; password: string }) {
+    // Policy before consumption: a rejected password must not burn the link.
+    if (input.password.length < 12) {
+      throw new AuthFlowError("Password must be at least 12 characters", 400);
+    }
+    const context = await auth.$context;
+    // Atomic consume: of two concurrent completions exactly one gets the row,
+    // and expired rows come back null.
+    const row = await context.internalAdapter.consumeVerificationValue(
+      passwordResetIdentifier(input.token),
+    );
+    if (!row) throw new AuthFlowError("Reset link is invalid or has expired", 404);
+    const userId = row.value;
+    const member = await findResettableMember(userId);
+    if (!member) throw new AuthFlowError("Reset link is invalid or has expired", 404);
+    const hashed = await context.password.hash(input.password);
+    const accounts = await context.internalAdapter.findAccounts(userId);
+    if (accounts.some((account) => account.providerId === "credential")) {
+      await context.internalAdapter.updatePassword(userId, hashed);
+    } else {
+      await context.internalAdapter.createAccount({
+        accountId: userId,
+        providerId: "credential",
+        userId,
+        password: hashed,
+      });
+    }
+    // The load-bearing invariant: whoever held the old credential is signed
+    // out everywhere, matching changePassword's forced revocation.
+    await context.internalAdapter.deleteUserSessions(userId);
+    return { email: member.email };
+  }
+
+  // Reset links are a team-management tool, so they die with the membership:
+  // a link issued before removal must not keep working after it.
+  async function findResettableMember(userId: string) {
+    const context = await auth.$context;
+    const membership = await context.adapter.findOne<{ id: string }>({
+      model: "member",
+      where: [
+        { field: "organizationId", value: DEFAULT_ORGANIZATION_ID },
+        { field: "userId", value: userId },
+      ],
+    });
+    if (!membership) return null;
+    return context.internalAdapter.findUserById(userId);
+  }
+
   async function findPendingInvitation(token: string) {
     const context = await auth.$context;
     const invitation = await context.adapter.findOne<{
@@ -492,7 +585,16 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     removeMember,
     updateProfile,
     changePassword,
+    issuePasswordReset,
+    previewPasswordReset,
+    completePasswordReset,
   };
+}
+
+// The raw reset token appears only inside the resetUrl the issue endpoint
+// returns; the stored verification row keeps this hash instead.
+function passwordResetIdentifier(token: string): string {
+  return `${PASSWORD_RESET_IDENTIFIER_PREFIX}${createHash("sha256").update(token).digest("base64url")}`;
 }
 
 /**

@@ -104,7 +104,7 @@ export function AcceptInvitationForm({ token }: { token: string }) {
           />
           {rejoining ? (
             <FieldDescription>
-              Forgot it? Ask an administrator to help you regain access.
+              Forgot it? Ask an administrator to generate a password reset link for you.
             </FieldDescription>
           ) : (
             <FieldDescription>Use at least 12 characters.</FieldDescription>
