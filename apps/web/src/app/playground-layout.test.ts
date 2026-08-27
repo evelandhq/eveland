@@ -82,4 +82,13 @@ describe("project Playground surface", () => {
       expect(transcript).not.toContain("AgentActivity");
     }
   });
+
+  test("keeps user messages readable in the active color theme", () => {
+    const message = source("../components/ai-elements/message.tsx");
+
+    expect(message).toContain("group-[.is-user]:bg-muted");
+    expect(message).toContain("group-[.is-user]:text-foreground");
+    expect(message).not.toContain("group-[.is-user]:bg-primary");
+    expect(message).not.toContain("is-user:dark");
+  });
 });
