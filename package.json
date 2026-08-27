@@ -18,7 +18,8 @@
     "dev:api": "pnpm --filter @evelandhq/api dev",
     "dev:worker": "pnpm --filter @evelandhq/worker dev",
     "dev:workflow-dispatcher": "pnpm --filter @evelandhq/workflow-dispatcher dev",
-    "dev:gateway": "pnpm --filter @evelandhq/gateway dev"
+    "dev:gateway": "pnpm --filter @evelandhq/gateway dev",
+    "dev:model-gateway": "pnpm --filter @evelandhq/model-gateway dev"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

@@ -1,0 +1,27 @@
+{
+  "name": "@evelandhq/model-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/server.ts",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "smoke:live": "tsx src/live-smoke.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.37",
+    "@ai-sdk/provider": "^4.0.7",
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@ai-sdk/gateway": "4.0.59",
+    "@evelandhq/model-gateway-runtime": "workspace:*",
+    "ai": "^7.0.73",
+    "vitest": "^4.1.11"
+  }
+}

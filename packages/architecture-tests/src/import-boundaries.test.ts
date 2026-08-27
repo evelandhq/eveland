@@ -11,6 +11,10 @@ const PACKAGE_DEPENDENCY_MATRIX: Record<string, string[]> = {
   "@evelandhq/agent-scheduler": ["@evelandhq/core"],
   "@evelandhq/architecture-tests": [],
   "@evelandhq/platform-observability": [],
+  // Agent-deployment preload for the model gateway: runs inside agent
+  // processes, so like platform-observability it must stay free of Eveland
+  // package dependencies.
+  "@evelandhq/model-gateway-runtime": [],
   "@evelandhq/session-collector": ["@evelandhq/core", "@evelandhq/db"],
   "@evelandhq/agent-auth": ["@evelandhq/core", "@evelandhq/db"],
   "@evelandhq/identity-broker": ["@evelandhq/core", "@evelandhq/db"],

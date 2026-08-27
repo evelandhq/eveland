@@ -1,6 +1,10 @@
 # Model Gateway：统一模型 API（BYOK 数据平面）
 
-- 状态：计划（讨论定稿 2026-08-27，未动代码）
+- 状态：Phase 1 spike 完成（2026-08-27）：`apps/model-gateway` + `packages/model-gateway-runtime`，
+  23 个新增测试全绿（另 35 个 architecture ratchet 保持绿）（协议契约 × 真 `@ai-sdk/gateway@4.0.59` 客户端、BYOK 链路 × mock 上游、
+  裸字符串模型经预加载端到端、吊销即 401、tools/usage/abort/SSE）；live smoke 已跑通（2026-08-27，真实 Z.ai `glm-5.3-flash` + DeepSeek `deepseek-chat` 流式 + usage 全部正常）；上游 issue 草稿见 `model-gateway-upstream-issue.md`（未发）。
+  未做：Lima fixture e2e、worker 注入、平台化（Phase 2）。
+- 计划定稿：2026-08-27
 - 分支：`claude/model-gateway-unified-api-53a545`
 - 参与讨论：Michael + Claude（本文档）+ Codex（架构核对轮）
 

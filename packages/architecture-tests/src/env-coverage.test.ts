@@ -23,6 +23,10 @@ const PLATFORM_INJECTED_OR_AGENT_SIDE = new Set([
   "EVELAND_DEPLOYMENT_ID",
   "EVELAND_IDENTITY_ISSUER",
   "EVELAND_IDENTITY_JWKS_URL",
+  // Read by the model-gateway-runtime preload inside agent deployments; the
+  // worker injects it via the reserved runtime environment layer (planned in
+  // .plans/model-gateway.md), so it is agent-side, not operator configuration.
+  "EVELAND_MODEL_GATEWAY_URL",
   "EVELAND_PROJECT_ID",
   "EVELAND_RUNTIME_INSTANCE_ID",
   "EVELAND_SANDBOX_CACHE_DIR",
