@@ -12,6 +12,7 @@
     "---Domain Contracts---",
     "source-import",
     "agent-environment",
+    "model-gateway",
     "identity",
     "playground",
     "routing",

@@ -1,9 +1,20 @@
 # Model Gateway：统一模型 API（BYOK 数据平面）
 
-- 状态：Phase 1 spike 完成（2026-08-27）：`apps/model-gateway` + `packages/model-gateway-runtime`，
-  23 个新增测试全绿（另 35 个 architecture ratchet 保持绿）（协议契约 × 真 `@ai-sdk/gateway@4.0.59` 客户端、BYOK 链路 × mock 上游、
-  裸字符串模型经预加载端到端、吊销即 401、tools/usage/abort/SSE）；live smoke 已跑通（2026-08-27，真实 Z.ai `glm-5.3-flash` + DeepSeek `deepseek-chat` 流式 + usage 全部正常）；上游 issue 已发：vercel/eve#2636（草稿存档 `model-gateway-upstream-issue.md`）。
-  未做：Lima fixture e2e、worker 注入、平台化（Phase 2）。
+- 状态：**v1 全量完成（2026-08-27）**。Phase 1（spike + 真实管线端到端）、Phase 2
+  （worker 注入 + RuntimeInstance token + 控制面存储/API + 平台服务 + compose）、
+  控制面 UI（一级板块 Overview/Models/API Keys/Providers）、双语行为契约文档
+  （docs/{en,zh}/reference/model-gateway.md）全部落地；本地 docker 端到端绿
+  （MODEL GATEWAY E2E OK …revoke=401），Lima ladder 已登记 model-gateway-e2e 步骤。
+  - 3a（封锁推理路径）由 e2e 事实性满足：字符串模型解析到 eveland gateway，唯一
+    上游是 e2e 自己的 mock provider，无任何 Vercel 凭据存在；显式的全域名封锁
+    （3b）仍 gated on 上游 vercel/eve#2636（build 期 catalog 元数据）。
+  - 已知偏差：预加载交付从 NODE_OPTIONS 改为构建期烘焙的 eve hook（NODE_OPTIONS
+    会毒化 deployment 里全部 node 子进程，含 sandbox 内不可解析该模块的进程）；
+    eve 运行时自带 providerOptions.gateway.caching="auto"，故 caching 为白名单
+    剥离语义，其余 gateway options 仍 400。
+  - 留给后续（backlog 已列）：Settings 页 + 对外暴露开关、model-gateway 组件的
+    system diagnostics 聚合、外部 catalog 同步与四态 UI、Logs/Budgets、
+    per-key 用量展示。
 - 计划定稿：2026-08-27
 - 分支：`claude/model-gateway-unified-api-53a545`
 - 参与讨论：Michael + Claude（本文档）+ Codex（架构核对轮）

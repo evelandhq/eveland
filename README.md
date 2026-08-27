@@ -155,6 +155,13 @@ pnpm --filter @evelandhq/worker smoke:docker-sandbox
 # Requires Docker and openssl; verifies authenticated OpenAPI/MCP Connections,
 # a directory-form subagent, restart, a second Release, and secret non-leakage.
 EVELAND_RUNTIME=docker pnpm --filter @evelandhq/worker smoke:connections
+# Requires Docker and local Postgres; a bare string model runs a real turn
+# through the Model Gateway with an instance-bound token — the BYOK provider
+# key never enters the deployment, and stopping the instance revokes the token.
+EVELAND_RUNTIME=docker \
+  EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@host.docker.internal:5432/eveland_workflow \
+  EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL=postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow \
+  pnpm exec tsx infra/integration/model-gateway-e2e.mts
 # Requires Lima. Exercises the complete systemd/bwrap topology, including a
 # dormant cron wake, Managed Connections, OTLP usage, idle stop, and continuation wake.
 bash infra/integration/run.sh
