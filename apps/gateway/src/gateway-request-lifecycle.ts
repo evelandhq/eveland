@@ -5,9 +5,14 @@ import type {
   ResolvedAgentRoute,
   SessionBinding,
 } from "@evelandhq/core/contracts";
-import type { GatewayActivationClient, GatewayRepository } from "./gateway-types.js";
+import type {
+  GatewayActivationClient,
+  GatewayRepository,
+  GatewayTelemetry,
+} from "./gateway-types.js";
 import {
   applyGatewaySessionResponse,
+  readBodyWithin,
   type GatewaySessionProvenance,
 } from "./gateway-session-lifecycle.js";
 import {
@@ -141,6 +146,7 @@ export async function executeGatewaySessionProxy(input: {
   request: Request;
   routingBody: Uint8Array | null | undefined;
   upstreamPath: string;
+  telemetry?: GatewayTelemetry;
   policy: GatewayUpstreamPolicy;
 }): Promise<Response> {
   const { repository, activationClient, route, eveRequest, binding } = input;
@@ -193,7 +199,11 @@ export async function executeGatewaySessionProxy(input: {
     }
   }
 
-  let activation: { leaseId: string; endpointPort: number } | null = null;
+  let activation: {
+    leaseId: string;
+    runtimeInstanceId?: string;
+    endpointPort: number;
+  } | null = null;
   if (activationClient) {
     try {
       activation = await activationClient.activate(
@@ -244,6 +254,17 @@ export async function executeGatewaySessionProxy(input: {
     throw error;
   }
 
+  const opaqueSessionCreateFailure = await observeOpaqueSessionCreateFailure({
+    eveRequest,
+    operationKey: input.operationKey ?? null,
+    upstream,
+    requestId: input.provenance.requestId,
+    projectId: route.projectId,
+    deploymentId: target.deploymentId,
+    runtimeInstanceId: activation?.runtimeInstanceId,
+    telemetry: input.telemetry,
+  });
+
   try {
     await applyGatewaySessionResponse({
       repository,
@@ -268,6 +289,9 @@ export async function executeGatewaySessionProxy(input: {
   }
 
   const responseHeaders = new Headers(upstream.headers);
+  if (opaqueSessionCreateFailure) {
+    responseHeaders.set("x-eveland-request-id", input.provenance.requestId);
+  }
   input.policy.decorateResponseHeaders?.(responseHeaders);
   const heartbeatMs = input.policy.streamHeartbeatMs ?? 0;
   const responseBody =
@@ -290,6 +314,64 @@ export async function executeGatewaySessionProxy(input: {
         input.activationRenewIntervalMs,
       )
     : response;
+}
+
+const MAX_EVE_ERROR_BODY_BYTES = 16_384;
+const EVE_ERROR_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+async function observeOpaqueSessionCreateFailure(input: {
+  eveRequest: EveSessionRequest | null;
+  operationKey: string | null;
+  upstream: Response;
+  requestId: string;
+  projectId: string;
+  deploymentId: string;
+  runtimeInstanceId?: string;
+  telemetry?: GatewayTelemetry;
+}): Promise<boolean> {
+  if (
+    input.eveRequest?.kind !== "initial" ||
+    input.upstream.status !== 500 ||
+    !input.upstream.headers.get("content-type")?.includes("application/json")
+  ) {
+    return false;
+  }
+
+  const declaredLength = Number(input.upstream.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_EVE_ERROR_BODY_BYTES) return false;
+  const text = await readBodyWithin(input.upstream.clone().body, MAX_EVE_ERROR_BODY_BYTES);
+  if (text === null) return false;
+  let body: { errorId?: unknown };
+  try {
+    body = JSON.parse(text) as { errorId?: unknown };
+  } catch {
+    return false;
+  }
+  if (typeof body.errorId !== "string" || !EVE_ERROR_ID_PATTERN.test(body.errorId)) return false;
+
+  try {
+    input.telemetry?.emit({
+      severity: "error",
+      eventName: "eveland.gateway.session_create_failed",
+      body: "Eve returned an opaque session-create failure.",
+      attributes: {
+        "eveland.request.id": input.requestId,
+        "eveland.project.id": input.projectId,
+        "eveland.deployment.id": input.deploymentId,
+        ...(input.runtimeInstanceId
+          ? { "eveland.runtime_instance.id": input.runtimeInstanceId }
+          : {}),
+        ...(input.operationKey ? { "eveland.operation.key": input.operationKey } : {}),
+        "eve.error.id": body.errorId,
+        "eve.session.create.stage": "upstream_response",
+        "http.response.status_code": input.upstream.status,
+      },
+    });
+  } catch {
+    // Observation is isolated from the Agent response path.
+  }
+  return true;
 }
 
 export async function cancelUpstreamAndReleaseActivation(

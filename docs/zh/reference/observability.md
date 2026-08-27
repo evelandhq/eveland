@@ -125,6 +125,15 @@ API 和 Agent Gateway 都是纯 ESM HTTP 服务。它们的启动命令必须在
 使用同步的 `module.registerHooks()` 路径，并为较早的 Node 24 小版本保留异步 hook
 回退。
 
+initial Eve Session response 为带 `errorId` 的 JSON 500 时，Agent Gateway 发出
+`eveland.gateway.session_create_failed`。属性把客户端可见的 Eve error id 与平台
+request、Project、Deployment、已激活 RuntimeInstance、upstream status 以及（若存在）
+HMAC operation key 关联；原始 operation id 永不导出。错误读取只使用有界 response
+clone，不改写 Agent 的 status 或 response bytes。Workflow Dispatcher 的 registration
+heartbeat 同时发出 `workflow_dispatcher.capacity`，并为每个达到 in-flight 上限的
+Project 发出 `workflow_dispatcher.tenant_saturated`，从而可把同一故障窗口与全局、
+租户并发饱和对齐。任一遥测发出失败都必须与 request 和 dispatch 行为隔离。
+
 ## Agent runtime policy
 
 Admin 配置保存在 Postgres 的 revisioned observability policy 中。Worker 为每个

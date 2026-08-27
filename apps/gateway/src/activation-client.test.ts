@@ -28,7 +28,10 @@ describe("createApiActivationClient", () => {
       response.setHeader("content-type", "application/json");
       response.end(
         request.method === "POST" && request.url === "/internal/runtime/activations"
-          ? JSON.stringify({ lease: { id: "lease_api" }, runtimeInstance: { endpointPort: 41990 } })
+          ? JSON.stringify({
+              lease: { id: "lease_api" },
+              runtimeInstance: { id: "rti_api", endpointPort: 41990 },
+            })
           : JSON.stringify({ ok: true }),
       );
     });
@@ -50,7 +53,11 @@ describe("createApiActivationClient", () => {
         },
         new AbortController().signal,
       ),
-    ).resolves.toEqual({ leaseId: "lease_api", endpointPort: 41990 });
+    ).resolves.toEqual({
+      leaseId: "lease_api",
+      runtimeInstanceId: "rti_api",
+      endpointPort: 41990,
+    });
     await client.renew("lease_api");
     await client.release("lease_api");
 
@@ -107,7 +114,7 @@ describe("createApiActivationClient", () => {
       response.end(
         JSON.stringify({
           lease: { id: "lease_after_drain" },
-          runtimeInstance: { endpointPort: 41990 },
+          runtimeInstance: { id: "rti_after_drain", endpointPort: 41990 },
         }),
       );
     });
@@ -130,7 +137,11 @@ describe("createApiActivationClient", () => {
         },
         new AbortController().signal,
       ),
-    ).resolves.toEqual({ leaseId: "lease_after_drain", endpointPort: 41990 });
+    ).resolves.toEqual({
+      leaseId: "lease_after_drain",
+      runtimeInstanceId: "rti_after_drain",
+      endpointPort: 41990,
+    });
     expect(attempts).toBe(2);
   });
 });

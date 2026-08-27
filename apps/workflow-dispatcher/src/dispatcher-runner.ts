@@ -120,6 +120,7 @@ export async function startEvelandWorkflowDispatcher(
   const activationToken = env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ?? "eveland-dev-gateway-token";
 
   const heartbeat = async () => {
+    emitCapacitySnapshot(service, telemetry);
     if (!apiUrl) return;
     try {
       const response = await deps.fetchImplementation(
@@ -180,6 +181,44 @@ export async function startEvelandWorkflowDispatcher(
       await heartbeat();
     },
   };
+}
+
+function emitCapacitySnapshot(service: DispatcherService, telemetry: DispatcherTelemetry): void {
+  const byTenant = service.runtime?.fairness.snapshot() ?? {};
+  const inFlight = Object.values(byTenant).reduce((total, count) => total + count, 0);
+  const saturated = Object.entries(byTenant).filter(
+    ([, count]) => count >= service.config.maxInFlightPerTenant,
+  );
+  try {
+    telemetry.emit({
+      severity: "info",
+      eventName: "workflow_dispatcher.capacity",
+      body: "workflow dispatcher capacity snapshot",
+      attributes: {
+        "dispatcher.in_flight": inFlight,
+        "dispatcher.concurrency": service.config.concurrency,
+        "dispatcher.available": Math.max(0, service.config.concurrency - inFlight),
+        "dispatcher.max_in_flight_per_tenant": service.config.maxInFlightPerTenant,
+        "dispatcher.saturated_tenants": saturated.length,
+      },
+    });
+    for (const [tenantId, tenantInFlight] of saturated) {
+      telemetry.emit({
+        severity: "warn",
+        eventName: "workflow_dispatcher.tenant_saturated",
+        body: "tenant reached the workflow dispatcher in-flight cap",
+        attributes: {
+          "eveland.project.id": tenantId,
+          "dispatcher.tenant.in_flight": tenantInFlight,
+          "dispatcher.max_in_flight_per_tenant": service.config.maxInFlightPerTenant,
+          "dispatcher.in_flight": inFlight,
+          "dispatcher.concurrency": service.config.concurrency,
+        },
+      });
+    }
+  } catch {
+    // Telemetry must never make the dispatcher heartbeat or claim loop fail.
+  }
 }
 
 export function resolveHeartbeatIntervalMs(env: NodeJS.ProcessEnv): number {

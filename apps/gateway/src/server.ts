@@ -60,6 +60,11 @@ const app = createGatewayApp(withDeploymentEveVersionCache(store), {
       })
     : undefined,
   activationRenewIntervalMs: Number(process.env.EVELAND_ACTIVATION_RENEW_INTERVAL_MS ?? 60_000),
+  telemetry: {
+    emit(event) {
+      platformObservability.emitLog(event);
+    },
+  },
 });
 const server = serve({ fetch: app.fetch, port });
 

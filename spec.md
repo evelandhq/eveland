@@ -553,6 +553,12 @@ the original deployment, and an expired binding returns the stable `410`
 one of two targets is unavailable, new sessions degrade to the sole healthy target;
 only when both are unavailable does it return 503.
 
+The Gateway never reclassifies an Agent's session-creation failure. When an initial
+Eve response is a JSON 500 carrying an `errorId`, the Gateway may inspect only a
+bounded clone for correlation, export that id with the platform request, Project,
+Deployment, RuntimeInstance, and HMAC operation key, and add its reserved request-id
+response header; the Agent's status and response bytes remain unchanged.
+
 Activation is privilege-separated: the API only persists/waits on state and gains
 no Docker or systemd privilege; the Worker is the only host controller, starting
 the exact Release per the deployment's recorded `runtimeKind`. Every path touching

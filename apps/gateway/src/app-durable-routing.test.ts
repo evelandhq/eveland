@@ -23,6 +23,142 @@ function version(version: string, deploymentId: string): EveVersionInfo {
 }
 
 describe("Gateway durable Eve routes", () => {
+  test("correlates Eve's opaque session-create 500 without rewriting it", async () => {
+    const eveErrorId = "40700000-0000-4000-8000-000000000001";
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "Internal server error", errorId: eveErrorId }));
+    });
+    const routed = route({ hostPort: upstream.port });
+    const repo = repository([routed]);
+    const telemetry = { emit: vi.fn() };
+    const activationClient = {
+      activate: vi.fn(async () => ({
+        leaseId: "lease-delayed-create",
+        runtimeInstanceId: "rti-delayed-create",
+        endpointPort: upstream.port,
+      })),
+      renew: vi.fn(async () => {}),
+      release: vi.fn(async () => {}),
+    };
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      activationClient,
+      telemetry,
+    });
+
+    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
+      body: JSON.stringify({ message: "start", operationId: "operation-delayed-create" }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("retry-after")).toBeNull();
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toEqual({
+      error: "Internal server error",
+      errorId: eveErrorId,
+    });
+    const requestId = response.headers.get("x-eveland-request-id");
+    expect(requestId).toEqual(expect.any(String));
+    expect(telemetry.emit).toHaveBeenCalledWith({
+      severity: "error",
+      eventName: "eveland.gateway.session_create_failed",
+      body: "Eve returned an opaque session-create failure.",
+      attributes: {
+        "eveland.request.id": requestId,
+        "eveland.project.id": routed.projectId,
+        "eveland.deployment.id": "dep_1",
+        "eveland.runtime_instance.id": "rti-delayed-create",
+        "eveland.operation.key": createOperationKey("operation-delayed-create", affinitySecret),
+        "eve.error.id": eveErrorId,
+        "eve.session.create.stage": "upstream_response",
+        "http.response.status_code": 500,
+      },
+    });
+  });
+
+  test("leaves an unrecognized upstream 500 untouched", async () => {
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end("not-json");
+    });
+    const telemetry = { emit: vi.fn() };
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      telemetry,
+    });
+
+    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
+      body: JSON.stringify({ message: "start", operationId: "operation-other-error" }),
+    });
+
+    expect(response.status).toBe(500);
+    await expect(response.text()).resolves.toBe("not-json");
+    expect(telemetry.emit).not.toHaveBeenCalled();
+  });
+
+  test("does not treat an arbitrary Agent field as an Eve correlation id", async () => {
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "custom failure", errorId: "customer-secret" }));
+    });
+    const telemetry = { emit: vi.fn() };
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      telemetry,
+    });
+
+    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
+      body: JSON.stringify({ message: "start", operationId: "operation-custom-error" }),
+    });
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "custom failure",
+      errorId: "customer-secret",
+    });
+    expect(response.headers.get("x-eveland-request-id")).toBeNull();
+    expect(telemetry.emit).not.toHaveBeenCalled();
+  });
+
+  test("does not let telemetry failure replace Eve's session-create response", async () => {
+    const eveErrorId = "40800000-0000-4000-8000-000000000001";
+    const upstream = await startUpstream((_request, response) => {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "Internal server error", errorId: eveErrorId }));
+    });
+    const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      telemetry: {
+        emit() {
+          throw new Error("telemetry unavailable");
+        },
+      },
+    });
+
+    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/session", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
+      body: JSON.stringify({ message: "start", operationId: "operation-telemetry-down" }),
+    });
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Internal server error",
+      errorId: eveErrorId,
+    });
+  });
+
   test("pins create-once operation retries across a policy flip and cold activation", async () => {
     let firstAttempts = 0;
     const first = await startUpstream((_request, response) => {
