@@ -62,6 +62,13 @@ export type ProcessStartInput = {
    * sandbox-visible EVELAND_SANDBOX_CACHE_DIR.
    */
   sandboxCacheDir: string;
+  /**
+   * Durable per-project agent memory root, adapter-visible like
+   * sandboxCacheDir. The adapter grants (systemd) or mounts (Docker) it
+   * read-write; the process-visible EVELAND_MEMORY_ROOT value itself travels
+   * in `env` -- composeDeploymentEnv reserves it -- not as an adapter export.
+   */
+  memoryRootDir: string;
   /** Platform-owned directory mounted read-only at the fixed Agent policy path. */
   observabilityPolicyDir: string;
 };

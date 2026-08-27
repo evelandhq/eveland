@@ -78,6 +78,7 @@ describe("ensureDeploymentActive", () => {
           env: {},
           commandContext: { hasLockfile: false },
           sandboxCacheDir: "/tmp/cache",
+          memoryRootDir: "/tmp/memory",
           observabilityPolicyDir: "/tmp/observability",
         },
       },
@@ -130,6 +131,7 @@ describe("ensureDeploymentActive", () => {
       env: {},
       commandContext: { hasLockfile: false },
       sandboxCacheDir: "/tmp/cache",
+      memoryRootDir: "/tmp/memory",
       observabilityPolicyDir: "/tmp/observability",
     } satisfies ProcessStartInput;
 
@@ -214,6 +216,7 @@ describe("ensureDeploymentActive", () => {
       env: {},
       commandContext: { hasLockfile: false },
       sandboxCacheDir: "/tmp/cache",
+      memoryRootDir: "/tmp/memory",
       observabilityPolicyDir: "/tmp/observability",
     } satisfies ProcessStartInput;
 
@@ -295,6 +298,7 @@ describe("ensureDeploymentActive", () => {
             env: {},
             commandContext: { hasLockfile: false },
             sandboxCacheDir: "/tmp/cache",
+            memoryRootDir: "/tmp/memory",
             observabilityPolicyDir: "/tmp/observability",
           },
           kind: "public_request",
@@ -861,6 +865,7 @@ describe("port resolution during activation", () => {
       env: {},
       commandContext: { hasLockfile: false },
       sandboxCacheDir: "/tmp/cache",
+      memoryRootDir: "/tmp/memory",
       observabilityPolicyDir: "/tmp/observability",
     };
   }
@@ -1045,6 +1050,7 @@ describe("archive claim gating", () => {
             env: {},
             commandContext: { hasLockfile: false },
             sandboxCacheDir: "/tmp/cache",
+            memoryRootDir: "/tmp/memory",
             observabilityPolicyDir: "/tmp/observability",
           },
         },

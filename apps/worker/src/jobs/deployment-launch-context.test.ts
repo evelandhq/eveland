@@ -11,9 +11,11 @@ import { describe, expect, test } from "vitest";
 
 import { processSafeName } from "../runtime/types.js";
 import {
+  createDeploymentStartInput,
   ensureDeploymentLaunchSandbox,
   materializeDeploymentLaunchContext,
   resolveDeploymentLaunchPrerequisites,
+  type DeploymentLaunchContext,
 } from "./deployment-launch-context.js";
 
 describe("deployment launch context", () => {
@@ -78,6 +80,9 @@ describe("deployment launch context", () => {
           PROJECT_TOKEN: "project-value",
           SHARED_TOKEN: "shared-value",
           EVELAND_PROJECT_ID: project.id,
+          // Docker deployments read their memory root at the fixed in-container
+          // mount path; the host directory is what the adapter mounts there.
+          EVELAND_MEMORY_ROOT: "/var/lib/eveland-memory",
         },
         secretValues: expect.arrayContaining(["project-value", "shared-value"]),
         commandContext: { packageManager: "pnpm", hasLockfile: true },
@@ -120,6 +125,10 @@ describe("deployment launch context", () => {
           workerDir: path.join(dataDir, "sandbox", safeProjectId),
           hostDir: path.join(hostDataDir, "sandbox", safeProjectId),
         },
+        memoryRootDirs: {
+          workerDir: path.join(dataDir, "memory", safeProjectId),
+          hostDir: path.join(hostDataDir, "memory", safeProjectId),
+        },
         observabilityPolicyDirs: {
           workerDir: path.join(dataDir, "observability", safeProjectId, "dep_launch_context"),
           hostDir: path.join(hostDataDir, "observability", safeProjectId, "dep_launch_context"),
@@ -128,6 +137,9 @@ describe("deployment launch context", () => {
       expect(context).not.toHaveProperty("observability");
       await expect(
         stat(context.sandboxCacheDirs.workerDir).then((entry) => entry.isDirectory()),
+      ).resolves.toBe(true);
+      await expect(
+        stat(context.memoryRootDirs.workerDir).then((entry) => entry.isDirectory()),
       ).resolves.toBe(true);
       const policy = JSON.parse(
         await readFile(
@@ -150,5 +162,36 @@ describe("deployment launch context", () => {
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true });
     }
+  });
+
+  test("hands each adapter its own visible side of the per-project directories", () => {
+    const launchContext = (runtimeKind: "docker" | "systemd"): DeploymentLaunchContext => ({
+      deploymentId: "dep_sides",
+      runtimeKind,
+      env: { EVELAND_MEMORY_ROOT: "/from-compose" },
+      secretValues: [],
+      commandContext: { hasLockfile: false },
+      sandboxCacheDirs: { workerDir: "/worker/sandbox/p", hostDir: "/host/sandbox/p" },
+      memoryRootDirs: { workerDir: "/worker/memory/p", hostDir: "/host/memory/p" },
+      observabilityPolicyDirs: { workerDir: "/worker/obs/p/d", hostDir: "/host/obs/p/d" },
+    });
+
+    const docker = createDeploymentStartInput({
+      processName: "eveland-p-d",
+      releaseRef: "eveland/p:rel",
+      port: 43000,
+      launchContext: launchContext("docker"),
+    });
+    expect(docker.sandboxCacheDir).toBe("/host/sandbox/p");
+    expect(docker.memoryRootDir).toBe("/host/memory/p");
+
+    const systemd = createDeploymentStartInput({
+      processName: "eveland-p-d",
+      releaseRef: "/worker/builds/p/rel",
+      port: 43000,
+      launchContext: launchContext("systemd"),
+    });
+    expect(systemd.sandboxCacheDir).toBe("/worker/sandbox/p");
+    expect(systemd.memoryRootDir).toBe("/worker/memory/p");
   });
 });

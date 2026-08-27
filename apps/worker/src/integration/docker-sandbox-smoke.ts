@@ -24,6 +24,7 @@ const imageTag = "eveland/" + processSafeName(projectId) + ":" + processSafeName
 const processName = "eveland-local-sandbox-smoke-" + Date.now().toString(36);
 const root = await mkdtemp(path.join(os.tmpdir(), "eveland-local-sandbox-smoke-"));
 const sandboxCacheDir = path.join(root, "sandbox");
+const memoryRootDir = path.join(root, "memory");
 const observabilityPolicyDir = path.join(root, "observability");
 const fixtureSourcePath = path.join(root, "source");
 const adapter = createDockerAdapter({
@@ -187,6 +188,7 @@ async function runTypeScriptTurn(hostPort: number): Promise<void> {
 try {
   await Promise.all([
     mkdir(sandboxCacheDir, { recursive: true }),
+    mkdir(memoryRootDir, { recursive: true }),
     materializeEveFixtureDirectory(
       path.resolve(import.meta.dirname, "fixtures/agent-sandbox-e2e"),
       fixtureSourcePath,
@@ -241,6 +243,7 @@ try {
     env: { EVE_MOCK_AUTHORED_MODELS: "1", NODE_ENV: "development" },
     commandContext: { hasLockfile: false },
     sandboxCacheDir,
+    memoryRootDir,
     observabilityPolicyDir,
   });
   started = true;

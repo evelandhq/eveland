@@ -208,7 +208,13 @@ describe("processNextJob", () => {
         path.join(dataDir, "builds", project.id),
         path.join(dataDir, "observability", processSafeName(project.id)),
         path.join(dataDir, "sandbox", processSafeName(project.id)),
+        // Persistent agent memory goes with the project -- and only this
+        // project's directory; a sibling's memory under the same root stays.
+        path.join(dataDir, "memory", processSafeName(project.id)),
       ];
+      const siblingMemoryDir = path.join(dataDir, "memory", "proj_sibling");
+      await mkdir(siblingMemoryDir, { recursive: true });
+      await writeFile(path.join(siblingMemoryDir, "kept.json"), "{}");
       for (const directory of managedProjectDirs) {
         await mkdir(directory, { recursive: true });
         await writeFile(path.join(directory, "owned.txt"), "delete");
@@ -251,6 +257,7 @@ describe("processNextJob", () => {
         code: "ENOENT",
       });
       await expect(access(path.join(externalSource, "keep.txt"))).resolves.toBeUndefined();
+      await expect(access(path.join(siblingMemoryDir, "kept.json"))).resolves.toBeUndefined();
     } finally {
       await rm(dataDir, { recursive: true, force: true });
       await rm(externalSource, { recursive: true, force: true });

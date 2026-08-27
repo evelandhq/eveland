@@ -20,6 +20,10 @@ describe("runtime deployment start spec", () => {
           workerDir: "/worker/sandbox",
           hostDir: "/host/sandbox",
         },
+        memoryRootDirs: {
+          workerDir: "/worker/memory",
+          hostDir: "/host/memory",
+        },
         observabilityPolicyDirs: {
           workerDir: "/worker/observability",
           hostDir: "/host/observability",
@@ -42,6 +46,7 @@ describe("runtime deployment start spec", () => {
       },
       commandContext: common.launchContext.commandContext,
       sandboxCacheDir: common.launchContext.sandboxCacheDirs.hostDir,
+      memoryRootDir: common.launchContext.memoryRootDirs.hostDir,
       observabilityPolicyDir: common.launchContext.observabilityPolicyDirs.hostDir,
     });
     expect(
@@ -59,6 +64,7 @@ describe("runtime deployment start spec", () => {
       },
       commandContext: common.launchContext.commandContext,
       sandboxCacheDir: common.launchContext.sandboxCacheDirs.workerDir,
+      memoryRootDir: common.launchContext.memoryRootDirs.workerDir,
       observabilityPolicyDir: common.launchContext.observabilityPolicyDirs.workerDir,
     });
   });

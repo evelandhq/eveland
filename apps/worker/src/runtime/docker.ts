@@ -52,6 +52,8 @@ export type DockerRunInput = {
   cpuQuota?: string;
   tasksMax?: number;
   sandboxCacheDir: string;
+  /** Host-visible per-project agent memory directory, mounted read-write. */
+  memoryRootDir: string;
   observabilityPolicyDir: string;
   /**
    * Root-owned 0600 file holding the deployment's decrypted environment.
@@ -65,6 +67,13 @@ export type DockerRunInput = {
 };
 
 const defaultCollectorContainerName = "eveland-otel-collector";
+/**
+ * Fixed in-container mount point for the per-project agent memory directory.
+ * The reserved EVELAND_MEMORY_ROOT the env file carries names this path for
+ * Docker deployments (see deployment-launch-context.ts), so the mount and the
+ * variable can never disagree.
+ */
+export const DOCKER_MEMORY_ROOT_MOUNT_DIR = "/var/lib/eveland-memory";
 const defaultMemoryMax = "2G";
 const defaultCpuQuota = "200%";
 const defaultTasksMax = 512;
@@ -124,6 +133,8 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     `${input.observabilityPolicyDir}:${AGENT_OBSERVABILITY_MOUNT_DIR}:ro`,
     "--volume",
     `${input.sandboxCacheDir}:/var/lib/eveland-sandbox`,
+    "--volume",
+    `${input.memoryRootDir}:${DOCKER_MEMORY_ROOT_MOUNT_DIR}`,
     "--env",
     "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
     "--env",
@@ -520,6 +531,7 @@ export function createDockerAdapter(
           cpuQuota: config.cpuQuota,
           tasksMax: config.tasksMax,
           sandboxCacheDir: input.sandboxCacheDir,
+          memoryRootDir: input.memoryRootDir,
           observabilityPolicyDir: input.observabilityPolicyDir,
           envFilePath,
           command: buildDockerStartCommand(input.commandContext, config.internalPort),

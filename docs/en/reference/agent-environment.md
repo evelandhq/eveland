@@ -37,6 +37,12 @@ Two groups of platform-reserved names are dropped from builds with a `WARNING` i
 
 Releases are immutable, so changing a `variable` refreshes the compiled output only on the next deploy; a plain environment change still only enqueues restarts for live deployments on the existing Release. The Environment page must make this visible to operators. The Docker runtime passes these variables via the generated Dockerfile's `ARG` and `docker build --build-arg`, and their values appear in that image's build metadata — a direct consequence of the `variable`/`secret` tiering; the `ARG` declarations sit after the dependency-install layer, so on Docker only pre-discovery, the Extension integrator, `npx eve build`, and the final discovery can read them, while systemd runs install and build in one shell where both can. The build log still masks the complete set of project/shared environment values.
 
+## Agent memory storage (`EVELAND_MEMORY_ROOT`)
+
+One reserved name is a storage contract rather than platform plumbing: `EVELAND_MEMORY_ROOT` is where a deployed agent persists Eve `fileMemory()` documents, backed by the SDK's `evelandMemoryBackend()` (`eveland/memory`). The worker derives a per-project directory under its own data root — `<EVELAND_DATA_DIR>/memory/<projectId>` — provisions it on every launch, and injects the runtime-visible path: the systemd unit gets the host directory granted through its mount mask, a Docker container gets the directory mounted at a fixed in-container path. There is no operator configuration for it, and agent code must read only the injected variable — `EVELAND_DATA_DIR` itself is deliberately absent from deployment environments, so nothing agent-side can derive platform paths from it.
+
+The directory is keyed by project, not deployment, so memories survive redeploys and restarts; it is removed when the project is deleted. Because the name is runtime-reserved, a project entry can neither redirect an agent's persistent memory nor point it at another tenant's directory — Eve memory scope keys carry no project identity, so this per-project directory layout is the tenant isolation.
+
 ## Deeper reference
 
 - [Secrets and Connections](/docs/agents/secrets-connections): developer guide to runtime secrets and Playground credentials

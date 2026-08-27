@@ -37,6 +37,12 @@ Release build 在安装后运行预发现、Extension integrator、`npx eve buil
 
 Release 不可变，因此改动 `variable` 只在下一次 deploy 刷新编译产物；单纯的环境变更仍然只对 live Deployment 排 restart，沿用原 Release。Environment 页面必须让 operator 看到这一点。Docker runtime 通过 generated Dockerfile 的 `ARG` 与 `docker build --build-arg` 传递这些 variable，其值会出现在该镜像的 build metadata 中——这是 `variable` 与 `secret` 分级的直接后果；`ARG` 声明在依赖安装层之后，因此 Docker 上只有预发现、Extension integrator、`npx eve build` 与最终 discovery 能读到，systemd 把 install 与 build 放在同一个 shell，两者都能读到。Build Log 仍对完整 Project/Shared Environment 值集合脱敏。
 
+## Agent 记忆存储（`EVELAND_MEMORY_ROOT`）
+
+保留名称里有一个是存储契约而非平台管线：`EVELAND_MEMORY_ROOT` 是部署后的 Agent 持久化 Eve `fileMemory()` 文档的位置，由 SDK 的 `evelandMemoryBackend()`（`eveland/memory`）作为存储后端读取。Worker 在自己的数据根目录下推导每项目目录——`<EVELAND_DATA_DIR>/memory/<projectId>`——在每次启动时创建并授权，然后注入运行时可见的路径：systemd 单元通过挂载掩码获得宿主目录授权，Docker 容器则把该目录挂载到固定的容器内路径。它没有任何运营者配置项；Agent 侧代码只能读取注入的变量——`EVELAND_DATA_DIR` 本身被刻意排除在部署环境之外，Agent 侧无法据此推导平台路径。
+
+目录按项目（而非 Deployment）键控，记忆跨重新部署与重启存活；项目删除时一并清除。由于该名称属于运行时保留层，Project 条目既不能改写 Agent 的持久记忆位置，也不能把它指向其他租户的目录——Eve 的 memory scope key 不含项目身份，这套每项目目录布局就是租户隔离本身。
+
 ## 深入参考
 
 - [密钥与 Connection](/zh/docs/agents/secrets-connections)：面向开发者的 Secret 与 Playground 认证说明

@@ -1,4 +1,5 @@
 import { createTestStore } from "@evelandhq/db/vitest";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { RESERVED_RUNTIME_ENVIRONMENT_KEYS } from "../runtime/reserved-environment.js";
@@ -51,6 +52,10 @@ async function composeOnEvelandWorld() {
       workflowPostgresUrl,
       evelandWorkflowWorldUrl: evelandWorldUrl,
       ensureEvelandWorkflowTenant: async () => {},
+      // The launch context passes the runtime-visible path (here: Docker's
+      // fixed in-container mount); without the option the compose falls back
+      // to the worker-visible default derived from EVELAND_DATA_DIR.
+      memoryRootDir: "/var/lib/eveland-memory",
     },
     {
       EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
@@ -83,6 +88,9 @@ describe("reserved runtime environment names", () => {
     expect(env.NODE_ENV).toBe("production");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
     expect(env.WORKFLOW_POSTGRES_URL).toBe(`${workflowPostgresUrl}_wf_proj_reserved`);
+    // No memoryRootDir option here, so the reserved value is the derived
+    // worker-visible default: <EVELAND_DATA_DIR>/memory/<projectId>.
+    expect(env.EVELAND_MEMORY_ROOT).toBe(path.resolve(".eveland-data", "memory", "proj_reserved"));
   });
 
   test("the platform world gets its own tenancy names and no per-project database", async () => {
@@ -94,6 +102,7 @@ describe("reserved runtime environment names", () => {
     expect(env.EVELAND_SANDBOX_RUN_TIMEOUT_MS).toBe("600000");
     expect(env.EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES).toBe("64");
     expect(env.EVELAND_SANDBOX_MAX_OUTPUT_BYTES).toBe("16777216");
+    expect(env.EVELAND_MEMORY_ROOT).toBe("/var/lib/eveland-memory");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
     // Provisioning a per-project database here would leave an empty one behind
     // for every project on the new world.

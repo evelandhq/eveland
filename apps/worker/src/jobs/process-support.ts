@@ -90,6 +90,7 @@ export async function removeManagedProjectFiles(
     path.join(root, "builds", projectId),
     path.join(root, "observability", safeProjectId),
     path.join(root, "sandbox", safeProjectId),
+    path.join(root, "memory", safeProjectId),
   ]);
   const allowedSourceRoots = [path.join(root, "sources"), path.join(root, "uploads")];
 
@@ -286,6 +287,13 @@ export async function composeDeploymentEnv(
   // an uninitialized or tenant-controlled database.
   const reserved = {
     EVELAND_PROJECT_ID: projectId,
+    // Where the deployed process finds its fileMemory() documents (read by the
+    // SDK's evelandMemoryBackend()). Reserved so a project entry cannot point
+    // an agent's persistent memory at another path; the launch context passes
+    // the runtime-visible value (Docker's fixed in-container mount path), and
+    // the fallback is the worker-visible per-project derivation.
+    EVELAND_MEMORY_ROOT:
+      options.memoryRootDir ?? resolveMemoryRootDirs(workerEnv, projectId).workerDir,
     EVELAND_SANDBOX_RUN_TIMEOUT_MS: resolveSandboxRunTimeoutMs(workerEnv),
     EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES: sandboxProcessLimits.maxConcurrentProcesses,
     EVELAND_SANDBOX_MAX_OUTPUT_BYTES: sandboxProcessLimits.maxOutputBytes,
@@ -483,6 +491,30 @@ export {
  * mapped by relative suffix; a cache outside that root is assumed to already
  * be host-visible (the native-worker case).
  */
+/**
+ * Every project's durable agent memory lives at
+ * `<EVELAND_DATA_DIR>/memory/<processSafeName(projectId)>` -- always derived,
+ * never separately configured: memory storage adds no operator knob, and the
+ * agent side reads only the injected EVELAND_MEMORY_ROOT (never
+ * EVELAND_DATA_DIR -- deriving paths from the data root is how the observer's
+ * per-cwd path split happened). Keyed by project rather than deployment so
+ * memories survive redeploys. The worker/host duality mirrors
+ * resolveSandboxCacheDirs: `hostDir` is what the Docker daemon can mount when
+ * the worker itself runs inside Compose.
+ */
+export function resolveMemoryRootDirs(
+  env: NodeJS.ProcessEnv,
+  projectId: string,
+): { workerDir: string; hostDir: string } {
+  const dataDir = path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data");
+  const hostDataDir = path.resolve(env.EVELAND_HOST_DATA_DIR ?? dataDir);
+  const safeProjectId = processSafeName(projectId);
+  return {
+    workerDir: path.join(dataDir, "memory", safeProjectId),
+    hostDir: path.join(hostDataDir, "memory", safeProjectId),
+  };
+}
+
 export function resolveSandboxCacheDirs(
   env: NodeJS.ProcessEnv,
   projectId: string,

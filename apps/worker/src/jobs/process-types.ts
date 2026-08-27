@@ -9,6 +9,13 @@ export type ProcessJobOptions = {
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
   workflowPostgresUrl?: string;
   /**
+   * The memory root path as the deployed process will see it, reserved into
+   * the environment as EVELAND_MEMORY_ROOT. The launch context passes Docker's
+   * fixed in-container mount path or systemd's host path; unset falls back to
+   * the worker-visible `<EVELAND_DATA_DIR>/memory/<projectId>` default.
+   */
+  memoryRootDir?: string;
+  /**
    * Which workflow world the Deployment being launched was built against.
    * Defaults to `shared` — the only kind new builds produce. Only the legacy
    * termination flow passes `legacy_project`, which provisions and injects the

@@ -101,11 +101,12 @@ takes it as `evelandMemoryBackend({ root })`). When neither is set it returns
 own environment defaults — so the snippet above is portable: it works unchanged
 under `eve dev`, on Vercel, and on Eveland.
 
-Until Eveland injects `EVELAND_MEMORY_ROOT` natively, set it yourself as a
-project Variable (or in the Shared Agent Environment) pointing at a directory
-the agent process can reach — on systemd runtimes any operator-created host
-directory works; keep one directory per project, because Eve scope keys carry
-no project identity.
+Eveland Deployments inject `EVELAND_MEMORY_ROOT` natively: the worker derives
+a per-project directory under its own data root, provisions and grants (or
+mounts) it at every launch, and reserves the name so project environment
+entries cannot override it. Memories are keyed per project, so they survive
+redeploys and are removed with the project. Nothing to configure — the
+snippet above is the whole integration.
 
 Prefer a one-word provider? Wrap it in your own code, where `fileMemory`
 resolves from your project's own Eve:
