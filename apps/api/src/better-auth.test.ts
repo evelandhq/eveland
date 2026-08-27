@@ -388,11 +388,11 @@ describe("admin-initiated password reset", () => {
     expect(issued.email).toBe("member@example.com");
     expect(new Date(issued.expiresAt).getTime() - Date.now()).toBeGreaterThan(23 * 60 * 60 * 1_000);
     // Only the token's hash is stored: a database leak yields no usable link.
-    const verificationRows = await database.db.select().from(authVerifications);
-    expect(verificationRows).toHaveLength(1);
-    expect(verificationRows[0].identifier).toMatch(/^eveland-password-reset:/);
-    expect(verificationRows[0].identifier).not.toContain(issued.token);
-    expect(verificationRows[0].value).toBe(memberId);
+    const [verificationRow, ...extraRows] = await database.db.select().from(authVerifications);
+    expect(extraRows).toHaveLength(0);
+    expect(verificationRow?.identifier).toMatch(/^eveland-password-reset:/);
+    expect(verificationRow?.identifier).not.toContain(issued.token);
+    expect(verificationRow?.value).toBe(memberId);
 
     await expect(runtime.previewPasswordReset(issued.token)).resolves.toEqual({
       email: "member@example.com",
