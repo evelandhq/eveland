@@ -191,6 +191,7 @@ describe("Eve compatibility repository contract", () => {
         peerDependencies?: Record<string, string>;
       };
       const isWorkspacePackage = /^(?:apps|packages)\/[^/]+\/package\.json$/.test(packagePath);
+      const isPublishedSdk = packagePath === "packages/sdk/package.json";
       for (const dependencies of [packageJson.dependencies, packageJson.devDependencies]) {
         for (const dependencyName of Object.keys(dependencies ?? {}).filter((name) =>
           matrixDependencyNames.has(name),
@@ -205,7 +206,9 @@ describe("Eve compatibility repository contract", () => {
           expect(dependencies?.[dependencyName], packagePath).toBe(
             isWorkspacePackage
               ? dependencyName === "eve"
-                ? "catalog:"
+                ? isPublishedSdk
+                  ? latestLine!.verifiedVersion
+                  : "catalog:"
                 : "catalog:eve-matrix"
               : "catalog:",
           );
@@ -213,12 +216,11 @@ describe("Eve compatibility repository contract", () => {
       }
       if (packageJson.peerDependencies?.eve !== undefined) {
         peerConsumers.add(packagePath);
-        // The SDK is the only workspace package that declares an eve peer. It
-        // imports four auth primitives and versions on its own; see
-        // eve-sdk-peer. sandbox-bwrap used to be the second such package,
-        // tracking exactly what the platform could host, but it now ships from
-        // its own repository and sets its own range.
-        expect(packageJson.peerDependencies.eve, packagePath).toBe("catalog:eve-sdk-peer");
+        // The SDK is the only workspace package that declares an eve peer. Its
+        // source manifest uses the catalog's resolved range literally because
+        // npm publish does not understand pnpm's catalog: protocol. This test
+        // keeps the npm-safe duplicate synchronized with eve-sdk-peer.
+        expect(packageJson.peerDependencies.eve, packagePath).toBe(sdkPeerRange);
       }
     }
 
@@ -242,6 +244,29 @@ describe("Eve compatibility repository contract", () => {
       "infra/integration/fixtures/workflow-wake/package.json",
     ]);
     expect([...peerConsumers].sort()).toEqual(["packages/sdk/package.json"]);
+  });
+
+  test("keeps the published SDK manifest installable by npm before packing", () => {
+    const workspace = repositoryFile("pnpm-workspace.yaml");
+    const sdkPeerRange = /\n {2}eve-sdk-peer:\n {4}eve: "([^"]+)"/.exec(workspace)?.[1];
+    const sdkPackage = JSON.parse(repositoryFile("packages/sdk/package.json")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    };
+
+    expect(sdkPeerRange, "eve-sdk-peer must be declared").toBeDefined();
+    expect(sdkPackage.devDependencies?.eve).toBe(LATEST_VERIFIED_EVE_VERSION);
+    expect(sdkPackage.peerDependencies?.eve).toBe(sdkPeerRange);
+
+    const publishedSpecifiers = Object.values({
+      ...sdkPackage.dependencies,
+      ...sdkPackage.devDependencies,
+      ...sdkPackage.optionalDependencies,
+      ...sdkPackage.peerDependencies,
+    });
+    expect(publishedSpecifiers.filter((specifier) => specifier.startsWith("catalog:"))).toEqual([]);
   });
 
   test("keeps active documentation references aligned with policy", () => {
