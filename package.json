@@ -1,6 +1,6 @@
 {
   "name": "eveland-monorepo",
-  "version": "0.42.0",
+  "version": "0.43.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "scripts": {
