@@ -80,7 +80,7 @@ describe("processNextJob", () => {
       sourceRevisionId: expect.stringMatching(/^src_/),
     });
     await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
-      summary: { eveVersion: "0.44.4" },
+      summary: { eveVersion: "0.45.2" },
     });
     await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({
       content: "You are concise.",
@@ -322,7 +322,7 @@ describe("processNextJob", () => {
               discovery: {
                 manifest: {
                   kind: "eve-agent-discovery-manifest",
-                  version: 13,
+                  version: 14,
                   agentId: "fixture-agent",
                   agentRoot: `${input.sourcePath}/agent`,
                   appRoot: input.sourcePath,
@@ -339,7 +339,7 @@ describe("processNextJob", () => {
                   sandbox: null,
                   diagnosticsSummary: { errors: 0, warnings: 0 },
                 },
-                resolvedEveVersion: "0.44.4",
+                resolvedEveVersion: "0.45.2",
               },
             };
           },
@@ -397,10 +397,10 @@ describe("processNextJob", () => {
     await expect(store.getRelease(recordedDeployment!.releaseId)).resolves.toMatchObject({
       summary: expect.objectContaining({
         summarySource: "build-manifest",
-        manifestVersion: 13,
+        manifestVersion: 14,
         agentId: "fixture-agent",
         layout: "nested",
-        eveVersionResolved: "0.44.4",
+        eveVersionResolved: "0.45.2",
         instructions: ["agent/instructions.md"],
         schedules: ["agent/schedules/daily.md"],
         diagnostics: { errors: 0, warnings: 0 },
