@@ -7,7 +7,7 @@ import { projectDiscoveryManifest } from "./discovery.js";
 // this projection on manifests generated live by each pinned eve binary.
 const nestedManifest = {
   kind: "eve-agent-discovery-manifest",
-  version: 13,
+  version: 14,
   agentId: "eveland-observer-coverage-fixture",
   agentRoot: "/srv/app/agent",
   appRoot: "/srv/app",
@@ -85,10 +85,10 @@ describe("projectDiscoveryManifest", () => {
     });
   });
 
-  test("projects the Eve 0.35+ discovery manifest schema", () => {
+  test("projects role-bearing instruction modules (schema shape unchanged since 0.35)", () => {
     const projection = projectDiscoveryManifest({
       ...nestedManifest,
-      version: 13,
+      version: 14,
       instructions: [
         {
           sourceKind: "module",
@@ -100,7 +100,7 @@ describe("projectDiscoveryManifest", () => {
     });
 
     expect(projection).toMatchObject({
-      manifestVersion: 13,
+      manifestVersion: 14,
       instructions: ["agent/instructions/context.ts"],
     });
   });
@@ -219,8 +219,10 @@ describe("projectDiscoveryManifest", () => {
 
   test("fails closed on an unknown schema version instead of becoming authoritative emptiness", () => {
     expect(projectDiscoveryManifest({ ...nestedManifest, version: 99 })).toBeNull();
-    // v12 (eve <= 0.34) left the whitelist when the window floor moved to 0.38.
+    // v12 (eve <= 0.34) left the whitelist when the window floor moved to 0.38,
+    // and v13 (eve 0.44) left it when the floor moved to 0.45.
     expect(projectDiscoveryManifest({ ...nestedManifest, version: 12 })).toBeNull();
+    expect(projectDiscoveryManifest({ ...nestedManifest, version: 13 })).toBeNull();
   });
 
   test("fails closed on invalid Extension namespaces and unsupported schedule modules", () => {
@@ -232,7 +234,7 @@ describe("projectDiscoveryManifest", () => {
     };
     const withMount = (namespace: string, manifest = extensionManifest) => ({
       ...nestedManifest,
-      version: 13,
+      version: 14,
       extensions: [{ logicalPath: "extensions/crm.ts" }],
       resolvedExtensions: [{ namespace, manifest }],
     });
@@ -246,7 +248,7 @@ describe("projectDiscoveryManifest", () => {
     expect(
       projectDiscoveryManifest({
         kind: "eve-agent-discovery-manifest",
-        version: 13,
+        version: 14,
         agentRoot: "/srv/app/agent",
         appRoot: "/srv/app",
       }),

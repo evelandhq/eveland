@@ -7,9 +7,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { EveVersionStatus } from "./eve-version-status";
 
 const currentVersion = {
-  version: "0.45.0",
-  expected: "0.44.x or 0.45.x",
-  supportedRanges: ["0.44.x", "0.45.x"],
+  version: "0.47.0",
+  expected: "0.45.x or 0.47.x",
+  supportedRanges: ["0.45.x", "0.47.x"],
   supported: true,
   sourceRevisionId: "src_1",
 } satisfies EveVersionInfo;
@@ -32,7 +32,7 @@ describe("EveVersionStatus", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.getByText("Eve 0.45.0")).toBeDefined();
+    expect(screen.getByText("Eve 0.47.0")).toBeDefined();
     expect(container.querySelector('[data-slot="tooltip-trigger"]')).toBeNull();
   });
 
