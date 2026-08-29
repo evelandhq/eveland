@@ -31,7 +31,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.47.2");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.47.3");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -40,15 +40,33 @@ describe("Eve compatibility repository contract", () => {
       "TURN_WORKFLOW_NAME",
       "SESSION_TIMEOUT_WORKFLOW_NAME",
       "TASK_RUN_WORKFLOW_NAME",
+      // 0.47.3: the activity collector run behind `POST /eve/v1/activity/:token`.
+      // Audited 2026-08-29: started only for parentless sessions whose channel
+      // declares activity renderers, as a ROOT run (no lineage, no explicit
+      // class) with an `expiresAt` bounded by sessionTimeoutMs (default 24h),
+      // so it terminates and the interactive-class deadlines clean it up like
+      // the session-timeout run; a batch arriving after cleanup gets the
+      // route's own 404, not a retention error.
+      "ACTIVITY_COLLECTOR_WORKFLOW_NAME",
     ];
 
+    // The covered list is the union across the window: a line may predate a
+    // stable workflow (0.45.x has no activity collector), but every stable
+    // workflow any supported line runs must be audited, and the list must not
+    // keep entries no line runs anymore.
+    const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
       const runtimeSource = repositoryFile(
         `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/execution/workflow-runtime.js`,
       );
       const stableSet = /STABLE_WORKFLOW_NAMES=new Set\(\[([^\]]+)\]\)/.exec(runtimeSource)?.[1];
       expect(stableSet, dependencyName).toBeDefined();
-      expect(stableSet!.split(","), dependencyName).toEqual(coveredStableWorkflowConstants);
+      for (const constant of stableSet!.split(",")) {
+        observedConstants.add(constant);
+        expect(coveredStableWorkflowConstants, `${dependencyName} runs ${constant}`).toContain(
+          constant,
+        );
+      }
 
       const lineageContract = repositoryFile(
         `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/compiled/@workflow/world/attributes.d.ts`,
@@ -56,6 +74,7 @@ describe("Eve compatibility repository contract", () => {
       expect(lineageContract, dependencyName).toContain('ROOT_RUN_ID_ATTRIBUTE = "$rootRunId"');
       expect(lineageContract, dependencyName).toContain('PARENT_RUN_ID_ATTRIBUTE = "$parentRunId"');
     }
+    expect([...observedConstants].sort()).toEqual([...coveredStableWorkflowConstants].sort());
   });
 
   test("publishes a browser-safe compatibility policy subpath", () => {
