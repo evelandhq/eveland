@@ -7,7 +7,7 @@ export const EVE_COMPATIBILITY_POLICY = {
     },
     {
       range: "0.47.x",
-      verifiedVersion: "0.47.2",
+      verifiedVersion: "0.47.3",
       dependencyName: "eve",
     },
   ],

@@ -50,7 +50,7 @@ Agent 永远不配置也不依赖持久化 Workflow World；Eveland 拥有完整
 
 ## Workflow Retention Class
 
-共享 World 对新 run 只使用一条完整策略链：显式 `retentionClass` 高于 `workflow-world.retention-class` attribute，attribute 高于 Workflow SDK 的 `$rootRunId`/`$parentRunId` lineage，lineage 高于平台 root invocation context，最后才是 `interactive` 默认值。子 run 直接读取同租户 ancestor 的已存 class，不按 workflow name、timeout 或 callback 猜测；lineage 存在但无法解析时 fail closed。Eve 自身不做 Eveland 专用修改；architecture 门禁从支持的 Eve 发布包读取 `STABLE_WORKFLOW_NAMES`，新增稳定内部 workflow 而未更新审计矩阵时必须失败。
+共享 World 对新 run 只使用一条完整策略链：显式 `retentionClass` 高于 `workflow-world.retention-class` attribute，attribute 高于 Workflow SDK 的 `$rootRunId`/`$parentRunId` lineage，lineage 高于平台 root invocation context，最后才是 `interactive` 默认值。子 run 直接读取同租户 ancestor 的已存 class，不按 workflow name、timeout 或 callback 猜测；lineage 存在但无法解析时 fail closed。Eve 自身不做 Eveland 专用修改；architecture 门禁从支持的 Eve 发布包读取 `STABLE_WORKFLOW_NAMES`，新增稳定内部 workflow 而未更新审计矩阵时必须失败（最近一次是 Eve 0.47.3 的 Activity Collector：受 Session Timeout 约束的 root run，由 interactive 类截止期清理，与 Session-timeout run 同型）。
 
 root source 的产品契约：
 

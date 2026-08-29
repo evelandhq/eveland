@@ -3,7 +3,7 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.45.x` 与 `0.47.x`，验证版本为 `0.45.2` 与 `0.47.2`。Eve 0.46 是本窗口被跳过的线；Eve 0.44 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.45.x` 与 `0.47.x`，验证版本为 `0.45.2` 与 `0.47.3`。Eve 0.46 是本窗口被跳过的线；Eve 0.44 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
 项目 `package.json` 中允许的 Eve 依赖声明形式为：受支持线内的精确 Patch、锚定在受支持 Minor Patch 上的 `~`/`^` Range，以及 `0.45` / `0.45.x` / `0.45.*`、`0.47` / `0.47.x` / `0.47.*`。缺少 Eve 依赖、跨 Minor 的宽泛 Range 或任何可能解析到窗口之外的声明都会 Fail Closed。项目 Overview、Source 与 Playground 会显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本与平台要求。
 
@@ -42,7 +42,9 @@ UI 仅将最新支持线 `0.47.x` 标为绿色。Eve 0.45.x 保持可运行，�
 
 **Eve 0.47 吸收了被跳过的 0.46；Workflow 存储 Spec 与捆绑的 Workflow SDK 和 0.45.2 逐字节相同。** 来自 0.46.0：Eve 自身 Tracing 的默认行为反转了 0.44 的 public-only 规则——所有 Audience 的会话都会发出 Span，但只有 `public` 对话记录内容；因此自带 `otel()` 的 Agent 无需 `tracePolicy: () => true` 就能重新看到 Playground 与 Agent Gateway 会话（只有元数据、没有内容；显式的布尔 Policy 保持原行为；Eveland 的 Observer 两种情况下都不受影响）。来自 0.46.1：Message Stream 协议升到 v24——工具输入以 `action.input.appended` 事件流经 Durable 协议、先于验证后的 `actions.requested` 到达，每条事件只携带原始 Delta 与 UTF-16 偏移；默认 Message Reducer 在 `input-streaming` 状态的 dynamic-tool Part 上以 `inputText` 暴露累计的原始输入；当助手文本先于工具调用时，`message.completed` 现在会先于该调用的输入流事件到达。MCP 与 OpenAPI 的 `providedArguments` 回调获得 Replay 稳定的 `callId`，可用于派生按调用的幂等键。来自 0.47.0 本身：运行时 Sandbox Handle 新增 `delete()`——Agent 代码可以永久删除当前 Session 的 Sandbox，下次访问时自动重新配备（见上方基线条目；Eveland 的受管 bwrap Backend 已实现）；Sandbox 的 `onSession` 回调的 `ctx` 现在只携带 Session 元数据——auth 与 Turn 上下文不再可用，请把这类工作移到 `bootstrap` 或 Channel/Session Handler 中——初始化期间的 Sandbox 访问一律通过 `use()`；由 Schedule 发起的后台任务启动改为静默，不再发送启动确认消息，Schedule 创建的 Workflow Run 携带 `$eve.schedule` 用于归因；以 `-thinking` 结尾的 Model Slug 现在能正确解析，而不是报错或悄悄使用基础模型的上下文窗口。来自 0.47.2：无配置 Agent 的隐式默认 Model 改为 `openai/gpt-5.6-luna-fast`（见上方基线条目——请显式钉住 `model`）。
 
-对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.47.2`，即便 `^0.47.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行与未知事件类型（Stream v24 新增 `action.input.appended`），且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
+**Eve 0.47.3 是不触及 Eveland 托管面的 Patch 滑动。** 全部 Wire 常量与 0.47.2 相同：Message Stream v24、Discovery Manifest v15、Workflow 存储 Spec 与捆绑的 Workflow SDK。本 Patch 的主要新增是面向 Delegated Subagent 的 Activity 子系统：父 Agent 在派发远端子 Agent 时可传入 `activityObserver`，子部署把工作、动作与阻塞的生命周期以带版本的批量 POST 上报到父部署的 `POST /eve/v1/activity/:token`（Sink 必须与 Delegated Callback 同源）。该路由走 Agent Gateway 的普通公共请求路径——会唤醒休眠 Deployment、照常受窗口门禁约束，Gateway 无需任何改动。Instrumentation Provider 的内容投递现在只取决于各 Provider 自己的 `capture` 声明；丢弃 eve Trace 的 `tracePolicy` 不再关停 AI SDK 遥测（仅含元数据的 AI Span 仍会进入环境 Workflow Trace）；Eveland 的 Observer 是生命周期 Hook 而非 Instrumentation Provider，投递路径不变。其余是开发体验：`eve-tui/<version>` User-Agent 标识、`eve dev` 状态栏的重建进度，以及 Slack 审批卡片修复。
+
+对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.47.3`，即便 `^0.47.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行与未知事件类型（Stream v24 新增 `action.input.appended`），且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
 
 npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelog 与源码审阅加上完整兼容矩阵之后才会进入；移除旧 Minor 同样是显式的产品变更。
 
