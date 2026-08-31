@@ -6,6 +6,7 @@ import { once } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { GATEWAY_PORT } from "../../packages/core/src/ports.js";
 import { promisify } from "node:util";
 import { serve } from "../../apps/gateway/node_modules/@hono/node-server/dist/index.mjs";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
@@ -88,7 +89,7 @@ async function main(): Promise<void> {
       if (!address || typeof address === "string")
         throw new Error("Gateway E2E server did not bind.");
       const gatewayPort = address.port;
-      const localHost = `${project.slug}.agent.localhost:4080`;
+      const localHost = `${project.slug}.agent.localhost:${GATEWAY_PORT}`;
       const previewRoutes = (await store.listProjectRoutes(project.id)).filter(
         (route) => route.kind === "deployment",
       );
@@ -98,7 +99,7 @@ async function main(): Promise<void> {
       );
       assert.ok(previewRoute);
       const previewHealth = await gatewayRequest(gatewayPort, {
-        host: `${previewRoute.hostname}:4080`,
+        host: `${previewRoute.hostname}:${GATEWAY_PORT}`,
         path: "/eve/v1/health",
         method: "GET",
       });

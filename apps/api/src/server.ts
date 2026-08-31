@@ -1,4 +1,5 @@
 import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
+import { API_PORT } from "@evelandhq/core/ports";
 import { platformObservability } from "./observability.js";
 import { serve } from "@hono/node-server";
 import { formatBuildInfo } from "@evelandhq/core/build-info";
@@ -19,7 +20,7 @@ import { createBetterAuthRuntime } from "./auth.js";
 import { resolveAdminConfig, resolveBetterAuthConfig } from "./auth-config.js";
 import { collectSystemConfigurationDiagnostics } from "./config-diagnostics.js";
 
-const port = Number(process.env.PORT ?? 4000);
+const port = Number(process.env.PORT ?? API_PORT);
 const buildInfo = createBuildInfoFromEnv("api", process.env);
 const storeFactory = createStoreFromEnv();
 const betterAuthConfig = resolveBetterAuthConfig(process.env);

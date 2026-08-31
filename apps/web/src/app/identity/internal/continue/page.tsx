@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
+import { API_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
 import { buildIdentityInternalContinuationUrl } from "@/lib/identity-continuation";
 
-const apiOrigin = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const apiOrigin = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? API_ORIGIN_FALLBACK;
 
 export const dynamic = "force-dynamic";
 

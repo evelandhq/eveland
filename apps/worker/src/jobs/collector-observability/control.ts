@@ -1,4 +1,5 @@
 import { execa } from "execa";
+import { API_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
 
 const DEFAULT_COLLECTOR_IMAGE = "otel/opentelemetry-collector-contrib:0.149.0";
 const DEFAULT_COLLECTOR_CONTAINER = "eveland-otel-collector";
@@ -23,9 +24,9 @@ export async function validateCollectorConfig(
       "--volume",
       `${location.hostPath}:/etc/eveland-otel/collector.yaml:ro`,
       "--env",
-      "EVELAND_BUILTIN_OTLP_ENDPOINT=http://127.0.0.1:4000/internal/otel",
+      `EVELAND_BUILTIN_OTLP_ENDPOINT=${API_INTERNAL_URL_FALLBACK}/internal/otel`,
       "--env",
-      "EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT=http://127.0.0.1:4000/internal/observability/destinations",
+      `EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT=${API_INTERNAL_URL_FALLBACK}/internal/observability/destinations`,
       "--env",
       "EVELAND_OTLP_SERVICE_TOKEN=validation-only",
       image,

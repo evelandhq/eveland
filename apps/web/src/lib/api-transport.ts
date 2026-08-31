@@ -5,7 +5,9 @@
  * component inventing its own.
  */
 
-export const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { API_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+
+export const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? API_ORIGIN_FALLBACK;
 
 /**
  * The complete control-plane error contract. Validation failures carry

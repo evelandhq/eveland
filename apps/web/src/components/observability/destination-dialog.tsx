@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { OTLP_STANDARD_HTTP_PORT } from "@evelandhq/core/ports";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -113,7 +114,7 @@ export function ObservabilityDestinationDialog({
                 placeholder={
                   draft.kind === "langfuse"
                     ? "https://us.cloud.langfuse.com"
-                    : "https://observability.example.com:4318"
+                    : `https://observability.example.com:${OTLP_STANDARD_HTTP_PORT}`
                 }
                 onChange={(event) => onDraftChange({ endpoint: event.currentTarget.value })}
                 required

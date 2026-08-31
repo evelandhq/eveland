@@ -43,6 +43,31 @@ Checking out an older tag is safe only when that release remains compatible with
 
 Never flip `EVELAND_RUNTIME` as an upgrade shortcut. Existing Deployments retain their recorded runtime owner and must be deliberately drained before a host runtime migration.
 
+## Port block migration
+
+Eveland moved every default listen port off the generic development ports and into a platform-owned block; the dynamic Deployment range left the Linux ephemeral port range. Container-internal ports (Compose service DNS such as `postgres:5432` and `otel-collector:4318`) are unchanged — only host-visible ports moved:
+
+| Service                                      | Old default | New default |
+| -------------------------------------------- | ----------- | ----------- |
+| Dashboard                                    | 3000        | 17300       |
+| API (`PORT`)                                 | 4000        | 17301       |
+| Agent Gateway (`GATEWAY_PORT`)               | 4080        | 17302       |
+| Postgres host mapping                        | 5432        | 17310       |
+| Collector platform receiver                  | 4317/4318   | 17311/17312 |
+| Collector Agent receiver                     | 4327/4328   | 17313/17314 |
+| Docs dev server                              | 3001        | 17350       |
+| Deployment range (`EVELAND_DEPLOYMENT_PORT`) | 41000       | 18000       |
+
+For an existing installation:
+
+1. Update every URL and port in your `.env` and systemd env files that referenced an old default (`DATABASE_URL`, `EVELAND_WORKFLOW_WORLD_URL`, `BETTER_AUTH_URL`, `EVELAND_GATEWAY_INTERNAL_URL`, `EVELAND_API_INTERNAL_URL`, `EVELAND_OTLP_ENDPOINT`, `EVELAND_IDENTITY_JWKS_URL`, `EVELAND_SCHEDULER_REDEEM_URL`, `WEB_ORIGIN`, `NEXT_PUBLIC_API_URL`, `API_URL`, ...) — compare against the current `.env.example`. Keeping the old ports in your env files is also supported; the defaults moved, explicit configuration always wins.
+2. Update your reverse proxy upstream (Agent Gateway `4080` → `17302`) and host firewall rules (block `17310` instead of `5432` from non-local networks).
+3. `NEXT_PUBLIC_API_URL` is baked into the Dashboard at build time: rebuild the web app after changing it.
+4. Restart every component — env changes never apply to running processes, and Compose containers keep stale env until recreated.
+5. `EVELAND_IDENTITY_ALLOWED_ORIGINS` no longer has a development default (`http://localhost:3010`): set it explicitly if an external chat frontend depends on it.
+
+Existing Deployments keep their recorded ports; new and restarted Deployment instances allocate from the new range.
+
 ## Legacy per-project workflow residue
 
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:

@@ -1,4 +1,5 @@
 import type { PgInstanceConnectionSample } from "@evelandhq/core/instance-health";
+import { POSTGRES_DEFAULT_PORT } from "@evelandhq/core/ports";
 import postgres from "postgres";
 import { resolveBootstrapPostgresUrl } from "./workflow-world-bootstrap.js";
 
@@ -72,7 +73,7 @@ function isSameInstance(left: string, right: string): boolean {
   try {
     const a = new URL(left);
     const b = new URL(right);
-    const port = (url: URL) => url.port || "5432";
+    const port = (url: URL) => url.port || String(POSTGRES_DEFAULT_PORT);
     return a.hostname.toLowerCase() === b.hostname.toLowerCase() && port(a) === port(b);
   } catch {
     return false;

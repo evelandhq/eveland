@@ -9,7 +9,7 @@ description: Host 模型、流量权重与 Session/Operation 绑定、激活与�
 
 每个 Deployment 拥有不可变 Release、preview Host 和 runtime adapter，但不等同于一个永久在线进程。RuntimeInstance 记录某一代 Docker container 或 systemd unit，允许在 Deployment 仍可寻址、可 continuation、受 retention protection 时进入 `stopped`。Project stable Host 是可变路由；原始动态端口不是产品 URL，也不公开暴露。
 
-开发环境中的 canonical 地址为 `http://<projectSlug>.agent.localhost:4080` 与 `http://<deploymentKey>--<projectSlug>.agent.localhost:4080`。Deployment 的公开 `deploymentKey` 是 Project 内唯一的 8 位小写字母数字 key；完整 `dep_xxxxxxxxxx` 仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
+开发环境中的 canonical 地址为 `http://<projectSlug>.agent.localhost:17302` 与 `http://<deploymentKey>--<projectSlug>.agent.localhost:17302`。Deployment 的公开 `deploymentKey` 是 Project 内唯一的 8 位小写字母数字 key；完整 `dep_xxxxxxxxxx` 仍作为内部 ID 使用。Preview 保持单层 hostname，以便生产环境的一个 `*.agents.example.com` wildcard certificate 覆盖 stable、preview 和 named alias。
 
 ## Preview、promote 与加权路由
 

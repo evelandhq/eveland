@@ -1,4 +1,5 @@
 import { type AgentAuthFailure } from "@evelandhq/agent-auth";
+import { GATEWAY_PORT } from "@evelandhq/core/ports";
 import type {
   ActivationLeaseClaim,
   AuthPrincipal,
@@ -40,7 +41,7 @@ export function publicGatewayUrl(
     (process.env.EVELAND_GATEWAY_PUBLIC_SCHEME === "https" ? "https" : "http");
   const configuredPort =
     options.gatewayPublicPort ??
-    Number(process.env.EVELAND_GATEWAY_PUBLIC_PORT ?? (scheme === "http" ? 4080 : 0));
+    Number(process.env.EVELAND_GATEWAY_PUBLIC_PORT ?? (scheme === "http" ? GATEWAY_PORT : 0));
   return `${scheme}://${hostname}${configuredPort ? `:${configuredPort}` : ""}`;
 }
 

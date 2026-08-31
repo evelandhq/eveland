@@ -25,13 +25,13 @@ API 与 Worker 必须看到相同的绝对数据根目录，通常为 `/var/lib/
 
 ## 遥测拓扑
 
-托管 Collector 在宿主机 Loopback 端口 4317/4318 发布经 Service Authentication 保护的平台 Receiver，在 4327/4328 发布 Agent Receiver。systemd Agent 访问宿主机 Loopback 端口 4328；每个活跃的 Docker Deployment 则获得一个只包含其 Agent 与 Collector 的私有网络。任何一个 Receiver 都绝不能发布到公开接口。
+托管 Collector 在宿主机 Loopback 端口 17311/17312 发布经 Service Authentication 保护的平台 Receiver，在 17313/17314 发布 Agent Receiver。systemd Agent 访问宿主机 Loopback 端口 17314；每个活跃的 Docker Deployment 则获得一个只包含其 Agent 与 Collector 的私有网络。任何一个 Receiver 都绝不能发布到公开接口。
 
 Agent Receiver 不做认证，因此每个 Deployment 的遥测由写入其只读 `agent-policy.json` 的 Worker 签名凭证归属；平台校验该凭证并用 Store 持有的 Deployment 身份替换 Agent 自报的归属。不同 Agent Deployment 无法通过遥测路径相互解析或连接。Collector 缺失只会降级遥测，绝不会阻塞 Agent 启动或冷激活；修改可观测性设置只重启 Collector，从不重启 Agent Deployment。
 
 ## 公开入口
 
-Dashboard 与 API 部署在你选择的 Origin 上。所有 Agent 流量经由 Wildcard TLS 反向代理进入宿主机端口 `4080` 上的 Agent Gateway；Deployment 端口始终留在 Loopback。参见[配置 Agent 流量](/zh/docs/production/networking)。
+Dashboard 与 API 部署在你选择的 Origin 上。所有 Agent 流量经由 Wildcard TLS 反向代理进入宿主机端口 `17302` 上的 Agent Gateway；Deployment 端口始终留在 Loopback。参见[配置 Agent 流量](/zh/docs/production/networking)。
 
 ## 资源生命周期
 

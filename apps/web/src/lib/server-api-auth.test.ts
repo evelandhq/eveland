@@ -20,7 +20,7 @@ describe("server auth API", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getCurrentMemberOrNull()).resolves.toEqual(member);
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/auth/session", {
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:17301/auth/session", {
       cache: "no-store",
       headers: { cookie: "eveland_session=session-token" },
     });

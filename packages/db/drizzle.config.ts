@@ -1,3 +1,4 @@
+import { DATABASE_URL_FALLBACK } from "@evelandhq/core/ports";
 import { defineConfig } from "drizzle-kit";
 
 try {
@@ -12,6 +13,6 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://eveland:eveland@localhost:5432/eveland",
+    url: process.env.DATABASE_URL ?? DATABASE_URL_FALLBACK,
   },
 });

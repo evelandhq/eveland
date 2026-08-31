@@ -1,4 +1,5 @@
 import type { InstanceHealthStore, ObservabilityStore } from "@evelandhq/db";
+import { GATEWAY_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
 import {
   analyzeHostCapacity,
   summarizeWorkerHealth,
@@ -98,7 +99,7 @@ export async function probeGatewayHealth(
   fetcher: Fetch = fetch,
   now: () => Date = () => new Date(),
 ): Promise<ComponentObservation> {
-  const gatewayUrl = (env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(
+  const gatewayUrl = (env.EVELAND_GATEWAY_INTERNAL_URL ?? GATEWAY_INTERNAL_URL_FALLBACK).replace(
     /\/$/,
     "",
   );

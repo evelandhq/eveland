@@ -1,4 +1,5 @@
 import net from "node:net";
+import { DEPLOYMENT_PORT_START } from "@evelandhq/core/ports";
 import type { Store } from "@evelandhq/db";
 
 export async function isTcpPortAvailable(host: string, port: number): Promise<boolean> {
@@ -47,7 +48,7 @@ export function releaseInFlightPort(port: number): void {
 }
 
 export async function allocateAvailableHostPort(
-  startPort = Number(process.env.EVELAND_DEPLOYMENT_PORT ?? 41000),
+  startPort = Number(process.env.EVELAND_DEPLOYMENT_PORT ?? DEPLOYMENT_PORT_START),
   endPort = startPort + 100,
   reservedPorts: ReadonlySet<number> = new Set(),
 ): Promise<number> {
@@ -78,7 +79,8 @@ export async function allocateReservedInstancePort(
     dbReservedPorts?: ReadonlySet<number>;
   } = {},
 ): Promise<number> {
-  const startPort = input.startPort ?? Number(process.env.EVELAND_DEPLOYMENT_PORT ?? 41000);
+  const startPort =
+    input.startPort ?? Number(process.env.EVELAND_DEPLOYMENT_PORT ?? DEPLOYMENT_PORT_START);
   const endPort = input.endPort ?? startPort + 100;
   const candidates: number[] = [];
   if (input.preferredPort !== undefined) candidates.push(input.preferredPort);

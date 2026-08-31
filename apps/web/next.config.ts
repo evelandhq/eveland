@@ -1,9 +1,16 @@
 import type { NextConfig } from "next";
 
+/**
+ * Inlined because next.config cannot import workspace TypeScript; exported so
+ * `next-config.test.ts` pins it against API_ORIGIN_FALLBACK in
+ * @evelandhq/core/ports, so the two cannot drift apart silently.
+ */
+export const inlinedApiOriginFallback = "http://localhost:17301";
+
 const apiBaseUrl = (
   process.env.API_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:4000"
+  inlinedApiOriginFallback
 ).replace(/\/$/, "");
 
 /**

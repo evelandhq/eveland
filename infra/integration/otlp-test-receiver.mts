@@ -1,9 +1,10 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
+import { OTEL_AGENT_HOST_HTTP_PORT } from "../../packages/core/src/ports.js";
 
 type Signal = "traces" | "logs" | "metrics";
 
-export async function startOtlpTestReceiver(port = 4328) {
+export async function startOtlpTestReceiver(port = OTEL_AGENT_HOST_HTTP_PORT) {
   const received: Record<Signal, Array<Record<string, unknown>>> = {
     traces: [],
     logs: [],

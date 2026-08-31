@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
+import { API_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
 import { getCookie, setCookie } from "hono/cookie";
 import {
   normalizeIdentityProviderConnection,
@@ -45,18 +46,15 @@ export function createIdentityRouteServices(context: IdentityRoutesContext) {
   const issuer = (
     context.options.identityIssuer ??
     process.env.EVELAND_IDENTITY_ISSUER ??
-    "http://localhost:4000"
+    API_ORIGIN_FALLBACK
   ).replace(/\/$/, "");
   const configuredAllowedOrigins =
     context.options.identityAllowedOrigins ??
     splitOrigins(process.env.EVELAND_IDENTITY_ALLOWED_ORIGINS);
-  const allowedOrigins = new Set(
-    configuredAllowedOrigins.length > 0
-      ? configuredAllowedOrigins
-      : process.env.NODE_ENV !== "production"
-        ? ["http://localhost:3010"]
-        : [],
-  );
+  // Deliberately no development fallback: the Identity origin allowlist is
+  // always an explicit operator decision (empty means no browser origin may
+  // use the Identity API).
+  const allowedOrigins = new Set(configuredAllowedOrigins);
   const oidcProtocol =
     context.options.identityOidcProtocol ??
     createIdentityOidcProtocol({

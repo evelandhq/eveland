@@ -1,4 +1,5 @@
 import { execa } from "execa";
+import { POSTGRES_DEFAULT_PORT } from "@evelandhq/core/ports";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -208,7 +209,7 @@ function isHostDatabaseAlias(workflowPostgresUrl: string, databaseUrl: string): 
   try {
     const workflow = new URL(workflowPostgresUrl);
     const controlPlane = new URL(databaseUrl);
-    const port = (url: URL) => url.port || "5432";
+    const port = (url: URL) => url.port || String(POSTGRES_DEFAULT_PORT);
 
     return (
       workflow.hostname.toLowerCase() === "host.docker.internal" &&

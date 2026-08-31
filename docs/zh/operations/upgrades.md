@@ -43,6 +43,31 @@ pnpm --filter @evelandhq/api db:migrate
 
 不要通过切换 `EVELAND_RUNTIME` 规避升级步骤。已有 Deployment 保留其记录的 Runtime Owner；迁移宿主机 Runtime 前必须有意识地 Drain。
 
+## 端口块迁移
+
+Eveland 已将所有默认监听端口从通用开发端口迁入平台独享端口块；Deployment 动态端口段也迁出了 Linux 临时端口区。容器内部端口（Compose 服务 DNS，如 `postgres:5432`、`otel-collector:4318`）保持不变——只有宿主机可见端口发生迁移：
+
+| 服务                                           | 旧默认值  | 新默认值    |
+| ---------------------------------------------- | --------- | ----------- |
+| Dashboard                                      | 3000      | 17300       |
+| API（`PORT`）                                  | 4000      | 17301       |
+| Agent Gateway（`GATEWAY_PORT`）                | 4080      | 17302       |
+| Postgres 宿主机映射                            | 5432      | 17310       |
+| Collector 平台 Receiver                        | 4317/4318 | 17311/17312 |
+| Collector Agent Receiver                       | 4327/4328 | 17313/17314 |
+| 文档站 dev server                              | 3001      | 17350       |
+| Deployment 分配段（`EVELAND_DEPLOYMENT_PORT`） | 41000     | 18000       |
+
+对存量安装：
+
+1. 更新 `.env` 与 systemd env 文件中所有引用旧默认端口的 URL 与端口（`DATABASE_URL`、`EVELAND_WORKFLOW_WORLD_URL`、`BETTER_AUTH_URL`、`EVELAND_GATEWAY_INTERNAL_URL`、`EVELAND_API_INTERNAL_URL`、`EVELAND_OTLP_ENDPOINT`、`EVELAND_IDENTITY_JWKS_URL`、`EVELAND_SCHEDULER_REDEEM_URL`、`WEB_ORIGIN`、`NEXT_PUBLIC_API_URL`、`API_URL` 等）——对照最新的 `.env.example`。继续沿用旧端口也是允许的：迁移的只是默认值，显式配置始终优先。
+2. 更新反向代理 upstream（Agent Gateway `4080` → `17302`）与宿主机防火墙规则（对非本地网络阻断 `17310` 而非 `5432`）。
+3. `NEXT_PUBLIC_API_URL` 在构建时烘焙进 Dashboard：修改后必须重新构建 web 应用。
+4. 重启所有组件——env 变更从不作用于运行中的进程，Compose 容器在重建前保留旧 env。
+5. `EVELAND_IDENTITY_ALLOWED_ORIGINS` 不再有开发默认值（`http://localhost:3010`）：若外部 chat 前端依赖它，必须显式设置。
+
+存量 Deployment 保留已记录的端口；新建与重启的 Deployment 实例从新端口段分配。
+
 ## 遗留的按 Project Workflow 残余
 
 每个 Release 都基于共享、External-only Workflow World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动。带有共享 World 之前历史的安装可能仍保留遗留的按 Project Workflow 配置：

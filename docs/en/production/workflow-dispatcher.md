@@ -36,7 +36,7 @@ The process prints `workflow-dispatcher: ready` on stdout once it is dispatching
 
 - `EVELAND_WORKFLOW_WORLD_URL` — must be the same value the Worker injects into Deployments, or the dispatcher claims from a database nothing writes to. Set `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when Deployments reach Postgres by a different name than the platform's own processes do.
 - `EVELAND_WORKFLOW_STREAM_COMPACTION` — must match the Worker's value so write-side and terminal-rewrite compaction follow the same policy.
-- `WORKFLOW_DISPATCHER_ACTIVATION_API_URL` (normally `http://127.0.0.1:4000`) and `WORKFLOW_DISPATCHER_ACTIVATION_TOKEN` — the Control API and its internal service token; the token must match the API's value.
+- `WORKFLOW_DISPATCHER_ACTIVATION_API_URL` (normally `http://127.0.0.1:17301`) and `WORKFLOW_DISPATCHER_ACTIVATION_TOKEN` — the Control API and its internal service token; the token must match the API's value.
 - `EVELAND_SCHEDULER_RUNTIME_SECRET` — must match the Worker's value: it is injected into every Deployment, whose workflow world uses it to authenticate inbound dispatch.
 - `EVELAND_OTLP_ENDPOINT`, `EVELAND_OTLP_SERVICE_TOKEN` — the Collector's platform receiver.
 - `NODE_ENV=production`, `EVELAND_RELEASE_CHANNEL`, `EVELAND_REVISION` — aligned with the other services.

@@ -21,7 +21,7 @@
 # not public); the worker (health check) and Agent Gateway (public proxy + internal Playground) reach them on that same
 # loopback only if they share the host's network. On host network the compose service DNS
 # (postgres/api) is gone, so services talk over localhost; postgres stays bridged but publishes
-# 5432 to the host. `ports: !override []` clears base published ports (incompatible with host net).
+# host port 17310. `ports: !override []` clears base published ports (incompatible with host net).
 #
 # NODE_ENV=production is set only on the runtime command — setting it container-wide makes
 # `pnpm install` skip devDependencies (tsx / the next build toolchain) and the stack fails to start.
@@ -49,13 +49,13 @@ services:
     command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && cd apps/api && NODE_ENV=production pnpm exec tsx --import=@evelandhq/platform-observability/register --env-file=../../.env src/server.ts"
     environment:
       CI: "true"
-      DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
-      WEB_ORIGIN: "${WEB_ORIGIN:-http://localhost:3000}"
+      DATABASE_URL: postgres://eveland:eveland@localhost:17310/eveland
+      WEB_ORIGIN: "${WEB_ORIGIN:-http://localhost:17300}"
       EVELAND_DATA_DIR: /var/lib/eveland
-      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:4318
+      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:17312
       EVELAND_OTLP_SERVICE_TOKEN: "${EVELAND_OTLP_SERVICE_TOKEN:?set EVELAND_OTLP_SERVICE_TOKEN}"
       EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST: "${EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST:-}"
-      EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:4080
+      EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:17302
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
       EVELAND_ACTIVATION_LEASE_TTL_MS: "${EVELAND_ACTIVATION_LEASE_TTL_MS:-180000}"
       EVELAND_COLD_START_TIMEOUT_MS: "${EVELAND_COLD_START_TIMEOUT_MS:-30000}"
@@ -79,15 +79,15 @@ services:
     command: sh -lc "corepack enable && pnpm install && cd apps/gateway && NODE_ENV=production pnpm exec tsx --import=@evelandhq/platform-observability/register --env-file=../../.env src/server.ts"
     environment:
       CI: "true"
-      DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
-      GATEWAY_PORT: 4080
+      DATABASE_URL: postgres://eveland:eveland@localhost:17310/eveland
+      GATEWAY_PORT: 17302
       EVELAND_AGENT_BASE_DOMAINS: "${EVELAND_AGENT_BASE_DOMAINS:?set EVELAND_AGENT_BASE_DOMAINS}"
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
       EVELAND_GATEWAY_AFFINITY_SECRET: "${EVELAND_GATEWAY_AFFINITY_SECRET:?set EVELAND_GATEWAY_AFFINITY_SECRET}"
       EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES: "${EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES:-10485760}"
       EVELAND_GATEWAY_PUBLIC_SCHEME: https
-      EVELAND_API_INTERNAL_URL: http://127.0.0.1:4000
-      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:4318
+      EVELAND_API_INTERNAL_URL: http://127.0.0.1:17301
+      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:17312
       EVELAND_OTLP_SERVICE_TOKEN: "${EVELAND_OTLP_SERVICE_TOKEN:?set EVELAND_OTLP_SERVICE_TOKEN}"
       EVELAND_ACTIVATION_RENEW_INTERVAL_MS: "${EVELAND_ACTIVATION_RENEW_INTERVAL_MS:-60000}"
       EVELAND_RELEASE_CHANNEL: "${EVELAND_RELEASE_CHANNEL:-stable}"
@@ -104,11 +104,11 @@ services:
     restart: unless-stopped
     network_mode: host
     ports: !override []
-    command: sh -lc "corepack enable && pnpm install && NODE_ENV=production pnpm --filter @evelandhq/web build && NODE_ENV=production pnpm --filter @evelandhq/web exec next start --port 3000"
+    command: sh -lc "corepack enable && pnpm install && NODE_ENV=production pnpm --filter @evelandhq/web build && NODE_ENV=production pnpm --filter @evelandhq/web exec next start --port 17300"
     environment:
       CI: "true"
-      API_URL: http://localhost:4000
-      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:4000}"
+      API_URL: http://localhost:17301
+      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:17301}"
       EVELAND_RELEASE_CHANNEL: "${EVELAND_RELEASE_CHANNEL:-stable}"
       EVELAND_REVISION: "${EVELAND_REVISION:-unknown}"
 
@@ -124,12 +124,12 @@ services:
     # independent of network_mode: host on this worker container itself.
     environment:
       CI: "true"
-      DATABASE_URL: postgres://eveland:eveland@localhost:5432/eveland
-      WORKFLOW_POSTGRES_BOOTSTRAP_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland
-      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland
+      DATABASE_URL: postgres://eveland:eveland@localhost:17310/eveland
+      WORKFLOW_POSTGRES_BOOTSTRAP_URL: postgres://eveland:eveland@127.0.0.1:17310/eveland
+      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@127.0.0.1:17310/eveland
       EVELAND_RUNTIME: docker
       EVELAND_DATA_DIR: /var/lib/eveland
-      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:4318
+      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:17312
       EVELAND_OTLP_SERVICE_TOKEN: "${EVELAND_OTLP_SERVICE_TOKEN:?set EVELAND_OTLP_SERVICE_TOKEN}"
       # The Worker probes destination health directly, so it must apply the same
       # allowlist the API uses or an allowlisted private destination reads degraded.
@@ -137,11 +137,11 @@ services:
       # Agent container bind mounts resolve on the host.
       EVELAND_HOST_DATA_DIR: /var/lib/eveland
       EVELAND_AGENT_BASE_DOMAINS: "${EVELAND_AGENT_BASE_DOMAINS:?set EVELAND_AGENT_BASE_DOMAINS}"
-      EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:4080
+      EVELAND_GATEWAY_INTERNAL_URL: http://127.0.0.1:17302
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
       EVELAND_SCHEDULER_RUNTIME_SECRET: "${EVELAND_SCHEDULER_RUNTIME_SECRET:?set EVELAND_SCHEDULER_RUNTIME_SECRET}"
       EVELAND_SCHEDULER_DISPATCH_SECRET: "${EVELAND_SCHEDULER_DISPATCH_SECRET:?set EVELAND_SCHEDULER_DISPATCH_SECRET}"
-      EVELAND_SCHEDULER_REDEEM_URL: "${EVELAND_SCHEDULER_REDEEM_URL:-http://host.docker.internal:4000/internal/scheduler/dispatch}"
+      EVELAND_SCHEDULER_REDEEM_URL: "${EVELAND_SCHEDULER_REDEEM_URL:-http://host.docker.internal:17301/internal/scheduler/dispatch}"
       EVELAND_SCHEDULER_PREWARM_MS: "${EVELAND_SCHEDULER_PREWARM_MS:-60000}"
       EVELAND_ACTIVATION_IDLE_TTL_MS: "${EVELAND_ACTIVATION_IDLE_TTL_MS:-300000}"
       EVELAND_ACTIVATION_REAPER_BATCH_SIZE: "${EVELAND_ACTIVATION_REAPER_BATCH_SIZE:-25}"

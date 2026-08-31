@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: eveland
       POSTGRES_DB: eveland
     ports:
-      - "5432:5432"
+      - "127.0.0.1:17310:5432"
     volumes:
       - eveland-postgres:/var/lib/postgresql/data
 
@@ -40,10 +40,10 @@ services:
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:
-      - "127.0.0.1:4317:4317"
-      - "127.0.0.1:4318:4318"
-      - "127.0.0.1:4327:4327"
-      - "127.0.0.1:4328:4328"
+      - "127.0.0.1:17311:4317"
+      - "127.0.0.1:17312:4318"
+      - "127.0.0.1:17313:4327"
+      - "127.0.0.1:17314:4328"
     volumes:
       - ./.eveland-data/otel:/var/lib/eveland/otel:ro
       - eveland-otel-collector:/var/lib/otelcol
@@ -61,21 +61,21 @@ services:
       CI: "true"
       # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
       NODE_ENV: development
-      PORT: 4000
-      WEB_ORIGIN: http://localhost:3000
+      PORT: 17301
+      WEB_ORIGIN: http://localhost:17300
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       APP_SECRET_KEY: eveland-dev-secret-key-000000000
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}"
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:17301}
       EVELAND_ADMIN_EMAIL: ${EVELAND_ADMIN_EMAIL:-admin@example.com}
       EVELAND_ADMIN_PASSWORD: "${EVELAND_ADMIN_PASSWORD:?set EVELAND_ADMIN_PASSWORD}"
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
       EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
       EVELAND_COOKIE_DOMAIN: ${EVELAND_COOKIE_DOMAIN:-}
-      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-http://localhost:4000}
-      EVELAND_IDENTITY_ALLOWED_ORIGINS: ${EVELAND_IDENTITY_ALLOWED_ORIGINS:-http://localhost:3010}
+      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-http://localhost:17301}
+      EVELAND_IDENTITY_ALLOWED_ORIGINS: ${EVELAND_IDENTITY_ALLOWED_ORIGINS:-}
       EVELAND_DATA_DIR: /workspace/.eveland-data
-      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:4080
+      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:17302
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
       EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
       EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
@@ -89,7 +89,7 @@ services:
       EVELAND_SCHEDULER_RUNTIME_SECRET: ${EVELAND_SCHEDULER_RUNTIME_SECRET:-eveland-dev-scheduler-runtime-secret}
       EVELAND_SCHEDULER_DISPATCH_SECRET: ${EVELAND_SCHEDULER_DISPATCH_SECRET:-eveland-dev-scheduler-dispatch-secret}
     ports:
-      - "4000:4000"
+      - "17301:17301"
     volumes:
       - .:/workspace
 
@@ -103,14 +103,14 @@ services:
       CI: "true"
       # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
       NODE_ENV: development
-      GATEWAY_PORT: 4080
+      GATEWAY_PORT: 17302
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       EVELAND_AGENT_BASE_DOMAINS: ${EVELAND_AGENT_BASE_DOMAINS:-agent.localhost}
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
       EVELAND_GATEWAY_AFFINITY_SECRET: ${EVELAND_GATEWAY_AFFINITY_SECRET:-eveland-dev-affinity-secret}
       EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES: ${EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES:-10485760}
       EVELAND_GATEWAY_PUBLIC_SCHEME: ${EVELAND_GATEWAY_PUBLIC_SCHEME:-http}
-      EVELAND_API_INTERNAL_URL: http://api:4000
+      EVELAND_API_INTERNAL_URL: http://api:17301
       EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
       EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
       EVELAND_ACTIVATION_RENEW_INTERVAL_MS: ${EVELAND_ACTIVATION_RENEW_INTERVAL_MS:-60000}
@@ -119,7 +119,7 @@ services:
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
       EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
     ports:
-      - "4080:4080"
+      - "17302:17302"
     volumes:
       - .:/workspace
       # The repository bind is for live application code only. Hide imported project
@@ -141,7 +141,7 @@ services:
       # its own so the two schemas never mix.
       EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@postgres:5432/eveland
       EVELAND_WORKFLOW_STREAM_COMPACTION: ${EVELAND_WORKFLOW_STREAM_COMPACTION:-on}
-      WORKFLOW_DISPATCHER_ACTIVATION_API_URL: http://api:4000
+      WORKFLOW_DISPATCHER_ACTIVATION_API_URL: http://api:17301
       WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
       WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS: ${WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS:-300000}
       WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS: ${WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS:-60000}
@@ -170,12 +170,12 @@ services:
       CI: "true"
       # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
       NODE_ENV: development
-      NEXT_PUBLIC_API_URL: http://localhost:4000
-      API_URL: http://api:4000
+      NEXT_PUBLIC_API_URL: http://localhost:17301
+      API_URL: http://api:17301
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
       EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
     ports:
-      - "3000:3000"
+      - "17300:17300"
     volumes:
       - .:/workspace
 
@@ -196,7 +196,7 @@ services:
       # Deployed Agent containers reach the shared workflow database through the
       # host gateway; the worker bootstraps it through its Compose-reachable
       # address below.
-      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@host.docker.internal:5432/eveland
+      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@host.docker.internal:17310/eveland
       EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
       EVELAND_WORKFLOW_RUNNER: ${EVELAND_WORKFLOW_RUNNER:-external}
       EVELAND_WORKFLOW_STREAM_COMPACTION: ${EVELAND_WORKFLOW_STREAM_COMPACTION:-on}
@@ -221,13 +221,13 @@ services:
       WORKER_JOB_RECOVERY_BATCH_SIZE: ${WORKER_JOB_RECOVERY_BATCH_SIZE:-25}
       EVELAND_HOST_METRIC_INTERVAL_MS: ${EVELAND_HOST_METRIC_INTERVAL_MS:-60000}
       EVELAND_AGENT_BASE_DOMAINS: ${EVELAND_AGENT_BASE_DOMAINS:-agent.localhost}
-      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:4080
+      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:17302
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
-      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-http://localhost:4000}
-      EVELAND_IDENTITY_JWKS_URL: ${EVELAND_IDENTITY_JWKS_URL:-http://host.docker.internal:4000/.well-known/jwks.json}
+      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-http://localhost:17301}
+      EVELAND_IDENTITY_JWKS_URL: ${EVELAND_IDENTITY_JWKS_URL:-http://host.docker.internal:17301/.well-known/jwks.json}
       EVELAND_SCHEDULER_RUNTIME_SECRET: ${EVELAND_SCHEDULER_RUNTIME_SECRET:-eveland-dev-scheduler-runtime-secret}
       EVELAND_SCHEDULER_DISPATCH_SECRET: ${EVELAND_SCHEDULER_DISPATCH_SECRET:-eveland-dev-scheduler-dispatch-secret}
-      EVELAND_SCHEDULER_REDEEM_URL: ${EVELAND_SCHEDULER_REDEEM_URL:-http://host.docker.internal:4000/internal/scheduler/dispatch}
+      EVELAND_SCHEDULER_REDEEM_URL: ${EVELAND_SCHEDULER_REDEEM_URL:-http://host.docker.internal:17301/internal/scheduler/dispatch}
       EVELAND_SCHEDULER_PLANNER_BATCH_SIZE: ${EVELAND_SCHEDULER_PLANNER_BATCH_SIZE:-25}
       EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS: ${EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS:-86400000}
       EVELAND_SCHEDULER_PREWARM_MS: ${EVELAND_SCHEDULER_PREWARM_MS:-60000}

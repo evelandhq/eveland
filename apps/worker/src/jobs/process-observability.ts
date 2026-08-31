@@ -1,3 +1,4 @@
+import { OTEL_AGENT_DOCKER_ENDPOINT, OTEL_AGENT_LOOPBACK_ENDPOINT } from "@evelandhq/core/ports";
 import {
   createAgentRuntimePolicy,
   type AgentRuntimePolicy,
@@ -72,8 +73,8 @@ export async function prepareDeploymentObservability(input: {
       input.runtimeKind === "docker"
         ? // The Docker adapter connects the Collector to this Deployment's
           // isolated network under a fixed alias.
-          "http://eveland-otel-collector:4328"
-        : "http://127.0.0.1:4328",
+          OTEL_AGENT_DOCKER_ENDPOINT
+        : OTEL_AGENT_LOOPBACK_ENDPOINT,
     deploymentCredential: createAgentTelemetryCredential(
       { deploymentId: input.deploymentId, issuedAt: new Date().toISOString() },
       telemetrySecret,

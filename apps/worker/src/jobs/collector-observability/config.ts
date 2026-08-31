@@ -1,4 +1,10 @@
 import {
+  OTEL_AGENT_CONTAINER_GRPC_PORT,
+  OTEL_AGENT_CONTAINER_HTTP_PORT,
+  OTLP_STANDARD_GRPC_PORT,
+  OTLP_STANDARD_HTTP_PORT,
+} from "@evelandhq/core/ports";
+import {
   COLLECTOR_SELF_SERVICE_NAME,
   collectorExporterComponentId,
   externalDestinationDomains,
@@ -153,19 +159,19 @@ function baseCollectorConfig(): CollectorConfig {
       "otlp/platform": {
         protocols: {
           grpc: {
-            endpoint: "0.0.0.0:4317",
+            endpoint: `0.0.0.0:${OTLP_STANDARD_GRPC_PORT}`,
             auth: { authenticator: "bearertokenauth/platform" },
           },
           http: {
-            endpoint: "0.0.0.0:4318",
+            endpoint: `0.0.0.0:${OTLP_STANDARD_HTTP_PORT}`,
             auth: { authenticator: "bearertokenauth/platform" },
           },
         },
       },
       "otlp/agent": {
         protocols: {
-          grpc: { endpoint: "0.0.0.0:4327" },
-          http: { endpoint: "0.0.0.0:4328" },
+          grpc: { endpoint: `0.0.0.0:${OTEL_AGENT_CONTAINER_GRPC_PORT}` },
+          http: { endpoint: `0.0.0.0:${OTEL_AGENT_CONTAINER_HTTP_PORT}` },
         },
       },
       "prometheus/collector_self": {
