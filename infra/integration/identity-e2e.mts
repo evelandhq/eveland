@@ -61,7 +61,7 @@ import { createControlPlaneAuthRuntime } from "../../apps/api/src/app.test-suppo
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { createApiIdentityClient } from "../../apps/gateway/src/identity-client.js";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
-import { GATEWAY_PORT, WEB_PORT } from "../../packages/core/src/ports.js";
+import { GATEWAY_PORT, PUBLIC_ORIGIN_FALLBACK } from "../../packages/core/src/ports.js";
 import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
 import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
 import { parseEvelandAuthenticationChallenge } from "../../packages/sdk/src/auth.js";
@@ -72,7 +72,7 @@ const execFileAsync = promisify(execFile);
 
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
 const GATEWAY_SERVICE_TOKEN = "identity-e2e-gateway-service-token-000000";
-const WEB_ORIGIN = `http://localhost:${WEB_PORT}`;
+const WEB_ORIGIN = PUBLIC_ORIGIN_FALLBACK;
 const CHAT_ORIGIN = "http://localhost:3010";
 const ADMIN = {
   email: "admin@example.com",

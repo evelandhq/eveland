@@ -68,6 +68,19 @@ Eveland 已将所有默认监听端口从通用开发端口迁入平台独享端
 
 存量 Deployment 保留已记录的端口；新建与重启的 Deployment 实例从新端口段分配。
 
+## 单一前门（Origin 合并）
+
+继端口块迁移之后，Agent Gateway 成为唯一公开入口：它绑定 `17300`，在平台 Host 上服务 Dashboard、浏览器 API（`/api/eveland/*`，fail-closed Allowlist）、Better Auth（`/api/auth/*`）与 Identity Issuer 文档（`/.well-known/*`），在 Wildcard Agent Host 上服务 Agent 流量。API（`17301`）与 Dashboard（`17302`）退到其后仅绑回环；`/internal/*` 机器面端点从任何公开接口都不再可达。
+
+配置收敛为一个变量：把 `EVELAND_PUBLIC_ORIGIN` 设为浏览器可见 Origin。`BETTER_AUTH_URL`、`WEB_ORIGIN` 与 `EVELAND_IDENTITY_ISSUER` 由它派生（每个仍可显式覆盖）；`NEXT_PUBLIC_API_URL` 已移除——浏览器始终同 Origin 调用 API，web 构建不再烘焙任何地址。
+
+对存量安装：
+
+1. 把 `.env` 中的各服务 URL 替换为一个 `EVELAND_PUBLIC_ORIGIN`。
+2. 反向代理收敛为单一 upstream `127.0.0.1:17300`（Wildcard Agent 路由与平台 Host 路由共用它），并在防火墙上关闭旧的 Dashboard/API 端口。
+3. **Issuer 迁移**：Caller Token Issuer 必须保持稳定。旧 Issuer 是 API Origin 的存量安装二选一：显式设置 `EVELAND_IDENTITY_ISSUER` 为旧值保留它（Agent 对新旧 Token 都继续验证；`/.well-known/*` 必须在该 Origin 上保持可达）；或切换到派生的前门 Issuer，并接受所有消费方 Chat 服务与 Agent Verifier 需同步更新——Worker 会在下一次 Reconcile 时把新 Issuer 重新注入 Deployment。
+4. 重新构建 web 应用并重启所有组件。
+
 ## 遗留的按 Project Workflow 残余
 
 每个 Release 都基于共享、External-only Workflow World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动。带有共享 World 之前历史的安装可能仍保留遗留的按 Project Workflow 配置：

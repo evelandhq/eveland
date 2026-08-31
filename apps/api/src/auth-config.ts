@@ -1,4 +1,8 @@
-import { API_PORT, WEB_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import { PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+
+function publicOrigin(env: Record<string, string | undefined>): string {
+  return env.EVELAND_PUBLIC_ORIGIN?.trim() || PUBLIC_ORIGIN_FALLBACK;
+}
 
 export function resolveAdminConfig(env: Record<string, string | undefined>) {
   const password = env.EVELAND_ADMIN_PASSWORD;
@@ -19,8 +23,8 @@ export function resolveBetterAuthConfig(env: Record<string, string | undefined>)
   if (secret.length < 32) throw new Error("BETTER_AUTH_SECRET must be at least 32 characters.");
   return {
     secret,
-    baseURL: env.BETTER_AUTH_URL?.trim() || `http://localhost:${env.PORT ?? API_PORT}`,
-    webOrigin: env.WEB_ORIGIN?.trim() || WEB_ORIGIN_FALLBACK,
+    baseURL: env.BETTER_AUTH_URL?.trim() || publicOrigin(env),
+    webOrigin: env.WEB_ORIGIN?.trim() || publicOrigin(env),
     cookieDomain: env.EVELAND_COOKIE_DOMAIN?.trim() || undefined,
   };
 }

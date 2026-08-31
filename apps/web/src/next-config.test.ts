@@ -6,18 +6,23 @@ import { resolveCanonicalRequestBudget } from "@evelandhq/core/workflow-dispatch
 // path semantics instead of a reimplementation of them.
 import { getPathMatch } from "next/dist/shared/lib/router/utils/path-match";
 import { describe, expect, test } from "vitest";
-import { API_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import { API_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
+import { BROWSER_API_SUBTREES } from "@evelandhq/core/front-door";
 import nextConfig, {
   browserApiSubtrees,
-  inlinedApiOriginFallback,
+  inlinedApiInternalUrlFallback,
   proxyTimeoutMs,
 } from "../next.config.js";
 
 // next.config cannot import workspace TypeScript, so it inlines the API
-// origin fallback; this pins the copy to the single source in core.
-describe("inlined API origin fallback", () => {
-  test("matches @evelandhq/core/ports", () => {
-    expect(inlinedApiOriginFallback).toBe(API_ORIGIN_FALLBACK);
+// upstream fallback and the browser subtree allowlist; this pins both copies
+// to the single sources in core (the front door routes from the same list).
+describe("inlined front-door constants", () => {
+  test("API upstream fallback matches @evelandhq/core/ports", () => {
+    expect(inlinedApiInternalUrlFallback).toBe(API_INTERNAL_URL_FALLBACK);
+  });
+  test("browser API subtrees match @evelandhq/core/front-door", () => {
+    expect([...browserApiSubtrees]).toEqual([...BROWSER_API_SUBTREES]);
   });
 });
 

@@ -2,16 +2,12 @@ import type { NextConfig } from "next";
 
 /**
  * Inlined because next.config cannot import workspace TypeScript; exported so
- * `next-config.test.ts` pins it against API_ORIGIN_FALLBACK in
+ * `next-config.test.ts` pins it against API_INTERNAL_URL_FALLBACK in
  * @evelandhq/core/ports, so the two cannot drift apart silently.
  */
-export const inlinedApiOriginFallback = "http://localhost:17301";
+export const inlinedApiInternalUrlFallback = "http://127.0.0.1:17301";
 
-const apiBaseUrl = (
-  process.env.API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  inlinedApiOriginFallback
-).replace(/\/$/, "");
+const apiBaseUrl = (process.env.API_URL ?? inlinedApiInternalUrlFallback).replace(/\/$/, "");
 
 /**
  * The canonical request budget, inlined because next.config cannot import

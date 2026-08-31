@@ -31,7 +31,7 @@ The Agent receiver is unauthenticated, so each Deployment's telemetry is attribu
 
 ## Public entry points
 
-The Dashboard and API are served on your chosen origins. All Agent traffic enters through the Agent Gateway on host port `17302`, behind a wildcard TLS reverse proxy; Deployment ports stay on loopback. See [Configure Agent traffic](/docs/production/networking).
+Everything enters through the Agent Gateway front door on host port `17300`, behind your TLS reverse proxy: the Dashboard and browser API on the platform host (`EVELAND_PUBLIC_ORIGIN`), Agent traffic on wildcard Agent hosts. Deployment ports stay on loopback. See [Configure Agent traffic](/docs/production/networking).
 
 ## Resource lifecycle
 

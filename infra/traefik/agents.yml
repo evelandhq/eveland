@@ -1,5 +1,7 @@
 # Dynamic Traefik file-provider example. Replace agents.example.com, terminate TLS
-# here, and keep port 17302 private to the host.
+# here, and keep port 17300 private to the host. The same front door also
+# serves the Dashboard and browser API on the platform host, so one wildcard
+# router (agents) plus one host router (platform) covers the whole install.
 http:
   routers:
     eveland-agents:
@@ -11,4 +13,4 @@ http:
     eveland-gateway:
       loadBalancer:
         servers:
-          - url: "http://127.0.0.1:17302"
+          - url: "http://127.0.0.1:17300"

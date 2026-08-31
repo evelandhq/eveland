@@ -14,6 +14,7 @@
     "./environment-entries": "./src/environment-entries.ts",
     "./eve": "./src/eve.ts",
     "./eve-compatibility": "./src/eve-compatibility.ts",
+    "./front-door": "./src/front-door.ts",
     "./ids": "./src/ids.ts",
     "./instance-health": "./src/instance-health.ts",
     "./identity": "./src/identity.ts",

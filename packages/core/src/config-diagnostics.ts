@@ -5,7 +5,6 @@ export type { EvelandComponent } from "./build-info.js";
 import type { EvelandComponent } from "./build-info.js";
 import {
   API_INTERNAL_URL_FALLBACK,
-  API_ORIGIN_FALLBACK,
   API_PORT,
   DEPLOYMENT_PORT_START,
   GATEWAY_INTERNAL_URL_FALLBACK,
@@ -13,8 +12,9 @@ import {
   IDENTITY_JWKS_URL_DOCKER_FALLBACK,
   OTLP_ENDPOINT_FALLBACK,
   POSTGRES_DEFAULT_PORT,
+  PUBLIC_ORIGIN_FALLBACK,
   SANDBOX_INTERNAL_PORT,
-  WEB_ORIGIN_FALLBACK,
+  WEB_INTERNAL_URL_FALLBACK,
 } from "@evelandhq/core/ports";
 
 export type ConfigurationEntry = {
@@ -63,16 +63,6 @@ const defaultValue = (value: string): ResolvedValue => ({ value, source: "defaul
 const derivedValue = (value: string): ResolvedValue => ({ value, source: "derived" });
 const developmentSecret = (env: Environment): ResolvedValue | undefined =>
   production(env) ? undefined : defaultValue("development fallback");
-/**
- * A default the runtime itself only applies outside production. Modelling one
- * as an unconditional fallback makes the entry report a value production will
- * never use, and silently defeats `required: production` -- the entry can never
- * be "missing" once something always fills it in.
- */
-const developmentDefault =
-  (value: string) =>
-  (env: Environment): ResolvedValue | undefined =>
-    production(env) ? undefined : defaultValue(value);
 const productionSecretWarning = (
   env: Environment,
   _value: string,
@@ -153,27 +143,23 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     purpose: "Authenticates Worker route-cache invalidation requests to the Agent Gateway.",
     required: production,
   },
+  urlEntry(
+    "EVELAND_PUBLIC_ORIGIN",
+    ["api", "worker"],
+    "The single browser-visible origin (the front door). Better Auth base URL, the CORS web origin, and the Identity issuer all derive from it unless individually overridden.",
+    PUBLIC_ORIGIN_FALLBACK,
+  ),
   {
     name: "API_URL",
     components: ["web"],
     sensitivity: "url",
-    purpose: "Server-side API origin used by the Dashboard process.",
-    fallback: (env) => derivedValue(env.NEXT_PUBLIC_API_URL ?? API_ORIGIN_FALLBACK),
+    purpose: "Private API origin the Dashboard's server side (SSR) dials directly.",
+    fallback: () => derivedValue(API_INTERNAL_URL_FALLBACK),
   },
-  urlEntry(
-    "NEXT_PUBLIC_API_URL",
-    ["web"],
-    "Browser-visible platform API origin.",
-    API_ORIGIN_FALLBACK,
-  ),
   entry("PORT", ["api"], "TCP port used by the platform API.", String(API_PORT)),
   {
-    ...urlEntry(
-      "WEB_ORIGIN",
-      ["api"],
-      "Allowed browser origin for authenticated platform CORS.",
-      WEB_ORIGIN_FALLBACK,
-    ),
+    ...urlEntry("WEB_ORIGIN", ["api"], "Allowed browser origin for authenticated platform CORS."),
+    fallback: (env) => derivedValue(env.EVELAND_PUBLIC_ORIGIN?.trim() || PUBLIC_ORIGIN_FALLBACK),
     emptyUsesFallback: true,
   },
   {
@@ -189,7 +175,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     components: ["api"],
     sensitivity: "url",
     purpose: "Browser-visible API origin used by Better Auth.",
-    fallback: (env) => derivedValue(`http://localhost:${env.PORT ?? API_PORT}`),
+    fallback: (env) => derivedValue(env.EVELAND_PUBLIC_ORIGIN?.trim() || PUBLIC_ORIGIN_FALLBACK),
     emptyUsesFallback: true,
   },
   {
@@ -238,7 +224,11 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
       ["api", "worker"],
       "Stable public issuer for Agent-user Caller Tokens.",
     ),
-    fallback: developmentDefault(API_ORIGIN_FALLBACK),
+    fallback: (env) => {
+      const publicOrigin = env.EVELAND_PUBLIC_ORIGIN?.trim();
+      if (publicOrigin) return derivedValue(publicOrigin);
+      return production(env) ? undefined : defaultValue(PUBLIC_ORIGIN_FALLBACK);
+    },
     required: production,
   },
   {
@@ -449,8 +439,20 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   urlEntry(
     "EVELAND_API_INTERNAL_URL",
     ["gateway"],
-    "Private API origin used for service-authenticated runtime activation.",
+    "Private API origin the front door proxies browser API and issuer traffic to.",
     API_INTERNAL_URL_FALLBACK,
+  ),
+  urlEntry(
+    "EVELAND_WEB_INTERNAL_URL",
+    ["gateway"],
+    "Private Dashboard origin the front door proxies page traffic to.",
+    WEB_INTERNAL_URL_FALLBACK,
+  ),
+  entry(
+    "EVELAND_API_BIND_HOST",
+    ["api"],
+    "Interface the API binds. Loopback by default; a containerized API sets 0.0.0.0.",
+    "127.0.0.1",
   ),
   entry(
     "EVELAND_ACTIVATION_LEASE_TTL_MS",

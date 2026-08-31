@@ -62,20 +62,20 @@ services:
       # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
       NODE_ENV: development
       PORT: 17301
-      WEB_ORIGIN: http://localhost:17300
+      EVELAND_API_BIND_HOST: 0.0.0.0
+      EVELAND_PUBLIC_ORIGIN: ${EVELAND_PUBLIC_ORIGIN:-http://localhost:17300}
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       APP_SECRET_KEY: eveland-dev-secret-key-000000000
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}"
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:17301}
       EVELAND_ADMIN_EMAIL: ${EVELAND_ADMIN_EMAIL:-admin@example.com}
       EVELAND_ADMIN_PASSWORD: "${EVELAND_ADMIN_PASSWORD:?set EVELAND_ADMIN_PASSWORD}"
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
       EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
       EVELAND_COOKIE_DOMAIN: ${EVELAND_COOKIE_DOMAIN:-}
-      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-http://localhost:17301}
+      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-}
       EVELAND_IDENTITY_ALLOWED_ORIGINS: ${EVELAND_IDENTITY_ALLOWED_ORIGINS:-}
       EVELAND_DATA_DIR: /workspace/.eveland-data
-      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:17302
+      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:17300
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
       EVELAND_OTLP_ENDPOINT: http://otel-collector:4318
       EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
@@ -89,7 +89,7 @@ services:
       EVELAND_SCHEDULER_RUNTIME_SECRET: ${EVELAND_SCHEDULER_RUNTIME_SECRET:-eveland-dev-scheduler-runtime-secret}
       EVELAND_SCHEDULER_DISPATCH_SECRET: ${EVELAND_SCHEDULER_DISPATCH_SECRET:-eveland-dev-scheduler-dispatch-secret}
     ports:
-      - "17301:17301"
+      - "127.0.0.1:17301:17301"
     volumes:
       - .:/workspace
 
@@ -103,7 +103,8 @@ services:
       CI: "true"
       # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
       NODE_ENV: development
-      GATEWAY_PORT: 17302
+      GATEWAY_PORT: 17300
+      EVELAND_WEB_INTERNAL_URL: http://web:17302
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
       EVELAND_AGENT_BASE_DOMAINS: ${EVELAND_AGENT_BASE_DOMAINS:-agent.localhost}
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
@@ -119,7 +120,7 @@ services:
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
       EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
     ports:
-      - "17302:17302"
+      - "17300:17300"
     volumes:
       - .:/workspace
       # The repository bind is for live application code only. Hide imported project
@@ -170,12 +171,11 @@ services:
       CI: "true"
       # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
       NODE_ENV: development
-      NEXT_PUBLIC_API_URL: http://localhost:17301
       API_URL: http://api:17301
       EVELAND_RELEASE_CHANNEL: ${EVELAND_RELEASE_CHANNEL:-dev}
       EVELAND_REVISION: ${EVELAND_REVISION:-unknown}
     ports:
-      - "17300:17300"
+      - "127.0.0.1:17302:17302"
     volumes:
       - .:/workspace
 
@@ -221,9 +221,10 @@ services:
       WORKER_JOB_RECOVERY_BATCH_SIZE: ${WORKER_JOB_RECOVERY_BATCH_SIZE:-25}
       EVELAND_HOST_METRIC_INTERVAL_MS: ${EVELAND_HOST_METRIC_INTERVAL_MS:-60000}
       EVELAND_AGENT_BASE_DOMAINS: ${EVELAND_AGENT_BASE_DOMAINS:-agent.localhost}
-      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:17302
+      EVELAND_GATEWAY_INTERNAL_URL: http://gateway:17300
       EVELAND_GATEWAY_SERVICE_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
-      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-http://localhost:17301}
+      EVELAND_PUBLIC_ORIGIN: ${EVELAND_PUBLIC_ORIGIN:-http://localhost:17300}
+      EVELAND_IDENTITY_ISSUER: ${EVELAND_IDENTITY_ISSUER:-}
       EVELAND_IDENTITY_JWKS_URL: ${EVELAND_IDENTITY_JWKS_URL:-http://host.docker.internal:17301/.well-known/jwks.json}
       EVELAND_SCHEDULER_RUNTIME_SECRET: ${EVELAND_SCHEDULER_RUNTIME_SECRET:-eveland-dev-scheduler-runtime-secret}
       EVELAND_SCHEDULER_DISPATCH_SECRET: ${EVELAND_SCHEDULER_DISPATCH_SECRET:-eveland-dev-scheduler-dispatch-secret}

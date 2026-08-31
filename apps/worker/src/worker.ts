@@ -118,7 +118,7 @@ try {
   const identityConfiguration = resolveIdentityDeploymentConfiguration({
     dataDir,
     nodeEnv: process.env.NODE_ENV,
-    issuer: process.env.EVELAND_IDENTITY_ISSUER,
+    issuer: process.env.EVELAND_IDENTITY_ISSUER || process.env.EVELAND_PUBLIC_ORIGIN,
     jwksUrl: process.env.EVELAND_IDENTITY_JWKS_URL,
   });
   if (identityConfiguration) {

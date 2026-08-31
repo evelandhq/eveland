@@ -21,6 +21,9 @@ import { resolveAdminConfig, resolveBetterAuthConfig } from "./auth-config.js";
 import { collectSystemConfigurationDiagnostics } from "./config-diagnostics.js";
 
 const port = Number(process.env.PORT ?? API_PORT);
+// Loopback by default: the front door is the only public listener. A
+// containerized API (Compose) overrides this to 0.0.0.0.
+const bindHost = process.env.EVELAND_API_BIND_HOST ?? "127.0.0.1";
 const buildInfo = createBuildInfoFromEnv("api", process.env);
 const storeFactory = createStoreFromEnv();
 const betterAuthConfig = resolveBetterAuthConfig(process.env);
@@ -51,6 +54,7 @@ serve({
     ),
   }).fetch,
   port,
+  hostname: bindHost,
 });
 
 console.log(`${formatBuildInfo(buildInfo)} listening on http://localhost:${port}`);

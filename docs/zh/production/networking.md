@@ -23,7 +23,7 @@ Project Slug 全局唯一且不可变。Deployment Key 恰好由八个小写字�
 
 ## Reverse Proxy
 
-从 `infra/traefik/agents.yml` 开始配置：替换示例域名，在此终止 TLS，并将 Wildcard Agent Host 转发到宿主机端口 `17302` 上的 Agent Gateway。该端口保持宿主机私有，并保留 `!PathPrefix('/internal')` 排除规则。
+从 `infra/traefik/agents.yml` 开始配置：替换示例域名，在此终止 TLS，并将 Wildcard Agent Host 转发到宿主机端口 `17300` 上的 Agent Gateway。同一个前门在平台 Host 上还服务 Dashboard 与浏览器 API，整个安装只有一个 upstream。该端口保持宿主机私有，并保留 `!PathPrefix('/internal')` 排除规则。
 
 保持 Wildcard 规则对路径透明。Eve Task-input Callback 与自定义 MCP Channel 路径必须到达与常规 Session Route 相同的 Agent Gateway Catch-all；不要添加绕过 Agent Gateway 目标选择或冷激活的路径专属代理规则。如果你曾在 Deployment 正前方按路径路由，必须**同时**转发 `/eve/` 与 `/.well-known/workflow/`——Workflow World 把 Run Callback 投递到 `/.well-known/workflow/v1/flow`，只转发 `/eve/` 会让 Session 能启动但所有 Run 静默卡死。
 
@@ -31,7 +31,7 @@ Project Slug 全局唯一且不可变。Deployment Key 恰好由八个小写字�
 
 - Agent 进程绑定 `127.0.0.1:41xxx`。永远不要把这些动态端口加进 Traefik 或防火墙规则。
 - 托管 Collector 的 Receiver（平台侧 Loopback `17311`/`17312`，Agent 侧 `17313`/`17314`）绝不能发布到公开接口。
-- API（`17301`）与 Agent Gateway 的内部控制面在代理之后保持仅 Loopback。
+- API（`17301`）与 Dashboard（`17302`）仅绑定 Loopback；前门（`17300`）是唯一的非回环监听端口。
 - Postgres 在宿主机上发布 `17310`，以便宿主机服务和已部署的 Agent 容器访问它，而它携带的是众所周知的默认凭据。**必须在宿主机防火墙上阻断所有非本地网络对 `17310` 的访问**（例如 `ufw deny in on <public-interface> to any port 17310`，或等效的安全组规则）；公开接口唯一需要放行的入站端口是反向代理的 `80`/`443`。
 
 ## Agent Gateway 边界

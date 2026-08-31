@@ -20,7 +20,7 @@ describe("composeDeploymentEnv Identity configuration", () => {
 
     expect(result.env).toMatchObject({
       EVELAND_PROJECT_ID: "proj_local",
-      EVELAND_IDENTITY_ISSUER: "http://localhost:17301",
+      EVELAND_IDENTITY_ISSUER: "http://localhost:17300",
       EVELAND_IDENTITY_JWKS_URL: "http://host.docker.internal:17301/.well-known/jwks.json",
     });
   });

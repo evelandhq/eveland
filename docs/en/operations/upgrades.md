@@ -68,6 +68,37 @@ For an existing installation:
 
 Existing Deployments keep their recorded ports; new and restarted Deployment instances allocate from the new range.
 
+## Single front door (origin merge)
+
+Following the port block migration, the Agent Gateway became the single public
+entry: it binds `17300` and serves the Dashboard, the browser API
+(`/api/eveland/*`, fail-closed allowlist), Better Auth (`/api/auth/*`), and the
+Identity issuer documents (`/.well-known/*`) on the platform host, plus Agent
+traffic on wildcard Agent hosts. The API (`17301`) and Dashboard (`17302`)
+moved to loopback behind it, and `/internal/*` machine-plane endpoints are no
+longer reachable from any public interface.
+
+Configuration collapsed into one variable: set `EVELAND_PUBLIC_ORIGIN` to the
+browser-visible origin. `BETTER_AUTH_URL`, `WEB_ORIGIN`, and
+`EVELAND_IDENTITY_ISSUER` derive from it (each remains available as an
+explicit override); `NEXT_PUBLIC_API_URL` is gone — the browser always calls
+the API same-origin, so nothing is baked into the web build any more.
+
+For an existing installation:
+
+1. Replace the per-service URLs in `.env` with one `EVELAND_PUBLIC_ORIGIN`.
+2. Collapse your reverse proxy to a single upstream `127.0.0.1:17300` (the
+   wildcard Agent router and the platform-host router share it) and close the
+   old Dashboard/API ports on the firewall.
+3. **Issuer migration**: Caller Token issuers must stay stable. Existing
+   installs whose issuer was the API origin either keep it by setting
+   `EVELAND_IDENTITY_ISSUER` explicitly to the old value (agents keep
+   verifying old and new tokens; `/.well-known/*` must stay reachable at that
+   origin), or move to the derived front-door issuer and accept that every
+   consuming chat service and Agent verifier must be updated in step; the
+   worker re-injects the new issuer into Deployments on its next reconcile.
+4. Rebuild the web app and restart every component.
+
 ## Legacy per-project workflow residue
 
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:
