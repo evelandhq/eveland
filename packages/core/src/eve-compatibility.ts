@@ -78,6 +78,27 @@ export function isUnsupportedEveVersionMessage(message: string): boolean {
   return /^(?:Unsupported|Missing) Eve dependency\b/.test(message);
 }
 
+/**
+ * Answers with the terminal refusal for a Release whose build installed an Eve
+ * version the supported window has since slid past, or null when the Release
+ * is startable as far as this gate can tell. Only the build-recorded
+ * `eveVersionResolved` is consulted: it names what the image actually
+ * contains, so no retry can change the outcome. Declared specifiers (revision
+ * summary, package.json) are deliberately ignored here -- they describe the
+ * source, not the Release, and the launch path re-reads them itself -- so a
+ * Release that predates the recording passes through to that deeper gate.
+ */
+export function unsupportedReleaseEveVersionMessage(
+  releaseSummary: Record<string, unknown> | null,
+): string | null {
+  const resolved =
+    releaseSummary && typeof releaseSummary.eveVersionResolved === "string"
+      ? releaseSummary.eveVersionResolved
+      : null;
+  if (resolved === null || isSupportedEveDependency(resolved)) return null;
+  return unsupportedEveVersionMessage(resolved);
+}
+
 export function createEveVersionInfo(
   version: string | null,
   sourceRevisionId: string | null,

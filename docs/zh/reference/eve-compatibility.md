@@ -54,7 +54,7 @@ npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelo
 
 - Source Import 与 Preflight
 - Build 与 Restart
-- 冷激活
+- 冷激活（构建时装入窗口外 Eve 版本的 Release 在激活请求时即被终态拒绝：绑定它的 Workflow Run 只会被 Dead-letter 一次，而不是每次冷启动后反复重试）
 - Playground 流量
 - 公开 Session 的 Create、Continue、Cancel 与 Stream
 - 公开 Session Reset

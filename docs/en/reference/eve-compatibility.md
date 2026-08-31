@@ -54,7 +54,7 @@ Eveland fails closed when the dependency is missing, outside the window, or cann
 
 - source import and preflight
 - build and restart
-- cold activation
+- cold activation (a Release whose build installed an out-of-window Eve version is refused at activation-request time — terminally, so a workflow run bound to it is dead-lettered once instead of retried after every cold start)
 - Playground traffic
 - public session create, continue, cancel, and stream
 - public session reset
