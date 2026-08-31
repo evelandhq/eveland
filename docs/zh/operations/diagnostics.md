@@ -12,6 +12,7 @@ description: 在实际拥有故障的组件、Job、Runtime 或 Session Surface 
 - Built-in OTLP Receive Health 独立于核心服务 Health；Collector Exporter Queue 会分别重试。
 - **Settings → About** 比较 Dashboard 与 API Identity，并向管理员显示 Allowlisted Masked Configuration。
 - **Settings → Instance health** 使用持续 Worker Heartbeat、Agent Gateway Probe 与 Postgres 查询展示组件可用性，并显示 Worker 宿主机的 CPU、内存、数据文件系统和 Workload 趋势。旧的 Worker Configuration Snapshot 不能作为在线证据。
+- 配置了共享 Workflow World 时，Instance health 还会统计其 Dispatch 积压：未解决的 Dead Letter（平台已放弃的派发）与被隔离的 Run（pending 或 running 状态、但被未解决 Dead Letter 阻止 Boot Recovery 重放的行）。任何非零计数都是等待运维处理的警告；World 无法读取时报告 unavailable，而不是显示零。
 
 Instance Health 默认每分钟保留一份宿主机样本，并提供 24 小时与 7 天视图。磁盘增长至少有一天有效历史后才显示预计耗尽时间；历史不足时明确显示无法预测。整台服务器断电后无法自行上报，仍应由外部监控轮询 API 与 Agent Gateway 的 Public `/health`。
 

@@ -329,6 +329,41 @@ export default async function InstanceHealthPage({
           )}
         </p>
       </section>
+
+      {report.workflow ? (
+        <>
+          <Separator />
+
+          <section aria-labelledby="workflow-heading" className="flex flex-col gap-3">
+            <div>
+              <h3 id="workflow-heading" className="text-base font-semibold">
+                Workflow dispatch
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Unresolved dead letters are dispatches the platform has dropped; quarantined runs
+                stay pending or running but will never finish without operator resolution.
+              </p>
+            </div>
+            <dl className="grid gap-3 sm:grid-cols-4">
+              <WorkloadValue
+                label="Unresolved dead letters"
+                value={report.workflow.unresolvedDeadLetters}
+              />
+              <WorkloadValue label="Quarantined runs" value={report.workflow.stuckRuns} />
+              <WorkloadValue label="Pending runs" value={report.workflow.pendingRuns} />
+              <WorkloadValue label="Running runs" value={report.workflow.runningRuns} />
+            </dl>
+            <p className="text-xs text-muted-foreground">
+              Oldest unresolved dead letter:{" "}
+              {report.workflow.oldestUnresolvedDeadLetterAt ? (
+                <DateTime value={report.workflow.oldestUnresolvedDeadLetterAt} />
+              ) : (
+                "None"
+              )}
+            </p>
+          </section>
+        </>
+      ) : null}
     </div>
   );
 }

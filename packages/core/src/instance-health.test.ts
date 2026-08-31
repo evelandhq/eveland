@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   analyzeHostCapacity,
   summarizeWorkerHealth,
+  summarizeWorkflowDispatchHealth,
   type HostMetricSample,
 } from "./instance-health.js";
 
@@ -195,5 +196,67 @@ describe("instance health analysis", () => {
         message: expect.stringContaining("53300"),
       }),
     );
+  });
+});
+
+describe("workflow dispatch health", () => {
+  const observedAt = "2026-07-18T10:00:00.000Z";
+
+  test("zero unresolved dead letters and quarantined runs is healthy", () => {
+    expect(
+      summarizeWorkflowDispatchHealth(
+        {
+          pendingRuns: 3,
+          runningRuns: 7,
+          stuckRuns: 0,
+          unresolvedDeadLetters: 0,
+          oldestUnresolvedDeadLetterAt: null,
+        },
+        observedAt,
+      ),
+    ).toEqual({
+      status: "healthy",
+      message: "No unresolved dispatch dead letters or quarantined workflow runs.",
+      observedAt,
+    });
+  });
+
+  test("counts dropped work in the warning message", () => {
+    expect(
+      summarizeWorkflowDispatchHealth(
+        {
+          pendingRuns: 0,
+          runningRuns: 250,
+          stuckRuns: 250,
+          unresolvedDeadLetters: 9_530,
+          oldestUnresolvedDeadLetterAt: "2026-07-01T00:00:00.000Z",
+        },
+        observedAt,
+      ),
+    ).toEqual({
+      status: "warning",
+      message:
+        "9530 unresolved dispatch dead letters and 250 quarantined workflow runs await operator resolution.",
+      observedAt,
+    });
+  });
+
+  test("a single dead letter with no quarantined run still warns, singular", () => {
+    expect(
+      summarizeWorkflowDispatchHealth(
+        {
+          pendingRuns: 0,
+          runningRuns: 0,
+          stuckRuns: 0,
+          unresolvedDeadLetters: 1,
+          oldestUnresolvedDeadLetterAt: "2026-07-18T09:00:00.000Z",
+        },
+        observedAt,
+      ),
+    ).toEqual({
+      status: "warning",
+      message: "1 unresolved dispatch dead letter awaits operator resolution.",
+      observedAt,
+    });
   });
 });

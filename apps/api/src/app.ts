@@ -153,6 +153,7 @@ export function createApp(
       store,
       configurationDiagnostics: options.configurationDiagnostics,
       gatewayHealth: options.gatewayHealth,
+      workflowWorkload: options.workflowWorkload,
     });
   }
 

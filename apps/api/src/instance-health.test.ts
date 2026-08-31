@@ -59,6 +59,7 @@ describe("instance health diagnostics", () => {
     const report = await collectInstanceHealth(store, {
       now: () => new Date("2026-07-18T10:00:00.000Z"),
       historyHours: 24,
+      workflowWorkload: async () => null,
       gatewayHealth: async () => ({
         status: "healthy",
         message: "Gateway internal diagnostics are reachable.",
@@ -100,6 +101,7 @@ describe("instance health diagnostics", () => {
     const report = await collectInstanceHealth(store, {
       now: () => new Date("2026-07-18T10:00:00.000Z"),
       historyHours: 24,
+      workflowWorkload: async () => null,
       gatewayHealth: async () => ({
         status: "unavailable",
         message: "Gateway diagnostics are unavailable.",
@@ -128,6 +130,7 @@ describe("instance health diagnostics", () => {
     const report = await collectInstanceHealth(store, {
       now: () => new Date(Date.now() + 120_000),
       historyHours: 24,
+      workflowWorkload: async () => null,
       gatewayHealth: async () => ({
         status: "healthy",
         message: "Gateway diagnostics are reachable.",
@@ -144,12 +147,91 @@ describe("instance health diagnostics", () => {
     );
   });
 
+  test("surfaces workflow dead-letter and quarantined-run counts as an alertable component", async () => {
+    const store = createTestStore();
+
+    const report = await collectInstanceHealth(store, {
+      now: () => new Date("2026-07-18T10:00:00.000Z"),
+      historyHours: 24,
+      workflowWorkload: async () => ({
+        pendingRuns: 12,
+        runningRuns: 240,
+        stuckRuns: 250,
+        unresolvedDeadLetters: 9_530,
+        oldestUnresolvedDeadLetterAt: "2026-07-01T00:00:00.000Z",
+      }),
+      gatewayHealth: async () => ({
+        status: "healthy",
+        message: "Gateway diagnostics are reachable.",
+        observedAt: "2026-07-18T10:00:00.000Z",
+      }),
+    });
+
+    expect(report.workflow).toEqual({
+      pendingRuns: 12,
+      runningRuns: 240,
+      stuckRuns: 250,
+      unresolvedDeadLetters: 9_530,
+      oldestUnresolvedDeadLetterAt: "2026-07-01T00:00:00.000Z",
+    });
+    expect(report.components).toContainEqual({
+      key: "workflow",
+      label: "Workflow dispatch",
+      status: "warning",
+      message:
+        "9530 unresolved dispatch dead letters and 250 quarantined workflow runs await operator resolution.",
+      observedAt: "2026-07-18T10:00:00.000Z",
+    });
+  });
+
+  test("omits the workflow component entirely when no world is configured", async () => {
+    const store = createTestStore();
+
+    const report = await collectInstanceHealth(store, {
+      now: () => new Date("2026-07-18T10:00:00.000Z"),
+      historyHours: 24,
+      workflowWorkload: async () => null,
+      gatewayHealth: async () => ({
+        status: "healthy",
+        message: "Gateway diagnostics are reachable.",
+        observedAt: "2026-07-18T10:00:00.000Z",
+      }),
+    });
+
+    expect(report.workflow).toBeNull();
+    expect(report.components.map((component) => component.key)).not.toContain("workflow");
+  });
+
+  test("reports an unreadable workflow world unavailable instead of zeroed", async () => {
+    const store = createTestStore();
+
+    const report = await collectInstanceHealth(store, {
+      now: () => new Date("2026-07-18T10:00:00.000Z"),
+      historyHours: 24,
+      workflowWorkload: async () => {
+        throw new Error("connection refused");
+      },
+      gatewayHealth: async () => ({
+        status: "healthy",
+        message: "Gateway diagnostics are reachable.",
+        observedAt: "2026-07-18T10:00:00.000Z",
+      }),
+    });
+
+    expect(report.workflow).toBeNull();
+    expect(report.components).toContainEqual(
+      expect.objectContaining({ key: "workflow", status: "unavailable" }),
+    );
+    expect(report.status).toBe("unavailable");
+  });
+
   test("warns when Built-in has never received a batch", async () => {
     const store = createTestStore();
 
     const report = await collectInstanceHealth(store, {
       now: () => new Date("2026-07-18T10:00:00.000Z"),
       historyHours: 24,
+      workflowWorkload: async () => null,
       gatewayHealth: async () => ({
         status: "healthy",
         message: "Gateway diagnostics are reachable.",

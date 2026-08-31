@@ -65,8 +65,23 @@ export type InstanceWorkload = {
   runtimeInstances: Record<"starting" | "ready" | "draining" | "stopped" | "failed", number>;
 };
 
+/**
+ * Operator-facing counts from the shared workflow world. An unresolved dead
+ * letter is a dispatch the platform has dropped; a stuck run is a
+ * pending/running run quarantined by such a dead letter — boot recovery
+ * deliberately skips it, so nothing will ever finish it without operator
+ * resolution. Pending/running totals include the stuck ones.
+ */
+export type WorkflowDispatchWorkload = {
+  pendingRuns: number;
+  runningRuns: number;
+  stuckRuns: number;
+  unresolvedDeadLetters: number;
+  oldestUnresolvedDeadLetterAt: string | null;
+};
+
 export type InstanceComponentHealth = {
-  key: "api" | "postgres" | "gateway" | "worker" | "collector";
+  key: "api" | "postgres" | "gateway" | "worker" | "collector" | "workflow";
   label: string;
   status: InstanceHealthStatus;
   message: string;
@@ -81,6 +96,11 @@ export type InstanceHealthReport = {
   capacity: HostCapacityAnalysis;
   metrics: HostMetricSample[];
   workload: InstanceWorkload;
+  /**
+   * Null when no shared workflow world is configured, or when it could not be
+   * read — the `workflow` component row distinguishes the two.
+   */
+  workflow: WorkflowDispatchWorkload | null;
 };
 
 export type CapacityRisk = {
@@ -163,6 +183,44 @@ export function summarizeWorkerHealth(
     status: "healthy",
     message: "Worker heartbeat is current.",
     observedAt: heartbeat.observedAt,
+  };
+}
+
+/**
+ * Zero unresolved dead letters is the only healthy answer: each one is
+ * customer work the platform has dropped, and the quarantined runs behind
+ * them look like ordinary `running` rows everywhere else (the #425 failure
+ * was invisible precisely because nothing summarized these counts).
+ */
+export function summarizeWorkflowDispatchHealth(
+  workload: WorkflowDispatchWorkload,
+  observedAt: string,
+): { status: "healthy" | "warning"; message: string; observedAt: string } {
+  const problems: string[] = [];
+  if (workload.unresolvedDeadLetters > 0) {
+    problems.push(
+      `${workload.unresolvedDeadLetters} unresolved dispatch dead letter${
+        workload.unresolvedDeadLetters === 1 ? "" : "s"
+      }`,
+    );
+  }
+  if (workload.stuckRuns > 0) {
+    problems.push(
+      `${workload.stuckRuns} quarantined workflow run${workload.stuckRuns === 1 ? "" : "s"}`,
+    );
+  }
+  if (problems.length === 0) {
+    return {
+      status: "healthy",
+      message: "No unresolved dispatch dead letters or quarantined workflow runs.",
+      observedAt,
+    };
+  }
+  const verb = workload.unresolvedDeadLetters + workload.stuckRuns === 1 ? "awaits" : "await";
+  return {
+    status: "warning",
+    message: `${problems.join(" and ")} ${verb} operator resolution.`,
+    observedAt,
   };
 }
 

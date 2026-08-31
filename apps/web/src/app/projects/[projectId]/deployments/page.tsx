@@ -1,4 +1,5 @@
-import { BadgeCheckIcon } from "lucide-react";
+import { BadgeCheckIcon, TriangleAlertIcon } from "lucide-react";
+import { unsupportedReleaseEveVersionMessage } from "@evelandhq/core/eve-compatibility";
 import { DateTime } from "@/components/date-time";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
@@ -133,6 +134,13 @@ export default async function ProjectDeploymentsPage({
             const retention = overview.retention.find(
               (entry) => entry.deployment.id === deployment.id,
             );
+            // The build-recorded refusal for this Deployment's own Release.
+            // The project-level Eve badge reflects only the current
+            // deployment (or source), so a retired Release that activation
+            // now refuses terminally (#425) would otherwise be invisible.
+            const cannotStart = unsupportedReleaseEveVersionMessage(
+              overview.releaseSummaries[deployment.releaseId] ?? null,
+            );
             return (
               <div
                 key={deployment.id}
@@ -148,7 +156,16 @@ export default async function ProjectDeploymentsPage({
                       </Badge>
                     ) : null}
                     <StatusBadge status={deployment.status} />
+                    {cannotStart ? (
+                      <Badge variant="destructive">
+                        <TriangleAlertIcon data-icon="inline-start" />
+                        Cannot start
+                      </Badge>
+                    ) : null}
                   </div>
+                  {cannotStart ? (
+                    <p className="mt-1 text-xs text-destructive">Cannot start: {cannotStart}</p>
+                  ) : null}
                   <p className="mt-1 text-xs text-muted-foreground">
                     Deployed <DateTime value={deployment.createdAt} />
                     {" · "}
