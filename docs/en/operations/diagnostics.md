@@ -12,6 +12,7 @@ Start with the state that actually failed. Eveland keeps component health, async
 - Built-in OTLP receive health is separate from core-service health; Collector exporter queues retry independently.
 - **Settings → About** compares Dashboard and API identity and shows allowlisted masked configuration to admins.
 - **Settings → Instance health** uses a continuous Worker heartbeat, a live Agent Gateway probe, and Postgres queries to show component availability plus Worker-host CPU, memory, data-filesystem, and workload trends. An old Worker configuration snapshot is never treated as liveness evidence.
+- When a shared workflow world is configured, Instance health also counts its dispatch backlog: unresolved dead letters (dispatches the platform has dropped) and quarantined runs (pending or running rows an unresolved dead letter prevents boot recovery from ever replaying). Anything above zero is a warning that awaits operator resolution; a world that cannot be read reports unavailable instead of zeros.
 
 Instance Health stores one host sample per minute by default and provides 24-hour and 7-day views. Disk exhaustion is forecast only after at least one day of measurable growth; insufficient history stays explicit. A host that has completely lost power cannot report its own failure, so external monitoring should still poll the public API and Agent Gateway `/health` endpoints.
 

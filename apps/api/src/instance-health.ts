@@ -3,8 +3,10 @@ import { GATEWAY_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
 import {
   analyzeHostCapacity,
   summarizeWorkerHealth,
+  summarizeWorkflowDispatchHealth,
   type InstanceComponentHealth,
   type InstanceHealthReport,
+  type WorkflowDispatchWorkload,
 } from "@evelandhq/core/instance-health";
 
 type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -22,11 +24,13 @@ export async function collectInstanceHealth(
     now?: () => Date;
     historyHours: number;
     gatewayHealth: () => Promise<ComponentObservation>;
+    /** Resolves null when no shared workflow world is configured. */
+    workflowWorkload: () => Promise<WorkflowDispatchWorkload | null>;
   },
 ): Promise<InstanceHealthReport> {
   const now = options.now?.() ?? new Date();
   const since = new Date(now.getTime() - options.historyHours * 3_600_000);
-  const [heartbeats, metrics, workload, gateway, lastBatchAt] = await Promise.all([
+  const [heartbeats, metrics, workload, gateway, lastBatchAt, workflow] = await Promise.all([
     store.listWorkerHeartbeats(),
     store.listHostMetrics({
       since,
@@ -35,6 +39,13 @@ export async function collectInstanceHealth(
     store.getInstanceWorkload(),
     options.gatewayHealth(),
     store.latestOtlpBatchReceivedAt(),
+    // A world that answers reports its counts; a configured world that cannot
+    // answer must not read as "no dropped work", so the failure becomes an
+    // unavailable component rather than a zeroed row.
+    options.workflowWorkload().then(
+      (value) => ({ readable: true as const, value }),
+      () => ({ readable: false as const, value: null }),
+    ),
   ]);
   const worker = summarizeWorkerHealth(heartbeats[0] ?? null, now);
   // The Collector is the only sender to Built-in, so a recent batch is what proves it
@@ -77,6 +88,22 @@ export async function collectInstanceHealth(
     { key: "worker", label: "Worker", ...worker },
     { key: "collector", label: "OpenTelemetry", ...collectorObservation },
   ];
+  if (!workflow.readable) {
+    components.push({
+      key: "workflow",
+      label: "Workflow dispatch",
+      status: "unavailable",
+      message: "The workflow world is configured but its dispatch workload could not be read.",
+      observedAt: null,
+    });
+  } else if (workflow.value) {
+    components.push({
+      key: "workflow",
+      label: "Workflow dispatch",
+      ...summarizeWorkflowDispatchHealth(workflow.value, now.toISOString()),
+    });
+  }
+  // else: no world is configured, so there is no workflow component to judge.
   const capacity = analyzeHostCapacity(metrics);
   return {
     status: overallStatus(components, capacity.overall),
@@ -91,6 +118,7 @@ export async function collectInstanceHealth(
       // freshest heartbeat is the only place it is published.
       maxConcurrentHeavyJobs: heartbeats[0]?.maxConcurrentHeavyJobs ?? null,
     },
+    workflow: workflow.value,
   };
 }
 

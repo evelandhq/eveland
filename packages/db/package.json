@@ -11,6 +11,7 @@
     "./schema": "./src/schema.ts",
     "./test": "./src/test-store.ts",
     "./vitest": "./src/vitest-store.ts",
+    "./workflow-world-health": "./src/workflow-world-health.ts",
     "./workflow-world-identity": "./src/workflow-world-identity.ts"
   },
   "scripts": {

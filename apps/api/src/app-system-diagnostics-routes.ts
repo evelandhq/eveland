@@ -1,5 +1,10 @@
 import type { SystemConfigurationDiagnostics } from "@evelandhq/core/config-diagnostics";
-import type { InstanceComponentHealth } from "@evelandhq/core/instance-health";
+import type {
+  InstanceComponentHealth,
+  WorkflowDispatchWorkload,
+} from "@evelandhq/core/instance-health";
+import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
+import { collectWorkflowDispatchWorkload } from "@evelandhq/db/workflow-world-health";
 import type { ApiApp } from "./app-types.js";
 import {
   collectInstanceHealth,
@@ -14,8 +19,9 @@ export function registerSystemDiagnosticsRoutes(input: {
   store: InstanceHealthReadStore;
   configurationDiagnostics?: () => Promise<SystemConfigurationDiagnostics>;
   gatewayHealth?: () => Promise<ComponentObservation>;
+  workflowWorkload?: () => Promise<WorkflowDispatchWorkload | null>;
 }) {
-  const { app, store, configurationDiagnostics, gatewayHealth } = input;
+  const { app, store, configurationDiagnostics, gatewayHealth, workflowWorkload } = input;
 
   app.get("/api/system/configuration", async (c) => {
     if (!configurationDiagnostics) {
@@ -38,6 +44,9 @@ export function registerSystemDiagnosticsRoutes(input: {
         await collectInstanceHealth(store, {
           historyHours,
           gatewayHealth: gatewayHealth ?? (() => probeGatewayHealth(process.env)),
+          workflowWorkload:
+            workflowWorkload ??
+            (() => collectWorkflowDispatchWorkload(resolveWorkflowWorldPlatformUrl(process.env))),
         }),
       );
     } catch {

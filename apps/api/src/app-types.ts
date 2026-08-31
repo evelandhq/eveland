@@ -7,7 +7,10 @@ import type { IdentityOidcProtocol } from "@evelandhq/identity-broker";
 import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
 import type { SystemConfigurationDiagnostics } from "@evelandhq/core/config-diagnostics";
 import type { ActivationLeaseClaim, RuntimeInstance } from "@evelandhq/core/contracts";
-import type { InstanceComponentHealth } from "@evelandhq/core/instance-health";
+import type {
+  InstanceComponentHealth,
+  WorkflowDispatchWorkload,
+} from "@evelandhq/core/instance-health";
 import type { ExternalDestinationConfig } from "@evelandhq/core/observability";
 import type {
   ExternalObservabilityRequestInput,
@@ -32,6 +35,7 @@ export type AppOptions = {
   playgroundProxy?: PlaygroundProxy;
   dataDir?: string;
   gatewayHealth?: () => Promise<Omit<InstanceComponentHealth, "key" | "label">>;
+  workflowWorkload?: () => Promise<WorkflowDispatchWorkload | null>;
   configurationDiagnostics?: () => Promise<SystemConfigurationDiagnostics>;
   gatewayPublicScheme?: "http" | "https";
   gatewayPublicPort?: number | null;
