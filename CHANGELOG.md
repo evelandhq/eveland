@@ -4,6 +4,22 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.48.0](https://github.com/evelandhq/eveland/compare/v0.47.0...v0.48.0) (2026-08-31)
+
+
+### Features
+
+* **health:** surface unstartable Deployments and the workflow dispatch backlog ([#437](https://github.com/evelandhq/eveland/issues/437)) ([ff1982e](https://github.com/evelandhq/eveland/commit/ff1982e05021085c9c38dd18693eedd4732e106e)), closes [#434](https://github.com/evelandhq/eveland/issues/434)
+* **web:** confirm manual re-run while a schedule's dispatch outcome is unknown ([#436](https://github.com/evelandhq/eveland/issues/436)) ([dfeae5d](https://github.com/evelandhq/eveland/commit/dfeae5d76987a8abe2a159bdef3f14d191de73bc))
+
+
+### Bug Fixes
+
+* **activation:** refuse a Release pinning an unsupported Eve version at request time ([#432](https://github.com/evelandhq/eveland/issues/432)) ([a8b02a8](https://github.com/evelandhq/eveland/commit/a8b02a8f5d6d2cdded1641776f4c8ed4d94ef3a8))
+* **front-door:** pass an upstream 401 through instead of failing the hop ([#430](https://github.com/evelandhq/eveland/issues/430)) ([9ae6e66](https://github.com/evelandhq/eveland/commit/9ae6e66a7fa3586dd758d70bb269d3072562ed14))
+* treat an ambiguous session create as an unknown outcome, not a failure ([#435](https://github.com/evelandhq/eveland/issues/435)) ([26b0312](https://github.com/evelandhq/eveland/commit/26b0312c15b171c298b21e9b48014ea3061a45cd)), closes [#407](https://github.com/evelandhq/eveland/issues/407)
+* **worker:** settle workflow runs orphaned on permanently unstartable Deployments ([#438](https://github.com/evelandhq/eveland/issues/438)) ([19ca867](https://github.com/evelandhq/eveland/commit/19ca86780df1a9089a65c9bd0663765adb6eae76))
+
 ## [0.47.0](https://github.com/evelandhq/eveland/compare/v0.46.0...v0.47.0) (2026-08-31)
 
 
