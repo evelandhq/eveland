@@ -174,6 +174,73 @@ describe("api app", () => {
     });
   });
 
+  test("refuses activation at request time when the Release pins an unsupported Eve version", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Retired Release Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/retired-release-agent",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:retired-release",
+      containerName: "fixture-retired-release",
+      internalPort: 3000,
+      hostPort: 41994,
+      runtimeKind: "docker",
+      // The build recorded the Eve version actually installed into this
+      // Release; the supported window has since slid past it.
+      summary: { eveVersionResolved: "0.31.1" },
+      workflowWorld: {
+        worldKind: "shared",
+        worldPackage: "@evelandhq/workflow-world",
+        worldVersion: "0.11.0",
+        storageSpec: 6,
+        dispatchProtocol: 1,
+        enqueueCapability: "per_run_queue_v1",
+      },
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const app = createApp(store, {
+      gatewayServiceToken: "gateway-service-token",
+      runtimeActivationWaiter: async () => {
+        throw new Error("activation must be refused before any start attempt");
+      },
+    });
+
+    // The dispatcher's request is refused terminally even with no dispatcher
+    // heartbeat recorded: a Release that can never start must dead-letter, not
+    // ride the 503 retry path -- and a gateway wake fails the same way.
+    for (const [kind, ownerId] of [
+      ["workflow_step", "workflow-dispatcher:msg_retired_release"],
+      ["public_request", "req_retired_release"],
+    ] as const) {
+      const activation = await app.request("/internal/runtime/activations", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer gateway-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ deploymentId: deployment.id, kind, ownerId }),
+      });
+      expect(activation.status).toBe(409);
+      await expect(activation.json()).resolves.toEqual({
+        error: unsupportedEveVersionMessage("0.31.1"),
+      });
+    }
+    // No lease, RuntimeInstance generation, or worker job was created: the
+    // refusal costs the serialized activation lane nothing.
+    await expect(store.claimNextJob("wake-worker")).resolves.toBeNull();
+  });
+
   test("refuses workflow_step activation for a Release outside the storage window", async () => {
     const store = createTestStore();
     const project = await store.createProject({

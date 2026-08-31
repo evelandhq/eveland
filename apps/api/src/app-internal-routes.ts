@@ -1,6 +1,9 @@
 import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
 import type { ActivationLeaseClaim } from "@evelandhq/core/contracts";
-import { isUnsupportedEveVersionMessage } from "@evelandhq/core/eve-compatibility";
+import {
+  isUnsupportedEveVersionMessage,
+  unsupportedReleaseEveVersionMessage,
+} from "@evelandhq/core/eve-compatibility";
 import {
   resolveSchedulerDispatchSecret,
   resolveSchedulerRuntimeSecret,
@@ -108,6 +111,16 @@ export function registerInternalRoutes(input: {
     if (!deployment || deployment.status === "archived" || deployment.status === "failed") {
       return c.json({ error: "Deployment is not activatable" }, 409);
     }
+    // A Release pins the Eve version its build installed; once the supported
+    // window slides past it, no start attempt can ever succeed. Refuse at
+    // request time -- before a lease, RuntimeInstance generation, or worker
+    // job exists -- instead of burning a doomed start on the worker's
+    // serialized job lane per attempt and starving healthy activations
+    // (issue #425). 409 is terminal to the workflow dispatcher: it
+    // dead-letters the run, and boot recovery stops replaying it.
+    const release = await store.getRelease(deployment.releaseId);
+    const eveVersionRefusal = unsupportedReleaseEveVersionMessage(release?.summary ?? null);
+    if (eveVersionRefusal !== null) return c.json({ error: eveVersionRefusal }, 409);
     // A workflow-step activation is only meaningful while the external
     // dispatcher can actually be proven ready — and only against a Release
     // whose attestation falls inside the dispatcher's protocol window with a
@@ -140,7 +153,6 @@ export function registerInternalRoutes(input: {
           409,
         );
       }
-      const release = await store.getRelease(deployment.releaseId);
       if (!release) return c.json({ error: "Deployment activation Release is missing" }, 409);
       const { workflow } = release;
       if (workflow.worldKind !== "shared") {

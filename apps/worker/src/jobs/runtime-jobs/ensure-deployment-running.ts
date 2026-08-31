@@ -1,3 +1,4 @@
+import { unsupportedReleaseEveVersionMessage } from "@evelandhq/core/eve-compatibility";
 import type { Store } from "@evelandhq/db";
 
 import { startRuntimeInstance, type ActivationStore } from "../../runtime/activation-manager.js";
@@ -52,6 +53,25 @@ export async function handleEnsureDeploymentRunningJob(
   }
   const release = await store.getRelease(deployment.releaseId);
   if (!release) throw new Error("Deployment activation Release is missing.");
+  // The activation route refuses this Release at request time, but activations
+  // enqueued by starting-instance recovery never pass through the route. The
+  // gate is deterministic -- the unsupported Eve version is baked into the
+  // image -- so fail the instance before materializing the launch context
+  // instead of burning a full doomed start (issue #425).
+  const eveVersionRefusal = unsupportedReleaseEveVersionMessage(release.summary);
+  if (eveVersionRefusal !== null) {
+    await store.updateRuntimeInstance(runtimeInstanceId, {
+      status: "failed",
+      error: eveVersionRefusal,
+    });
+    await store.appendLog({
+      projectId: job.projectId,
+      deploymentId: deployment.id,
+      type: "runtime",
+      line: `Activation blocked: ${eveVersionRefusal}`,
+    });
+    return;
+  }
   // Cold activation decides from the persisted attestation, never the worker's
   // current environment. The instance fails with the managed reason instead of
   // waiting out an activation timeout.

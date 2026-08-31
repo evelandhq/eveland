@@ -19,6 +19,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { verifyScheduleDispatchCredential } from "@evelandhq/core/server/scheduler-dispatch";
+import { unsupportedEveVersionMessage } from "@evelandhq/core/eve-compatibility";
 import { createFixtureEveProject, sharedWorkflowWorldAttestation } from "./process.test-support.js";
 import {
   BasicTracerProvider,
@@ -285,6 +286,69 @@ describe("processNextJob", () => {
       }),
     ]);
     await tracerProvider.shutdown();
+  });
+
+  test("fails the RuntimeInstance without a start attempt when its Release pins an unsupported Eve version", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Retired Release Wake", importKind: "zip" });
+    const importJob = await store.claimNextJob("fixture-import");
+    await store.completeJob(importJob!.id);
+    // The source directory does not exist: the gate must refuse from the
+    // persisted Release attestation alone, before any launch materialization.
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/nonexistent/retired-release-wake",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:retired-release-wake",
+      containerName: "fixture-retired-release-wake",
+      internalPort: 3000,
+      hostPort: 41986,
+      runtimeKind: "docker",
+      summary: { eveVersionResolved: "0.31.1" },
+      workflowWorld: sharedWorkflowWorldAttestation,
+    });
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const claim = await store.acquireActivationLease({
+      deploymentId: deployment.id,
+      kind: "public_request",
+      ownerId: "req_retired_release_wake",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: deployment.id,
+      runtimeInstanceId: claim.runtimeInstance.id,
+    });
+    const ensureProcess = vi.fn(async () => ({ internalPort: 3000, log: "started" }));
+    const runtime: RuntimeAdapter = {
+      name: "docker",
+      async buildRelease() {
+        throw new Error("not used");
+      },
+      async startProcess() {
+        throw new Error("not used");
+      },
+      ensureProcess,
+      async stopProcess() {},
+    };
+
+    await expect(
+      processNextJob(store, "wake-worker", { runtime, waitForDeployment: async () => {} }),
+    ).resolves.toBe(true);
+
+    expect(ensureProcess).not.toHaveBeenCalled();
+    await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
+      status: "failed",
+      lastError: unsupportedEveVersionMessage("0.31.1"),
+    });
+    await expect(store.getDeployment(deployment.id)).resolves.toMatchObject({ status: "stopped" });
   });
 
   // The activation gate screens the Deployment status when the lease is
