@@ -42,6 +42,17 @@ export const BROWSER_API_SUBTREES = [
  * is exactly this, so URLs it generates against the public origin resolve). */
 export const AUTH_PATH_PREFIX = "/api/auth";
 
+/** Eveland Identity's issuer-anchored namespace, forwarded verbatim: the SDK
+ * generates `${issuer}/api/identity/login` challenges and administrators
+ * register `${issuer}/api/identity/oidc/callback` at their IdP, so these
+ * absolute paths must resolve against the public origin. */
+export const IDENTITY_PATH_PREFIX = "/api/identity";
+
+/** The public Agent Catalog projection (exact path, no subtree): the
+ * identity-independent entry point external chat clients resolve against the
+ * public origin. */
+export const AGENT_CATALOG_PATH = "/api/agent-catalog";
+
 /** OIDC discovery and JWKS must live at the issuer origin's root. */
 export const WELL_KNOWN_PREFIX = "/.well-known";
 
@@ -61,6 +72,12 @@ export function classifyFrontDoorPath(pathname: string): {
     return { target: "api", upstreamPath: pathname };
   }
   if (pathname === AUTH_PATH_PREFIX || pathname.startsWith(`${AUTH_PATH_PREFIX}/`)) {
+    return { target: "api", upstreamPath: pathname };
+  }
+  if (pathname === IDENTITY_PATH_PREFIX || pathname.startsWith(`${IDENTITY_PATH_PREFIX}/`)) {
+    return { target: "api", upstreamPath: pathname };
+  }
+  if (pathname === AGENT_CATALOG_PATH) {
     return { target: "api", upstreamPath: pathname };
   }
   if (pathname === BROWSER_API_PREFIX || pathname.startsWith(`${BROWSER_API_PREFIX}/`)) {

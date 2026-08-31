@@ -164,7 +164,7 @@ async function adminCookie(app: ReturnType<typeof createApp>): Promise<string> {
 
 async function startLogin(app: ReturnType<typeof createApp>) {
   const response = await app.request(
-    "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fdemo",
+    "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fdemo",
     { redirect: "manual" },
   );
   expect(response.status).toBe(302);
@@ -173,7 +173,7 @@ async function startLogin(app: ReturnType<typeof createApp>) {
 }
 
 function callbackPath(state: string, extra = ""): string {
-  return `/identity/oidc/callback?code=auth-code-1&state=${encodeURIComponent(state)}${extra}`;
+  return `/api/identity/oidc/callback?code=auth-code-1&state=${encodeURIComponent(state)}${extra}`;
 }
 
 describe("OIDC Identity login flow", () => {
@@ -184,7 +184,9 @@ describe("OIDC Identity login flow", () => {
 
     expect(location.origin + location.pathname).toBe(`${issuer}/oauth/authorize`);
     expect(location.searchParams.get("client_id")).toBe("eveland-client");
-    expect(location.searchParams.get("redirect_uri")).toBe(`${apiOrigin}/identity/oidc/callback`);
+    expect(location.searchParams.get("redirect_uri")).toBe(
+      `${apiOrigin}/api/identity/oidc/callback`,
+    );
     expect(location.searchParams.get("nonce")).toMatch(/^[A-Za-z0-9_-]{40,}$/);
     expect(state).toMatch(/^[A-Za-z0-9_-]{40,}$/);
     expect(fake.exchanges).toHaveLength(0);
@@ -206,7 +208,7 @@ describe("OIDC Identity login flow", () => {
     expect(response.headers.get("location")).toBe(`${chatOrigin}/agents/demo`);
     const setCookie = response.headers.get("set-cookie") ?? "";
     expect(setCookie).toContain("eveland_identity=");
-    expect(setCookie).toContain("Path=/identity");
+    expect(setCookie).toContain("Path=/api/identity");
     expect(setCookie).toContain("HttpOnly");
     // The exchange saw the same state and a matching verifier/nonce pair.
     expect(fake.exchanges).toHaveLength(1);
@@ -214,7 +216,7 @@ describe("OIDC Identity login flow", () => {
     expect(fake.exchanges[0]!.callbackUrl).toContain("code=auth-code-1");
 
     const cookie = setCookie.split(";", 1)[0]!;
-    const session = await app.request("/identity/session", {
+    const session = await app.request("/api/identity/session", {
       headers: { cookie, origin: chatOrigin },
     });
     expect(await session.json()).toMatchObject({
@@ -231,7 +233,7 @@ describe("OIDC Identity login flow", () => {
     const callback = await app.request(callbackPath(state), { redirect: "manual" });
     const cookie = (callback.headers.get("set-cookie") ?? "").split(";", 1)[0]!;
 
-    const minted = await app.request("/identity/caller-tokens", {
+    const minted = await app.request("/api/identity/caller-tokens", {
       method: "POST",
       headers: { cookie, origin: chatOrigin, "content-type": "application/json" },
       body: JSON.stringify({ projectId: project.id }),
@@ -275,7 +277,7 @@ describe("OIDC Identity login flow", () => {
     const { state } = await startLogin(app);
 
     const denied = await app.request(
-      `/identity/oidc/callback?error=access_denied&state=${encodeURIComponent(state)}`,
+      `/api/identity/oidc/callback?error=access_denied&state=${encodeURIComponent(state)}`,
       { redirect: "manual" },
     );
     expect(denied.status).toBe(401);
@@ -340,7 +342,7 @@ describe("OIDC provider administration", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      oidcRedirectUri: `${apiOrigin}/identity/oidc/callback`,
+      oidcRedirectUri: `${apiOrigin}/api/identity/oidc/callback`,
     });
   });
 

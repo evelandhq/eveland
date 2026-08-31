@@ -99,6 +99,31 @@ For an existing installation:
    worker re-injects the new issuer into Deployments on its next reconcile.
 4. Rebuild the web app and restart every component.
 
+## Identity and Catalog paths moved into `/api`
+
+The issuer-anchored public endpoints moved from the origin root into the
+`/api` namespace, with no transition alias:
+
+| Old path                      | New path                 |
+| ----------------------------- | ------------------------ |
+| `/identity/*`                 | `/api/identity/*`        |
+| `/identity/internal/continue` | `/api/identity/continue` |
+| `/agent-catalog`              | `/api/agent-catalog`     |
+
+`/.well-known/jwks.json` and `/api/auth/*` are unchanged. The
+`eveland_identity` cookie's `Path` moved with the routes (existing sessions
+simply re-login). For an existing installation:
+
+1. **Agents must run `eveland` ≥ 0.6 and be rebuilt.** Older SDKs bake
+   `${issuer}/identity/login` into their `WWW-Authenticate` challenge, which
+   now resolves to the Dashboard; rebuild and promote every Project after the
+   platform upgrade.
+2. **Re-register the OIDC redirect URI** at your IdP as
+   `<identityIssuer>/api/identity/oidc/callback` (Settings → System →
+   Identity surfaces the exact value).
+3. Update any external chat client configuration that pointed at
+   `/agent-catalog` or `/identity/*` on the public origin.
+
 ## Better Auth account issuer
 
 The bundled Better Auth 1.7 line matches credential sign-ins on a new

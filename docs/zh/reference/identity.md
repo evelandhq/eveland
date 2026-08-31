@@ -11,9 +11,9 @@ Better Auth cookie/token、member role 与 provider credential 都不得进入 C
 
 Identity Provider 是实例级的，且任意时刻只能启用一个，三选一。System Admin 选择当前唯一 active Provider、允许的 Identity Realm 与精确 web-chat return origin。切换 Provider 会使既有 Identity Session 不再认证任何人。
 
-- **`Open`**（新实例默认）：Eveland 不认证任何人。它没有 provider 配置，只有一个共享 Realm，也不签发 Identity Session；`/identity/login` 返回 `identity_login_not_required`，不做任何跳转——非浏览器调用方无法跟随跳转，且此时并不存在要建立的身份。
+- **`Open`**（新实例默认）：Eveland 不认证任何人。它没有 provider 配置，只有一个共享 Realm，也不签发 Identity Session；`/api/identity/login` 返回 `identity_login_not_required`，不做任何跳转——非浏览器调用方无法跟随跳转，且此时并不存在要建立的身份。
 - **`Internal`**：API 只在服务端验证有效 Better Auth member，再映射为通用 `ResolvedExternalIdentity`，通过统一的 `finalizeIdentity()` 建立独立 `eveland_identity` Session。
-- **`OIDC`**：把身份委托给一个外部 OpenID Connect Provider（authorization code + PKCE S256 + nonce，全部强制开启）。`/identity/login` 302 跳转到 IdP 授权端点，`GET /identity/oidc/callback`（固定 redirect URI：`<identityIssuer>/identity/oidc/callback`，管理员需在 IdP 侧登记）一次性消费登录事务、完成 code 交换与 ID token 验签后，经同一个 `finalizeIdentity()` 建立 Session。ID token 验签只接受非对称算法；client secret 与换回的 access/refresh token 均以 `APP_SECRET_KEY` 派生密钥加密存储。OIDC 模式下 Playground 的 `eveland-identity` 凭据（平台用户直发 Caller Token）不可用——Playground 用户与 IdP 用户之间没有可信映射。
+- **`OIDC`**：把身份委托给一个外部 OpenID Connect Provider（authorization code + PKCE S256 + nonce，全部强制开启）。`/api/identity/login` 302 跳转到 IdP 授权端点，`GET /api/identity/oidc/callback`（固定 redirect URI：`<identityIssuer>/api/identity/oidc/callback`，管理员需在 IdP 侧登记）一次性消费登录事务、完成 code 交换与 ID token 验签后，经同一个 `finalizeIdentity()` 建立 Session。ID token 验签只接受非对称算法；client secret 与换回的 access/refresh token 均以 `APP_SECRET_KEY` 派生密钥加密存储。OIDC 模式下 Playground 的 `eveland-identity` 凭据（平台用户直发 Caller Token）不可用——Playground 用户与 IdP 用户之间没有可信映射。
 
 OIDC 模式下调用者的 Realm 按连接配置解析——`connection`（整个连接唯一启用的 Realm）、`id_token_claim` 或 `userinfo_claim`（从指定 claim 取外部 Realm id）——且只允许落在管理员预先登记的 Realm 白名单内，未登记的 Realm 一律 `identity_realm_not_allowed` 403。
 
@@ -39,7 +39,7 @@ Caller Token 可携带 Eveland 解析并签名的 `agent_url` 供 endpoint-subst
 
 ## `evelandIdentity()` 协议
 
-`evelandIdentity()` 通过标准 `WWW-Authenticate` Bearer challenge 声明 Eveland-owned `authorization_uri`、Project audience 与显示名。多个 AuthFn 的 challenge 可以同时出现；例如 Basic 与 Eveland Identity 仍是 fallback，而不是由 Eveland challenge 抢占。已有 Identity Session 的客户端可静默签发 Caller Token；否则浏览器导航到 `/identity/login`。登录 state 随机、短时且只能消费一次，Eveland 根据当前 active Provider 完成认证后签发统一 Caller Token。
+`evelandIdentity()` 通过标准 `WWW-Authenticate` Bearer challenge 声明 Eveland-owned `authorization_uri`、Project audience 与显示名。多个 AuthFn 的 challenge 可以同时出现；例如 Basic 与 Eveland Identity 仍是 fallback，而不是由 Eveland challenge 抢占。已有 Identity Session 的客户端可静默签发 Caller Token；否则浏览器导航到 `/api/identity/login`。登录 state 随机、短时且只能消费一次，Eveland 根据当前 active Provider 完成认证后签发统一 Caller Token。
 
 Agent Gateway 必须透明转发 challenge、请求 credential 与响应，不解释或改写该协议；它唯一的例外是 open 模式下为无凭据请求注入 Caller Token（见下文），且从不改写已有 credential。
 
@@ -58,7 +58,7 @@ Agent Gateway 必须透明转发 challenge、请求 credential 与响应，不�
 
 ## Agent Catalog
 
-独立且公开的 `GET /agent-catalog` 提供 Agent Catalog 只读投影。它不要求 Identity Session，所有调用者得到完全相同的列表，Realm 不参与 Project 过滤。Catalog 只返回 Stable route 当前全部正权重 Deployment 均可路由，且这些 Deployment 对应的不可变 Source Revision 都声明 `capabilities.eveChat=true` 的 Project。`running` 与 scale-to-zero 的 `stopped` Deployment 都可收录。
+独立且公开的 `GET /api/agent-catalog` 提供 Agent Catalog 只读投影。它不要求 Identity Session，所有调用者得到完全相同的列表，Realm 不参与 Project 过滤。Catalog 只返回 Stable route 当前全部正权重 Deployment 均可路由，且这些 Deployment 对应的不可变 Source Revision 都声明 `capabilities.eveChat=true` 的 Project。`running` 与 scale-to-zero 的 `stopped` Deployment 都可收录。
 
 Catalog 返回 Project ID、Display name、Description、Stable endpoint 与 capability；它不创建独立 Catalog 记录，不动态探测 Agent，不包含或推断 auth 配置，也不提供 marketplace、分类、搜索或审核。`projectId` 是聊天端结合 Eveland issuer 使用的稳定 managed Agent identity，endpoint 变化不得生成新的 Agent 身份。
 

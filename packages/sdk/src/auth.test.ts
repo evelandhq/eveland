@@ -537,7 +537,7 @@ describe("evelandIdentity", () => {
     expect(challenge).toContain('Basic realm="agent"');
     expect(parseEvelandAuthenticationChallenge(challenge)).toEqual({
       kind: "eveland",
-      url: `${issuer}/identity/login`,
+      url: `${issuer}/api/identity/login`,
       projectId,
       displayName: "Eveland",
     });

@@ -22,7 +22,7 @@ vi.mock("@/components/ui/card", () => ({
   CardTitle: "div",
 }));
 
-vi.mock("@/lib/identity-continuation", () => ({
+vi.mock("@/lib/login-next", () => ({
   safeLoginNextPath: (value: string | undefined) => value ?? "/projects",
 }));
 

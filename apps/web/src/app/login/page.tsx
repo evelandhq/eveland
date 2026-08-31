@@ -3,7 +3,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { LoginForm } from "@/components/login-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentMemberOrNull } from "@/lib/server-api";
-import { safeLoginNextPath } from "@/lib/identity-continuation";
+import { safeLoginNextPath } from "@/lib/login-next";
 
 export const dynamic = "force-dynamic";
 export const metadata = {

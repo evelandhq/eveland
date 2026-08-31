@@ -311,7 +311,7 @@ function renderSettings(providers: PublicIdentityProvider[]) {
       initialProviders={providers}
       initialRealms={[]}
       initialReturnTargets={[]}
-      oidcRedirectUri="http://localhost:4000/identity/oidc/callback"
+      oidcRedirectUri="http://localhost:4000/api/identity/oidc/callback"
     />,
   );
 }

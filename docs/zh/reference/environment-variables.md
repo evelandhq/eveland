@@ -76,8 +76,8 @@ Collector）读取的全部环境变量参考。每个变量都列出默认值�
 | `EVELAND_IDENTITY_OIDC_ALLOW_INSECURE` | 设为 `1` 允许平台 OIDC Identity Provider 访问 `http://` 或私网 Issuer。为对回环 IdP 的本地集成测试而存在；生产环境绝不设置——它会关闭 Identity Broker 每次 OIDC 请求的 HTTPS 与私网地址防护。                                                                                                                                          | 未设置（仅 https Issuer）                                 | API                                        |
 | `EVELAND_ALLOWED_REALM_IDS`            | SDK 侧 Realm Allowlist：逗号分隔的 Realm ID（`irlm_...`），限定 Agent 的 `evelandIdentity()` 接受哪些 Realm 的用户。Identity Broker 认证调用者，但不决定哪个 Realm 可以访问哪个 Agent，因此不设置时接受任何已启用 Realm 的 Token；设置后其他 Realm 的 Token 会作为未认证拒绝。显式的 `allowedRealms` 选项优先于它。                   | 未设置（任何已启用 Realm）                                | 部署的 Agent（`packages/sdk/src/auth.ts`） |
 
-`eveland_identity` Cookie 与 Better Auth 分离，作用域为 `/identity`；
-`/agent-catalog` 是公开的、与 Identity 无关的投影。Caller Token 为 ES256、短时效，
+`eveland_identity` Cookie 与 Better Auth 分离，作用域为 `/api/identity`；
+`/api/agent-catalog` 是公开的、与 Identity 无关的投影。Caller Token 为 ES256、短时效，
 把一个 Principal 认证到一个 Project Audience；业务授权仍由 Agent 负责。浏览器返回
 Origin 在 System > Identity 中注册；环境的 CORS 配置不会创建或扩大该 Redirect
 Allowlist。

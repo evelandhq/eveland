@@ -33,12 +33,17 @@ export type { AppOptions } from "./app-types.js";
 import { positiveDuration } from "./app-support.js";
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
-const identityBrowserCorsPaths = new Set([
-  "/agent-catalog",
-  "/identity/app-tokens",
-  "/identity/session",
-  "/identity/caller-tokens",
-  "/identity/logout",
+/**
+ * The cross-origin browser surface for external chat clients. Exported so a
+ * test can pin every entry to the front door's `api` target: a path listed
+ * here but not publicly routable would fail open-and-silent in production.
+ */
+export const identityBrowserCorsPaths = new Set([
+  "/api/agent-catalog",
+  "/api/identity/app-tokens",
+  "/api/identity/session",
+  "/api/identity/caller-tokens",
+  "/api/identity/logout",
 ]);
 
 export function createApp(
