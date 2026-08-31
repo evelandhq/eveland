@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.46.0](https://github.com/evelandhq/eveland/compare/v0.45.0...v0.46.0) (2026-08-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **front-door:** the public entry moved to the Gateway on 17300; the Dashboard and API bind loopback. Self-hosted reverse proxies collapse to a single upstream, and existing installs must choose an Identity issuer migration path - see docs/*/operations/upgrades.md.
+* **ports:** every default listen port and default URL moved. Existing installations must update .env / reverse proxy / firewall values that relied on old defaults (explicit configuration keeps working); see docs/*/operations/upgrades.md for the migration table.
+
+### Features
+
+* **front-door:** merge every public origin into the Agent Gateway on 17300 ([#421](https://github.com/evelandhq/eveland/issues/421)) ([d715e01](https://github.com/evelandhq/eveland/commit/d715e01310c574806c41b847f009919485042479))
+* **ports:** move platform defaults into a dedicated 17300 port block ([#418](https://github.com/evelandhq/eveland/issues/418)) ([4781cc5](https://github.com/evelandhq/eveland/commit/4781cc5cdd4bd01ebc5642854adcb56b4b48ec6c))
+
 ## [0.45.0](https://github.com/evelandhq/eveland/compare/v0.44.0...v0.45.0) (2026-08-28)
 
 
