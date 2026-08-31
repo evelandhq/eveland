@@ -141,7 +141,8 @@ export async function startEvelandWorkflowDispatcher(
           body: `boot recovery skipped runs bound to ${deploymentId}: ${reason}`,
           attributes: {
             "eveland.deployment.id": deploymentId,
-            "dispatcher.skipped_runs": runs.length - kept.length,
+            "dispatcher.skipped_runs": runs.filter((run) => run.deploymentId === deploymentId)
+              .length,
           },
         });
       }
