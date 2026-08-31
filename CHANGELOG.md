@@ -4,6 +4,20 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.47.0](https://github.com/evelandhq/eveland/compare/v0.46.0...v0.47.0) (2026-08-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **front-door:** flatten the browser plane into /api and collapse the front door to two verbatim rules ([#428](https://github.com/evelandhq/eveland/issues/428))
+* **front-door:** move Identity and the Agent Catalog into /api, served verbatim through the front door ([#426](https://github.com/evelandhq/eveland/issues/426))
+
+### Features
+
+* **auth:** upgrade better-auth to 1.7.2 with the account issuer migration ([#422](https://github.com/evelandhq/eveland/issues/422)) ([b943a8e](https://github.com/evelandhq/eveland/commit/b943a8e1f2274911b9d4a3ff9b99d54fe863fc7c))
+* **front-door:** flatten the browser plane into /api and collapse the front door to two verbatim rules ([#428](https://github.com/evelandhq/eveland/issues/428)) ([3afbacf](https://github.com/evelandhq/eveland/commit/3afbacf090458e182c0737ebc8bef1dbc8526d71))
+* **front-door:** move Identity and the Agent Catalog into /api, served verbatim through the front door ([#426](https://github.com/evelandhq/eveland/issues/426)) ([afff1f7](https://github.com/evelandhq/eveland/commit/afff1f795c6f146757c029a8fe098f5a87fefbd0))
+
 ## [0.46.0](https://github.com/evelandhq/eveland/compare/v0.45.0...v0.46.0) (2026-08-31)
 
 
