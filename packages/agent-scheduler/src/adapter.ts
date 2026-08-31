@@ -528,14 +528,15 @@ ${dispatchBlock}
         return Response.json({ scheduleRunId: params.scheduleRunId, scheduleKey, sessionIds });
       } catch (error) {
         const message = describeScheduleFailure(error);
-        console.error(\`[eveland-scheduler] Schedule \${scheduleKey} run \${params.scheduleRunId} failed: \${message}\`);
+        const status = isAmbiguousDispatchFailure(error) ? "dispatch_unknown" : "failed";
+        console.error(\`[eveland-scheduler] Schedule \${scheduleKey} run \${params.scheduleRunId} \${status === "dispatch_unknown" ? "did not confirm its dispatch" : "failed"}: \${message}\`);
         await reportDispatch(redeemUrl, runtimeSecret, {
           phase: "complete",
           credential,
           scheduleRunId: params.scheduleRunId,
           scheduleKey,
           sessionIds: [],
-          status: "failed",
+          status,
           error: message,
         }).catch(() => undefined);
         return new Response("Schedule dispatch failed", { status: 500 });
@@ -567,6 +568,15 @@ function getRunRetentionContext(): AsyncLocalStorage<RunRetentionIntent> {
   const created = new AsyncLocalStorage<RunRetentionIntent>();
   Reflect.set(globalThis, runRetentionContextSymbol, created);
   return created;
+}
+
+// A command-hook readiness timeout surfaces from session creation AFTER the
+// durable workflow may already be committed: the Session can still start and
+// execute the scheduled input later, so the run's outcome is unknown rather
+// than failed (evelandhq/eveland#407). Matched by name, exactly like the
+// error class's own \`static is\`.
+function isAmbiguousDispatchFailure(error: unknown): boolean {
+  return error instanceof Error && error.name === "HookNotFoundError";
 }
 
 // Keeps the authored handler's failure reason visible on the ScheduleRun; the

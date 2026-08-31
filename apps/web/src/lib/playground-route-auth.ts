@@ -12,9 +12,15 @@ export type PendingPlaygroundTurn = {
    * there is nothing to resume.
    */
   session?: ClientSessionState;
+  /**
+   * Stable create identity of a first turn interrupted before its session
+   * existed. The post-redirect replay reuses it so a create the server
+   * already committed is adopted instead of executed twice (#407).
+   */
+  operationId?: string;
 };
 
-type StorageLike = Pick<Storage, "getItem" | "removeItem" | "setItem">;
+export type StorageLike = Pick<Storage, "getItem" | "removeItem" | "setItem">;
 
 type RouteAuthInteraction = { type: "redirect"; url: string };
 
@@ -50,6 +56,7 @@ export function handleRouteAuthError(input: {
   error: unknown;
   message: PendingPlaygroundMessage | null;
   session: ClientSessionState | undefined;
+  operationId?: string;
   projectId: string;
   redirect(url: string): void;
   storage: StorageLike;
@@ -59,7 +66,12 @@ export function handleRouteAuthError(input: {
   if (!interaction) return false;
   input.storage.setItem(
     storageKey(input.projectId),
-    JSON.stringify({ version: 1, message: input.message, session: input.session }),
+    JSON.stringify({
+      version: 1,
+      message: input.message,
+      session: input.session,
+      operationId: input.operationId,
+    }),
   );
   input.redirect(interaction.url);
   return true;
@@ -96,12 +108,16 @@ function parsePendingTurn(serialized: string): PendingPlaygroundTurn | null {
       version?: unknown;
       message?: unknown;
       session?: unknown;
+      operationId?: unknown;
     };
     if (value.version !== 1 || (typeof value.message !== "string" && !Array.isArray(value.message)))
       return null;
     return {
       message: value.message as PendingPlaygroundMessage,
       session: clientSessionState(value.session),
+      ...(typeof value.operationId === "string" && value.operationId.length > 0
+        ? { operationId: value.operationId }
+        : {}),
     };
   } catch {
     return null;

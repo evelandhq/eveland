@@ -340,7 +340,10 @@ export const schedulerDispatchSchema = z.discriminatedUnion("phase", [
     scheduleRunId: z.string().min(1),
     scheduleKey: z.string().min(1),
     sessionIds: z.array(z.string().min(1)),
-    status: z.enum(["succeeded", "failed"]),
+    // `dispatch_unknown` reports an ambiguous outcome (e.g. a command-hook
+    // readiness timeout after the durable workflow may have committed): the
+    // scheduled Session may still start, so the run must not read as failed.
+    status: z.enum(["succeeded", "failed", "dispatch_unknown"]),
     error: z.string().min(1).max(2000).optional(),
   }),
 ]);

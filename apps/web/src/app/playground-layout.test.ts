@@ -63,9 +63,11 @@ describe("project Playground surface", () => {
     expect(panel).toContain('turnPolicy: "steer"');
     expect(panel).toContain("<ComposerAction");
     expect(panel).toContain('aria-label="Stop"');
-    // The textarea only locks on version gates and session resume, never on a
-    // running turn.
-    expect(panel).toContain("disabled={!eveVersion.supported || isResuming}");
+    // The textarea only locks on version gates, session resume, and an
+    // unresolved first create (#407) — never on a running turn.
+    expect(panel).toContain(
+      "disabled={!eveVersion.supported || isResuming || unresolvedCreate !== null}",
+    );
     expect(panel).not.toContain("disabled={isBusy");
   });
 

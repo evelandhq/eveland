@@ -92,7 +92,12 @@ export function registerInternalRoutes(input: {
     const completed = await store.completeScheduleRun(run.id, {
       status: parsed.data.status,
       error:
-        parsed.data.status === "failed" ? (parsed.data.error ?? "Scheduled handler failed.") : null,
+        parsed.data.status === "succeeded"
+          ? null
+          : (parsed.data.error ??
+            (parsed.data.status === "dispatch_unknown"
+              ? "The dispatch outcome is unknown; the scheduled Session may still run."
+              : "Scheduled handler failed.")),
       eveSessionIds: parsed.data.sessionIds,
     });
     return completed ? c.json({ ok: true }) : c.json({ error: "Dispatch not found" }, 404);

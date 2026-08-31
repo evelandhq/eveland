@@ -3,7 +3,9 @@ import { encodeAgentAuthEnvelope } from "@evelandhq/core/agent-auth";
 import {
   classifyEveSessionRequest,
   getEveString,
+  normalizePlaygroundOperationId,
   PLAYGROUND_MAX_TRANSPORT_BYTES,
+  PLAYGROUND_OPERATION_ID_HEADER,
   validatePlaygroundTurn,
 } from "@evelandhq/core/eve";
 import { unsupportedEveVersionMessage } from "@evelandhq/core/source";
@@ -51,6 +53,36 @@ async function upstreamRejectionReason(upstream: Response): Promise<string> {
   }
   detail = detail.slice(0, 500);
   return `The turn failed upstream with HTTP ${upstream.status}${detail ? `: ${detail}` : "."}`;
+}
+
+/**
+ * Eve rejects an `operationId` from an anonymous principal with a 400 before
+ * any workflow starts. Only the injected id can trigger this on the canonical
+ * route (Eve's own client never sends one), so the match stays deliberately
+ * loose against upstream wording drift.
+ */
+async function refusedInjectedOperationId(upstream: Response): Promise<boolean> {
+  if (upstream.status !== 400) return false;
+  const parsed = await parsePlaygroundResponse(upstream.clone()).catch(() => null);
+  return getEveString(parsed, "error")?.includes("operationId") ?? false;
+}
+
+/**
+ * An opaque Eve create 500 (generic error + correlation id) fires after the
+ * durable workflow may already be committed — most often the 30s command-hook
+ * readiness timeout on a stable deployment (#407). The Session may still
+ * start, so the stored reason must say "unknown", not "failed to start".
+ */
+async function unknownCreateOutcomeReason(upstream: Response): Promise<string | null> {
+  if (upstream.status !== 500) return null;
+  const parsed = await parsePlaygroundResponse(upstream.clone()).catch(() => null);
+  const errorId = getEveString(parsed, "errorId");
+  if (!errorId) return null;
+  return (
+    `Session create outcome is unknown (Eve error ${errorId}): the agent did not confirm the ` +
+    `Session within the readiness window, but it may still start. Retrying the same message ` +
+    `reattaches to the committed Session instead of executing it twice.`
+  );
 }
 
 export function registerCanonicalPlaygroundRoute(input: {
@@ -123,11 +155,27 @@ export function registerCanonicalPlaygroundRoute(input: {
     }
 
     let body: Uint8Array | null = null;
+    // Original create body, kept when an operation id was injected so the
+    // request can be replayed verbatim if Eve rejects the id (see below).
+    let bodyWithoutOperationId: Uint8Array | null = null;
     if (isInitial || isContinuation || isSessionControl) {
       try {
         body = await readLimitedPlaygroundBody(c.req.raw, PLAYGROUND_MAX_TRANSPORT_BYTES);
         if (isInitial || isContinuation) {
-          validatePlaygroundTurn(parsePlaygroundBody(body));
+          const turn = validatePlaygroundTurn(parsePlaygroundBody(body));
+          if (isInitial) {
+            // The browser's stable create identity rides a header because
+            // Eve's client cannot put `operationId` in the body itself. Eve
+            // dedupes creates on it, so an ambiguous failure can be retried
+            // without executing the initial input twice (#407).
+            const operationId = normalizePlaygroundOperationId(
+              c.req.header(PLAYGROUND_OPERATION_ID_HEADER),
+            );
+            if (operationId) {
+              bodyWithoutOperationId = body;
+              body = new TextEncoder().encode(JSON.stringify({ ...turn, operationId }));
+            }
+          }
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Invalid Playground request";
@@ -181,16 +229,20 @@ export function registerCanonicalPlaygroundRoute(input: {
     try {
       const forwardedHeaders = new Headers(c.req.raw.headers);
       forwardedHeaders.set(CANONICAL_REQUEST_ID_HEADER, requestId);
-      const proxy = (envelope: string) =>
-        playgroundProxy({
+      forwardedHeaders.delete(PLAYGROUND_OPERATION_ID_HEADER);
+      let lastEnvelope = agentAuthEnvelope;
+      const proxy = (envelope: string, requestBody: Uint8Array | null = body) => {
+        lastEnvelope = envelope;
+        return playgroundProxy({
           projectId,
           path: `${evePath}${requestUrl.search}`,
           method: c.req.method,
           headers: forwardedHeaders,
-          body,
+          body: requestBody,
           signal: c.req.raw.signal,
           agentAuthEnvelope: envelope,
         });
+      };
       upstream = await proxy(agentAuthEnvelope);
       if (
         upstream.status === 401 &&
@@ -254,6 +306,15 @@ export function registerCanonicalPlaygroundRoute(input: {
           return c.json(failure, agentAuthFailureStatus(failure));
         }
       }
+      if (bodyWithoutOperationId && (await refusedInjectedOperationId(upstream))) {
+        // Eve refuses `operationId` for anonymous principals before any
+        // workflow starts, so this rejection is definite and side-effect
+        // free: replay the create once without the injected id. Create-once
+        // dedupe is simply unavailable to agents whose session route accepts
+        // anonymous callers.
+        await upstream.body?.cancel().catch(() => undefined);
+        upstream = await proxy(lastEnvelope, bodyWithoutOperationId);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await failActiveTurn(`The turn never reached the agent: ${message}`);
@@ -261,7 +322,8 @@ export function registerCanonicalPlaygroundRoute(input: {
     }
 
     if (!upstream.ok && platformSession && (isInitial || isContinuation)) {
-      await failActiveTurn(await upstreamRejectionReason(upstream));
+      const unknownOutcome = isInitial ? await unknownCreateOutcomeReason(upstream) : null;
+      await failActiveTurn(unknownOutcome ?? (await upstreamRejectionReason(upstream)));
     }
 
     if ((isInitial || isContinuation) && upstream.ok && platformSession) {
@@ -270,10 +332,21 @@ export function registerCanonicalPlaygroundRoute(input: {
         upstream.headers.get("x-eve-session-id") ??
         getEveString(parsed, "sessionId") ??
         pathSessionId;
-      await store.completeSession(platformSession.id, {
-        status: "running",
-        eveSessionId,
-      });
+      const adopted =
+        isInitial && eveSessionId
+          ? await store.getSessionByEveSessionId(projectId, eveSessionId)
+          : null;
+      if (adopted && adopted.id !== platformSession.id) {
+        // The create resolved to a Session another request already recorded
+        // (Eve deduped on the operation id); close this placeholder instead
+        // of double-tracking the same Eve Session.
+        await store.completeSession(platformSession.id, { status: "completed" });
+      } else {
+        await store.completeSession(platformSession.id, {
+          status: "running",
+          eveSessionId,
+        });
+      }
     }
     if (isReset && upstream.ok && platformSession) {
       const parsed = await parsePlaygroundResponse(upstream.clone());
