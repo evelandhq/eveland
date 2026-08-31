@@ -26,6 +26,24 @@ describe("Better Auth team migration", () => {
   });
 });
 
+describe("Better Auth 1.7 issuer migration", () => {
+  test("adds issuer with an inline DEFAULT so the migrate->restart gap and a 1.6 rollback stay writable", () => {
+    const migration = readFileSync(
+      fileURLToPath(new URL("../drizzle/0058_better_auth_issuer.sql", import.meta.url)),
+      "utf8",
+    );
+    // One atomic ALTER: DEFAULT and NOT NULL together means rows written by
+    // still-running 1.6 code (which omits the column) keep inserting cleanly,
+    // and 1.7 sign-in finds issuer = 'local:credential' on every account.
+    expect(migration).toContain(
+      'ALTER TABLE "auth_accounts" ADD COLUMN "issuer" text DEFAULT \'local:credential\' NOT NULL;',
+    );
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX "auth_accounts_issuer_account_idx" ON "auth_accounts" USING btree ("issuer","account_id");',
+    );
+  });
+});
+
 function readMigration(): string {
   return readFileSync(
     fileURLToPath(new URL("../drizzle/0011_colossal_puppet_master.sql", import.meta.url)),

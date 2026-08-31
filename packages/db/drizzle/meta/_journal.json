@@ -407,6 +407,13 @@
       "when": 1787559799038,
       "tag": "0057_schedule_run_acknowledged",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1788150522657,
+      "tag": "0058_better_auth_issuer",
+      "breakpoints": true
     }
   ]
 }

@@ -81,6 +81,16 @@ Eveland 已将所有默认监听端口从通用开发端口迁入平台独享端
 3. **Issuer 迁移**：Caller Token Issuer 必须保持稳定。旧 Issuer 是 API Origin 的存量安装二选一：显式设置 `EVELAND_IDENTITY_ISSUER` 为旧值保留它（Agent 对新旧 Token 都继续验证；`/.well-known/*` 必须在该 Origin 上保持可达）；或切换到派生的前门 Issuer，并接受所有消费方 Chat 服务与 Agent Verifier 需同步更新——Worker 会在下一次 Reconcile 时把新 Issuer 重新注入 Deployment。
 4. 重新构建 web 应用并重启所有组件。
 
+## Better Auth Account Issuer
+
+内置的 Better Auth 1.7 线在凭据登录时匹配新的 `auth_accounts.issuer` 列。迁移 `0058` 以内联 `DEFAULT 'local:credential'` 添加该列，因此按常规顺序执行即可——**先迁移、再重启 API**；回滚到升级前的 checkout 也能继续正常写入账号（旧代码不写该列，默认值补齐）。
+
+升级前先验证新登录逻辑依赖的凭据不变量（所有受支持的写入路径都满足；计数非零说明存在手工修改过的行）：
+
+```bash
+psql "$DATABASE_URL" -c "SELECT count(*) FROM auth_accounts WHERE provider_id='credential' AND account_id<>user_id"
+```
+
 ## 遗留的按 Project Workflow 残余
 
 每个 Release 都基于共享、External-only Workflow World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动。带有共享 World 之前历史的安装可能仍保留遗留的按 Project Workflow 配置：

@@ -99,6 +99,22 @@ For an existing installation:
    worker re-injects the new issuer into Deployments on its next reconcile.
 4. Rebuild the web app and restart every component.
 
+## Better Auth account issuer
+
+The bundled Better Auth 1.7 line matches credential sign-ins on a new
+`auth_accounts.issuer` column. Migration `0058` adds it with an inline
+`DEFAULT 'local:credential'`, so apply order is the usual one — **migrate,
+then restart the API** — and a rollback to a pre-upgrade checkout keeps
+writing accounts cleanly (old code omits the column; the default fills it).
+
+Before upgrading, verify the credential invariant the new sign-in relies on
+(it holds in every supported write path; a nonzero count means manually
+repaired rows):
+
+```bash
+psql "$DATABASE_URL" -c "SELECT count(*) FROM auth_accounts WHERE provider_id='credential' AND account_id<>user_id"
+```
+
 ## Legacy per-project workflow residue
 
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:

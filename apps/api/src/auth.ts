@@ -108,17 +108,21 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     }
     let user = existing?.user;
     if (!user) {
-      user = await context.internalAdapter.createUser({
-        id: "user_local_admin",
-        email,
-        emailVerified: false,
-        name: input.name,
-        role: "admin",
-        banned: false,
-      });
+      user = await context.internalAdapter.createUser(
+        {
+          id: "user_local_admin",
+          email,
+          emailVerified: false,
+          name: input.name,
+          role: "admin",
+          banned: false,
+        },
+        { method: "email-password" },
+      );
       await context.internalAdapter.createAccount({
         accountId: user.id,
         providerId: "credential",
+        issuer: "local:credential",
         userId: user.id,
         password: await context.password.hash(input.password),
       });
@@ -126,6 +130,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       await context.internalAdapter.createAccount({
         accountId: user.id,
         providerId: "credential",
+        issuer: "local:credential",
         userId: user.id,
         password: await context.password.hash(input.password),
       });
@@ -442,6 +447,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       await context.internalAdapter.createAccount({
         accountId: userId,
         providerId: "credential",
+        issuer: "local:credential",
         userId,
         password: hashed,
       });
