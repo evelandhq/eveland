@@ -139,8 +139,11 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     expect(postgresSpecVersion).toBe(6);
   });
 
-  test("exposes the bounded-storage controls in the root environment example", () => {
-    const environmentExample = readSource(".env.example");
+  // The controls moved out of .env.example when it slimmed down to the
+  // decide-per-install set; the operator reference is where a tuning knob
+  // must stay discoverable.
+  test("exposes the bounded-storage controls in the operator reference", () => {
+    const operatorReference = readSource("docs/en/reference/environment-variables.md");
     for (const name of [
       "EVELAND_WORKFLOW_STREAM_COMPACTION",
       "WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS",
@@ -150,8 +153,8 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK",
       "WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE",
     ]) {
-      expect(environmentExample, `.env.example must expose ${name}`).toMatch(
-        new RegExp(`^${name}=`, "m"),
+      expect(operatorReference, `the operator reference must document ${name}`).toContain(
+        `\`${name}\``,
       );
     }
   });
