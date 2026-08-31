@@ -1,5 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 import { proxyFrontDoorRequest } from "./gateway-front-door.js";
+import { registerGatewayTestCleanup, startUpstream } from "./app.test-support.js";
+
+registerGatewayTestCleanup();
 
 function upstreams(fetchImplementation: typeof fetch) {
   return {
@@ -88,6 +91,32 @@ describe("front-door proxy", () => {
     expect(headers.get("accept-encoding")).toBeNull();
     expect(headers.get("x-forwarded-host")).toBe("localhost:17300");
     expect(headers.get("x-forwarded-proto")).toBe("http");
+  });
+
+  test("passes an upstream 401 through for a request that carries a body", async () => {
+    // Runs against the real fetch on purpose: undici retries a 401 with
+    // credentials attached, and that retry re-extracts the request body --
+    // impossible for the forwarded stream. Without `credentials: "omit"` the
+    // hop dies as `fetch failed: expected non-null body source`, so a signed-
+    // out browser sees a 500 where the API answered 401.
+    const upstream = await startUpstream((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.writeHead(401, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "Unauthorized" }));
+      });
+    });
+    const origin = `http://127.0.0.1:${upstream.port}`;
+    const response = await proxyFrontDoorRequest(
+      new Request("http://localhost:17300/api/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "alpha" }),
+      }),
+      { apiUrl: origin, webUrl: origin },
+    );
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
   });
 
   test("passes redirects and set-cookie headers through untouched", async () => {

@@ -65,6 +65,14 @@ export async function proxyFrontDoorRequest(
     body: hasBody ? request.body : undefined,
     // Redirects (auth flows, Next route normalization) belong to the browser.
     redirect: "manual",
+    // A proxy never negotiates credentials of its own -- cookies and
+    // `authorization` ride through as forwarded headers either way. At the
+    // default, undici answers an upstream 401 by re-sending the request with
+    // credentials attached, and that retry starts by re-extracting the body
+    // source, which a forwarded stream does not have: every 401 on a request
+    // WITH a body then dies as `fetch failed: expected non-null body source`
+    // and reaches the browser as a 500 instead of the 401 the API sent.
+    credentials: "omit",
     ...(hasBody ? { duplex: "half" } : {}),
   } as RequestInit);
 
