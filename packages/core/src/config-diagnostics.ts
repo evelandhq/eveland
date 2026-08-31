@@ -15,7 +15,7 @@ import {
   POSTGRES_DEFAULT_PORT,
   SANDBOX_INTERNAL_PORT,
   WEB_ORIGIN_FALLBACK,
-} from "./ports.js";
+} from "@evelandhq/core/ports";
 
 export type ConfigurationEntry = {
   name: string;
