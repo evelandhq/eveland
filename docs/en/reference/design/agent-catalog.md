@@ -5,7 +5,7 @@ description: A derived catalog, a client-neutral authentication protocol, and wh
 
 ## The Catalog is a projection, not a registry
 
-`GET /agent-catalog` answers one question: _which Agents on this
+`GET /api/agent-catalog` answers one question: _which Agents on this
 installation can an Eve client chat with?_ Membership is derived from two
 facts — the deployed Source Revision default-exports a standard
 `eveChannel(...)`, and the Project has a routable Stable Deployment. There

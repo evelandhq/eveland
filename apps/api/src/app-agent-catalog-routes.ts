@@ -14,7 +14,7 @@ export function registerAgentCatalogRoutes({
   store,
   options,
 }: AgentCatalogRoutesContext): void {
-  app.get("/agent-catalog", async (c) => {
+  app.get("/api/agent-catalog", async (c) => {
     c.header("cache-control", "no-store");
     try {
       const response: AgentCatalogResponse = {

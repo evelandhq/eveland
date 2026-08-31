@@ -32,7 +32,7 @@ describe("Identity settings page", () => {
     server.getCurrentMember.mockResolvedValue({ role: "admin" });
     server.getIdentityProviderSettings.mockResolvedValue({
       providers: [{ id: "idpc_1", type: "internal", displayName: "Eveland Internal" }],
-      oidcRedirectUri: "http://localhost:4000/identity/oidc/callback",
+      oidcRedirectUri: "http://localhost:4000/api/identity/oidc/callback",
     });
     server.getIdentityRealms.mockResolvedValue([{ id: "irlm_1", providerConnectionId: "idpc_1" }]);
     server.getIdentityReturnTargets.mockResolvedValue([

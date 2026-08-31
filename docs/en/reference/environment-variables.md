@@ -80,8 +80,8 @@ production" means the process throws or a deploy is blocked when it is missing.
 | `EVELAND_IDENTITY_OIDC_ALLOW_INSECURE` | Set to `1` to let the platform OIDC Identity Provider talk to `http://` or private-network issuers. Exists for local integration testing against a loopback IdP; never set it in production — it disables the HTTPS and private-address guards on every OIDC fetch the Identity Broker makes.                                                                                                                                                                                 | unset (https-only issuers)                                | API                                         |
 | `EVELAND_ALLOWED_REALM_IDS`            | SDK-side realm allowlist: comma-separated realm ids (`irlm_...`) whose users the Agent's `evelandIdentity()` accepts. The identity broker authenticates callers but does not decide which realm may reach which Agent, so an unset allowlist accepts every enabled realm; when set, tokens from other realms are rejected as unauthenticated. The explicit `allowedRealms` option overrides it.                                                                               | unset (any enabled realm)                                 | deployed Agent (`packages/sdk/src/auth.ts`) |
 
-The `eveland_identity` cookie is separate from Better Auth and scoped to `/identity`;
-`/agent-catalog` is a public, identity-independent projection.
+The `eveland_identity` cookie is separate from Better Auth and scoped to `/api/identity`;
+`/api/agent-catalog` is a public, identity-independent projection.
 Caller Tokens are ES256, short-lived, and authenticate a principal to one Project audience;
 Agents remain responsible for business authorization. Register browser return origins in
 System > Identity; environment CORS configuration does not create or widen that redirect

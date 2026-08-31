@@ -114,7 +114,7 @@ deliberate exception: when the Identity Provider is `Open`, the Agent Gateway
 injects an open-mode Caller Token for requests carrying no `Authorization` at all,
 and never overwrites an existing credential.
 
-The standalone, public `GET /agent-catalog` serves the read-only Agent Catalog
+The standalone, public `GET /api/agent-catalog` serves the read-only Agent Catalog
 projection: it requires no Identity Session, performs no authorization filtering,
 probes no Agents, and is not a marketplace; `projectId` combined with the Eveland
 issuer is the stable managed Agent identity, and an endpoint change must not mint a

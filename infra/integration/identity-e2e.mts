@@ -19,8 +19,8 @@
 //   - a cold Gateway stops injecting (the mint route answers 409), so an
 //     anonymous request reaches the Agent bare and 401s with a challenge the
 //     SDK's own parseEvelandAuthenticationChallenge understands;
-//   - the real login handoff (/identity/login -> Better Auth session ->
-//     eveland_identity cookie -> /identity/caller-tokens) mints a Caller
+//   - the real login handoff (/api/identity/login -> Better Auth session ->
+//     eveland_identity cookie -> /api/identity/caller-tokens) mints a Caller
 //     Token that authenticates a turn end to end;
 //   - a Caller Token minted for a different Project is rejected by the Agent
 //     (audience binding), and the warm pre-switch Gateway keeps injecting its
@@ -34,12 +34,20 @@
 //     for 金数据/Auth0, and EVELAND_IDENTITY_OIDC_ALLOW_INSECURE=1 lets the
 //     production openid-client protocol talk to it over http;
 //   - the admin preflight passes against the live discovery document;
-//   - the whole redirect chain runs without a browser: /identity/login 302s
-//     to the IdP, the "IdP" authorizes, GET /identity/oidc/callback exchanges
-//     the code (PKCE verified server-side), sets the eveland_identity cookie,
-//     and the session mints a Caller Token that authenticates a full turn;
+//   - the whole redirect chain runs without a browser: /api/identity/login
+//     302s to the IdP, the "IdP" authorizes, GET /api/identity/oidc/callback
+//     exchanges the code (PKCE verified server-side), sets the
+//     eveland_identity cookie, and the session mints a Caller Token that
+//     authenticates a full turn;
 //   - a login resolving to an unregistered Realm is refused 403, and a
 //     replayed callback dies 400 on the one-shot transaction.
+//
+// Production topology, not a shortcut: the Identity issuer IS the public
+// origin -- a Gateway serving the front door -- and every issuer-anchored
+// request (Better Auth sign-in, /api/identity/*, the OIDC callback) travels
+// through it. The #421 regression class (public on the API, classified to
+// the Dashboard by the front door) is exactly what a direct-to-API issuer
+// could never catch.
 //
 // Run locally (Docker runtime):
 //   EVELAND_AGENT_BASE_DOMAINS=agent.localhost pnpm exec tsx infra/integration/identity-e2e.mts
@@ -124,6 +132,24 @@ async function main(): Promise<void> {
 
     runtime = createRuntimeAdapterFromEnv();
 
+    // --- The public origin: a Gateway serving the front door. Bound first
+    // (with a lazy app reference) so its port can be the Identity issuer --
+    // in production the issuer IS the public origin, and every issuer-anchored
+    // path must survive front-door classification to work at all.
+    let frontDoorGatewayApp: ReturnType<typeof createGatewayApp> | null = null;
+    const frontDoorServer = serve({
+      fetch: (request: Request) => frontDoorGatewayApp!.fetch(request),
+      port: 0,
+    });
+    servers.push(frontDoorServer);
+    if (!frontDoorServer.listening) await once(frontDoorServer, "listening");
+    const frontDoorAddress = frontDoorServer.address();
+    if (!frontDoorAddress || typeof frontDoorAddress === "string") {
+      throw new Error("Front-door Gateway server did not bind.");
+    }
+    const publicPort = frontDoorAddress.port;
+    const issuer = `http://127.0.0.1:${publicPort}`;
+
     // --- Control-plane API over real HTTP (identity broker, JWKS, /system) ---
     let apiApp: ReturnType<typeof createApp> | null = null;
     const apiServer = serve({
@@ -135,7 +161,6 @@ async function main(): Promise<void> {
     const apiAddress = apiServer.address();
     if (!apiAddress || typeof apiAddress === "string") throw new Error("API server did not bind.");
     const apiPort = apiAddress.port;
-    const issuer = `http://127.0.0.1:${apiPort}`;
     // The deployed Agent fetches the JWKS from inside its runtime: the Docker
     // runtime reaches the host as host.docker.internal (the adapter passes
     // --add-host host.docker.internal:host-gateway), systemd shares localhost.
@@ -202,8 +227,45 @@ async function main(): Promise<void> {
     assert.equal(deployment.status, "running", "deployment is not running");
     processNames.push(deployment.containerName);
 
-    // --- Gateway #1: the long-lived process that serves the open phase ---
-    const warmGateway = await startGateway(store, apiPort, servers);
+    // --- Gateway #1: the long-lived front-door process. Serves the open
+    // phase's agent traffic AND, as the public origin, every identity request
+    // below. Its web upstream is a loud stub: an issuer-anchored path that
+    // misclassifies to the Dashboard fails as 599 dashboard-stub instead of
+    // impersonating a page.
+    const webStub = serve({
+      port: 0,
+      fetch: () => Promise.resolve(Response.json({ error: "dashboard-stub" }, { status: 599 })),
+    });
+    servers.push(webStub);
+    if (!webStub.listening) await once(webStub, "listening");
+    const webStubAddress = webStub.address();
+    if (!webStubAddress || typeof webStubAddress === "string") {
+      throw new Error("Dashboard stub did not bind.");
+    }
+    frontDoorGatewayApp = createGatewayApp(store, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret: "identity-e2e-affinity-secret",
+      internalServiceToken: GATEWAY_SERVICE_TOKEN,
+      routeCacheTtlMs: 1_000,
+      identityClient: createApiIdentityClient({
+        apiUrl: `http://127.0.0.1:${apiPort}`,
+        serviceToken: GATEWAY_SERVICE_TOKEN,
+      }),
+      frontDoor: {
+        apiUrl: `http://127.0.0.1:${apiPort}`,
+        webUrl: `http://127.0.0.1:${webStubAddress.port}`,
+      },
+    });
+    const warmGateway = { port: publicPort };
+    // The Dashboard fallback is wired: a plain page path passes through to
+    // the web upstream, so an "api" result below really means classification.
+    const dashboardFallback = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
+      path: "/projects",
+      method: "GET",
+      headers: {},
+    });
+    assert.equal(dashboardFallback.statusCode, 599, "front-door web fallback is not wired");
     const agentHost = `${project.slug}.agent.localhost:${GATEWAY_PORT}`;
 
     // ============================ OPEN ACCESS ============================
@@ -266,14 +328,14 @@ async function main(): Promise<void> {
       `Agent must advertise the eveland challenge: ${direct.headers["www-authenticate"]}`,
     );
     assert.equal(directChallenge.projectId, project.id);
-    assert.equal(directChallenge.url, `${issuer}/identity/login`);
+    assert.equal(directChallenge.url, `${issuer}/api/identity/login`);
 
     console.log("identity-e2e: open access phase OK");
 
     // ==================== SWITCH TO EVELAND INTERNAL =====================
     // Driven through the real /system HTTP API with a real admin session,
     // exactly as the Settings UI would.
-    const adminCookie = await signInAdmin(apiPort);
+    const adminCookie = await signInAdmin(publicPort);
     const providers = (await apiRequest(apiPort, adminCookie, "GET", "/system/identity/providers"))
       .json as {
       providers: Array<{
@@ -373,14 +435,14 @@ async function main(): Promise<void> {
     );
     assert.ok(challenge, `challenge missing: ${anonymousInternal.headers["www-authenticate"]}`);
     assert.equal(challenge.projectId, project.id);
-    assert.equal(challenge.url, `${issuer}/identity/login`);
+    assert.equal(challenge.url, `${issuer}/api/identity/login`);
 
     // The real login handoff: /identity/login sees the admin's control-plane
     // session, finalizes an Identity Session, and sets the eveland_identity
     // cookie on the redirect back to the return target.
-    const login = await request(apiPort, {
-      host: `127.0.0.1:${apiPort}`,
-      path: "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fidentity-e2e",
+    const login = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
+      path: "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fidentity-e2e",
       method: "GET",
       headers: { cookie: adminCookie },
     });
@@ -397,9 +459,9 @@ async function main(): Promise<void> {
 
     // Browser-shaped Caller Token mint: identity session cookie + allowed
     // web-chat origin.
-    const minted = await request(apiPort, {
-      host: `127.0.0.1:${apiPort}`,
-      path: "/identity/caller-tokens",
+    const minted = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
+      path: "/api/identity/caller-tokens",
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -446,9 +508,9 @@ async function main(): Promise<void> {
       name: `Identity E2E Other ${Date.now()}`,
       importKind: "zip",
     });
-    const foreignMint = await request(apiPort, {
-      host: `127.0.0.1:${apiPort}`,
-      path: "/identity/caller-tokens",
+    const foreignMint = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
+      path: "/api/identity/caller-tokens",
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -552,9 +614,9 @@ async function main(): Promise<void> {
 
     // The whole login chain, browser-free: login 302 -> IdP authorizes ->
     // callback exchanges the code (PKCE verified by the IdP) -> cookie.
-    const oidcLogin = await request(apiPort, {
-      host: `127.0.0.1:${apiPort}`,
-      path: "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fidentity-e2e",
+    const oidcLogin = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
+      path: "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fidentity-e2e",
       method: "GET",
       headers: {},
     });
@@ -565,8 +627,8 @@ async function main(): Promise<void> {
       `login must redirect to the IdP: ${authorizationUrl.href}`,
     );
     const callbackUrl = idp.authorize(authorizationUrl);
-    const callback = await request(apiPort, {
-      host: `127.0.0.1:${apiPort}`,
+    const callback = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
       path: `${callbackUrl.pathname}${callbackUrl.search}`,
       method: "GET",
       headers: {},
@@ -583,8 +645,8 @@ async function main(): Promise<void> {
     assert.ok(oidcCookie, `eveland_identity cookie missing: ${callback.setCookies.join(" | ")}`);
 
     // A replayed callback dies on the one-shot transaction.
-    const replay = await request(apiPort, {
-      host: `127.0.0.1:${apiPort}`,
+    const replay = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
       path: `${callbackUrl.pathname}${callbackUrl.search}`,
       method: "GET",
       headers: {},
@@ -593,9 +655,9 @@ async function main(): Promise<void> {
 
     // The OIDC-established session mints a Caller Token that carries a full
     // turn through the same Gateway and Agent as the other providers.
-    const oidcMint = await request(apiPort, {
-      host: `127.0.0.1:${apiPort}`,
-      path: "/identity/caller-tokens",
+    const oidcMint = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
+      path: "/api/identity/caller-tokens",
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -632,9 +694,9 @@ async function main(): Promise<void> {
 
     // A login whose Realm claim is not on the allowlist is refused.
     idp.claims = { ...idp.claims, account_id: "acct_unknown" };
-    const strangerLogin = await request(apiPort, {
-      host: `127.0.0.1:${apiPort}`,
-      path: "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fidentity-e2e",
+    const strangerLogin = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
+      path: "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fidentity-e2e",
       method: "GET",
       headers: {},
     });
@@ -642,8 +704,8 @@ async function main(): Promise<void> {
     const strangerCallback = idp.authorize(
       new URL(strangerLogin.headers.location?.toString() ?? ""),
     );
-    const strangerResult = await request(apiPort, {
-      host: `127.0.0.1:${apiPort}`,
+    const strangerResult = await request(publicPort, {
+      host: `127.0.0.1:${publicPort}`,
       path: `${strangerCallback.pathname}${strangerCallback.search}`,
       method: "GET",
       headers: {},
@@ -853,9 +915,9 @@ async function startGateway(
   return { port: address.port };
 }
 
-async function signInAdmin(apiPort: number): Promise<string> {
-  const response = await request(apiPort, {
-    host: `127.0.0.1:${apiPort}`,
+async function signInAdmin(publicPort: number): Promise<string> {
+  const response = await request(publicPort, {
+    host: `127.0.0.1:${publicPort}`,
     path: "/api/auth/sign-in/email",
     method: "POST",
     headers: { "content-type": "application/json", origin: WEB_ORIGIN },

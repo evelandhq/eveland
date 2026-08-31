@@ -81,6 +81,28 @@ Eveland 已将所有默认监听端口从通用开发端口迁入平台独享端
 3. **Issuer 迁移**：Caller Token Issuer 必须保持稳定。旧 Issuer 是 API Origin 的存量安装二选一：显式设置 `EVELAND_IDENTITY_ISSUER` 为旧值保留它（Agent 对新旧 Token 都继续验证；`/.well-known/*` 必须在该 Origin 上保持可达）；或切换到派生的前门 Issuer，并接受所有消费方 Chat 服务与 Agent Verifier 需同步更新——Worker 会在下一次 Reconcile 时把新 Issuer 重新注入 Deployment。
 4. 重新构建 web 应用并重启所有组件。
 
+## Identity 与 Catalog 路径迁入 `/api`
+
+Issuer 锚定的公开端点从 origin 根迁入 `/api` 命名空间，不设过渡 alias：
+
+| 旧路径                        | 新路径                   |
+| ----------------------------- | ------------------------ |
+| `/identity/*`                 | `/api/identity/*`        |
+| `/identity/internal/continue` | `/api/identity/continue` |
+| `/agent-catalog`              | `/api/agent-catalog`     |
+
+`/.well-known/jwks.json` 与 `/api/auth/*` 不变。`eveland_identity` Cookie 的
+`Path` 随路由一起迁移（既有 Session 重新登录即可）。对既有安装：
+
+1. **Agent 必须使用 `eveland` ≥ 0.6 并重建。** 旧 SDK 在 `WWW-Authenticate`
+   challenge 中烤入 `${issuer}/identity/login`，该地址现在会落到
+   Dashboard；平台升级后请重建并 Promote 每个 Project。
+2. **在 IdP 侧重新登记 OIDC redirect URI** 为
+   `<identityIssuer>/api/identity/oidc/callback`（Settings → System →
+   Identity 会显示准确值）。
+3. 更新所有指向公开 origin 上 `/agent-catalog` 或 `/identity/*` 的外部聊天
+   客户端配置。
+
 ## Better Auth Account Issuer
 
 内置的 Better Auth 1.7 线在凭据登录时匹配新的 `auth_accounts.issuer` 列。迁移 `0058` 以内联 `DEFAULT 'local:credential'` 添加该列，因此按常规顺序执行即可——**先迁移、再重启 API**；回滚到升级前的 checkout 也能继续正常写入账号（旧代码不写该列，默认值补齐）。

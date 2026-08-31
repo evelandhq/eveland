@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { signIn } from "@/lib/client-api";
-import { safeLoginNextPath } from "@/lib/identity-continuation";
+import { safeLoginNextPath } from "@/lib/login-next";
 
 export function LoginForm({ nextPath = "/projects" }: { nextPath?: string }) {
   const router = useRouter();

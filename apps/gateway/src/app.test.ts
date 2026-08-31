@@ -595,7 +595,7 @@ describe("Gateway", () => {
 
   test("transparently forwards Agent authentication challenges", async () => {
     const challenge =
-      'Bearer realm="eveland", authorization_uri="https://identity.example.com/identity/login", project_id="proj_agent", display_name="Eveland"';
+      'Bearer realm="eveland", authorization_uri="https://identity.example.com/api/identity/login", project_id="proj_agent", display_name="Eveland"';
     const upstream = await startUpstream((_request, response) => {
       response.writeHead(401, {
         "cache-control": "no-store",

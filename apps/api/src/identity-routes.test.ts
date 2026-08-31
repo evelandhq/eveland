@@ -116,7 +116,7 @@ describe("Eveland Internal Identity routes", () => {
     });
 
     const response = await app.request(
-      "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fnew",
+      "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fnew",
       { redirect: "manual" },
     );
 
@@ -293,7 +293,7 @@ describe("Eveland Internal Identity routes", () => {
     });
 
     const login = await app.request(
-      "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_123&userId=attacker&realm=other",
+      "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_123&userId=attacker&realm=other",
       { redirect: "manual" },
     );
     expect(login.status).toBe(302);
@@ -301,13 +301,13 @@ describe("Eveland Internal Identity routes", () => {
     expect(loginLocation.origin).toBe(webOrigin);
     expect(loginLocation.pathname).toBe("/login");
     const continuation = new URL(loginLocation.searchParams.get("next")!, webOrigin);
-    expect(continuation.pathname).toBe("/identity/internal/continue");
+    expect(continuation.pathname).toBe("/api/identity/continue");
     const state = continuation.searchParams.get("state");
     expect(state).toBeTruthy();
 
     const controlCookie = await signIn(app);
     const continued = await app.request(
-      `/identity/internal/continue?state=${encodeURIComponent(state!)}`,
+      `/api/identity/continue?state=${encodeURIComponent(state!)}`,
       {
         headers: { cookie: controlCookie },
         redirect: "manual",
@@ -317,7 +317,7 @@ describe("Eveland Internal Identity routes", () => {
     expect(continued.status).toBe(302);
     expect(continued.headers.get("location")).toBe(`${chatOrigin}/agents/agent_123`);
     const replayed = await app.request(
-      `/identity/internal/continue?state=${encodeURIComponent(state!)}`,
+      `/api/identity/continue?state=${encodeURIComponent(state!)}`,
       {
         headers: { cookie: controlCookie },
         redirect: "manual",
@@ -331,11 +331,11 @@ describe("Eveland Internal Identity routes", () => {
     expect(identitySetCookie).toContain("eveland_identity=");
     expect(identitySetCookie).toContain("HttpOnly");
     expect(identitySetCookie).toContain("SameSite=Lax");
-    expect(identitySetCookie).toContain("Path=/identity");
+    expect(identitySetCookie).toContain("Path=/api/identity");
     expect(identitySetCookie).not.toContain("eveland_session=");
     const identityCookie = identitySetCookie.split(";", 1)[0]!;
 
-    const session = await app.request("/identity/session", {
+    const session = await app.request("/api/identity/session", {
       headers: { cookie: identityCookie, origin: chatOrigin },
     });
     expect(session.status).toBe(200);
@@ -380,21 +380,21 @@ describe("Eveland Internal Identity routes", () => {
     });
     const controlCookie = await signIn(app);
     const login = await app.request(
-      "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_123",
+      "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_123",
       { headers: { cookie: controlCookie }, redirect: "manual" },
     );
     const identityCookie = login.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
     expect(login.headers.get("location")).toBe(`${chatOrigin}/agents/agent_123`);
 
     const reused = await app.request(
-      "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_456",
+      "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_456",
       { headers: { cookie: identityCookie }, redirect: "manual" },
     );
     expect(reused.headers.get("location")).toBe(`${chatOrigin}/agents/agent_456`);
     expect(reused.headers.get("set-cookie")).toBeNull();
 
     const switched = await app.request(
-      "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_456&switchRealm=1",
+      "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_456&switchRealm=1",
       {
         headers: { cookie: `${identityCookie}; ${controlCookie}` },
         redirect: "manual",
@@ -406,20 +406,20 @@ describe("Eveland Internal Identity routes", () => {
     expect(rotatedIdentityCookie).not.toBe(identityCookie);
     expect(
       (
-        await app.request("/identity/session", {
+        await app.request("/api/identity/session", {
           headers: { cookie: identityCookie },
         })
       ).status,
     ).toBe(200);
     await expect(
       (
-        await app.request("/identity/session", {
+        await app.request("/api/identity/session", {
           headers: { cookie: identityCookie },
         })
       ).json(),
     ).resolves.toEqual({ authenticated: false });
 
-    const issued = await app.request("/identity/caller-tokens", {
+    const issued = await app.request("/api/identity/caller-tokens", {
       method: "POST",
       headers: {
         cookie: rotatedIdentityCookie,
@@ -453,12 +453,12 @@ describe("Eveland Internal Identity routes", () => {
     });
     const controlCookie = await signIn(app);
     const login = await app.request(
-      "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_123",
+      "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_123",
       { headers: { cookie: controlCookie }, redirect: "manual" },
     );
     const identityCookie = login.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
-    const disallowedOrigin = await app.request("/identity/caller-tokens", {
+    const disallowedOrigin = await app.request("/api/identity/caller-tokens", {
       method: "POST",
       headers: {
         cookie: identityCookie,
@@ -472,7 +472,7 @@ describe("Eveland Internal Identity routes", () => {
       "https://evil.example",
     );
 
-    const issued = await app.request("/identity/caller-tokens", {
+    const issued = await app.request("/api/identity/caller-tokens", {
       method: "POST",
       headers: {
         cookie: identityCookie,
@@ -487,16 +487,16 @@ describe("Eveland Internal Identity routes", () => {
     expect(issuedBody.token.split(".")).toHaveLength(3);
     expect((await app.request("/.well-known/jwks.json")).status).toBe(200);
 
-    const logout = await app.request("/identity/logout", {
+    const logout = await app.request("/api/identity/logout", {
       method: "POST",
       headers: { cookie: identityCookie, origin: chatOrigin },
     });
     expect(logout.status).toBe(204);
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
-    expect(logout.headers.get("set-cookie")).toContain("Path=/identity");
+    expect(logout.headers.get("set-cookie")).toContain("Path=/api/identity");
     expect(
       (
-        await app.request("/identity/caller-tokens", {
+        await app.request("/api/identity/caller-tokens", {
           method: "POST",
           headers: {
             cookie: identityCookie,
@@ -630,7 +630,7 @@ describe("Eveland Internal Identity routes", () => {
       schedules: [],
     });
 
-    const response = await app.request("/agent-catalog", {
+    const response = await app.request("/api/agent-catalog", {
       headers: { origin: chatOrigin },
     });
 
@@ -673,13 +673,13 @@ describe("Eveland Internal Identity routes", () => {
       enabled: true,
     });
     const controlCookie = await signIn(app);
-    const login = await app.request("/identity/login?target=eve-chats&returnPath=%2F", {
+    const login = await app.request("/api/identity/login?target=eve-chats&returnPath=%2F", {
       headers: { cookie: controlCookie },
       redirect: "manual",
     });
     const identityCookie = login.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
-    const response = await app.request("/identity/app-tokens", {
+    const response = await app.request("/api/identity/app-tokens", {
       method: "POST",
       headers: {
         cookie: identityCookie,
@@ -714,7 +714,7 @@ describe("Open access Identity Provider", () => {
     const { app } = await createIdentityApp({ keepOpenAccess: true });
 
     const response = await app.request(
-      "/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_1",
+      "/api/identity/login?target=eve-chats&returnPath=%2Fagents%2Fagent_1",
     );
 
     // Open access never redirects a caller into a login: non-browser callers

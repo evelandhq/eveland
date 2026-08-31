@@ -44,11 +44,11 @@ Generic OIDC 需要把 `${WEB_ORIGIN}/agent-auth/oidc/callback` 注册为精确 
 
 ## 外部身份（Eveland Identity）
 
-外部已认证聊天使用独立的托管 Identity 边界。在 API 与 Worker 上设置同一个稳定公开的 `EVELAND_IDENTITY_ISSUER`，把 `EVELAND_IDENTITY_ALLOWED_ORIGINS` 设为精确的 EveChats 浏览器 Origin，并给 Worker 一个 Agent 可达的 `EVELAND_IDENTITY_JWKS_URL`（宿主机 systemd Agent 用 `http://127.0.0.1:17301/.well-known/jwks.json`）。在 System > Identity 中创建 Internal Provider 与精确的允许 Realm，注册 `eve-chats` Return Origin，并验证只读的 `/agent-catalog` 投影：它向所有调用方返回相同的可路由 `eveChannel` Project，是公开的，不按 Realm 过滤，也不配置 Agent Authorization。Worker 保留并注入 Issuer、JWKS URL 与 `EVELAND_PROJECT_ID`；Project Secret 与 Shared Agent Environment 无法覆盖它们。
+外部已认证聊天使用独立的托管 Identity 边界。在 API 与 Worker 上设置同一个稳定公开的 `EVELAND_IDENTITY_ISSUER`，把 `EVELAND_IDENTITY_ALLOWED_ORIGINS` 设为精确的 EveChats 浏览器 Origin，并给 Worker 一个 Agent 可达的 `EVELAND_IDENTITY_JWKS_URL`（宿主机 systemd Agent 用 `http://127.0.0.1:17301/.well-known/jwks.json`）。在 System > Identity 中创建 Internal Provider 与精确的允许 Realm，注册 `eve-chats` Return Origin，并验证只读的 `/api/agent-catalog` 投影：它向所有调用方返回相同的可路由 `eveChannel` Project，是公开的，不按 Realm 过滤，也不配置 Agent Authorization。Worker 保留并注入 Issuer、JWKS URL 与 `EVELAND_PROJECT_ID`；Project Secret 与 Shared Agent Environment 无法覆盖它们。
 
 绝不在 EveChats 或 Agent 配置中复用 `BETTER_AUTH_SECRET`、Better Auth Cookie、Playground authentication Credential 或 Provider Token。当 Agent 的 Route Auth 要求 Eveland Identity 时，其 `WWW-Authenticate` 响应标明 Eveland Login Continuation 与 Project Audience；浏览器跟随该 Continuation，获得短时效 Caller Token 后重试原请求。Agent Gateway 透明转发 Challenge 与 Credential；Agent 负责验证 Token，并继续承担业务 Authorization（包括 `403`）。
 
-把 Eveland Identity 与浏览器聊天界面部署在同一 Schemeful Site 上，通常是同级 HTTPS 子域。独立的 `eveland_identity` Cookie 作用域为 `/identity`，只保护 Identity API；`/agent-catalog` 是公开的。该 Cookie 使用 `SameSite=Lax`，因此无关站点即使其精确 Origin 出现在 CORS Allowlist 中，也无法用它发起携带凭证的 Token 请求。
+把 Eveland Identity 与浏览器聊天界面部署在同一 Schemeful Site 上，通常是同级 HTTPS 子域。独立的 `eveland_identity` Cookie 作用域为 `/api/identity`，只保护 Identity API；`/api/agent-catalog` 是公开的。该 Cookie 使用 `SameSite=Lax`，因此无关站点即使其精确 Origin 出现在 CORS Allowlist 中，也无法用它发起携带凭证的 Token 请求。
 
 ## Shared Agent Environment
 

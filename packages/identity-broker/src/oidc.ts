@@ -14,7 +14,7 @@ export type IdentityOidcProviderConfig = {
   authorizationParameters: Record<string, string>;
 };
 
-/** The per-login secrets minted at `/identity/login` and replayed at the callback. */
+/** The per-login secrets minted at `/api/identity/login` and replayed at the callback. */
 export type IdentityOidcTransaction = {
   redirectUri: string;
   state: string;

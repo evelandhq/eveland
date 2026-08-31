@@ -14,7 +14,7 @@ import {
 } from "./index.js";
 
 const appSecretKey = "identity-test-secret-key-0000001";
-const redirectUri = "https://api.example.com/identity/oidc/callback";
+const redirectUri = "https://api.example.com/api/identity/oidc/callback";
 
 const jinshujuClaims = {
   iss: "https://account.jinshuju.net",

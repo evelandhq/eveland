@@ -72,7 +72,7 @@ export function createIdentityRouteServices(context: IdentityRoutesContext) {
     issuer,
     allowedOrigins,
     oidcProtocol,
-    oidcRedirectUri: `${issuer}/identity/oidc/callback`,
+    oidcRedirectUri: `${issuer}/api/identity/oidc/callback`,
   };
 }
 
@@ -83,7 +83,7 @@ export function registerPublicIdentityRoutes(
   const { app, store, options, webOrigin } = context;
   const { broker, issuer, allowedOrigins } = services;
 
-  app.get("/identity/session", async (c) => {
+  app.get("/api/identity/session", async (c) => {
     c.header("cache-control", "no-store");
     const sessionToken = getCookie(c, IDENTITY_SESSION_COOKIE_NAME) ?? "";
     try {
@@ -108,7 +108,7 @@ export function registerPublicIdentityRoutes(
     }
   });
 
-  app.get("/identity/login", async (c) => {
+  app.get("/api/identity/login", async (c) => {
     c.header("cache-control", "no-store");
     const targetKey = c.req.query("target") ?? "";
     const returnPath = c.req.query("returnPath") ?? "";
@@ -226,18 +226,21 @@ export function registerPublicIdentityRoutes(
       return completeInternalLogin(c, state, internalIdentity, context, services);
     }
 
-    const next = `/identity/internal/continue?state=${encodeURIComponent(state)}`;
+    const next = `/api/identity/continue?state=${encodeURIComponent(state)}`;
     const login = new URL("/login", webOrigin);
     login.searchParams.set("next", next);
     return c.redirect(login.toString(), 302);
   });
 
-  app.get("/identity/internal/continue", async (c) => {
+  // Continuation after the Dashboard's Better Auth login: `next` is a path on
+  // the public origin, where the front door routes it straight back here — the
+  // Better Auth session cookie rides along because both live on that origin.
+  app.get("/api/identity/continue", async (c) => {
     c.header("cache-control", "no-store");
     const state = c.req.query("state") ?? "";
     const internalIdentity = await options.auth?.resolveInternalIdentity(c.req.raw);
     if (!internalIdentity) {
-      const next = `/identity/internal/continue?state=${encodeURIComponent(state)}`;
+      const next = `/api/identity/continue?state=${encodeURIComponent(state)}`;
       const login = new URL("/login", webOrigin);
       login.searchParams.set("next", next);
       return c.redirect(login.toString(), 302);
@@ -245,7 +248,7 @@ export function registerPublicIdentityRoutes(
     return completeInternalLogin(c, state, internalIdentity, context, services);
   });
 
-  app.get("/identity/oidc/callback", async (c) => {
+  app.get("/api/identity/oidc/callback", async (c) => {
     c.header("cache-control", "no-store");
     const state = c.req.query("state") ?? "";
     // Consume before anything else, including the IdP-error path: whatever
@@ -318,7 +321,7 @@ export function registerPublicIdentityRoutes(
     }
   });
 
-  app.post("/identity/caller-tokens", async (c) => {
+  app.post("/api/identity/caller-tokens", async (c) => {
     c.header("cache-control", "no-store");
     if (!allowedOrigins.has(c.req.header("origin") ?? "")) {
       return c.json(
@@ -355,7 +358,7 @@ export function registerPublicIdentityRoutes(
     }
   });
 
-  app.post("/identity/app-tokens", async (c) => {
+  app.post("/api/identity/app-tokens", async (c) => {
     c.header("cache-control", "no-store");
     const origin = c.req.header("origin") ?? "";
     if (!allowedOrigins.has(origin)) {
@@ -390,7 +393,7 @@ export function registerPublicIdentityRoutes(
     }
   });
 
-  app.post("/identity/logout", async (c) => {
+  app.post("/api/identity/logout", async (c) => {
     c.header("cache-control", "no-store");
     if (!allowedOrigins.has(c.req.header("origin") ?? "")) {
       return c.json(
@@ -788,7 +791,7 @@ function setIdentityCookie(c: any, token: string, issuer: string, expiresAt: str
     httpOnly: true,
     secure: new URL(issuer).protocol === "https:",
     sameSite: "Lax",
-    path: "/identity",
+    path: "/api/identity",
     expires: new Date(expiresAt),
   });
 }
@@ -798,7 +801,7 @@ function clearIdentityCookie(c: any, issuer: string) {
     httpOnly: true,
     secure: new URL(issuer).protocol === "https:",
     sameSite: "Lax",
-    path: "/identity",
+    path: "/api/identity",
     maxAge: 0,
   });
 }

@@ -20,6 +20,30 @@ describe("front-door path classification", () => {
     });
   });
 
+  test("the Identity namespace goes to the API verbatim", () => {
+    // Issuer-anchored: the SDK generates `${issuer}/api/identity/login` and
+    // administrators register `${issuer}/api/identity/oidc/callback` at their
+    // IdP, so these paths must resolve on the public origin.
+    for (const path of [
+      "/api/identity/login",
+      "/api/identity/session",
+      "/api/identity/oidc/callback",
+      "/api/identity/continue",
+      "/api/identity/caller-tokens",
+    ]) {
+      expect(classifyFrontDoorPath(path)).toEqual({ target: "api", upstreamPath: path });
+    }
+  });
+
+  test("the Agent Catalog goes to the API verbatim, exact path only", () => {
+    expect(classifyFrontDoorPath("/api/agent-catalog")).toEqual({
+      target: "api",
+      upstreamPath: "/api/agent-catalog",
+    });
+    // No subtree: the Catalog is a single public projection, not a namespace.
+    expect(classifyFrontDoorPath("/api/agent-catalog/extra").target).toBe("web");
+  });
+
   test("allowlisted browser subtrees go to the API with the prefix stripped", () => {
     expect(classifyFrontDoorPath("/api/eveland/projects/proj_1/build-deploy")).toEqual({
       target: "api",

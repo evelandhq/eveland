@@ -266,7 +266,7 @@ export function evelandIdentity(options: EvelandIdentityOptions = {}): AuthFn<Re
             scheme: "Bearer",
             parameters: {
               realm: "eveland",
-              authorization_uri: `${issuer}/identity/login`,
+              authorization_uri: `${issuer}/api/identity/login`,
               project_id: projectId,
               display_name: "Eveland",
             },

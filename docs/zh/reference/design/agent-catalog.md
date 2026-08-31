@@ -5,7 +5,7 @@ description: 派生的 Catalog、客户端中立的认证协议，以及为什�
 
 ## Catalog 是投影，不是注册表
 
-`GET /agent-catalog` 回答一个问题：*这个安装上有哪些 Eve 客户端可以聊的
+`GET /api/agent-catalog` 回答一个问题：*这个安装上有哪些 Eve 客户端可以聊的
 Agent？*成员资格由两个事实派生：部署的 Source Revision 默认导出标准的
 `eveChannel(...)`，且 Project 有可路由的 Stable Deployment。没有需要
 另行创建的 Catalog 记录，所以 Catalog 不可能与现实漂移。
