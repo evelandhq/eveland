@@ -115,6 +115,10 @@ export const authAccounts = pgTable(
     id: text("id").primaryKey(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
+    // better-auth 1.7 credential sign-in matches on issuer; the DEFAULT keeps
+    // both the migrate->restart gap and a 1.6 rollback writable (old code's
+    // INSERTs omit the column). Every eveland account is a local credential.
+    issuer: text("issuer").notNull().default("local:credential"),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -131,6 +135,7 @@ export const authAccounts = pgTable(
   (table) => [
     index("auth_accounts_user_idx").on(table.userId),
     uniqueIndex("auth_accounts_provider_account_idx").on(table.providerId, table.accountId),
+    uniqueIndex("auth_accounts_issuer_account_idx").on(table.issuer, table.accountId),
   ],
 );
 
