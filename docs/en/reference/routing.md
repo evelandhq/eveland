@@ -9,7 +9,7 @@ This page is the behavioral contract of the public data plane and the deployment
 
 Every deployment owns an immutable release, a preview host, and a runtime adapter, but is not itself a permanently running process. A RuntimeInstance records one generation of a Docker container or systemd unit, and may be `stopped` while the deployment remains addressable, continuable, and retention-protected. A project's stable host is a mutable route; raw dynamic ports are not product URLs and are never exposed publicly.
 
-The canonical development addresses are `http://<projectSlug>.agent.localhost:17302` and `http://<deploymentKey>--<projectSlug>.agent.localhost:17302`. A deployment's public `deploymentKey` is a project-unique 8-character lowercase alphanumeric key; the full `dep_xxxxxxxxxx` remains the internal ID. Previews keep single-level hostnames so one production `*.agents.example.com` wildcard certificate covers stable, preview, and named aliases.
+The canonical development addresses are `http://<projectSlug>.agent.localhost:17300` and `http://<deploymentKey>--<projectSlug>.agent.localhost:17300`. A deployment's public `deploymentKey` is a project-unique 8-character lowercase alphanumeric key; the full `dep_xxxxxxxxxx` remains the internal ID. Previews keep single-level hostnames so one production `*.agents.example.com` wildcard certificate covers stable, preview, and named aliases.
 
 ## Preview, promote, and weighted routing
 

@@ -68,4 +68,14 @@ export type GatewayAppOptions = {
   apiSessionIdleTtlMs?: number;
   telemetry?: GatewayTelemetry;
   now?: () => Date;
+  /**
+   * Front-door upstreams for platform-host (non-agent) traffic. When absent
+   * the Gateway keeps its pre-front-door behavior and 404s unknown hosts —
+   * the seam most unit tests rely on; the real server always configures it.
+   */
+  frontDoor?: {
+    apiUrl: string;
+    webUrl: string;
+    fetchImplementation?: typeof fetch;
+  };
 };

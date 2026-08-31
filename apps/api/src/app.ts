@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { WEB_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import { PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
 import { cors } from "hono/cors";
 import type { AuthPrincipal } from "@evelandhq/core/contracts";
 import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
@@ -69,7 +69,11 @@ export function createApp(
   assertValidSecretKey(appSecretKey);
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
-  const webOrigin = options.webOrigin ?? process.env.WEB_ORIGIN ?? WEB_ORIGIN_FALLBACK;
+  const webOrigin =
+    options.webOrigin ??
+    process.env.WEB_ORIGIN ??
+    process.env.EVELAND_PUBLIC_ORIGIN ??
+    PUBLIC_ORIGIN_FALLBACK;
   const identityRouteContext = { app, store, options, appSecretKey, webOrigin };
   const identityRouteServices = createIdentityRouteServices(identityRouteContext);
   const agentAuth = createAgentAuthService({

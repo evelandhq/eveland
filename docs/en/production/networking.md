@@ -23,7 +23,7 @@ Public CAs issue wildcard certificates only through the ACME DNS-01 challenge â€
 
 ## Reverse proxy
 
-Start from `infra/traefik/agents.yml`: replace the example domain, terminate TLS there, and route wildcard Agent hosts to the Agent Gateway on host port `17302`. Keep that port private to the host, and keep the `!PathPrefix('/internal')` guard.
+Start from `infra/traefik/agents.yml`: replace the example domain, terminate TLS there, and route wildcard Agent hosts to the Agent Gateway on host port `17300`. The same front door serves the Dashboard and browser API on the platform host, so the whole installation sits behind one upstream. Keep that port private to the host, and keep the `!PathPrefix('/internal')` guard.
 
 Keep the wildcard rule path-transparent. Eve task-input callbacks and custom MCP channel paths must reach the same Agent Gateway catch-all as canonical session routes; do not add path-specific proxy rules that bypass Agent Gateway target selection or cold activation. If you ever route by path directly in front of a Deployment, forward **both** `/eve/` and `/.well-known/workflow/` â€” the workflow world delivers run callbacks to `/.well-known/workflow/v1/flow`, and forwarding only `/eve/` lets sessions start but stalls every run silently.
 
@@ -31,7 +31,7 @@ Keep the wildcard rule path-transparent. Eve task-input callbacks and custom MCP
 
 - Agent processes bind `127.0.0.1:41xxx`. Never add those dynamic ports to Traefik or firewall rules.
 - The managed Collector's receivers (loopback `17311`/`17312` for the platform, `17313`/`17314` for Agents) must never be published on a public interface.
-- API (`17301`) and the Agent Gateway's internal control surface stay loopback-only behind the proxy.
+- API (`17301`) and Dashboard (`17302`) bind loopback only; the front door (`17300`) is the sole non-loopback listener.
 - Postgres publishes `17310` on the host so host services and deployed Agent containers can reach it, and it ships with well-known default credentials. **Block `17310` from every non-local network at the host firewall** (for example `ufw deny in on <public-interface> to any port 17310`, or an equivalent security-group rule); the only inbound ports a public interface needs are the reverse proxy's `80`/`443`.
 
 ## Agent Gateway boundary

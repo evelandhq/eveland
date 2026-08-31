@@ -5,9 +5,15 @@
  * component inventing its own.
  */
 
-import { API_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import { BROWSER_API_PREFIX } from "@evelandhq/core/front-door";
 
-export const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? API_ORIGIN_FALLBACK;
+/**
+ * Same-origin, always: every browser call rides the public origin's
+ * `/api/eveland` namespace (front-door proxy in production, the Next rewrite
+ * allowlist when the dev server is dialed directly), so no cross-origin
+ * cookie or CORS configuration exists on the browser side.
+ */
+export const apiBaseUrl = BROWSER_API_PREFIX;
 
 /**
  * The complete control-plane error contract. Validation failures carry

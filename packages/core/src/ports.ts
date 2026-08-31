@@ -18,18 +18,19 @@
  * both sides.
  */
 
-/** Dashboard (Next.js). The block's front door slot: Phase 2 of the port
- * redesign hands 17300 to the Agent Gateway as the single public entry and
- * moves the Dashboard behind it, so `http://host:17300` stays "the Dashboard
- * address" across both phases. */
-export const WEB_PORT = 17300;
+/** Agent Gateway bind port (`GATEWAY_PORT`) — the platform's single front
+ * door. Dashboard, browser API, and public agent traffic all enter here
+ * (agent hosts disambiguate by Host header); the Dashboard and API listen on
+ * loopback behind it, so `http://host:17300` stays "the Dashboard address"
+ * across both phases of the port redesign. `EVELAND_GATEWAY_PUBLIC_PORT`
+ * (the advertised port) defaults to the same value under the http scheme. */
+export const GATEWAY_PORT = 17300;
 
-/** Platform API (`PORT`). */
+/** Platform API (`PORT`), loopback-only behind the front door. */
 export const API_PORT = 17301;
 
-/** Agent Gateway bind port (`GATEWAY_PORT`). `EVELAND_GATEWAY_PUBLIC_PORT`
- * (the advertised port) defaults to the same value under the http scheme. */
-export const GATEWAY_PORT = 17302;
+/** Dashboard (Next.js), loopback-only behind the front door. */
+export const WEB_PORT = 17302;
 
 /** Reserved for the Model Gateway (unmerged branch; formerly 4090). Nothing
  * on main binds it yet -- the branch remaps here on rebase. */
@@ -88,9 +89,16 @@ export const SANDBOX_INTERNAL_PORT = 3000;
 // Derived default addresses. Loopback (127.0.0.1) forms are what one platform
 // process uses to dial another on the same host; localhost forms are
 // browser-visible origins.
-export const WEB_ORIGIN_FALLBACK = `http://localhost:${WEB_PORT}`;
+
+/** The single browser-visible origin (`EVELAND_PUBLIC_ORIGIN`): the front
+ * door. Dashboard pages, `/api/eveland/*` browser API calls, `/api/auth/*`
+ * (Better Auth), and `/.well-known/*` (Identity issuer documents) are all
+ * served here. */
+export const PUBLIC_ORIGIN_FALLBACK = `http://localhost:${GATEWAY_PORT}`;
+export const WEB_ORIGIN_FALLBACK = PUBLIC_ORIGIN_FALLBACK;
 export const API_ORIGIN_FALLBACK = `http://localhost:${API_PORT}`;
 export const API_INTERNAL_URL_FALLBACK = `http://127.0.0.1:${API_PORT}`;
+export const WEB_INTERNAL_URL_FALLBACK = `http://127.0.0.1:${WEB_PORT}`;
 export const GATEWAY_INTERNAL_URL_FALLBACK = `http://127.0.0.1:${GATEWAY_PORT}`;
 export const OTLP_ENDPOINT_FALLBACK = `http://127.0.0.1:${OTEL_PLATFORM_HOST_HTTP_PORT}`;
 /** Agent-receiver OTLP endpoint for systemd (host-process) deployments. */

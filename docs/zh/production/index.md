@@ -31,7 +31,7 @@ Agent Receiver 不做认证，因此每个 Deployment 的遥测由写入其只�
 
 ## 公开入口
 
-Dashboard 与 API 部署在你选择的 Origin 上。所有 Agent 流量经由 Wildcard TLS 反向代理进入宿主机端口 `17302` 上的 Agent Gateway；Deployment 端口始终留在 Loopback。参见[配置 Agent 流量](/zh/docs/production/networking)。
+一切流量都经由 TLS 反向代理进入宿主机端口 `17300` 上的 Agent Gateway 前门：平台 Host（`EVELAND_PUBLIC_ORIGIN`）上是 Dashboard 与浏览器 API，Wildcard Agent Host 上是 Agent 流量。Deployment 端口始终留在 Loopback。参见[配置 Agent 流量](/zh/docs/production/networking)。
 
 ## 资源生命周期
 

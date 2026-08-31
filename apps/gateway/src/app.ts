@@ -36,6 +36,7 @@ import {
   sessionExpiredResponse,
 } from "./gateway-request-lifecycle.js";
 import { createGatewayRouteCache } from "./gateway-route-cache.js";
+import { proxyFrontDoorRequest } from "./gateway-front-door.js";
 import {
   affinityKey,
   buildInternalPlaygroundHeaders,
@@ -200,8 +201,16 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       context.req.header("host") ?? new URL(context.req.url).host,
     );
     const hostname = hostnameFromAuthority(authority);
-    if (!isAllowedHostname(hostname, options.allowedBaseDomains))
+    if (!isAllowedHostname(hostname, options.allowedBaseDomains)) {
+      // Not an agent host: this is the platform host arriving at the front
+      // door. /internal/* never reaches here (the Gateway's own token-gated
+      // routes above answer it on every host), so the public surface is
+      // exactly the classified table plus the Dashboard fallback.
+      if (options.frontDoor) {
+        return proxyFrontDoorRequest(context.req.raw, options.frontDoor);
+      }
       return context.json({ error: "Route not found" }, 404);
+    }
 
     const cached = routeCache.read(hostname);
     const route = cached !== undefined ? cached : await repository.findRouteByHostname(hostname);

@@ -270,7 +270,10 @@ export async function composeDeploymentEnv(
   const identityConfiguration = resolveIdentityDeploymentConfiguration({
     dataDir: options.dataDir ?? workerEnv.EVELAND_DATA_DIR ?? ".eveland-data",
     nodeEnv,
-    issuer: options.identityIssuer || workerEnv.EVELAND_IDENTITY_ISSUER,
+    issuer:
+      options.identityIssuer ||
+      workerEnv.EVELAND_IDENTITY_ISSUER ||
+      workerEnv.EVELAND_PUBLIC_ORIGIN,
     jwksUrl: options.identityJwksUrl || workerEnv.EVELAND_IDENTITY_JWKS_URL,
   });
   const identityIssuer = identityConfiguration?.issuer;

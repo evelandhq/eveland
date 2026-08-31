@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
-import { API_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import { PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
 import { getCookie, setCookie } from "hono/cookie";
 import {
   normalizeIdentityProviderConnection,
@@ -46,7 +46,8 @@ export function createIdentityRouteServices(context: IdentityRoutesContext) {
   const issuer = (
     context.options.identityIssuer ??
     process.env.EVELAND_IDENTITY_ISSUER ??
-    API_ORIGIN_FALLBACK
+    process.env.EVELAND_PUBLIC_ORIGIN ??
+    PUBLIC_ORIGIN_FALLBACK
   ).replace(/\/$/, "");
   const configuredAllowedOrigins =
     context.options.identityAllowedOrigins ??
