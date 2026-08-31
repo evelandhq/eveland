@@ -15,7 +15,7 @@
     "@evelandhq/core": "workspace:*",
     "@evelandhq/db": "workspace:*",
     "@evelandhq/platform-observability": "workspace:*",
-    "@evelandhq/workflow-world": "^0.13.1"
+    "@evelandhq/workflow-world": "^0.14.0"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

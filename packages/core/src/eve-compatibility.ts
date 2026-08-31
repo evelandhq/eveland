@@ -99,6 +99,26 @@ export function unsupportedReleaseEveVersionMessage(
   return unsupportedEveVersionMessage(resolved);
 }
 
+/**
+ * The refusal that no retry, restart, or waiting can clear — the predicate
+ * behind settling a Deployment's orphaned workflow runs (issue #433) and
+ * filtering them out of dispatcher boot recovery. Deliberately narrower than
+ * the activation route's 409 set: a `failed` Deployment is recoverable (the
+ * next session activation restarts it), so it does NOT refuse here — only a
+ * missing or archiving/archived Deployment, or a Release whose baked Eve
+ * version the supported window has slid past, is permanent.
+ */
+export function permanentDeploymentActivationRefusal(
+  deployment: { id: string; status: string } | null | undefined,
+  releaseSummary: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!deployment) return "Deployment no longer exists.";
+  if (deployment.status === "archiving" || deployment.status === "archived") {
+    return `Deployment ${deployment.id} is ${deployment.status} and can never activate again.`;
+  }
+  return unsupportedReleaseEveVersionMessage(releaseSummary ?? null);
+}
+
 export function createEveVersionInfo(
   version: string | null,
   sourceRevisionId: string | null,

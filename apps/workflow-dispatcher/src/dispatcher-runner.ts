@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import type {
+  BootRecoveryRun,
   DispatcherLifecycleEvent,
   DispatcherService,
   DispatcherServiceOptions,
@@ -90,6 +91,71 @@ export async function startEvelandWorkflowDispatcher(
     /\/+$/u,
     "",
   );
+  const activationToken = env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ?? "eveland-dev-gateway-token";
+
+  /**
+   * Boot-recovery filter (issue #433): ask the control plane which of the
+   * candidates' Deployments can never activate again, and leave those runs
+   * out of the sweep — each one re-enqueued is a guaranteed dead letter per
+   * restart. One batched call, because the candidate list arrives whole.
+   * Every failure path fails open to the full list: replaying a doomed run is
+   * the pre-#433 status quo, while wrongly skipping a healthy one would
+   * silently strand it until the next boot.
+   */
+  const filterBootRecoveryRuns = async (runs: BootRecoveryRun[]): Promise<BootRecoveryRun[]> => {
+    if (!apiUrlForActivation || runs.length === 0) return runs;
+    try {
+      const deploymentIds = [...new Set(runs.map((run) => run.deploymentId))];
+      const response = await deps.fetchImplementation(
+        `${apiUrlForActivation}/internal/workflow/dispatcher/recovery-preflight`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${activationToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ deploymentIds }),
+        },
+      );
+      if (!response.ok) {
+        await response.body?.cancel();
+        telemetry.emit({
+          severity: "warn",
+          eventName: "workflow_dispatcher.recovery_preflight_rejected",
+          body: `recovery preflight rejected with HTTP ${String(response.status)}; recovering all candidates`,
+        });
+        return runs;
+      }
+      const payload = (await response.json()) as {
+        notActivatable?: { deploymentId: string; reason: string }[];
+      };
+      const refused = new Map(
+        (payload.notActivatable ?? []).map((entry) => [entry.deploymentId, entry.reason]),
+      );
+      if (refused.size === 0) return runs;
+      const kept = runs.filter((run) => !refused.has(run.deploymentId));
+      for (const [deploymentId, reason] of refused) {
+        telemetry.emit({
+          severity: "info",
+          eventName: "workflow_dispatcher.recovery_skipped_deployment",
+          body: `boot recovery skipped runs bound to ${deploymentId}: ${reason}`,
+          attributes: {
+            "eveland.deployment.id": deploymentId,
+            "dispatcher.skipped_runs": runs.length - kept.length,
+          },
+        });
+      }
+      return kept;
+    } catch (error) {
+      telemetry.emit({
+        severity: "warn",
+        eventName: "workflow_dispatcher.recovery_preflight_failed",
+        body: `recovery preflight failed; recovering all candidates: ${String(error)}`,
+      });
+      return runs;
+    }
+  };
+
   const service = await deps.startService({
     env,
     telemetry,
@@ -114,10 +180,10 @@ export async function startEvelandWorkflowDispatcher(
       snapshot.schemaGeneration = schemaGeneration;
       snapshot.worldIdentity = worldIdentity;
     },
+    filterBootRecoveryRuns,
   });
 
   const apiUrl = apiUrlForActivation;
-  const activationToken = env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ?? "eveland-dev-gateway-token";
 
   const heartbeat = async () => {
     emitCapacitySnapshot(service, telemetry);
