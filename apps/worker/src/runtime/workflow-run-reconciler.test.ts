@@ -83,7 +83,16 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       { projectId: project.id, deploymentId: "dep_gone" },
     ];
     const reconcile = vi.fn(
-      async (_pool: unknown, options: { tenantId: string; deploymentIds?: string[] }) => ({
+      async (
+        _pool: unknown,
+        options: {
+          tenantId: string;
+          deploymentIds?: string[];
+          disposition: string;
+          errorCode?: string;
+          reason: string;
+        },
+      ) => ({
         disposition: "fail" as const,
         reconciled: [
           {
@@ -111,7 +120,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
         disposition: "fail",
         errorCode: "DEPLOYMENT_UNSTARTABLE",
       });
-      expect((call[1] as { reason: string }).reason).toMatch(/^Reconciled by the platform: /);
+      expect(call[1].reason).toMatch(/^Reconciled by the platform: /);
     }
   });
 
