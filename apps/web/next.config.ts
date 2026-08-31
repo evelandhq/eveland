@@ -31,41 +31,28 @@ function positiveOr(value: string | undefined, fallback: number): number {
 }
 
 /**
- * The API subtrees the browser is allowed to reach through the web origin.
- * The rewrite is an enumerated allowlist, not a wildcard: the API also hosts
- * machine-plane endpoints (`/internal/*`, service-credential authenticated)
- * that must never be browser-reachable — a wildcard rewrite silently punched
- * through the network boundary in the single-public-origin topology and was
- * fail-open for every future API route (#73). New API routes are therefore
- * NOT exposed on the web origin unless their subtree is added here;
- * `next-config.test.ts` scans the web sources so a browser call outside the
- * allowlist fails the build instead of failing in production.
+ * The public API namespace, forwarded verbatim — the dev-server twin of the
+ * front door's `/api/*` rule. Inlined because next.config cannot import
+ * workspace TypeScript; `next-config.test.ts` pins it against
+ * PUBLIC_API_PREFIX in @evelandhq/core/front-door. No allowlist survives
+ * here: what the API registers under `/api` IS the browser contract, and the
+ * machine plane lives at root `/internal/*`, which this rewrite can never
+ * reach (#73's class is structural now — the api-route-namespaces
+ * architecture test pins the API's namespaces).
  */
-export const browserApiSubtrees = [
-  "agent-auth",
-  "agent-connections",
-  "api/auth",
-  "auth",
-  "git-credentials",
-  "invitations",
-  "members",
-  "password-reset",
-  "platform",
-  "profile",
-  "projects",
-  "source-preflights",
-  "system",
-] as const;
+export const inlinedPublicApiPrefix = "/api";
 
 const nextConfig: NextConfig = {
   experimental: {
     proxyTimeout: proxyTimeoutMs,
   },
   async rewrites() {
-    return browserApiSubtrees.map((subtree) => ({
-      source: `/api/eveland/${subtree}/:path*`,
-      destination: `${apiBaseUrl}/${subtree}/:path*`,
-    }));
+    return [
+      {
+        source: `${inlinedPublicApiPrefix}/:path*`,
+        destination: `${apiBaseUrl}${inlinedPublicApiPrefix}/:path*`,
+      },
+    ];
   },
 };
 

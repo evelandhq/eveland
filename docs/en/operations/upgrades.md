@@ -124,6 +124,14 @@ simply re-login). For an existing installation:
 3. Update any external chat client configuration that pointed at
    `/agent-catalog` or `/identity/*` on the public origin.
 
+In the same series, the Dashboard's own browser API left the
+`/api/eveland/<subtree>` tunnel: the API now registers its whole public
+surface natively under `/api/*` and the front door forwards that namespace
+verbatim (the allowlist is gone — the machine plane stays at root
+`/internal/*`, which the front door never forwards). This is invisible to
+operators and external clients; only custom tooling that scripted
+`/api/eveland/...` URLs needs the prefix dropped.
+
 ## Better Auth account issuer
 
 The bundled Better Auth 1.7 line matches credential sign-ins on a new

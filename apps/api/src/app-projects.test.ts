@@ -18,7 +18,7 @@ describe("api app", () => {
     const { project, schedule } = await createScheduleRunFixture(store, false);
     const persistedSchedule = await store.getProjectSchedule(schedule.id);
 
-    const response = await createApp(store).request("/projects");
+    const response = await createApp(store).request("/api/projects");
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -47,7 +47,7 @@ describe("api app", () => {
       schedules: [],
     });
 
-    const response = await createApp(store).request("/projects");
+    const response = await createApp(store).request("/api/projects");
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -71,14 +71,14 @@ describe("api app", () => {
     const app = createApp(store);
 
     const availableResponse = await app.request(
-      "/projects/name-availability?name=sample-office-assistant",
+      "/api/projects/name-availability?name=sample-office-assistant",
     );
     expect(availableResponse.status).toBe(200);
     await expect(availableResponse.json()).resolves.toEqual({
       available: true,
     });
 
-    const createResponse = await app.request("/projects", {
+    const createResponse = await app.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -97,13 +97,13 @@ describe("api app", () => {
       status: "import_pending",
     });
     const unavailableResponse = await app.request(
-      "/projects/name-availability?name=sample-office-assistant",
+      "/api/projects/name-availability?name=sample-office-assistant",
     );
     await expect(unavailableResponse.json()).resolves.toEqual({
       available: false,
     });
 
-    const duplicateResponse = await app.request("/projects", {
+    const duplicateResponse = await app.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -121,7 +121,7 @@ describe("api app", () => {
       payload: { deployAfterImport: true },
     });
 
-    const listResponse = await app.request("/projects");
+    const listResponse = await app.request("/api/projects");
     await expect(listResponse.json()).resolves.toMatchObject({
       projects: expect.arrayContaining([
         expect.objectContaining({
@@ -140,7 +140,7 @@ describe("api app", () => {
       importKind: "zip",
     });
 
-    const response = await app.request(`/projects/${project.id}`, {
+    const response = await app.request(`/api/projects/${project.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -176,14 +176,14 @@ describe("api app", () => {
       importKind: "zip",
     });
 
-    const invalidResponse = await app.request(`/projects/${project.id}`, {
+    const invalidResponse = await app.request(`/api/projects/${project.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: " ", description: "x".repeat(241) }),
     });
     expect(invalidResponse.status).toBe(400);
 
-    const clearedResponse = await app.request(`/projects/${project.id}`, {
+    const clearedResponse = await app.request(`/api/projects/${project.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -207,7 +207,7 @@ describe("api app", () => {
       appSecretKey: "eveland-test-secret-key-00000000",
     });
 
-    const queuedResponse = await app.request("/source-preflights", {
+    const queuedResponse = await app.request("/api/source-preflights", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -232,7 +232,7 @@ describe("api app", () => {
       summary: { eveVersion: "0.45.2", layout: "single-agent" },
     });
 
-    const statusResponse = await app.request(`/source-preflights/${queued.preflight.id}`);
+    const statusResponse = await app.request(`/api/source-preflights/${queued.preflight.id}`);
     expect(statusResponse.status).toBe(200);
     await expect(statusResponse.json()).resolves.toEqual({
       preflight: expect.objectContaining({
@@ -242,7 +242,7 @@ describe("api app", () => {
       }),
     });
 
-    const projectResponse = await app.request("/projects", {
+    const projectResponse = await app.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -287,7 +287,7 @@ describe("api app", () => {
     const store = createTestStore();
     const app = createApp(store);
 
-    const response = await app.request("/projects", {
+    const response = await app.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -319,7 +319,7 @@ describe("api app", () => {
       appSecretKey: "eveland-test-secret-key-00000000",
     });
 
-    const response = await app.request("/projects", {
+    const response = await app.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -355,7 +355,7 @@ describe("api app", () => {
     );
     const app = createApp(store);
 
-    const response = await app.request("/projects", {
+    const response = await app.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -391,7 +391,7 @@ describe("api app", () => {
     await store.upsertGitCredential("another_user", "gitlab.example.com", "other-token");
     const app = createApp(store);
 
-    const list = await app.request("/git-credentials");
+    const list = await app.request("/api/git-credentials");
     expect(list.status).toBe(200);
     const listed = await list.json();
     expect(listed).toEqual({
@@ -404,7 +404,7 @@ describe("api app", () => {
     });
     expect(JSON.stringify(listed)).not.toContain("user_local_admin");
     expect(JSON.stringify(listed)).not.toContain("encrypted-token");
-    const deleted = await app.request(`/git-credentials/${credential.id}`, {
+    const deleted = await app.request(`/api/git-credentials/${credential.id}`, {
       method: "DELETE",
     });
     expect(deleted.status).toBe(204);
@@ -422,14 +422,14 @@ describe("api app", () => {
       appSecretKey: "eveland-test-secret-key-00000000",
     });
 
-    const rejected = await app.request("/git-credentials", {
+    const rejected = await app.request("/api/git-credentials", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ host: "gitlab.example.com/group", gitlabPat: "glpat-manual" }),
     });
     expect(rejected.status).toBe(400);
 
-    const created = await app.request("/git-credentials", {
+    const created = await app.request("/api/git-credentials", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ host: "https://GitLab.Example.COM:8443", gitlabPat: "glpat-manual" }),
@@ -448,7 +448,7 @@ describe("api app", () => {
       ),
     ).toBe("glpat-manual");
 
-    const replaced = await app.request("/git-credentials", {
+    const replaced = await app.request("/api/git-credentials", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ host: "gitlab.example.com:8443", gitlabPat: "glpat-rotated" }),
@@ -467,7 +467,7 @@ describe("api app", () => {
   });
 
   test("rejects a manually edited project name that is not already URL-friendly", async () => {
-    const response = await createApp(createTestStore()).request("/projects", {
+    const response = await createApp(createTestStore()).request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -509,7 +509,7 @@ describe("api app", () => {
     });
     await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
 
-    const response = await createApp(store).request(`/projects/${project.id}/endpoints`);
+    const response = await createApp(store).request(`/api/projects/${project.id}/endpoints`);
 
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -554,7 +554,7 @@ describe("api app", () => {
     const archived = deployed[2]!;
     await store.updateDeploymentStatus(archived.id, "archived");
 
-    const response = await createApp(store).request(`/projects/${project.id}/endpoints`);
+    const response = await createApp(store).request(`/api/projects/${project.id}/endpoints`);
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { previews: string[] };
@@ -614,7 +614,7 @@ describe("api app", () => {
       (route) => route.kind === "deployment" && route.targets[0]?.deploymentId === first.id,
     );
     const mutatePreview = await app.request(
-      `/projects/${project.id}/routes/${preview!.id}/targets`,
+      `/api/projects/${project.id}/routes/${preview!.id}/targets`,
       {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -625,7 +625,7 @@ describe("api app", () => {
     );
     expect(mutatePreview.status).toBe(409);
 
-    const split = await app.request(`/projects/${project.id}/routes/${stable!.id}/targets`, {
+    const split = await app.request(`/api/projects/${project.id}/routes/${stable!.id}/targets`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -644,12 +644,15 @@ describe("api app", () => {
       route: { policyRevision: 2 },
     });
 
-    const promote = await app.request(`/projects/${project.id}/deployments/${second.id}/promote`, {
-      method: "POST",
-    });
+    const promote = await app.request(
+      `/api/projects/${project.id}/deployments/${second.id}/promote`,
+      {
+        method: "POST",
+      },
+    );
     expect(promote.status).toBe(200);
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: second.id });
-    const alias = await app.request(`/projects/${project.id}/aliases`, {
+    const alias = await app.request(`/api/projects/${project.id}/aliases`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -708,7 +711,7 @@ describe("api app", () => {
     ]);
 
     const response = await createApp(store).request(
-      `/projects/${project.id}/deployments/${first.id}/drain`,
+      `/api/projects/${project.id}/deployments/${first.id}/drain`,
       { method: "POST" },
     );
 
@@ -788,7 +791,7 @@ describe("api app", () => {
       apiSessionIdleTtlMs: 604_800_000,
     });
 
-    const response = await app.request(`/projects/${project.id}/deployments`);
+    const response = await app.request(`/api/projects/${project.id}/deployments`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -919,7 +922,7 @@ describe("api app", () => {
     });
     await store.completeSession(candidateSession.id, { status: "failed" });
 
-    const response = await createApp(store).request(`/projects/${project.id}/variant-metrics`);
+    const response = await createApp(store).request(`/api/projects/${project.id}/variant-metrics`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -962,7 +965,7 @@ describe("api app", () => {
     form.set("archive", archive);
     const app = createApp(store, { dataDir });
 
-    const response = await app.request("/projects", {
+    const response = await app.request("/api/projects", {
       method: "POST",
       body: form,
     });
@@ -998,7 +1001,7 @@ describe("api app", () => {
     const form = new FormData();
     form.set("archive", archive);
 
-    const response = await createApp(store, { dataDir }).request("/source-preflights", {
+    const response = await createApp(store, { dataDir }).request("/api/source-preflights", {
       method: "POST",
       body: form,
     });
@@ -1027,7 +1030,7 @@ describe("api app", () => {
     form.set("archive", archive);
     const app = createApp(store, { dataDir });
 
-    const response = await app.request("/projects", {
+    const response = await app.request("/api/projects", {
       method: "POST",
       body: form,
     });
@@ -1052,7 +1055,7 @@ describe("api app", () => {
     form.set("name", "Zip Agent");
     form.set("archive", archive);
 
-    const response = await createApp(createTestStore()).request("/projects", {
+    const response = await createApp(createTestStore()).request("/api/projects", {
       method: "POST",
       body: form,
     });
@@ -1082,7 +1085,7 @@ describe("zip upload hardening", () => {
     form.set("archive", archive);
     const app = createApp(store, { dataDir });
 
-    const response = await app.request("/projects", { method: "POST", body: form });
+    const response = await app.request("/api/projects", { method: "POST", body: form });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -1105,7 +1108,7 @@ describe("zip upload hardening", () => {
     form.set("archive", archive);
     const app = createApp(store, { dataDir });
 
-    const response = await app.request("/source-preflights", { method: "POST", body: form });
+    const response = await app.request("/api/source-preflights", { method: "POST", body: form });
 
     expect(response.status).toBe(400);
   });
@@ -1125,7 +1128,7 @@ describe("zip upload hardening", () => {
       form.set("archive", archive);
       const app = createApp(store, { dataDir });
 
-      const response = await app.request("/projects", { method: "POST", body: form });
+      const response = await app.request("/api/projects", { method: "POST", body: form });
 
       expect(response.status).toBe(413);
       await expect(response.json()).resolves.toEqual({ error: "Upload too large" });
@@ -1168,9 +1171,12 @@ describe("promote failure handling", () => {
     const { store, project } = await promotableFixture();
     const app = createApp(store, { invalidateGatewayRoutes: async () => {} });
 
-    const response = await app.request(`/projects/${project.id}/deployments/dep_missing/promote`, {
-      method: "POST",
-    });
+    const response = await app.request(
+      `/api/projects/${project.id}/deployments/dep_missing/promote`,
+      {
+        method: "POST",
+      },
+    );
 
     expect(response.status).toBe(404);
   });
@@ -1181,7 +1187,7 @@ describe("promote failure handling", () => {
     const app = createApp(store, { invalidateGatewayRoutes: async () => {} });
 
     const response = await app.request(
-      `/projects/${project.id}/deployments/${deployment.id}/promote`,
+      `/api/projects/${project.id}/deployments/${deployment.id}/promote`,
       { method: "POST" },
     );
 
@@ -1198,7 +1204,7 @@ describe("promote failure handling", () => {
     });
 
     const response = await app.request(
-      `/projects/${project.id}/deployments/${deployment.id}/promote`,
+      `/api/projects/${project.id}/deployments/${deployment.id}/promote`,
       { method: "POST" },
     );
 

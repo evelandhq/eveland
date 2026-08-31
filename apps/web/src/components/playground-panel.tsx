@@ -65,9 +65,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   // known, the standalone Client mints an I/O-free `sessions.attach` handle
   // for out-of-band durable cancel; before then, Stop aborts the local
   // request rather than waiting forever for the first response.
-  const [client] = useState(
-    () => new Client({ host: `/api/eveland/projects/${projectId}/playground` }),
-  );
+  const [client] = useState(() => new Client({ host: `/api/projects/${projectId}/playground` }));
   const pendingRouteAuthTurn = useRef<PendingPlaygroundMessage | null>(null);
   const leaveResetSent = useRef(false);
   const [composerError, setComposerError] = useState<string | null>(null);
@@ -88,7 +86,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
       : peekPendingPlaygroundTurn(window.sessionStorage, projectId),
   );
   const agent = useEveAgent({
-    host: `/api/eveland/projects/${projectId}/playground`,
+    host: `/api/projects/${projectId}/playground`,
     initialSession: pendingTurn?.session,
     onError: (sendError) => {
       const redirected = handleRouteAuthError({

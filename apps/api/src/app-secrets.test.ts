@@ -10,14 +10,14 @@ import { createTestStore } from "@evelandhq/db/vitest";
 describe("api app", () => {
   test("stores secrets without returning secret values", async () => {
     const app = createApp(createTestStore());
-    const createProject = await app.request("/projects", {
+    const createProject = await app.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "secret-agent", importKind: "zip" }),
     });
     const { project } = await createProject.json();
 
-    const secretResponse = await app.request(`/projects/${project.id}/secrets`, {
+    const secretResponse = await app.request(`/api/projects/${project.id}/secrets`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -32,7 +32,7 @@ describe("api app", () => {
     expect(body.secret).toMatchObject({ key: "OPENAI_API_KEY", kind: "variable" });
     expect(JSON.stringify(body)).not.toContain("sk-test-123456");
 
-    const listResponse = await app.request(`/projects/${project.id}/secrets`);
+    const listResponse = await app.request(`/api/projects/${project.id}/secrets`);
     expect(JSON.stringify(await listResponse.json())).not.toContain("sk-test-123456");
   });
 
@@ -40,20 +40,20 @@ describe("api app", () => {
     const store = createTestStore();
     const appSecretKey = "eveland-test-secret-key-00000000";
     const app = createApp(store, { appSecretKey });
-    const createProject = await app.request("/projects", {
+    const createProject = await app.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "editable-secret-agent", importKind: "zip" }),
     });
     const { project } = await createProject.json();
-    const createdResponse = await app.request(`/projects/${project.id}/secrets`, {
+    const createdResponse = await app.request(`/api/projects/${project.id}/secrets`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ key: "MODEL_NAME", kind: "variable", value: "gpt-5" }),
     });
     const created = (await createdResponse.json()) as { secret: { id: string } };
 
-    const response = await app.request(`/projects/${project.id}/secrets/${created.secret.id}`, {
+    const response = await app.request(`/api/projects/${project.id}/secrets/${created.secret.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ key: "DEFAULT_MODEL", kind: "secret" }),
@@ -111,7 +111,7 @@ describe("api app", () => {
       runtimeKind: "docker",
     });
 
-    const response = await createApp(store).request(`/projects/${project.id}/secrets`, {
+    const response = await createApp(store).request(`/api/projects/${project.id}/secrets`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -183,7 +183,7 @@ describe("api app", () => {
     );
 
     const response = await createApp(store, { appSecretKey }).request(
-      `/projects/${project.id}/secrets/batch`,
+      `/api/projects/${project.id}/secrets/batch`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -249,7 +249,7 @@ describe("api app", () => {
       importKind: "zip",
     });
 
-    const response = await createApp(store).request(`/projects/${project.id}/secrets/batch`, {
+    const response = await createApp(store).request(`/api/projects/${project.id}/secrets/batch`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -274,7 +274,7 @@ describe("api app", () => {
       await store.upsertSecret(project.id, `KEY_${index}`, "encrypted-placeholder");
     }
 
-    const response = await createApp(store).request(`/projects/${project.id}/secrets/batch`, {
+    const response = await createApp(store).request(`/api/projects/${project.id}/secrets/batch`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -326,7 +326,7 @@ describe("api app", () => {
     );
     const app = createApp(store);
 
-    const missing = await app.request(`/projects/${project.id}/secrets/secret_missing`, {
+    const missing = await app.request(`/api/projects/${project.id}/secrets/secret_missing`, {
       method: "DELETE",
     });
     await expect(missing.json()).resolves.toMatchObject({
@@ -335,7 +335,7 @@ describe("api app", () => {
     });
     await expect(store.claimNextJob("test-worker")).resolves.toBeNull();
 
-    const response = await app.request(`/projects/${project.id}/secrets/${secret.id}`, {
+    const response = await app.request(`/api/projects/${project.id}/secrets/${secret.id}`, {
       method: "DELETE",
     });
 
@@ -384,7 +384,7 @@ describe("api app", () => {
     const app = createApp(store);
 
     await expect(
-      (await app.request(`/projects/${project.id}/source/revision`)).json(),
+      (await app.request(`/api/projects/${project.id}/source/revision`)).json(),
     ).resolves.toMatchObject({
       revision: expect.objectContaining({
         kind: "zip",
@@ -392,13 +392,13 @@ describe("api app", () => {
       }),
     });
     await expect(
-      (await app.request(`/projects/${project.id}/source/files`)).json(),
+      (await app.request(`/api/projects/${project.id}/source/files`)).json(),
     ).resolves.toMatchObject({
       files: [expect.objectContaining({ path: "agent/instructions.md" })],
     });
     await expect(
       (
-        await app.request(`/projects/${project.id}/source/file?path=agent%2Finstructions.md`)
+        await app.request(`/api/projects/${project.id}/source/file?path=agent%2Finstructions.md`)
       ).json(),
     ).resolves.toMatchObject({
       file: expect.objectContaining({ content: "You are concise." }),

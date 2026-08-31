@@ -32,7 +32,7 @@ test("composes the exact public auth surface before the protected control plane"
   expect((await app.request("/api/auth/get-session")).status).toBe(200);
   expect(
     (
-      await app.request("/invitations/accept", {
+      await app.request("/api/invitations/accept", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -41,7 +41,7 @@ test("composes the exact public auth surface before the protected control plane"
   ).toBe(400);
   expect(
     (
-      await app.request("/invitations/preview", {
+      await app.request("/api/invitations/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -50,7 +50,7 @@ test("composes the exact public auth surface before the protected control plane"
   ).toBe(400);
   expect(
     (
-      await app.request("/password-reset/preview", {
+      await app.request("/api/password-reset/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -59,7 +59,7 @@ test("composes the exact public auth surface before the protected control plane"
   ).toBe(400);
   expect(
     (
-      await app.request("/password-reset/complete", {
+      await app.request("/api/password-reset/complete", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -93,7 +93,7 @@ test("composes the exact public auth surface before the protected control plane"
     path: string;
     init?: RequestInit;
   }> = [
-    { path: "/auth/session" },
+    { path: "/api/members/me" },
     {
       path: "/profile",
       init: {
@@ -155,17 +155,17 @@ test("composes the exact public auth surface before the protected control plane"
 
   const { cookie } = await signIn(app);
   await expect(
-    (await app.request("/auth/session", { headers: { cookie } })).json(),
+    (await app.request("/api/members/me", { headers: { cookie } })).json(),
   ).resolves.toEqual({
     member: expect.objectContaining({
       email: "admin@example.com",
       role: "admin",
     }),
   });
-  expect((await app.request("/members", { headers: { cookie } })).status).toBe(200);
+  expect((await app.request("/api/members", { headers: { cookie } })).status).toBe(200);
   expect(
     (
-      await app.request("/system/configuration", {
+      await app.request("/api/system/configuration", {
         headers: { cookie },
       })
     ).status,

@@ -592,7 +592,7 @@ describe("external OTLP egress proxy", () => {
       validateObservabilityDestination: async () => undefined,
       forwardExternalObservabilityRequest,
     });
-    const created = await app.request("/system/observability/destinations", {
+    const created = await app.request("/api/system/observability/destinations", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -660,7 +660,7 @@ describe("external OTLP egress proxy", () => {
       validateObservabilityDestination: async () => undefined,
       forwardExternalObservabilityRequest,
     });
-    const created = await app.request("/system/observability/destinations", {
+    const created = await app.request("/api/system/observability/destinations", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -677,7 +677,7 @@ describe("external OTLP egress proxy", () => {
     expect(created.status).toBe(201);
     const destinationId = (await store.getObservabilityPolicy("team_local"))
       .externalDestinations[0]!.id;
-    const updated = await app.request(`/system/observability/destinations/${destinationId}`, {
+    const updated = await app.request(`/api/system/observability/destinations/${destinationId}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -792,7 +792,7 @@ describe("external OTLP egress proxy", () => {
       validateObservabilityDestination: async () => undefined,
       forwardExternalObservabilityRequest,
     });
-    await app.request("/system/observability/destinations", {
+    await app.request("/api/system/observability/destinations", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -893,7 +893,7 @@ describe("external OTLP egress proxy", () => {
       validateObservabilityDestination: async () => undefined,
       forwardExternalObservabilityRequest,
     });
-    await app.request("/system/observability/destinations", {
+    await app.request("/api/system/observability/destinations", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

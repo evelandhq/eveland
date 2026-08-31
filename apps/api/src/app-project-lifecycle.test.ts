@@ -6,7 +6,7 @@ describe("api app", () => {
   test("syncs the latest git source with deployment and promotion chained", async () => {
     const store = createTestStore();
     const app = createApp(store);
-    const createResponse = await app.request("/projects", {
+    const createResponse = await app.request("/api/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -17,7 +17,7 @@ describe("api app", () => {
     });
     const { project } = await createResponse.json();
 
-    const syncResponse = await app.request(`/projects/${project.id}/sync-source`, {
+    const syncResponse = await app.request(`/api/projects/${project.id}/sync-source`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ deploy: true, promote: true }),
@@ -51,7 +51,7 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const syncResponse = await app.request(`/projects/${project.id}/sync-source`, {
+    const syncResponse = await app.request(`/api/projects/${project.id}/sync-source`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ deploy: true, promote: false }),
@@ -83,7 +83,7 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const response = await app.request(`/projects/${project.id}/build-deploy`, {
+    const response = await app.request(`/api/projects/${project.id}/build-deploy`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ promote: true }),
@@ -109,7 +109,7 @@ describe("api app", () => {
       sourcePath: "/tmp/invalid-deploy",
     });
 
-    const response = await createApp(store).request(`/projects/${project.id}/build-deploy`, {
+    const response = await createApp(store).request(`/api/projects/${project.id}/build-deploy`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ promote: "yes" }),
@@ -129,7 +129,7 @@ describe("api app", () => {
       gitUrl: "https://example.com/invalid-promotion.git",
     });
 
-    const response = await createApp(store).request(`/projects/${project.id}/sync-source`, {
+    const response = await createApp(store).request(`/api/projects/${project.id}/sync-source`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ deploy: false, promote: true }),
@@ -154,7 +154,7 @@ describe("api app", () => {
     const buildJob = await store.claimNextJob("worker-a");
     await store.failJob(buildJob!.id, "provider returned a sensitive build detail");
 
-    const response = await createApp(store).request(`/projects/${project.id}/jobs`);
+    const response = await createApp(store).request(`/api/projects/${project.id}/jobs`);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -171,7 +171,7 @@ describe("api app", () => {
     });
 
     const deploymentResponse = await createApp(store).request(
-      `/projects/${project.id}/jobs?include=deployment`,
+      `/api/projects/${project.id}/jobs?include=deployment`,
     );
     await expect(deploymentResponse.json()).resolves.toEqual({
       jobs: [
@@ -198,7 +198,7 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const syncResponse = await app.request(`/projects/${project.id}/sync-source`, {
+    const syncResponse = await app.request(`/api/projects/${project.id}/sync-source`, {
       method: "POST",
     });
 
@@ -225,7 +225,7 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const response = await app.request(`/projects/${project.id}/sync-source`, {
+    const response = await app.request(`/api/projects/${project.id}/sync-source`, {
       method: "POST",
     });
 
@@ -237,7 +237,7 @@ describe("api app", () => {
 
   test("returns 404 when syncing a project that does not exist", async () => {
     const app = createApp(createTestStore());
-    const response = await app.request("/projects/missing/sync-source", {
+    const response = await app.request("/api/projects/missing/sync-source", {
       method: "POST",
     });
     expect(response.status).toBe(404);
@@ -246,7 +246,7 @@ describe("api app", () => {
   test("returns 404 when deleting a project that does not exist", async () => {
     const app = createApp(createTestStore());
 
-    const response = await app.request("/projects/missing", {
+    const response = await app.request("/api/projects/missing", {
       method: "DELETE",
     });
 
@@ -265,7 +265,7 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const response = await app.request(`/projects/${project.id}`, {
+    const response = await app.request(`/api/projects/${project.id}`, {
       method: "DELETE",
     });
 
@@ -287,7 +287,7 @@ describe("api app", () => {
       deletionError: null,
     });
 
-    const duplicate = await app.request(`/projects/${project.id}`, {
+    const duplicate = await app.request(`/api/projects/${project.id}`, {
       method: "DELETE",
     });
     expect(duplicate.status).toBe(409);
@@ -304,14 +304,14 @@ describe("api app", () => {
     });
     const playgroundProxy = vi.fn();
     const app = createApp(store, { playgroundProxy });
-    await app.request(`/projects/${project.id}`, { method: "DELETE" });
+    await app.request(`/api/projects/${project.id}`, { method: "DELETE" });
 
-    const read = await app.request(`/projects/${project.id}`);
-    const mutate = await app.request(`/projects/${project.id}/build-deploy`, {
+    const read = await app.request(`/api/projects/${project.id}`);
+    const mutate = await app.request(`/api/projects/${project.id}/build-deploy`, {
       method: "POST",
     });
     const canonicalPlayground = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session`,
+      `/api/projects/${project.id}/playground/eve/v1/session`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },

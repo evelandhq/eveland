@@ -85,20 +85,20 @@ export async function completeAgentAuthCallback(search: string): Promise<{ retur
 }
 
 export async function signIn(email: string, password: string): Promise<CurrentMember> {
-  await clientRequest("/api/auth/sign-in/email", {
+  await clientRequest("/auth/sign-in/email", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email, password }),
     // A rejected credential is this endpoint's answer, not an expired session.
     unauthorized: "surface",
   });
-  return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then(
+  return clientRequest<{ member: CurrentMember }>("/members/me", { method: "GET" }).then(
     (data) => data.member,
   );
 }
 
 export async function signOut(): Promise<void> {
-  await clientRequest("/api/auth/sign-out", {
+  await clientRequest("/auth/sign-out", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",
@@ -106,7 +106,7 @@ export async function signOut(): Promise<void> {
 }
 
 export async function getCurrentMember(): Promise<CurrentMember> {
-  return clientRequest<{ member: CurrentMember }>("/auth/session", { method: "GET" }).then(
+  return clientRequest<{ member: CurrentMember }>("/members/me", { method: "GET" }).then(
     (data) => data.member,
   );
 }
@@ -546,7 +546,7 @@ export function resetPlaygroundOnPageLeave(input: {
   const fetcher = input.fetcher ?? fetch;
   // ID-addressed reset; every supported Eve line speaks it.
   void fetcher(
-    `/api/eveland/projects/${encodeURIComponent(input.projectId)}/playground/eve/v1/session/${encodeURIComponent(sessionId)}/reset`,
+    `/api/projects/${encodeURIComponent(input.projectId)}/playground/eve/v1/session/${encodeURIComponent(sessionId)}/reset`,
     {
       method: "POST",
       credentials: "same-origin",

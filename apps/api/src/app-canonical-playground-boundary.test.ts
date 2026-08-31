@@ -107,7 +107,7 @@ describe("canonical Playground API boundary", () => {
       playgroundProxy,
     });
 
-    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    const response = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "Exercise the focused boundary" }),
@@ -147,7 +147,7 @@ describe("canonical Playground API boundary", () => {
       playgroundProxy,
     });
 
-    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    const response = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "Reject this credential twice" }),
@@ -190,7 +190,7 @@ describe("canonical Playground API boundary", () => {
     );
     registerCanonicalPlaygroundRoute({ app, store, agentAuth, playgroundProxy });
 
-    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    const response = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "Hit a cold deployment" }),
@@ -228,7 +228,7 @@ describe("canonical Playground API boundary", () => {
     });
     registerCanonicalPlaygroundRoute({ app, store, agentAuth, playgroundProxy });
 
-    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    const response = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "Nobody is listening" }),
@@ -266,7 +266,7 @@ describe("canonical Playground API boundary", () => {
     });
 
     const response = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_existing_continuation`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_existing_continuation`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },

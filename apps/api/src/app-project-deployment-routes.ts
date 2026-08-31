@@ -59,7 +59,7 @@ export function registerProjectDeploymentRoutes(input: {
       Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? DEFAULT_API_SESSION_IDLE_TTL_MS),
   });
 
-  app.get("/projects/:projectId/endpoints", async (c) => {
+  app.get("/api/projects/:projectId/endpoints", async (c) => {
     const routes = await store.listProjectRoutes(c.req.param("projectId"));
     if (routes.length === 0) return c.json({ error: "Agent endpoints not found" }, 404);
     return c.json({
@@ -78,7 +78,7 @@ export function registerProjectDeploymentRoutes(input: {
     });
   });
 
-  app.get("/projects/:projectId/deployments", async (c) => {
+  app.get("/api/projects/:projectId/deployments", async (c) => {
     const projectId = c.req.param("projectId");
     // Build-derived read model: each release's summary projected from eve's
     // discovery manifest (null for releases built before the projection or
@@ -101,13 +101,13 @@ export function registerProjectDeploymentRoutes(input: {
     });
   });
 
-  app.get("/projects/:projectId/variant-metrics", async (c) => {
+  app.get("/api/projects/:projectId/variant-metrics", async (c) => {
     // Aggregated in SQL: this used to load every Session the Project had ever
     // recorded and fold them on the request path.
     return c.json({ variants: await store.getVariantMetrics(c.req.param("projectId")) });
   });
 
-  app.post("/projects/:projectId/deployments/:deploymentId/promote", async (c) => {
+  app.post("/api/projects/:projectId/deployments/:deploymentId/promote", async (c) => {
     let route;
     try {
       route = await store.promoteDeployment(c.req.param("projectId"), c.req.param("deploymentId"));
@@ -122,7 +122,7 @@ export function registerProjectDeploymentRoutes(input: {
     return c.json({ route });
   });
 
-  app.post("/projects/:projectId/deployments/:deploymentId/drain", async (c) => {
+  app.post("/api/projects/:projectId/deployments/:deploymentId/drain", async (c) => {
     const deployment = await store.getDeployment(c.req.param("deploymentId"));
     if (!deployment || deployment.projectId !== c.req.param("projectId"))
       return c.json({ error: "Deployment not found" }, 404);
@@ -149,7 +149,7 @@ export function registerProjectDeploymentRoutes(input: {
     });
   });
 
-  app.post("/projects/:projectId/deployments/:deploymentId/archive", async (c) => {
+  app.post("/api/projects/:projectId/deployments/:deploymentId/archive", async (c) => {
     const projectId = c.req.param("projectId");
     const deploymentId = c.req.param("deploymentId");
     const policy = (
@@ -168,7 +168,7 @@ export function registerProjectDeploymentRoutes(input: {
     return c.json({ job: toPublicJob(job) }, 202);
   });
 
-  app.put("/projects/:projectId/routes/:routeId/targets", async (c) => {
+  app.put("/api/projects/:projectId/routes/:routeId/targets", async (c) => {
     const input = routeTargetsSchema.safeParse(await c.req.json().catch(() => null));
     if (!input.success)
       return c.json({ error: "Invalid route targets", detail: input.error.flatten() }, 400);
@@ -182,7 +182,7 @@ export function registerProjectDeploymentRoutes(input: {
     return c.json({ route });
   });
 
-  app.post("/projects/:projectId/aliases", async (c) => {
+  app.post("/api/projects/:projectId/aliases", async (c) => {
     const input = aliasSchema.safeParse(await c.req.json().catch(() => null));
     if (!input.success)
       return c.json({ error: "Invalid alias route", detail: input.error.flatten() }, 400);

@@ -91,9 +91,9 @@ export const SANDBOX_INTERNAL_PORT = 3000;
 // browser-visible origins.
 
 /** The single browser-visible origin (`EVELAND_PUBLIC_ORIGIN`): the front
- * door. Dashboard pages, `/api/eveland/*` browser API calls, `/api/auth/*`
- * (Better Auth), and `/.well-known/*` (Identity issuer documents) are all
- * served here. */
+ * door. Dashboard pages, the `/api/*` public namespace (browser API, Better
+ * Auth, Identity, the Agent Catalog), and `/.well-known/*` (Identity issuer
+ * documents) are all served here. */
 export const PUBLIC_ORIGIN_FALLBACK = `http://localhost:${GATEWAY_PORT}`;
 export const WEB_ORIGIN_FALLBACK = PUBLIC_ORIGIN_FALLBACK;
 export const API_ORIGIN_FALLBACK = `http://localhost:${API_PORT}`;
