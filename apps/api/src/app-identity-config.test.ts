@@ -10,7 +10,7 @@ describe("Identity local development configuration", () => {
     vi.unstubAllEnvs();
   });
 
-  test("allows the local EveChats origin without requiring a new .env entry", () => {
+  test("grants no browser origin until the allowlist is configured, even in development", () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("EVELAND_IDENTITY_ALLOWED_ORIGINS", "");
 
@@ -19,10 +19,10 @@ describe("Identity local development configuration", () => {
       store: createTestStore(),
       options: {},
       appSecretKey: "identity-api-secret-key-00000000",
-      webOrigin: "http://localhost:3000",
+      webOrigin: "http://localhost:17300",
     });
 
-    expect(services.allowedOrigins).toEqual(new Set(["http://localhost:3010"]));
+    expect(services.allowedOrigins).toEqual(new Set());
   });
 
   test("restarts the API dev process when the shared .env changes", () => {

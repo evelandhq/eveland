@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "next dev --port 17300",
     "build": "next build",
     "typecheck": "next typegen && tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests"

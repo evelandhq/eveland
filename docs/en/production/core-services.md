@@ -39,9 +39,9 @@ The base file's containerized workflow dispatcher carries development configurat
 
 The overlay does not start a containerized Worker either; `--profile docker-worker` restores it only for legacy Docker-runtime installs that have not migrated to the host Worker.
 
-API, Agent Gateway, and Dashboard run with host networking so they can reach Deployments on the host's loopback ports; Postgres stays bridged and publishes `5432` to the host. The API container bind-mounts `/var/lib/eveland` at that same absolute path, matching the host Worker's `EVELAND_DATA_DIR` — see the [shared data contract](/docs/production).
+API, Agent Gateway, and Dashboard run with host networking so they can reach Deployments on the host's loopback ports; Postgres stays bridged and publishes `17310` to the host. The API container bind-mounts `/var/lib/eveland` at that same absolute path, matching the host Worker's `EVELAND_DATA_DIR` — see the [shared data contract](/docs/production).
 
-**The published `5432` must never be reachable from outside the host.** It exists so host services (Worker, workflow dispatcher) and deployed Agent containers (via `host.docker.internal`) can reach the database, and it ships with well-known default credentials. Block it from every non-local network at the host firewall — see [Networking](/docs/production/networking).
+**The published `17310` must never be reachable from outside the host.** It exists so host services (Worker, workflow dispatcher) and deployed Agent containers (via `host.docker.internal`) can reach the database, and it ships with well-known default credentials. Block it from every non-local network at the host firewall — see [Networking](/docs/production/networking).
 
 ## Align release identity
 

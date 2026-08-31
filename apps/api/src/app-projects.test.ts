@@ -514,8 +514,8 @@ describe("api app", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toEqual({
-      stable: `http://${project.slug}.agent.localhost:4080`,
-      previews: [`http://${deployment.deploymentKey}--${project.slug}.agent.localhost:4080`],
+      stable: `http://${project.slug}.agent.localhost:17302`,
+      previews: [`http://${deployment.deploymentKey}--${project.slug}.agent.localhost:17302`],
     });
     expect(JSON.stringify(body)).not.toContain("41000");
   });
@@ -561,10 +561,10 @@ describe("api app", () => {
     expect(body.previews).toEqual(
       deploymentKeys
         .filter((key) => key !== archived.deploymentKey)
-        .map((key) => `http://${key}--${project.slug}.agent.localhost:4080`),
+        .map((key) => `http://${key}--${project.slug}.agent.localhost:17302`),
     );
     expect(body.previews.at(-1)).toBe(
-      `http://${newest.deploymentKey}--${project.slug}.agent.localhost:4080`,
+      `http://${newest.deploymentKey}--${project.slug}.agent.localhost:17302`,
     );
   });
 

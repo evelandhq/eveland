@@ -36,7 +36,7 @@ sudo systemctl enable --now eveland-workflow-dispatcher
 
 - `EVELAND_WORKFLOW_WORLD_URL`——必须与 Worker 注入 Deployment 的值相同，否则 Dispatcher 会从一个无人写入的数据库认领。当 Deployment 与平台自身进程通过不同名称访问 Postgres 时，设置 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。
 - `EVELAND_WORKFLOW_STREAM_COMPACTION`——必须与 Worker 的值一致，使写入侧与终态重写压缩遵循同一策略。
-- `WORKFLOW_DISPATCHER_ACTIVATION_API_URL`（通常为 `http://127.0.0.1:4000`）与 `WORKFLOW_DISPATCHER_ACTIVATION_TOKEN`——Control API 及其内部 Service Token；Token 必须与 API 的值一致。
+- `WORKFLOW_DISPATCHER_ACTIVATION_API_URL`（通常为 `http://127.0.0.1:17301`）与 `WORKFLOW_DISPATCHER_ACTIVATION_TOKEN`——Control API 及其内部 Service Token；Token 必须与 API 的值一致。
 - `EVELAND_SCHEDULER_RUNTIME_SECRET`——必须与 Worker 的值一致：它被注入每个 Deployment，Deployment 的 Workflow World 用它认证入站 Dispatch。
 - `EVELAND_OTLP_ENDPOINT`、`EVELAND_OTLP_SERVICE_TOKEN`——Collector 的平台 Receiver。
 - `NODE_ENV=production`、`EVELAND_RELEASE_CHANNEL`、`EVELAND_REVISION`——与其他服务对齐。

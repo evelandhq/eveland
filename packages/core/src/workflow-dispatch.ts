@@ -62,7 +62,7 @@ export function resolveDispatcherHeartbeatTtlMs(env: NodeJS.ProcessEnv): number 
  * The canonical, network-view-independent World identity: the Postgres
  * cluster's `system_identifier` plus the database name, as
  * `cluster:<system_identifier>/<database>`. Comparing URLs (or any part of
- * them) fails open — `db-a:5432/wf` and `db-b:5432/wf` can be unrelated
+ * them) fails open — `db-a/wf` and `db-b/wf` can be unrelated
  * servers — so both ends read the identity FROM the database itself
  * (`pg_control_system()`), and readiness compares it with strict equality.
  */

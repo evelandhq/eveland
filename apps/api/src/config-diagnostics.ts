@@ -1,4 +1,5 @@
 import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
+import { GATEWAY_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
 import {
   createConfigurationSnapshot,
   type ConfigurationSnapshot,
@@ -29,7 +30,7 @@ export async function collectSystemConfigurationDiagnostics(
 }
 
 async function readGatewaySnapshot(env: Environment, fetchDiagnostics: Fetch) {
-  const gatewayUrl = (env.EVELAND_GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4080").replace(
+  const gatewayUrl = (env.EVELAND_GATEWAY_INTERNAL_URL ?? GATEWAY_INTERNAL_URL_FALLBACK).replace(
     /\/$/,
     "",
   );

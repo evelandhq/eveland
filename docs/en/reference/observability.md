@@ -60,8 +60,8 @@ flowchart LR
     end
 
     subgraph Collection["Managed OpenTelemetry Collector"]
-      AGENTRX["Agent receiver 4327/4328"]
-      PLATFORMRX["Platform receiver 4317/4318"]
+      AGENTRX["Agent receiver 17313/17314"]
+      PLATFORMRX["Platform receiver 17311/17312"]
       ROUTING["Filter / batch / retry / persistent queue"]
     end
 
@@ -175,10 +175,10 @@ and the Agent turn keeps executing.
 
 The Collector uses two receivers:
 
-| Receiver | Ports                     | Callers                    | Trust                                          |
-| -------- | ------------------------- | -------------------------- | ---------------------------------------------- |
-| Platform | gRPC `4317` / HTTP `4318` | API, Agent Gateway, Worker | `EVELAND_OTLP_SERVICE_TOKEN`                   |
-| Agent    | gRPC `4327` / HTTP `4328` | Eve Deployments            | Private network plus per-Deployment credential |
+| Receiver | Ports                       | Callers                    | Trust                                          |
+| -------- | --------------------------- | -------------------------- | ---------------------------------------------- |
+| Platform | gRPC `17311` / HTTP `17312` | API, Agent Gateway, Worker | `EVELAND_OTLP_SERVICE_TOKEN`                   |
+| Agent    | gRPC `17313` / HTTP `17314` | Eve Deployments            | Private network plus per-Deployment credential |
 
 The receivers are not exposed to the Internet.
 

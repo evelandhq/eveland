@@ -23,6 +23,7 @@
     "./observability/destinations": "./src/observability/destinations.ts",
     "./observability/policy": "./src/observability/policy.ts",
     "./observability/shared": "./src/observability/shared.ts",
+    "./ports": "./src/ports.ts",
     "./routing": "./src/routing.ts",
     "./schedules": "./src/schedules.ts",
     "./source": "./src/source.ts",

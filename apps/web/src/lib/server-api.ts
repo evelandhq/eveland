@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { API_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
 import { redirect } from "next/navigation";
 import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
 import type { InstanceHealthReport } from "@evelandhq/core/instance-health";
@@ -37,8 +38,7 @@ import type {
   TeamMember as Member,
 } from "@evelandhq/core/contracts";
 
-const apiBaseUrl =
-  process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const apiBaseUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? API_ORIGIN_FALLBACK;
 
 export type ProjectListItem = Project & {
   eveVersion: EveVersionInfo;

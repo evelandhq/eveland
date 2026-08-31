@@ -1,6 +1,10 @@
 import { platformObservability } from "./observability.js";
 import { serve } from "@hono/node-server";
 import { formatBuildInfo } from "@evelandhq/core/build-info";
+import {
+  API_INTERNAL_URL_FALLBACK,
+  GATEWAY_PORT as DEFAULT_GATEWAY_PORT,
+} from "@evelandhq/core/ports";
 import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
 import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
 import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
@@ -10,7 +14,7 @@ import { withDeploymentEveVersionCache } from "./gateway-eve-version-cache.js";
 import { createApiActivationClient } from "./activation-client.js";
 import { createApiIdentityClient } from "./identity-client.js";
 
-const port = Number(process.env.GATEWAY_PORT ?? 4080);
+const port = Number(process.env.GATEWAY_PORT ?? DEFAULT_GATEWAY_PORT);
 const buildInfo = createBuildInfoFromEnv("gateway", process.env);
 const allowedBaseDomains = (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost")
   .split(",")
@@ -34,7 +38,7 @@ const internalServiceToken = resolveSecretWithDevFallback(
   process.env.EVELAND_GATEWAY_SERVICE_TOKEN,
   "eveland-dev-gateway-token",
 );
-const apiInternalUrl = process.env.EVELAND_API_INTERNAL_URL ?? "http://127.0.0.1:4000";
+const apiInternalUrl = process.env.EVELAND_API_INTERNAL_URL ?? API_INTERNAL_URL_FALLBACK;
 const { store, close } = createStoreFromEnv();
 await store.reconcileAgentRoutes(allowedBaseDomains[0] ?? "agent.localhost");
 // The version gate runs on every public request; a Deployment's Eve version

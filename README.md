@@ -45,8 +45,8 @@ pnpm --filter @evelandhq/api db:migrate  # required on first run and after schem
 pnpm dev                               # start all six dev processes
 ```
 
-Open the Dashboard at `http://localhost:3000` and the public documentation site at
-`http://localhost:3001`.
+Open the Dashboard at `http://localhost:17300` and the public documentation site at
+`http://localhost:17350`.
 
 - The initial Admin email defaults to `admin@example.com`; its password comes only from
   `EVELAND_ADMIN_PASSWORD` and must contain at least 12 characters.
@@ -60,9 +60,9 @@ Open the Dashboard at `http://localhost:3000` and the public documentation site 
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`,
   `pnpm dev:workflow-dispatcher`, and `pnpm dev:docs` in separate terminals when
   isolated logs are more useful. `dev:worker` does not start the dispatcher.
-- Public development endpoints use `http://<projectSlug>.agent.localhost:4080`;
+- Public development endpoints use `http://<projectSlug>.agent.localhost:17302`;
   immutable previews use
-  `http://<eightCharacterDeploymentKey>--<projectSlug>.agent.localhost:4080`.
+  `http://<eightCharacterDeploymentKey>--<projectSlug>.agent.localhost:17302`.
   Deployment ports stay bound to `127.0.0.1` and are not product URLs.
 
 ## Documentation map

@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { SANDBOX_INTERNAL_PORT } from "@evelandhq/core/ports";
 import path from "node:path";
 import { createDockerAdapter } from "./docker.js";
 import { createSystemdAdapter, resolveSandboxCacheRoot } from "./systemd.js";
@@ -58,7 +59,7 @@ export function createRuntimeAdapterForKind(
   const limits = resolveDeploymentResourceLimits(env);
   if (kind === "docker") {
     return createDockerAdapter({
-      internalPort: Number(env.EVELAND_INTERNAL_PORT ?? 3000),
+      internalPort: Number(env.EVELAND_INTERNAL_PORT ?? SANDBOX_INTERNAL_PORT),
       dataDir: path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data"),
       collectorContainerName: env.EVELAND_OTEL_COLLECTOR_CONTAINER ?? "eveland-otel-collector",
       backendDistDir: resolveBackendDistDir,

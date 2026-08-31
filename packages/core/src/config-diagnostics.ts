@@ -3,6 +3,19 @@
 // build-info.ts when a new component was added.
 export type { EvelandComponent } from "./build-info.js";
 import type { EvelandComponent } from "./build-info.js";
+import {
+  API_INTERNAL_URL_FALLBACK,
+  API_ORIGIN_FALLBACK,
+  API_PORT,
+  DEPLOYMENT_PORT_START,
+  GATEWAY_INTERNAL_URL_FALLBACK,
+  GATEWAY_PORT,
+  IDENTITY_JWKS_URL_DOCKER_FALLBACK,
+  OTLP_ENDPOINT_FALLBACK,
+  POSTGRES_DEFAULT_PORT,
+  SANDBOX_INTERNAL_PORT,
+  WEB_ORIGIN_FALLBACK,
+} from "@evelandhq/core/ports";
 
 export type ConfigurationEntry = {
   name: string;
@@ -145,21 +158,21 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     components: ["web"],
     sensitivity: "url",
     purpose: "Server-side API origin used by the Dashboard process.",
-    fallback: (env) => derivedValue(env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"),
+    fallback: (env) => derivedValue(env.NEXT_PUBLIC_API_URL ?? API_ORIGIN_FALLBACK),
   },
   urlEntry(
     "NEXT_PUBLIC_API_URL",
     ["web"],
     "Browser-visible platform API origin.",
-    "http://localhost:4000",
+    API_ORIGIN_FALLBACK,
   ),
-  entry("PORT", ["api"], "TCP port used by the platform API.", "4000"),
+  entry("PORT", ["api"], "TCP port used by the platform API.", String(API_PORT)),
   {
     ...urlEntry(
       "WEB_ORIGIN",
       ["api"],
       "Allowed browser origin for authenticated platform CORS.",
-      "http://localhost:3000",
+      WEB_ORIGIN_FALLBACK,
     ),
     emptyUsesFallback: true,
   },
@@ -176,7 +189,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     components: ["api"],
     sensitivity: "url",
     purpose: "Browser-visible API origin used by Better Auth.",
-    fallback: (env) => derivedValue(`http://localhost:${env.PORT ?? "4000"}`),
+    fallback: (env) => derivedValue(`http://localhost:${env.PORT ?? API_PORT}`),
     emptyUsesFallback: true,
   },
   {
@@ -225,15 +238,17 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
       ["api", "worker"],
       "Stable public issuer for Agent-user Caller Tokens.",
     ),
-    fallback: developmentDefault("http://localhost:4000"),
+    fallback: developmentDefault(API_ORIGIN_FALLBACK),
     required: production,
   },
   {
+    // No code-level default: an Identity origin allowlist must always be an
+    // explicit operator decision (previously defaulted to a fictional
+    // http://localhost:3010 chat origin outside production).
     ...entry(
       "EVELAND_IDENTITY_ALLOWED_ORIGINS",
       ["api"],
       "Comma-separated exact browser origins allowed to use the Identity API.",
-      "http://localhost:3010",
     ),
     required: production,
   },
@@ -242,7 +257,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
       "EVELAND_IDENTITY_JWKS_URL",
       ["worker"],
       "Agent-reachable JWKS URL injected into deployed runtimes.",
-      "http://host.docker.internal:4000/.well-known/jwks.json",
+      IDENTITY_JWKS_URL_DOCKER_FALLBACK,
     ),
     required: production,
   },
@@ -268,7 +283,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "EVELAND_OTLP_ENDPOINT",
     ["api", "gateway", "worker"],
     "Internal OTLP/HTTP endpoint used by Eveland platform telemetry.",
-    "http://127.0.0.1:4318",
+    OTLP_ENDPOINT_FALLBACK,
   ),
   {
     name: "EVELAND_OTLP_SERVICE_TOKEN",
@@ -368,13 +383,15 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     components: ["api"],
     purpose: "Optional public Agent port appended to generated endpoints.",
     fallback: (env) =>
-      derivedValue((env.EVELAND_GATEWAY_PUBLIC_SCHEME || "http") === "http" ? "4080" : "0"),
+      derivedValue(
+        (env.EVELAND_GATEWAY_PUBLIC_SCHEME || "http") === "http" ? String(GATEWAY_PORT) : "0",
+      ),
   },
   urlEntry(
     "EVELAND_GATEWAY_INTERNAL_URL",
     ["api"],
     "Private Agent Gateway origin used for Playground and diagnostics.",
-    "http://127.0.0.1:4080",
+    GATEWAY_INTERNAL_URL_FALLBACK,
   ),
   {
     ...urlEntry(
@@ -390,7 +407,12 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "Allowed Agent hostname suffixes; the first is canonical.",
     "agent.localhost",
   ),
-  entry("GATEWAY_PORT", ["gateway"], "TCP port used by the public Agent Gateway.", "4080"),
+  entry(
+    "GATEWAY_PORT",
+    ["gateway"],
+    "TCP port used by the public Agent Gateway.",
+    String(GATEWAY_PORT),
+  ),
   {
     name: "EVELAND_GATEWAY_AFFINITY_SECRET",
     components: ["gateway"],
@@ -428,7 +450,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "EVELAND_API_INTERNAL_URL",
     ["gateway"],
     "Private API origin used for service-authenticated runtime activation.",
-    "http://127.0.0.1:4000",
+    API_INTERNAL_URL_FALLBACK,
   ),
   entry(
     "EVELAND_ACTIVATION_LEASE_TTL_MS",
@@ -686,13 +708,13 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "EVELAND_INTERNAL_PORT",
     ["worker"],
     "Container-internal port used by Docker Deployments.",
-    "3000",
+    String(SANDBOX_INTERNAL_PORT),
   ),
   entry(
     "EVELAND_DEPLOYMENT_PORT",
     ["worker"],
     "Start of the private host-port allocation range.",
-    "41000",
+    String(DEPLOYMENT_PORT_START),
   ),
   entry(
     "EVELAND_GIT_CLONE_TIMEOUT_MS",
@@ -912,7 +934,7 @@ function isHostDatabaseAlias(workflowUrl: string, databaseUrl: string): boolean 
   try {
     const workflow = new URL(workflowUrl);
     const database = new URL(databaseUrl);
-    const port = (url: URL) => url.port || "5432";
+    const port = (url: URL) => url.port || String(POSTGRES_DEFAULT_PORT);
     return (
       workflow.hostname.toLowerCase() === "host.docker.internal" &&
       workflow.protocol === database.protocol &&

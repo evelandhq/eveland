@@ -49,7 +49,7 @@ describe("Compose controller security boundaries", () => {
       'EVELAND_ADMIN_PASSWORD: "${EVELAND_ADMIN_PASSWORD:?set EVELAND_ADMIN_PASSWORD}"',
     );
     expect(api).toContain('BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}"');
-    expect(api).toContain("BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4000}");
+    expect(api).toContain("BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:17301}");
   });
 });
 

@@ -6,7 +6,20 @@ import { resolveCanonicalRequestBudget } from "@evelandhq/core/workflow-dispatch
 // path semantics instead of a reimplementation of them.
 import { getPathMatch } from "next/dist/shared/lib/router/utils/path-match";
 import { describe, expect, test } from "vitest";
-import nextConfig, { browserApiSubtrees, proxyTimeoutMs } from "../next.config.js";
+import { API_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import nextConfig, {
+  browserApiSubtrees,
+  inlinedApiOriginFallback,
+  proxyTimeoutMs,
+} from "../next.config.js";
+
+// next.config cannot import workspace TypeScript, so it inlines the API
+// origin fallback; this pins the copy to the single source in core.
+describe("inlined API origin fallback", () => {
+  test("matches @evelandhq/core/ports", () => {
+    expect(inlinedApiOriginFallback).toBe(API_ORIGIN_FALLBACK);
+  });
+});
 
 /**
  * The executable budget ratchet: the Web rewrite proxy must cover the entire

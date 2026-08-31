@@ -25,13 +25,13 @@ API and Worker must see the same absolute data root, normally `/var/lib/eveland`
 
 ## Telemetry topology
 
-The managed Collector publishes its service-authenticated platform receiver on host loopback ports 4317/4318 and its Agent receiver on 4327/4328. systemd Agents reach host loopback port 4328; each active Docker Deployment instead gets a private network containing only its Agent and the Collector. Never publish either receiver on a public interface.
+The managed Collector publishes its service-authenticated platform receiver on host loopback ports 17311/17312 and its Agent receiver on 17313/17314. systemd Agents reach host loopback port 17314; each active Docker Deployment instead gets a private network containing only its Agent and the Collector. Never publish either receiver on a public interface.
 
 The Agent receiver is unauthenticated, so each Deployment's telemetry is attributed by a Worker-signed credential written into its read-only `agent-policy.json`; the platform verifies it and replaces Agent-supplied ownership with the Store-owned Deployment identity. Different Agent Deployments cannot resolve or connect to one another through the telemetry path. A missing Collector degrades telemetry but never blocks an Agent start or cold activation, and observability settings changes restart only the Collector, never Agent Deployments.
 
 ## Public entry points
 
-The Dashboard and API are served on your chosen origins. All Agent traffic enters through the Agent Gateway on host port `4080`, behind a wildcard TLS reverse proxy; Deployment ports stay on loopback. See [Configure Agent traffic](/docs/production/networking).
+The Dashboard and API are served on your chosen origins. All Agent traffic enters through the Agent Gateway on host port `17302`, behind a wildcard TLS reverse proxy; Deployment ports stay on loopback. See [Configure Agent traffic](/docs/production/networking).
 
 ## Resource lifecycle
 

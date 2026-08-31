@@ -1,5 +1,6 @@
 import { resolveSecretWithDevFallback } from "@evelandhq/core/server/dev-secrets";
 import { AGENT_AUTH_ENVELOPE_HEADER } from "@evelandhq/core/agent-auth";
+import { GATEWAY_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
 
 export type PlaygroundProxyInput = {
   projectId: string;
@@ -24,7 +25,7 @@ export async function proxyGatewayPlayground(
   const gatewayUrl = (
     options.gatewayUrl ??
     process.env.EVELAND_GATEWAY_INTERNAL_URL ??
-    "http://127.0.0.1:4080"
+    GATEWAY_INTERNAL_URL_FALLBACK
   ).replace(/\/$/, "");
   const serviceToken =
     options.serviceToken ??

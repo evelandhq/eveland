@@ -1,4 +1,5 @@
 import { execa } from "execa";
+import { SANDBOX_INTERNAL_PORT } from "@evelandhq/core/ports";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseSchedulerDefinitions } from "@evelandhq/agent-scheduler";
@@ -314,7 +315,7 @@ ${workflowWorldInstall}COPY . .
 # Compile the eve application ahead of time, then materialize the full
 # discovery manifest from that exact installed dependency tree.
 ${buildVariableArgs}RUN ${buildCommand}
-EXPOSE 3000
+EXPOSE ${SANDBOX_INTERNAL_PORT}
 `,
   );
   return dockerfilePath;
