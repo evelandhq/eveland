@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   LATEST_VERIFIED_EVE_VERSION,
+  permanentDeploymentActivationRefusal,
   unsupportedEveVersionMessage,
   unsupportedReleaseEveVersionMessage,
 } from "./eve-compatibility.js";
@@ -25,5 +26,52 @@ describe("unsupportedReleaseEveVersionMessage", () => {
     // Declared specifiers describe the source, not the built image; only the
     // launch path may judge them.
     expect(unsupportedReleaseEveVersionMessage({ eveVersion: "0.31.1" })).toBeNull();
+  });
+});
+
+describe("permanentDeploymentActivationRefusal", () => {
+  test("refuses a missing Deployment", () => {
+    expect(permanentDeploymentActivationRefusal(null, null)).toBe("Deployment no longer exists.");
+    expect(permanentDeploymentActivationRefusal(undefined, null)).toBe(
+      "Deployment no longer exists.",
+    );
+  });
+
+  test("refuses an archiving or archived Deployment", () => {
+    for (const status of ["archiving", "archived"]) {
+      expect(permanentDeploymentActivationRefusal({ id: "dep_x", status }, null)).toContain(
+        `dep_x is ${status}`,
+      );
+    }
+  });
+
+  test("refuses a Release pinned to an out-of-window Eve", () => {
+    expect(
+      permanentDeploymentActivationRefusal(
+        { id: "dep_x", status: "stopped" },
+        { eveVersionResolved: "0.31.1" },
+      ),
+    ).toBe(unsupportedEveVersionMessage("0.31.1"));
+  });
+
+  test("a transiently failed Deployment is NOT permanent — its next activation restarts it", () => {
+    expect(
+      permanentDeploymentActivationRefusal(
+        { id: "dep_x", status: "failed" },
+        { eveVersionResolved: LATEST_VERIFIED_EVE_VERSION },
+      ),
+    ).toBeNull();
+  });
+
+  test("a healthy Deployment with a supported (or unrecorded) Eve passes", () => {
+    expect(
+      permanentDeploymentActivationRefusal(
+        { id: "dep_x", status: "running" },
+        { eveVersionResolved: LATEST_VERIFIED_EVE_VERSION },
+      ),
+    ).toBeNull();
+    expect(
+      permanentDeploymentActivationRefusal({ id: "dep_x", status: "stopped" }, null),
+    ).toBeNull();
   });
 });

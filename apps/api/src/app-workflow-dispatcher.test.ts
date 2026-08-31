@@ -275,3 +275,96 @@ describe("workflow_step activation gating", () => {
     expect(body.error).toContain(WORLD_IDENTITY);
   });
 });
+
+describe("workflow dispatcher recovery preflight", () => {
+  async function recordFixtureDeployment(
+    store: ReturnType<typeof createTestStore>,
+    input: { status: string; eveVersionResolved?: string },
+  ) {
+    const project = await store.createProject({ name: "Preflight Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("preflight-fixture");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/preflight",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:preflight",
+      containerName: `fixture-preflight-${Math.random().toString(36).slice(2, 8)}`,
+      internalPort: 3000,
+      hostPort: 42_300 + Math.floor(Math.random() * 500),
+      runtimeKind: "docker",
+      ...(input.eveVersionResolved
+        ? { summary: { eveVersionResolved: input.eveVersionResolved } }
+        : {}),
+    });
+    await store.updateDeploymentStatus(deployment.id, input.status as never);
+    return deployment;
+  }
+
+  test("names only the Deployments that can never activate again", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { gatewayServiceToken: "gateway-service-token" });
+
+    const reaped = await recordFixtureDeployment(store, {
+      status: "stopped",
+      eveVersionResolved: "0.47.3",
+    });
+    const crashed = await recordFixtureDeployment(store, {
+      status: "failed",
+      eveVersionResolved: "0.47.3",
+    });
+    const archived = await recordFixtureDeployment(store, {
+      status: "archived",
+      eveVersionResolved: "0.47.3",
+    });
+    const staleEve = await recordFixtureDeployment(store, {
+      status: "stopped",
+      eveVersionResolved: "0.31.1",
+    });
+
+    const response = await app.request("/internal/workflow/dispatcher/recovery-preflight", {
+      method: "POST",
+      headers: serviceHeaders,
+      body: JSON.stringify({
+        // The duplicate proves the judgment is per-Deployment, not per-entry.
+        deploymentIds: [reaped.id, crashed.id, archived.id, staleEve.id, staleEve.id, "dep_gone"],
+      }),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      notActivatable: { deploymentId: string; reason: string }[];
+    };
+    const refused = new Map(body.notActivatable.map((entry) => [entry.deploymentId, entry.reason]));
+    expect([...refused.keys()].sort()).toEqual([archived.id, staleEve.id, "dep_gone"].sort());
+    expect(refused.get(archived.id)).toContain("archived");
+    expect(refused.get(staleEve.id)).toContain("0.31.1");
+    expect(refused.get("dep_gone")).toBe("Deployment no longer exists.");
+  });
+
+  test("requires service auth and a valid body", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { gatewayServiceToken: "gateway-service-token" });
+
+    const unauthenticated = await app.request("/internal/workflow/dispatcher/recovery-preflight", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(unauthenticated.status).toBe(404);
+
+    const invalid = await app.request("/internal/workflow/dispatcher/recovery-preflight", {
+      method: "POST",
+      headers: serviceHeaders,
+      body: JSON.stringify({ deploymentIds: "dep_x" }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+});

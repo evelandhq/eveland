@@ -379,6 +379,16 @@ export const workflowDispatcherHeartbeatSchema = z
     },
   );
 
+/**
+ * The dispatcher's boot-recovery preflight: the distinct Deployments its
+ * candidate runs are bound to. Bounded generously — one instance's whole
+ * backlog spanned single-digit Deployments (#425) — but bounded, because an
+ * unbounded id list is an unbounded number of store lookups.
+ */
+export const workflowRecoveryPreflightSchema = z.object({
+  deploymentIds: z.array(z.string().min(1).max(128)).max(2_000),
+});
+
 export const runtimeActivationSchema = z.object({
   deploymentId: z.string().min(1),
   // Narrower than ActivationLeaseKind on purpose: schedule_run leases are

@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import type {
+  BootRecoveryRun,
   DispatcherService,
   DispatcherServiceOptions,
 } from "@evelandhq/workflow-world/dispatcher";
@@ -132,6 +133,110 @@ describe("eveland workflow dispatcher runner", () => {
 
     await handle.stop();
     expect(heartbeats.at(-1)).toMatchObject({ state: "stopped" });
+  });
+
+  test("boot recovery drops runs bound to Deployments the control plane refuses forever", async () => {
+    const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
+    const { startService } = fakeServiceFactory(state);
+    const candidates: BootRecoveryRun[] = [
+      {
+        tenantId: "p_a",
+        runId: "wrun_live",
+        workflowName: "wf",
+        deploymentId: "dep_live",
+        queueNamespace: null,
+      },
+      {
+        tenantId: "p_a",
+        runId: "wrun_doomed",
+        workflowName: "wf",
+        deploymentId: "dep_doomed",
+        queueNamespace: null,
+      },
+    ];
+    const preflightBodies: Array<Record<string, unknown>> = [];
+    const fetchImplementation = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/internal/workflow/dispatcher/recovery-preflight")) {
+        preflightBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return Response.json({
+          notActivatable: [
+            { deploymentId: "dep_doomed", reason: 'Unsupported Eve dependency "0.31.1".' },
+          ],
+        });
+      }
+      return Response.json({ registration: {} });
+    });
+
+    const handle = await startEvelandWorkflowDispatcher(
+      { WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test" },
+      telemetry,
+      { ...runnerDeps({ fetchImplementation }), startService } as never,
+    );
+
+    const options = vi.mocked(startService).mock.calls[0]![0];
+    const kept = await options.filterBootRecoveryRuns!(candidates);
+    expect(kept.map((run) => run.runId)).toEqual(["wrun_live"]);
+    expect(preflightBodies[0]).toEqual({ deploymentIds: ["dep_live", "dep_doomed"] });
+    expect(telemetry.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: "workflow_dispatcher.recovery_skipped_deployment",
+      }),
+    );
+    await handle.stop();
+  });
+
+  test("a failing recovery preflight fails open to the full candidate list", async () => {
+    const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
+    const { startService } = fakeServiceFactory(state);
+    const candidates: BootRecoveryRun[] = [
+      {
+        tenantId: "p_a",
+        runId: "wrun_live",
+        workflowName: "wf",
+        deploymentId: "dep_live",
+        queueNamespace: null,
+      },
+    ];
+    const fetchImplementation = vi.fn(async (url: string) => {
+      if (url.endsWith("/internal/workflow/dispatcher/recovery-preflight")) {
+        throw new TypeError("fetch failed");
+      }
+      return Response.json({ registration: {} });
+    });
+
+    await startEvelandWorkflowDispatcher(
+      { WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test" },
+      telemetry,
+      { ...runnerDeps({ fetchImplementation }), startService } as never,
+    );
+    const options = vi.mocked(startService).mock.calls[0]![0];
+    await expect(options.filterBootRecoveryRuns!(candidates)).resolves.toEqual(candidates);
+    expect(telemetry.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ eventName: "workflow_dispatcher.recovery_preflight_failed" }),
+    );
+  });
+
+  test("without a control API the filter recovers everything", async () => {
+    const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
+    const { startService } = fakeServiceFactory(state);
+    const fetchImplementation = vi.fn();
+
+    await startEvelandWorkflowDispatcher({}, telemetry, {
+      ...runnerDeps({ fetchImplementation }),
+      startService,
+    } as never);
+    const options = vi.mocked(startService).mock.calls[0]![0];
+    const candidates: BootRecoveryRun[] = [
+      {
+        tenantId: "p_a",
+        runId: "wrun_live",
+        workflowName: "wf",
+        deploymentId: "dep_live",
+        queueNamespace: null,
+      },
+    ];
+    await expect(options.filterBootRecoveryRuns!(candidates)).resolves.toEqual(candidates);
+    expect(fetchImplementation).not.toHaveBeenCalled();
   });
 
   test("a failed heartbeat is reported, never fatal", async () => {

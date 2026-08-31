@@ -23,6 +23,7 @@ import { bootstrapEvelandWorkflowWorld } from "./runtime/eveland-workflow-world-
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
 import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
 import { sweepReleaseRetention } from "./runtime/release-reaper.js";
+import { reconcileAbandonedWorkflowRuns } from "./runtime/workflow-run-reconciler.js";
 import { sweepWorkflowStreamRetention } from "./runtime/workflow-world-reaper.js";
 import {
   formatWorkflowStreamRetentionSummary,
@@ -53,6 +54,9 @@ const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60
 const orphanSweepIntervalMs = Number(process.env.EVELAND_ORPHAN_SWEEP_INTERVAL_MS ?? 3_600_000);
 const releaseSweepIntervalMs = Number(process.env.EVELAND_RELEASE_SWEEP_INTERVAL_MS ?? 3_600_000);
 const workflowSweepIntervalMs = Number(process.env.EVELAND_WORKFLOW_SWEEP_INTERVAL_MS ?? 3_600_000);
+const workflowRunReconcileIntervalMs = Number(
+  process.env.EVELAND_WORKFLOW_RUN_RECONCILE_INTERVAL_MS ?? 60_000,
+);
 const workerId = workerInstanceId;
 const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
 const maxConcurrentHeavyJobs = resolveMaxConcurrentHeavyJobs(process.env);
@@ -301,6 +305,28 @@ if (releaseSweepIntervalMs > 0) {
   releaseTimer = setInterval(sweepReleases, releaseSweepIntervalMs);
 }
 
+// Deployment-scoped on purpose: a run sleeping on a timer or waiting on a
+// session inbox hook is the intended durable state for a reaped process, so
+// nothing here keys off RuntimeInstance death. Only runs bound to a
+// Deployment that can never activate again (missing, archived, or pinned to
+// an out-of-window Eve) are settled. Set the interval to 0 to disable.
+const sweepAbandonedWorkflowRuns = () => {
+  reconcileAbandonedWorkflowRuns(store).catch((error: unknown) =>
+    console.error(
+      "Abandoned workflow-run reconciliation failed:",
+      error instanceof Error ? error.message : String(error),
+    ),
+  );
+};
+let workflowRunReconcileTimer: NodeJS.Timeout | undefined;
+if (workflowRunReconcileIntervalMs > 0) {
+  sweepAbandonedWorkflowRuns();
+  workflowRunReconcileTimer = setInterval(
+    sweepAbandonedWorkflowRuns,
+    workflowRunReconcileIntervalMs,
+  );
+}
+
 const workflowRetentionScheduler = startWorkflowStreamRetentionScheduler({
   intervalMs: workflowSweepIntervalMs,
   run: async () => {
@@ -335,6 +361,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     clearInterval(telemetryTimer);
     if (orphanTimer) clearInterval(orphanTimer);
     if (releaseTimer) clearInterval(releaseTimer);
+    if (workflowRunReconcileTimer) clearInterval(workflowRunReconcileTimer);
     void Promise.all([
       storeFactory.close(),
       workflowRetentionScheduler.close(),

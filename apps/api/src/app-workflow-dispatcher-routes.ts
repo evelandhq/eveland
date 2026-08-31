@@ -1,5 +1,9 @@
+import { permanentDeploymentActivationRefusal } from "@evelandhq/core/eve-compatibility";
 import type { Store } from "@evelandhq/db";
-import { workflowDispatcherHeartbeatSchema } from "./app-schemas.js";
+import {
+  workflowDispatcherHeartbeatSchema,
+  workflowRecoveryPreflightSchema,
+} from "./app-schemas.js";
 import { isServiceRequest } from "./app-support.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
 
@@ -13,7 +17,10 @@ import type { ApiApp, AppOptions } from "./app-types.js";
 
 type DispatcherRouteStore = Pick<
   Store,
-  "recordWorkflowDispatcherHeartbeat" | "getWorkflowDispatcherRegistration"
+  | "recordWorkflowDispatcherHeartbeat"
+  | "getWorkflowDispatcherRegistration"
+  | "getDeployment"
+  | "getRelease"
 >;
 
 export function registerWorkflowDispatcherRoutes(input: {
@@ -34,6 +41,30 @@ export function registerWorkflowDispatcherRoutes(input: {
     if (!parsed.success) return c.json({ error: "Invalid dispatcher heartbeat" }, 400);
     const registration = await store.recordWorkflowDispatcherHeartbeat(parsed.data);
     return c.json({ registration });
+  });
+
+  /**
+   * Boot-recovery preflight (issue #433): which of these Deployments can
+   * never activate again. The dispatcher filters those Deployments' runs out
+   * of its recovery sweep instead of replaying each one into a guaranteed
+   * dead letter per restart. Same predicate the worker's abandoned-run
+   * reconciler settles on — deliberately narrower than the activation 409
+   * set, because a transiently `failed` Deployment recovers on its next
+   * activation and its runs must be replayed.
+   */
+  app.post("/internal/workflow/dispatcher/recovery-preflight", async (c) => {
+    if (!isServiceRequest(c.req.header("authorization"), serviceToken()))
+      return c.json({ error: "Not found" }, 404);
+    const parsed = workflowRecoveryPreflightSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid recovery preflight" }, 400);
+    const notActivatable: { deploymentId: string; reason: string }[] = [];
+    for (const deploymentId of new Set(parsed.data.deploymentIds)) {
+      const deployment = await store.getDeployment(deploymentId);
+      const release = deployment ? await store.getRelease(deployment.releaseId) : null;
+      const reason = permanentDeploymentActivationRefusal(deployment, release?.summary ?? null);
+      if (reason !== null) notActivatable.push({ deploymentId, reason });
+    }
+    return c.json({ notActivatable });
   });
 
   app.get("/internal/workflow/dispatcher/registration", async (c) => {

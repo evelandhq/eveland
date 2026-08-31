@@ -1,6 +1,9 @@
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { listDeploymentsWithActiveWorkflowRuns } from "./eveland-workflow-world-runs.js";
+import {
+  listDeploymentsWithActiveWorkflowRuns,
+  listDeploymentsWithActiveWorkflowRunsAcrossProjects,
+} from "./eveland-workflow-world-runs.js";
 
 /**
  * Runs the real query against a real Postgres. The table here is a minimal
@@ -63,6 +66,46 @@ describe.skipIf(!sql)("listDeploymentsWithActiveWorkflowRuns", () => {
     await expect(listDeploymentsWithActiveWorkflowRuns(databaseUrl, tenant)).resolves.toEqual(
       new Set(["dep_sleeping", "dep_queued", "dep_recoverable"]),
     );
+  });
+
+  test("the cross-project listing spans tenants and keeps dead-lettered runs", async () => {
+    const tenant = `proj_xruns_${Date.now().toString(36)}`;
+    const other = `${tenant}_other`;
+    await sql!`
+      insert into "workflow"."workflow_runs" (tenant_id, id, deployment_id, status) values
+        (${tenant}, 'xrun_sleeping', 'dep_x_sleeping', 'running'),
+        (${tenant}, 'xrun_done', 'dep_x_done', 'completed'),
+        (${tenant}, 'xrun_dead_lettered', 'dep_x_dead_lettered', 'running'),
+        (${other}, 'xrun_foreign', 'dep_x_foreign', 'pending')
+    `;
+    await sql!`
+      insert into "workflow"."dispatch_dead_letters" (tenant_id, run_id, resolved_at) values
+        (${tenant}, 'xrun_dead_lettered', null)
+    `;
+
+    const pairs = await listDeploymentsWithActiveWorkflowRunsAcrossProjects(databaseUrl);
+    const mine = pairs.filter((pair) => pair.projectId.startsWith(tenant));
+    expect(mine).toEqual(
+      expect.arrayContaining([
+        { projectId: tenant, deploymentId: "dep_x_sleeping" },
+        // A dead-lettered run stays a candidate: the reconciler exists to
+        // settle exactly the wedged ones, unlike the retention read above.
+        { projectId: tenant, deploymentId: "dep_x_dead_lettered" },
+        { projectId: other, deploymentId: "dep_x_foreign" },
+      ]),
+    );
+    expect(mine.map((pair) => pair.deploymentId)).not.toContain("dep_x_done");
+  });
+
+  test("the cross-project listing is a no-op without a world and fails closed with one", async () => {
+    await expect(listDeploymentsWithActiveWorkflowRunsAcrossProjects(undefined)).resolves.toEqual(
+      [],
+    );
+    const missingDatabase = new URL(databaseUrl!);
+    missingDatabase.pathname = "/eveland_workflow_runs_missing_db";
+    await expect(
+      listDeploymentsWithActiveWorkflowRunsAcrossProjects(missingDatabase.toString()),
+    ).rejects.toThrow(/Failed to list Deployments with active workflow runs/);
   });
 
   test("an unconfigured world contributes no protected deployments", async () => {

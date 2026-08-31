@@ -16,6 +16,47 @@ import postgres from "postgres";
  * unprotect deployments, so the error propagates and the caller's sweep skips
  * this tick instead of archiving blind.
  */
+/** One (project, Deployment) pair that still owns a non-terminal workflow run. */
+export type ActiveWorkflowRunDeployment = {
+  projectId: string;
+  deploymentId: string;
+};
+
+/**
+ * Every (project, Deployment) pair with a non-terminal run, across all
+ * tenants — the candidate list for the abandoned-run reconciler (issue #433).
+ *
+ * Unlike the retention read below, this deliberately does NOT exclude runs
+ * quarantined behind an unresolved dead letter: a dead-lettered run bound to a
+ * Deployment that can never activate again is exactly the wedged state the
+ * reconciler exists to settle. Same fail-closed posture: unconfigured world
+ * contributes nothing; a configured world that fails to answer throws.
+ */
+export async function listDeploymentsWithActiveWorkflowRunsAcrossProjects(
+  worldUrl: string | undefined,
+): Promise<ActiveWorkflowRunDeployment[]> {
+  if (!worldUrl) return [];
+  const sql = postgres(worldUrl, { max: 1 });
+  try {
+    const rows = await sql`
+      select distinct runs.tenant_id, runs.deployment_id
+        from "workflow"."workflow_runs" as runs
+       where runs.status in ('pending', 'running')
+    `;
+    return rows.map((row) => ({
+      projectId: row.tenant_id as string,
+      deploymentId: row.deployment_id as string,
+    }));
+  } catch (error) {
+    throw new Error(
+      "Failed to list Deployments with active workflow runs from the platform workflow world.",
+      { cause: error },
+    );
+  } finally {
+    await sql.end();
+  }
+}
+
 export async function listDeploymentsWithActiveWorkflowRuns(
   worldUrl: string | undefined,
   projectId: string,
