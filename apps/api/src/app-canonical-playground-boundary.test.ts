@@ -1,6 +1,7 @@
 import type { AgentAuthProviderRegistration } from "@evelandhq/agent-auth";
 import { sealAgentAuthConfig } from "@evelandhq/agent-auth/sealed-config";
 import type { AuthPrincipal } from "@evelandhq/core/contracts";
+import { PLAYGROUND_OPERATION_ID_HEADER } from "@evelandhq/core/eve";
 import { createId } from "@evelandhq/core/ids";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { Hono } from "hono";
@@ -287,5 +288,177 @@ describe("canonical Playground API boundary", () => {
         eveSessionId: "eve_existing_continuation",
       }),
     ]);
+  });
+});
+
+describe("canonical Playground create-once operation identity (#407)", () => {
+  function createOnceHarness(handleCreate: (body: Record<string, unknown>) => Response) {
+    const store = createTestStore();
+    const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
+    const agentAuth = createAgentAuthService({
+      store,
+      appSecretKey,
+      oidcCallbackUrl: "http://localhost:3000/agent-auth/oidc/callback",
+    });
+    const observedBodies: Record<string, unknown>[] = [];
+    const playgroundProxy = vi.fn(async (input: { body: Uint8Array | null }) => {
+      const body = JSON.parse(new TextDecoder().decode(input.body ?? new Uint8Array())) as Record<
+        string,
+        unknown
+      >;
+      observedBodies.push(body);
+      return handleCreate(body);
+    });
+    registerCanonicalPlaygroundRoute({ app, store, agentAuth, playgroundProxy });
+    return { store, app, playgroundProxy, observedBodies };
+  }
+
+  const acceptedCreate = (sessionId: string) =>
+    new Response(JSON.stringify({ ok: true, sessionId, status: "accepted" }), {
+      status: 202,
+      headers: { "content-type": "application/json", "x-eve-session-id": sessionId },
+    });
+
+  test("keeps one operation identity across an ambiguous create and its retry", async () => {
+    // Regression for the stable-deployment readiness timeout: Eve collapses
+    // the 30s command-hook wait into an opaque 500 while the workflow may
+    // already be committed. The retry must carry the identical operationId so
+    // Eve adopts the committed Session instead of executing the input twice.
+    let calls = 0;
+    const { store, app, observedBodies } = createOnceHarness(() => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(
+          JSON.stringify({
+            error: "Failed to create the session.",
+            errorId: "0e4866c1-33c2-4c58-a077-bbe4bd12b8b1",
+            ok: false,
+          }),
+          { status: 500, headers: { "content-type": "application/json" } },
+        );
+      }
+      return acceptedCreate("eve_adopted");
+    });
+    const project = await store.createProject({
+      name: "create-once-ambiguous-retry",
+      importKind: "zip",
+    });
+    const request = () =>
+      app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          [PLAYGROUND_OPERATION_ID_HEADER]: "op-create-once",
+        },
+        body: JSON.stringify({ message: "Run the report" }),
+      });
+
+    const first = await request();
+    expect(first.status).toBe(500);
+    const second = await request();
+    expect(second.status).toBe(202);
+
+    expect(observedBodies.map((body) => body.operationId)).toEqual([
+      "op-create-once",
+      "op-create-once",
+    ]);
+    const sessions = await store.listSessions(project.id);
+    expect(sessions).toHaveLength(2);
+    expect(sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "failed",
+          error: expect.stringContaining(
+            "unknown (Eve error 0e4866c1-33c2-4c58-a077-bbe4bd12b8b1)",
+          ),
+        }),
+        expect.objectContaining({ status: "running", eveSessionId: "eve_adopted" }),
+      ]),
+    );
+  });
+
+  test("replays the create without the operation id when Eve refuses anonymous principals", async () => {
+    const { store, app, playgroundProxy, observedBodies } = createOnceHarness((body) => {
+      if (body.operationId !== undefined) {
+        return new Response(
+          JSON.stringify({ error: "operationId requires an authenticated principal.", ok: false }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      return acceptedCreate("eve_anonymous");
+    });
+    const project = await store.createProject({
+      name: "create-once-anonymous-fallback",
+      importKind: "zip",
+    });
+
+    const response = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        [PLAYGROUND_OPERATION_ID_HEADER]: "op-anonymous",
+      },
+      body: JSON.stringify({ message: "Hello" }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(playgroundProxy).toHaveBeenCalledTimes(2);
+    expect(observedBodies.map((body) => body.operationId)).toEqual(["op-anonymous", undefined]);
+    await expect(store.listSessions(project.id)).resolves.toEqual([
+      expect.objectContaining({ status: "running", eveSessionId: "eve_anonymous" }),
+    ]);
+  });
+
+  test("rejects a malformed operation id before proxying", async () => {
+    const { store, app, playgroundProxy } = createOnceHarness(() => acceptedCreate("eve_unused"));
+    const project = await store.createProject({
+      name: "create-once-malformed-id",
+      importKind: "zip",
+    });
+
+    const response = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        [PLAYGROUND_OPERATION_ID_HEADER]: "bad id with spaces",
+      },
+      body: JSON.stringify({ message: "Hello" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(playgroundProxy).not.toHaveBeenCalled();
+    await expect(store.listSessions(project.id)).resolves.toEqual([]);
+  });
+
+  test("closes the placeholder instead of double-tracking an adopted Session", async () => {
+    // A create whose response was lost can still have completed server-side;
+    // the retry then adopts the same Eve Session. The platform must not end
+    // up with two live rows pointing at one Eve Session.
+    const { store, app } = createOnceHarness(() => acceptedCreate("eve_shared"));
+    const project = await store.createProject({
+      name: "create-once-adoption-dedupe",
+      importKind: "zip",
+    });
+    const request = () =>
+      app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          [PLAYGROUND_OPERATION_ID_HEADER]: "op-adopted-twice",
+        },
+        body: JSON.stringify({ message: "Hello" }),
+      });
+
+    expect((await request()).status).toBe(202);
+    expect((await request()).status).toBe(202);
+
+    const sessions = await store.listSessions(project.id);
+    expect(sessions.filter((session) => session.eveSessionId === "eve_shared")).toHaveLength(1);
+    expect(sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "running", eveSessionId: "eve_shared" }),
+        expect.objectContaining({ status: "completed", eveSessionId: null }),
+      ]),
+    );
   });
 });

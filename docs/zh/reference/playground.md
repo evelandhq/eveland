@@ -11,6 +11,8 @@ Playground 用于直接测试当前 Deployment。本页是它的行为契约：t
 
 每次打开或刷新 Playground 都从空白状态创建一个新的 Eve Session；同一页面内的后续消息、HITL 回答和恢复后的 tool 结果继续使用该 Session，不提供历史会话切换或页内会话重置入口。离开页面时通过 keepalive request best-effort reset，页面退出不能依赖响应完成。平台为这次页面会话创建一个可在 Sessions 页面查看的 Session 记录（`trigger = playground`），但 Playground transport 不替代 Eveland 私有 OTLP 信号的权威观测路径。
 
+首条消息携带稳定的 create 操作身份：Dashboard 为每个初始 turn 生成一个 operation ID，经保留的 `x-eveland-operation-id` header 发送，API 将其注入 Eve create body 的 `operationId`；Eve 按已认证 principal 对 create 去重。没有明确结论就失败的 create——带 correlation ID 的不透明 500、传输错误、本地中止——是**未知结局**而非失败：durable workflow 可能已经提交，因此待定消息连同其身份持久保存，任何路径（含页面挂载与重连）都不自动重发，无关输入被阻断，唯一提供的动作是以同一身份显式重试同一条消息。Eve 将重试解析到已提交 Session 时，客户端从其流的起点接续，而不是创建替代 Session；平台侧则关闭占位 Session 记录，绝不对同一个 Eve Session 建立双重追踪。明确的前置拒绝（校验、认证、大小限制）会丢弃待定 create。Eve 拒绝匿名 principal 携带 `operationId`；此时 API 在任何 workflow 启动前原样重放一次不带该 ID 的 create——session route 接受匿名调用的 Agent 天然不适用 create-once 保护。未知结局的 create 对应的平台 Session 记录会存下含 Eve correlation ID 的显式未知结局原因。
+
 Dashboard 将 Playground 呈现为全页聊天界面。Transcript 参与页面的自然滚动，不再形成嵌套的滚动面板；Composer 则保持在视口底部可用。其紧凑操作可直接打开附件选择器与 Playground authentication 设置。
 
 Playground 中可查看当前 Session 的：对话内容；实时 reasoning / thinking（原始 reasoning 不由 Playground 持久化）；tool 调用与返回结果；错误；HITL（确认/拒绝、选项、自由文本和外部授权提示）；当前 turn 的图片、PDF、文本和代码附件。

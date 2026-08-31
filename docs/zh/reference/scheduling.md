@@ -27,6 +27,8 @@ Worker 使用持久化的 `nextRunAt` 做 schedule-aware scale-to-zero：schedul
 
 若旧 RuntimeInstance 正在 `draining`，activation 在 credential 兑换前按健康检查预算有界退避，待它停止后创建下一 generation；这属于瞬态等待，不得直接把 ScheduleRun 记为 failed。credential 一旦兑换，仍不得因响应丢失而自动重放 authored side effect。
 
+Session 创建可能已提交 durable work 之后才失败的 dispatch——Eve 的 command-hook readiness 超时以 `HookNotFoundError` 浮出——必须报告并记录为 `dispatch_unknown`，绝不记 `failed`：被调度的 Session 之后仍可能启动并执行输入。明确的 handler 失败继续报告 `failed`。`dispatch_unknown` 是终态且有歧义的——run 保留上报的错误，且在结局未知期间不得假设"什么都没执行"而手动重跑该 schedule。
+
 ## Prepared Release 与 Extension integrator
 
 Prepared Release 会保留 root 与 Extension Schedule 的 Eve 注册形状，但将 native cron handler 改为 no-op，因此 warm preview、旧版本和 stable target 不会各自执行同一 cron。当源码声明 Extension mount 时，Extension package 只能在 dependency install 后解析，所以 build 先执行一次 `eve info`，再由 Release 内自包含的 platform integrator 只改写一次性 Release tree（模块使用原子替换，不能修改 pnpm content-addressed store），随后才执行正式 `eve build` 和最终 `eve info`。没有 Extension mount 的 Release 不注入约 11 MiB 的 integrator，也不执行额外的预发现步骤。真正的 Markdown/TypeScript handler 只由经过认证的私有 Scheduler Channel 调用。

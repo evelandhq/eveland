@@ -2,9 +2,13 @@ import { describe, expect, test, vi } from "vitest";
 import * as ClientApi from "../lib/client-api.js";
 import {
   cancelPlaygroundTurn,
+  clearPendingSessionCreate,
   createPlaygroundTurnCanceller,
   createPlaygroundMessage,
+  isDefiniteCreateRejection,
+  peekPendingSessionCreate,
   resumePendingPlaygroundTurn,
+  stashPendingSessionCreate,
 } from "../lib/playground-session.js";
 
 describe("Playground route-auth turn resume", () => {
@@ -176,5 +180,53 @@ describe("Playground message composition", () => {
         keepalive: true,
       },
     );
+  });
+});
+
+describe("Playground unresolved session create (#407)", () => {
+  function memoryStorage() {
+    const values = new Map<string, string>();
+    return {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    };
+  }
+
+  test("persists and clears the pending create with its operation identity", () => {
+    const storage = memoryStorage();
+    const pending = { message: "start the job", operationId: "op-unresolved" };
+
+    stashPendingSessionCreate(storage, "proj_1", pending);
+    expect(peekPendingSessionCreate(storage, "proj_1")).toEqual(pending);
+    expect(peekPendingSessionCreate(storage, "proj_2")).toBeNull();
+
+    clearPendingSessionCreate(storage, "proj_1");
+    expect(peekPendingSessionCreate(storage, "proj_1")).toBeNull();
+  });
+
+  test("drops a malformed or foreign stash instead of replaying it", () => {
+    const storage = memoryStorage();
+    storage.setItem("eveland:playground:pending-create:proj_1", "not json");
+    expect(peekPendingSessionCreate(storage, "proj_1")).toBeNull();
+
+    storage.setItem(
+      "eveland:playground:pending-create:proj_1",
+      JSON.stringify({ version: 1, message: "no identity" }),
+    );
+    expect(peekPendingSessionCreate(storage, "proj_1")).toBeNull();
+  });
+
+  test("classifies only up-front 4xx rejections as definite", () => {
+    // Definite: the server refused the create before starting anything.
+    expect(isDefiniteCreateRejection({ status: 400 })).toBe(true);
+    expect(isDefiniteCreateRejection({ status: 401 })).toBe(true);
+    expect(isDefiniteCreateRejection({ status: 413 })).toBe(true);
+    // Unknown: the workflow may have committed before the failure surfaced.
+    expect(isDefiniteCreateRejection({ status: 500 })).toBe(false);
+    expect(isDefiniteCreateRejection({ status: 408 })).toBe(false);
+    expect(isDefiniteCreateRejection({ status: 429 })).toBe(false);
+    expect(isDefiniteCreateRejection(new Error("fetch failed"))).toBe(false);
+    expect(isDefiniteCreateRejection(undefined)).toBe(false);
   });
 });

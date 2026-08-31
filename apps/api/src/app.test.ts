@@ -526,6 +526,50 @@ describe("api app", () => {
     });
   });
 
+  test("records an ambiguous dispatch as dispatch_unknown, not failed", async () => {
+    // The Scheduler Channel reports dispatch_unknown when session creation
+    // timed out after the durable workflow may have committed (#407): the
+    // scheduled Session can still run, so the run must not read as failed.
+    const store = createTestStore();
+    const { schedule, deployment, run } = await createScheduleRunFixture(store);
+    await store.claimScheduleRunActivation(run.id);
+    await store.redeemScheduleRunDispatch(run.id, deployment.id);
+    const dispatchSecret = "schedule-dispatch-secret-at-least-32-bytes";
+    const runtimeSecret = "runtime-secret-at-least-32-bytes-long";
+    const credential = createScheduleDispatchCredential(
+      {
+        scheduleRunId: run.id,
+        deploymentId: deployment.id,
+        scheduleKey: schedule.key,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+      dispatchSecret,
+    );
+    const app = createApp(store, {
+      schedulerDispatchSecret: dispatchSecret,
+      schedulerRuntimeSecret: runtimeSecret,
+    });
+
+    const complete = await app.request("/internal/scheduler/dispatch", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-eveland-runtime-secret": runtimeSecret },
+      body: JSON.stringify({
+        phase: "complete",
+        credential,
+        scheduleRunId: run.id,
+        scheduleKey: schedule.key,
+        sessionIds: [],
+        status: "dispatch_unknown",
+      }),
+    });
+
+    expect(complete.status).toBe(200);
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
+      status: "dispatch_unknown",
+      error: "The dispatch outcome is unknown; the scheduled Session may still run.",
+    });
+  });
+
   test("creates a manual ScheduleRun through the control-plane path", async () => {
     const store = createTestStore();
     const { project, schedule, deployment } = await createScheduleRunFixture(store, false);

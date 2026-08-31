@@ -36,12 +36,19 @@ import {
   PLAYGROUND_MAX_FILE_BYTES,
   PLAYGROUND_MAX_FILES,
   PLAYGROUND_MAX_TOTAL_FILE_BYTES,
+  PLAYGROUND_OPERATION_ID_HEADER,
 } from "@evelandhq/core/eve";
+import { Button } from "@/components/ui/button";
 import { resetPlaygroundOnPageLeave } from "@/lib/client-api";
 import {
+  clearPendingSessionCreate,
   createPlaygroundTurnCanceller,
   createPlaygroundMessage,
+  isDefiniteCreateRejection,
+  peekPendingSessionCreate,
   resumePendingPlaygroundTurn,
+  stashPendingSessionCreate,
+  type PendingSessionCreate,
 } from "@/lib/playground-session";
 import type { EveVersionInfo } from "@/lib/api";
 import { AgentMessage } from "@/components/agent-message";
@@ -85,6 +92,20 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
       ? null
       : peekPendingPlaygroundTurn(window.sessionStorage, projectId),
   );
+  // A first turn whose create outcome is unknown (#407): the request failed
+  // or the page died after the server may have committed the Session. While
+  // set, the composer blocks and the only way forward is an explicit retry
+  // of the identical message under the same operation identity — which the
+  // server dedupes, so the input can never execute twice. Nothing here is
+  // ever re-sent automatically.
+  const pendingCreateRef = useRef<PendingSessionCreate | null>(null);
+  const [unresolvedCreate, setUnresolvedCreate] = useState<PendingSessionCreate | null>(() => {
+    if (typeof window === "undefined") return null;
+    // A pending route-auth turn owns its own replay (under the same
+    // operation identity); only an orphaned create surfaces as unresolved.
+    if (peekPendingPlaygroundTurn(window.sessionStorage, projectId)) return null;
+    return peekPendingSessionCreate(window.sessionStorage, projectId);
+  });
   const agent = useEveAgent({
     host: `/api/projects/${projectId}/playground`,
     initialSession: pendingTurn?.session,
@@ -93,6 +114,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
         error: sendError,
         message: pendingRouteAuthTurn.current,
         session: sessionStateRef.current,
+        operationId: pendingCreateRef.current?.operationId,
         projectId,
         redirect: (url) => window.location.assign(url),
         storage: window.sessionStorage,
@@ -136,12 +158,41 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   async function sendMessageWithRouteAuth(
     message: PendingPlaygroundMessage,
     options?: { turnPolicy?: "steer" },
+    operationIdOverride?: string,
   ) {
     const abortController = new AbortController();
     activeTurnAbortController.current = abortController;
     pendingRouteAuthTurn.current = message;
+    // The first turn creates the Session, so it carries a stable operation
+    // identity: persisted before the request leaves (a create can commit
+    // even when the page never hears back), sent as a header the API folds
+    // into the Eve create body, and reused verbatim by an explicit retry.
+    const create = sessionStateRef.current
+      ? null
+      : { message, operationId: operationIdOverride ?? crypto.randomUUID() };
+    if (create) {
+      pendingCreateRef.current = create;
+      stashPendingSessionCreate(window.sessionStorage, projectId, create);
+    }
     try {
-      await agent.send(message, { signal: abortController.signal, ...options });
+      await agent.send(message, {
+        signal: abortController.signal,
+        ...(create ? { headers: { [PLAYGROUND_OPERATION_ID_HEADER]: create.operationId } } : {}),
+        ...options,
+      });
+      if (create) resolvePendingCreate();
+    } catch (sendError) {
+      if (create) {
+        if (sessionStateRef.current || isDefiniteCreateRejection(sendError)) {
+          // Either the Session is known to exist (the turn failed later) or
+          // the server definitely rejected the create before starting
+          // anything; both outcomes are resolved, not unknown.
+          resolvePendingCreate();
+        } else {
+          setUnresolvedCreate(create);
+        }
+      }
+      throw sendError;
     } finally {
       if (activeTurnAbortController.current === abortController) {
         activeTurnAbortController.current = null;
@@ -149,6 +200,24 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
       pendingRouteAuthTurn.current = null;
     }
   }
+
+  function resolvePendingCreate() {
+    pendingCreateRef.current = null;
+    clearPendingSessionCreate(window.sessionStorage, projectId);
+    setUnresolvedCreate(null);
+  }
+
+  const retryUnresolvedCreate = () => {
+    const pending = unresolvedCreate;
+    if (!pending || isBusy) return;
+    setComposerError(null);
+    setUnresolvedCreate(null);
+    void sendMessageWithRouteAuth(pending.message, undefined, pending.operationId).catch(
+      (sendError) => {
+        setComposerError(toErrorMessage(sendError));
+      },
+    );
+  };
 
   useEffect(() => {
     if (resumedPendingTurn.current) return;
@@ -158,11 +227,21 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
     void resumePendingPlaygroundTurn({
       pending,
       resume: () => agent.resume(),
-      send: (message) => sendMessageWithRouteAuth(message),
+      send: (message) => sendMessageWithRouteAuth(message, undefined, pending.operationId),
     }).catch((sendError) => {
       setComposerError(toErrorMessage(sendError));
     });
   }, [projectId]);
+
+  // Once the Session is known the create is resolved by definition, whatever
+  // path confirmed it (a late stream event, a route-auth replay, a retry).
+  const hasSession = agent.session !== undefined;
+  useEffect(() => {
+    if (!hasSession) return;
+    pendingCreateRef.current = null;
+    clearPendingSessionCreate(window.sessionStorage, projectId);
+    setUnresolvedCreate(null);
+  }, [hasSession, projectId]);
 
   useEffect(() => {
     const resetOnLeave = () => {
@@ -248,6 +327,19 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               Taking you to your identity provider to authorize this connection…
             </AlertDescription>
           </Alert>
+        ) : unresolvedCreate && !isBusy ? (
+          <Alert className="mb-2" variant="destructive">
+            <AlertTitle>Your first message was not confirmed</AlertTitle>
+            <AlertDescription>
+              <p>
+                {error ? `${error} ` : ""}The agent may still have received it. Retry re-sends the
+                exact same message under the same identity, so it can never run twice.
+              </p>
+              <Button className="mt-2" onClick={retryUnresolvedCreate} size="sm" variant="outline">
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
         ) : error ? (
           <Alert className="mb-2" variant="destructive">
             <AlertTitle>
@@ -278,6 +370,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
             if (
               !eveVersion.supported ||
               isResuming ||
+              unresolvedCreate !== null ||
               (text.trim().length === 0 && files.length === 0)
             ) {
               return;
@@ -299,7 +392,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
         >
           <ComposerAttachments />
           <PromptInputTextarea
-            disabled={!eveVersion.supported || isResuming}
+            disabled={!eveVersion.supported || isResuming || unresolvedCreate !== null}
             onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
             placeholder="Ask the deployed agent..."
           />
@@ -320,7 +413,9 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               />
             </PromptInputTools>
             <ComposerAction
-              disabled={!eveVersion.supported || isResuming || isCancelling}
+              disabled={
+                !eveVersion.supported || isResuming || isCancelling || unresolvedCreate !== null
+              }
               hasInputText={hasInputText}
               isBusy={isBusy}
               onCancel={requestCancellation}

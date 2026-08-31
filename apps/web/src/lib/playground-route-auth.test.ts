@@ -105,3 +105,37 @@ describe("Playground OIDC route auth", () => {
     expect(claimPendingPlaygroundTurn(storage, "proj_1")).toEqual({ message: "hello" });
   });
 });
+
+describe("Playground create identity across the route-auth redirect", () => {
+  test("carries the operation id so the replay adopts a committed create (#407)", () => {
+    const storage = memoryStorage();
+    const handled = handleRouteAuthError({
+      error: interactionError,
+      message: "first message",
+      session: undefined,
+      operationId: "op-first-create",
+      projectId: "proj_1",
+      redirect: () => undefined,
+      storage,
+    });
+
+    expect(handled).toBe(true);
+    expect(claimPendingPlaygroundTurn(storage, "proj_1")).toEqual({
+      message: "first message",
+      operationId: "op-first-create",
+    });
+  });
+
+  test("tolerates a stash without an operation id", () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      "eveland:playground:pending-route-auth:proj_1",
+      JSON.stringify({ version: 1, message: "older stash" }),
+    );
+
+    expect(peekPendingPlaygroundTurn(storage, "proj_1")).toEqual({
+      message: "older stash",
+      session: undefined,
+    });
+  });
+});

@@ -41,6 +41,25 @@ export type PlaygroundAttachmentLimits = {
   maxTotalFileBytes: number;
 };
 
+/**
+ * Carries the browser's stable create-operation identity to the API, which
+ * injects it into the Eve create body as `operationId`. Eve's session route
+ * dedupes on it, so a retried create adopts the committed Session instead of
+ * executing the initial input twice (#407).
+ */
+export const PLAYGROUND_OPERATION_ID_HEADER = "x-eveland-operation-id";
+
+const playgroundOperationIdPattern = /^[\x21-\x7e]{1,128}$/;
+
+export function normalizePlaygroundOperationId(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  if (!playgroundOperationIdPattern.test(trimmed)) {
+    throw new Error("Playground operation id must be 1-128 printable ASCII characters.");
+  }
+  return trimmed;
+}
+
 export type EveSessionRequest = {
   kind:
     | "initial"

@@ -368,6 +368,10 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
         files: {
           "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run({ waitUntil }) { waitUntil(Promise.resolve()); } };`,
           "agent/schedules/broken.ts": `export default { cron: "* * * * *", async run() { throw new Error("fixture handler exploded"); } };`,
+          // Simulates Eve's command-hook readiness timeout: session creation
+          // rethrows a HookNotFoundError after the durable workflow may have
+          // committed, so the dispatch outcome is unknown, not failed (#407).
+          "agent/schedules/ambiguous.ts": `export default { cron: "* * * * *", async run() { throw Object.assign(new Error("Hook not found"), { name: "HookNotFoundError" }); } };`,
         },
       });
       await injectSchedulerAdapter({ releaseDir });
@@ -520,6 +524,34 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
             status: "failed",
             sessionIds: [],
             error: expect.stringContaining("fixture handler exploded"),
+          }),
+        ]);
+
+        const ambiguous = await fetch(
+          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_ambiguous`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer dispatch-ambiguous",
+              "content-type": "application/json",
+              "x-eveland-runtime-secret": "runtime-fixture-secret",
+            },
+            body: JSON.stringify({ scheduleKey: "ambiguous" }),
+          },
+        );
+        expect(ambiguous.status).toBe(500);
+        expect(reports.slice(5)).toEqual([
+          expect.objectContaining({
+            phase: "claim",
+            credential: "dispatch-ambiguous",
+            scheduleRunId: "srun_ambiguous",
+          }),
+          expect.objectContaining({
+            phase: "complete",
+            credential: "dispatch-ambiguous",
+            status: "dispatch_unknown",
+            sessionIds: [],
+            error: expect.stringContaining("Hook not found"),
           }),
         ]);
       } finally {
