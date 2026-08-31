@@ -742,6 +742,12 @@ export type ProjectScheduleSummary = {
   schedule: ProjectSchedule;
   version: ScheduleVersion | null;
   targetDeploymentId: string | null;
+  /**
+   * Status of the most recently created run, if any. "dispatch_unknown" means
+   * an earlier dispatch outcome is still ambiguous — the scheduled Session may
+   * yet start — so manual re-runs should ask before queueing (#407).
+   */
+  latestRunStatus: ScheduleRunStatus | null;
 };
 
 export type ScheduleRunListItem = ScheduleRun & {

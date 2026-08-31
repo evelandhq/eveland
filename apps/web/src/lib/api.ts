@@ -24,6 +24,7 @@ import type {
   ResolvedAgentRoute as CoreResolvedAgentRoute,
   ScheduleRecord,
   ScheduleRunListItem,
+  ScheduleRunStatus as CoreScheduleRunStatus,
   ScheduleVersion as CoreScheduleVersion,
   Session as CoreSession,
   SessionEvent as CoreSessionEvent,
@@ -39,6 +40,7 @@ export type Schedule = ScheduleRecord;
 export type ProjectSchedule = CoreProjectSchedule;
 export type ScheduleVersion = CoreScheduleVersion;
 export type ProjectScheduleSummary = CoreProjectScheduleSummary;
+export type ScheduleRunStatus = CoreScheduleRunStatus;
 export type Session = CoreSession;
 export type ScheduleRun = Omit<ScheduleRunListItem, "sessions"> & {
   sessions: Session[];

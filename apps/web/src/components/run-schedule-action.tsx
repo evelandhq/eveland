@@ -4,24 +4,39 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PlayIcon } from "lucide-react";
 import { runSchedule } from "@/lib/client-api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+
+import type { ScheduleRunStatus } from "@/lib/api";
 
 export function RunScheduleAction({
   projectId,
   scheduleId,
   scheduleKey,
+  latestRunStatus,
   disabled,
 }: {
   projectId: string;
   scheduleId: string;
   scheduleKey: string;
+  latestRunStatus: ScheduleRunStatus | null;
   disabled: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   // Every click queues (and bills) a real run, so the button stays disabled
   // through the refresh that makes the queued run visible under Recent runs —
   // a re-enabled button on a visually unchanged page reads as a no-op and
@@ -32,6 +47,27 @@ export function RunScheduleAction({
   // being a real, billed run.
   const inFlight = useRef(false);
 
+  async function queueRun() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      await runSchedule(projectId, scheduleId);
+      toast.add({
+        type: "success",
+        title: "Run queued",
+        description: `${scheduleKey} will start shortly and appear under Recent runs.`,
+      });
+      startRefresh(() => router.refresh());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to queue schedule.");
+    } finally {
+      inFlight.current = false;
+      setPending(false);
+    }
+  }
+
   return (
     <div className="flex flex-col items-end gap-1">
       <Button
@@ -39,25 +75,15 @@ export function RunScheduleAction({
         variant="outline"
         size="sm"
         disabled={disabled || pending || refreshing}
-        onClick={async () => {
-          if (inFlight.current) return;
-          inFlight.current = true;
-          setPending(true);
-          setError(null);
-          try {
-            await runSchedule(projectId, scheduleId);
-            toast.add({
-              type: "success",
-              title: "Run queued",
-              description: `${scheduleKey} will start shortly and appear under Recent runs.`,
-            });
-            startRefresh(() => router.refresh());
-          } catch (cause) {
-            setError(cause instanceof Error ? cause.message : "Unable to queue schedule.");
-          } finally {
-            inFlight.current = false;
-            setPending(false);
+        onClick={() => {
+          // An ambiguous earlier dispatch means its scheduled input may still
+          // execute — queueing again on a plain click risks a duplicate run,
+          // so make the operator opt in explicitly (#407).
+          if (latestRunStatus === "dispatch_unknown") {
+            setConfirmOpen(true);
+            return;
           }
+          void queueRun();
         }}
       >
         {pending || refreshing ? (
@@ -68,6 +94,32 @@ export function RunScheduleAction({
         Run now
       </Button>
       {error ? <p className="max-w-64 text-right text-xs text-destructive">{error}</p> : null}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Queue another run?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The latest run of <strong>{scheduleKey}</strong> ended with an unknown dispatch
+              outcome: its scheduled input may still execute. Queueing now can start a duplicate
+              run.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setConfirmOpen(false);
+                void queueRun();
+              }}
+            >
+              <PlayIcon data-icon="inline-start" />
+              Queue anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

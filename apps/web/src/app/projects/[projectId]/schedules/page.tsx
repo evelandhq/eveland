@@ -90,7 +90,7 @@ export default async function SchedulesPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {schedules.map(({ schedule, version, targetDeploymentId }) => (
+              {schedules.map(({ schedule, version, targetDeploymentId, latestRunStatus }) => (
                 <TableRow key={schedule.id}>
                   <TableCell>
                     <div className="flex flex-col gap-1">
@@ -131,6 +131,7 @@ export default async function SchedulesPage({
                         projectId={projectId}
                         scheduleId={schedule.id}
                         scheduleKey={schedule.key}
+                        latestRunStatus={latestRunStatus}
                         disabled={!version || !schedule.enabled}
                       />
                     </div>

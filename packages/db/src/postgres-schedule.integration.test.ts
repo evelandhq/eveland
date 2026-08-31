@@ -215,6 +215,7 @@ describe.skipIf(!database)("Postgres schedule state", () => {
           schedule: expect.objectContaining({ id: run.scheduleId, key: "nested/minute" }),
           version: expect.objectContaining({ id: run.scheduleVersionId }),
           targetDeploymentId: deployment.id,
+          latestRunStatus: "running",
         }),
       );
       await expect(

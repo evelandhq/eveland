@@ -33,6 +33,7 @@ import {
 } from "./schema.js";
 import { summarizeSessionUsage } from "./session-usage.js";
 
+import type { ScheduleRunStatus } from "@evelandhq/core/contracts";
 import type { ScheduleStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 import {
@@ -168,11 +169,20 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
     },
 
     async listProjectScheduleSummaries(projectId) {
+      const latestRuns = db
+        .selectDistinctOn([scheduleRuns.scheduleId], {
+          scheduleId: scheduleRuns.scheduleId,
+          status: scheduleRuns.status,
+        })
+        .from(scheduleRuns)
+        .orderBy(scheduleRuns.scheduleId, desc(scheduleRuns.createdAt), desc(scheduleRuns.id))
+        .as("latest_runs");
       const rows = await db
         .select({
           schedule: projectSchedules,
           version: scheduleVersions,
           targetDeploymentId: projectSchedulerTargets.deploymentId,
+          latestRunStatus: latestRuns.status,
         })
         .from(projectSchedules)
         .leftJoin(
@@ -188,12 +198,14 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
             eq(scheduleVersions.sourceRevisionId, releases.sourceRevisionId),
           ),
         )
+        .leftJoin(latestRuns, eq(latestRuns.scheduleId, projectSchedules.id))
         .where(eq(projectSchedules.projectId, projectId))
         .orderBy(projectSchedules.key);
       return rows.map((row) => ({
         schedule: projectScheduleRowToProjectSchedule(row.schedule),
         version: row.version ? scheduleVersionRowToScheduleVersion(row.version) : null,
         targetDeploymentId: row.targetDeploymentId,
+        latestRunStatus: (row.latestRunStatus ?? null) as ScheduleRunStatus | null,
       }));
     },
 

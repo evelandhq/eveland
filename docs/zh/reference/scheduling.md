@@ -45,6 +45,8 @@ Prepared Release 会保留 root 与 Extension Schedule 的 Eve 注册形状，�
 
 每个 Schedule 展示：名称；人类可读的 UTC 执行周期，以及作为精确依据的原始 Cron 表达式；时区；是否启用；下一次触发时间；来源文件位置。
 
+手动 "Run now" 操作知道该 Schedule 最近一次 run 的状态。当该状态为 `dispatch_unknown` 时，再次排队必须经过显式确认：先前被调度的输入仍可能执行，普通点击不得悄悄承担重复 run 的风险。
+
 每次 cron 或 manual 执行都持久化独立 ScheduleRun；成功且没有创建 Session 也是合法结果。ScheduleRun 保留 Release/Deployment provenance、状态、attempt、missed tick、错误和关联 Sessions，供 Schedules 历史与 Session 详情 provenance 读取。Worker 同时在 Runtime Logs 中按 ScheduleRun ID 记录 pinned Release/Deployment/runtime、activation、Scheduler Channel dispatch 和最终结果阶段，以及端到端耗时。dispatch 超时必须把实际超时预算和目标 Deployment 写入 ScheduleRun 错误与日志，不能只保留底层 `AbortError` 文案；日志不得包含 dispatch credential、runtime secret 或 Project Secret。
 
 Schedule 定义表下方展示最近 50 条 ScheduleRun，并可继续分页。列表默认覆盖全部 Schedule；点击某个 Schedule 的"查看历史"后仍停留在 Schedules 页面，筛选该 Schedule（`schedule_id = 当前 schedule`）并滚动到 Recent runs。
