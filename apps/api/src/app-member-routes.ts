@@ -32,9 +32,9 @@ export function registerMemberRoutes(input: {
 }) {
   const { app, auth, webOrigin } = input;
 
-  app.get("/auth/session", (c) => c.json({ member: c.get("principal") }));
+  app.get("/api/members/me", (c) => c.json({ member: c.get("principal") }));
 
-  app.patch("/profile", async (c) => {
+  app.patch("/api/profile", async (c) => {
     const parsed = profileSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid profile", issues: parsed.error.issues }, 400);
@@ -50,7 +50,7 @@ export function registerMemberRoutes(input: {
     }
   });
 
-  app.post("/profile/password", async (c) => {
+  app.post("/api/profile/password", async (c) => {
     const parsed = passwordChangeSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid password change", issues: parsed.error.issues }, 400);
@@ -66,9 +66,9 @@ export function registerMemberRoutes(input: {
     }
   });
 
-  app.get("/members", async (c) => c.json({ members: await auth.listMembers(c.req.raw) }));
+  app.get("/api/members", async (c) => c.json({ members: await auth.listMembers(c.req.raw) }));
 
-  app.get("/invitations", async (c) => {
+  app.get("/api/invitations", async (c) => {
     try {
       const invitations = await auth.listInvitations(c.req.raw);
       return c.json({ invitations: invitations.map(publicInvitation) });
@@ -77,7 +77,7 @@ export function registerMemberRoutes(input: {
     }
   });
 
-  app.post("/invitations", async (c) => {
+  app.post("/api/invitations", async (c) => {
     const parsed = invitationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid invitation input", issues: parsed.error.issues }, 400);
@@ -96,7 +96,7 @@ export function registerMemberRoutes(input: {
     }
   });
 
-  app.post("/invitations/:invitationId/resend", async (c) => {
+  app.post("/api/invitations/:invitationId/resend", async (c) => {
     try {
       const issued = await auth.reissueInvitation(c.req.raw, c.req.param("invitationId"));
       return c.json({
@@ -108,7 +108,7 @@ export function registerMemberRoutes(input: {
     }
   });
 
-  app.delete("/invitations/:invitationId", async (c) => {
+  app.delete("/api/invitations/:invitationId", async (c) => {
     try {
       const revoked = await auth.revokeInvitation(c.req.raw, c.req.param("invitationId"));
       return revoked ? c.body(null, 204) : c.json({ error: "Invitation not found" }, 404);
@@ -117,7 +117,7 @@ export function registerMemberRoutes(input: {
     }
   });
 
-  app.patch("/members/:userId", async (c) => {
+  app.patch("/api/members/:userId", async (c) => {
     const parsed = memberRoleSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid member role" }, 400);
@@ -136,7 +136,7 @@ export function registerMemberRoutes(input: {
 
   // Same contract as invitation create/resend: the response carries the URL
   // the admin shares out-of-band, and the raw token never appears elsewhere.
-  app.post("/members/:userId/password-reset", async (c) => {
+  app.post("/api/members/:userId/password-reset", async (c) => {
     try {
       const issued = await auth.issuePasswordReset(c.req.raw, c.req.param("userId"));
       return c.json(
@@ -152,7 +152,7 @@ export function registerMemberRoutes(input: {
     }
   });
 
-  app.delete("/members/:userId", async (c) => {
+  app.delete("/api/members/:userId", async (c) => {
     try {
       const removed = await auth.removeMember(c.req.raw, c.req.param("userId"));
       return removed ? c.body(null, 204) : c.json({ error: "Member not found" }, 404);

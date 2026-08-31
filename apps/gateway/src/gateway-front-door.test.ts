@@ -10,14 +10,14 @@ function upstreams(fetchImplementation: typeof fetch) {
 }
 
 describe("front-door proxy", () => {
-  test("routes allowlisted browser API paths to the API with the prefix stripped", async () => {
+  test("routes the /api namespace to the API verbatim, query preserved", async () => {
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     await proxyFrontDoorRequest(
-      new Request("http://localhost:17300/api/eveland/projects/proj_1?full=1"),
+      new Request("http://localhost:17300/api/projects/proj_1?full=1"),
       upstreams(fetchMock as unknown as typeof fetch),
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:17301/projects/proj_1?full=1",
+      "http://127.0.0.1:17301/api/projects/proj_1?full=1",
       expect.objectContaining({ method: "GET" }),
     );
   });
@@ -42,14 +42,19 @@ describe("front-door proxy", () => {
     );
   });
 
-  test("blocks unlisted browser API subtrees without forwarding", async () => {
-    const fetchMock = vi.fn();
-    const response = await proxyFrontDoorRequest(
-      new Request("http://localhost:17300/api/eveland/internal/scheduler/dispatch"),
+  test("never forwards the machine plane to the API", async () => {
+    // Root /internal is the Dashboard's side of the classifier here (the real
+    // Gateway answers it with its own service-token gate before path routing),
+    // so the API upstream can never see it through the front door.
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 404 }));
+    await proxyFrontDoorRequest(
+      new Request("http://localhost:17300/internal/scheduler/dispatch"),
       upstreams(fetchMock as unknown as typeof fetch),
     );
-    expect(response.status).toBe(404);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:17302/internal/scheduler/dispatch",
+      expect.anything(),
+    );
   });
 
   test("falls through to the Dashboard for page traffic", async () => {

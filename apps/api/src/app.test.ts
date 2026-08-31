@@ -463,7 +463,7 @@ describe("api app", () => {
     const store = createTestStore();
     const { project, schedule, deployment } = await createScheduleRunFixture(store, false);
     const response = await createApp(store).request(
-      `/projects/${project.id}/schedules/${schedule.id}/runs`,
+      `/api/projects/${project.id}/schedules/${schedule.id}/runs`,
       { method: "POST" },
     );
 
@@ -487,7 +487,7 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const schedules = await app.request(`/projects/${project.id}/schedules`);
+    const schedules = await app.request(`/api/projects/${project.id}/schedules`);
     await expect(schedules.json()).resolves.toMatchObject({
       schedules: [
         {
@@ -498,14 +498,14 @@ describe("api app", () => {
       ],
     });
     const runs = await app.request(
-      `/projects/${project.id}/schedule-runs?scheduleId=${schedule.id}&trigger=manual&status=running&limit=1`,
+      `/api/projects/${project.id}/schedule-runs?scheduleId=${schedule.id}&trigger=manual&status=running&limit=1`,
     );
     expect(runs.status).toBe(200);
     await expect(runs.json()).resolves.toMatchObject({
       runs: [{ id: run.id, sessionCount: 1 }],
       nextCursor: null,
     });
-    const detail = await app.request(`/schedule-runs/${run.id}`);
+    const detail = await app.request(`/api/schedule-runs/${run.id}`);
     await expect(detail.json()).resolves.toMatchObject({
       run: {
         id: run.id,
@@ -515,15 +515,15 @@ describe("api app", () => {
       },
     });
     const sessions = await app.request(
-      `/projects/${project.id}/sessions?trigger=manual&scheduleId=${schedule.id}&scheduleRunId=${run.id}&limit=10`,
+      `/api/projects/${project.id}/sessions?trigger=manual&scheduleId=${schedule.id}&scheduleRunId=${run.id}&limit=10`,
     );
     await expect(sessions.json()).resolves.toMatchObject({
       sessions: [{ scheduleRunId: run.id }],
       nextCursor: null,
     });
-    expect((await app.request(`/projects/${project.id}/schedule-runs?status=unknown`)).status).toBe(
-      400,
-    );
+    expect(
+      (await app.request(`/api/projects/${project.id}/schedule-runs?status=unknown`)).status,
+    ).toBe(400);
   });
 
   test("acknowledges failed schedule runs and reports per-project attention", async () => {
@@ -535,14 +535,14 @@ describe("api app", () => {
     });
     const app = createApp(store);
 
-    const before = await app.request(`/projects/${project.id}/schedule-attention`);
+    const before = await app.request(`/api/projects/${project.id}/schedule-attention`);
     await expect(before.json()).resolves.toEqual({ unacknowledgedFailedRuns: 1 });
-    const projectList = await app.request("/projects");
+    const projectList = await app.request("/api/projects");
     await expect(projectList.json()).resolves.toMatchObject({
       projects: [{ id: project.id, unacknowledgedFailedRuns: 1 }],
     });
 
-    const acknowledge = await app.request(`/projects/${project.id}/schedule-runs/acknowledge`, {
+    const acknowledge = await app.request(`/api/projects/${project.id}/schedule-runs/acknowledge`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ runIds: [run.id] }),
@@ -550,15 +550,16 @@ describe("api app", () => {
     expect(acknowledge.status).toBe(200);
     await expect(acknowledge.json()).resolves.toEqual({ acknowledged: 1 });
 
-    const after = await app.request(`/projects/${project.id}/schedule-attention`);
+    const after = await app.request(`/api/projects/${project.id}/schedule-attention`);
     await expect(after.json()).resolves.toEqual({ unacknowledgedFailedRuns: 0 });
     // Replays and empty-body project-wide sweeps are safe no-ops.
-    const sweep = await app.request(`/projects/${project.id}/schedule-runs/acknowledge`, {
+    const sweep = await app.request(`/api/projects/${project.id}/schedule-runs/acknowledge`, {
       method: "POST",
     });
     await expect(sweep.json()).resolves.toEqual({ acknowledged: 0 });
     expect(
-      (await app.request("/projects/missing/schedule-runs/acknowledge", { method: "POST" })).status,
+      (await app.request("/api/projects/missing/schedule-runs/acknowledge", { method: "POST" }))
+        .status,
     ).toBe(404);
   });
 

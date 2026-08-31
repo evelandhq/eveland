@@ -10,7 +10,7 @@ describe("browser auth API", () => {
       async (url: string | URL | Request) =>
         new Response(
           JSON.stringify(
-            String(url).endsWith("/auth/session")
+            String(url).endsWith("/members/me")
               ? { member: { email: "admin@example.com", role: "admin" } }
               : { user: { email: "admin@example.com" } },
           ),
@@ -25,13 +25,13 @@ describe("browser auth API", () => {
     await expect(signIn("admin@example.com", "admin-password")).resolves.toMatchObject({
       role: "admin",
     });
-    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/eveland/api/auth/sign-in/email", {
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/auth/sign-in/email", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: "admin@example.com", password: "admin-password" }),
     });
-    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/eveland/auth/session", {
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/members/me", {
       method: "GET",
       credentials: "include",
     });
@@ -48,7 +48,7 @@ describe("browser auth API", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(signOut()).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/api/auth/sign-out", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/sign-out", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
@@ -77,7 +77,7 @@ describe("browser auth API", () => {
 
     await getCurrentMember();
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/auth/session", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/members/me", {
       method: "GET",
       credentials: "include",
     });
@@ -109,7 +109,7 @@ describe("browser auth API", () => {
 
     await updateProfile({ name: "Eveland Admin", image: null });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/profile", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/profile", {
       method: "PATCH",
       credentials: "include",
       headers: { "content-type": "application/json" },
@@ -130,7 +130,7 @@ describe("browser auth API", () => {
 
     await changePassword("admin-password", "new-admin-password");
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/profile/password", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/profile/password", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
@@ -177,7 +177,7 @@ describe("browser auth API", () => {
     await acceptInvitation({ token: "invite-token", name: "Member", password: "member-password" });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/eveland/invitations/accept",
+      "/api/invitations/accept",
       expect.objectContaining({
         method: "POST",
         credentials: "include",

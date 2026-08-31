@@ -62,7 +62,7 @@ describe("api app", () => {
     });
     const app = createApp(store, { playgroundProxy });
 
-    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    const response = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "Wake up" }),
@@ -147,7 +147,7 @@ describe("api app", () => {
       },
     });
 
-    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    const response = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "Use the selected variant" }),
@@ -323,13 +323,13 @@ describe("api app", () => {
       ],
     });
 
-    const initial = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    const initial = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: initialBody,
     });
     const stream = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_chat/stream?startIndex=0&includeTailIndex=1`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_chat/stream?startIndex=0&includeTailIndex=1`,
       {
         headers: { accept: "application/x-ndjson" },
       },
@@ -358,7 +358,7 @@ describe("api app", () => {
       inputResponses: [{ requestId: "request_1", optionId: "approve" }],
     });
     const continuation = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_chat`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_chat`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -370,7 +370,7 @@ describe("api app", () => {
     await expect(continuation.json()).resolves.toMatchObject({});
     const cancelBody = JSON.stringify({ turnId: "turn_1" });
     const cancel = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_chat/cancel`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_chat/cancel`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -383,7 +383,7 @@ describe("api app", () => {
       status: "accepted",
     });
     const unsupportedCancel = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_chat/cancel`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_chat/cancel`,
       {
         method: "POST",
       },
@@ -391,7 +391,7 @@ describe("api app", () => {
     expect(unsupportedCancel.status).toBe(404);
     const resetBody = "";
     const reset = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_chat/reset`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_chat/reset`,
       {
         method: "POST",
       },
@@ -470,7 +470,7 @@ describe("api app", () => {
     );
     const app = createApp(store, { playgroundProxy });
 
-    const version = await app.request(`/projects/${project.id}/eve-version`);
+    const version = await app.request(`/api/projects/${project.id}/eve-version`);
     expect(version.status).toBe(200);
     await expect(version.json()).resolves.toEqual({
       eveVersion: {
@@ -482,7 +482,7 @@ describe("api app", () => {
       },
     });
 
-    const playground = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    const playground = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "hello" }),
@@ -526,7 +526,7 @@ describe("api app", () => {
       eveSessionId: "eve_old_pinned",
     });
     const pinnedContinuation = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_old_pinned`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_old_pinned`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -540,7 +540,7 @@ describe("api app", () => {
       error: "Unsupported Eve version",
     });
     const pinnedCancel = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_old_pinned/cancel`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_old_pinned/cancel`,
       {
         method: "POST",
       },

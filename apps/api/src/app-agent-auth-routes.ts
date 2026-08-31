@@ -19,9 +19,11 @@ export function registerAgentAuthRoutes(input: {
 }): void {
   const { app, store, agentAuth } = input;
 
-  app.get("/agent-auth/methods", (c) => c.json({ methods: agentAuth.registry.listDescriptors() }));
+  app.get("/api/agent-auth/methods", (c) =>
+    c.json({ methods: agentAuth.registry.listDescriptors() }),
+  );
 
-  app.get("/agent-connections/:connectionId/auth/interactions/:method/start", async (c) => {
+  app.get("/api/agent-connections/:connectionId/auth/interactions/:method/start", async (c) => {
     c.header("cache-control", "no-store");
     const connection = await store.getAgentConnection(c.req.param("connectionId"));
     const provider = agentAuth.registry.get(c.req.param("method"));
@@ -60,7 +62,7 @@ export function registerAgentAuthRoutes(input: {
     }
   });
 
-  app.post("/agent-auth/callback/:method", async (c) => {
+  app.post("/api/agent-auth/callback/:method", async (c) => {
     c.header("cache-control", "no-store");
     const parsed = agentAuthCallbackSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -82,7 +84,7 @@ export function registerAgentAuthRoutes(input: {
     }
   });
 
-  app.get("/projects/:projectId/agent-auth/secret-references", async (c) => {
+  app.get("/api/projects/:projectId/agent-auth/secret-references", async (c) => {
     const projectId = c.req.param("projectId");
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
@@ -97,7 +99,7 @@ export function registerAgentAuthRoutes(input: {
     return c.json({ references });
   });
 
-  app.get("/projects/:projectId/playground/connection", async (c) => {
+  app.get("/api/projects/:projectId/playground/connection", async (c) => {
     const project = await store.getProject(c.req.param("projectId"));
     if (!project) return c.json({ error: "Project not found" }, 404);
     return c.json(
@@ -108,7 +110,7 @@ export function registerAgentAuthRoutes(input: {
     );
   });
 
-  app.put("/agent-connections/:connectionId", async (c) => {
+  app.put("/api/agent-connections/:connectionId", async (c) => {
     const parsed = updateAgentConnectionSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(

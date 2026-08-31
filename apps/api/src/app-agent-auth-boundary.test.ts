@@ -22,8 +22,8 @@ describe("Agent authentication API boundary", () => {
     });
     registerAgentAuthRoutes({ app, store, agentAuth });
 
-    const methods = await app.request("/agent-auth/methods");
-    const connection = await app.request(`/projects/${project.id}/playground/connection`);
+    const methods = await app.request("/api/agent-auth/methods");
+    const connection = await app.request(`/api/projects/${project.id}/playground/connection`);
 
     expect(methods.status).toBe(200);
     await expect(methods.json()).resolves.toMatchObject({

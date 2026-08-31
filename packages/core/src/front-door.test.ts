@@ -13,62 +13,36 @@ describe("front-door path classification", () => {
     });
   });
 
-  test("Better Auth's namespace goes to the API verbatim", () => {
-    expect(classifyFrontDoorPath("/api/auth/sign-in/email")).toEqual({
-      target: "api",
-      upstreamPath: "/api/auth/sign-in/email",
-    });
-  });
-
-  test("the Identity namespace goes to the API verbatim", () => {
-    // Issuer-anchored: the SDK generates `${issuer}/api/identity/login` and
-    // administrators register `${issuer}/api/identity/oidc/callback` at their
-    // IdP, so these paths must resolve on the public origin.
+  test("the /api namespace goes to the API verbatim", () => {
     for (const path of [
+      "/api",
+      "/api/auth/sign-in/email",
       "/api/identity/login",
-      "/api/identity/session",
       "/api/identity/oidc/callback",
-      "/api/identity/continue",
-      "/api/identity/caller-tokens",
+      "/api/agent-catalog",
+      "/api/projects/proj_1/build-deploy",
+      "/api/system/identity/providers",
+      "/api/members/me",
     ]) {
       expect(classifyFrontDoorPath(path)).toEqual({ target: "api", upstreamPath: path });
     }
   });
 
-  test("the Agent Catalog goes to the API verbatim, exact path only", () => {
-    expect(classifyFrontDoorPath("/api/agent-catalog")).toEqual({
+  test("the machine plane is out of reach by construction", () => {
+    // Not an allowlist decision (#73's class): the machine plane is
+    // registered at root /internal, which classifies to the Dashboard here
+    // and is answered by the Gateway's own service-token gate before path
+    // routing anyway. Under /api it would forward verbatim to a path the API
+    // never registers — the api-route-namespaces architecture test pins that.
+    expect(classifyFrontDoorPath("/internal/scheduler/dispatch").target).toBe("web");
+    expect(classifyFrontDoorPath("/api/internal/scheduler/dispatch")).toEqual({
       target: "api",
-      upstreamPath: "/api/agent-catalog",
+      upstreamPath: "/api/internal/scheduler/dispatch",
     });
-    // No subtree: the Catalog is a single public projection, not a namespace.
-    expect(classifyFrontDoorPath("/api/agent-catalog/extra").target).toBe("web");
-  });
-
-  test("allowlisted browser subtrees go to the API with the prefix stripped", () => {
-    expect(classifyFrontDoorPath("/api/eveland/projects/proj_1/build-deploy")).toEqual({
-      target: "api",
-      upstreamPath: "/projects/proj_1/build-deploy",
-    });
-    expect(classifyFrontDoorPath("/api/eveland/api/auth/sign-out")).toEqual({
-      target: "api",
-      upstreamPath: "/api/auth/sign-out",
-    });
-  });
-
-  test("the browser namespace is a fail-closed allowlist", () => {
-    // The machine plane must never become browser-reachable through the
-    // public origin (#73) - an unlisted subtree is blocked, not forwarded.
-    expect(classifyFrontDoorPath("/api/eveland/internal/scheduler/dispatch").target).toBe(
-      "blocked",
-    );
-    expect(classifyFrontDoorPath("/api/eveland/health").target).toBe("blocked");
-    expect(classifyFrontDoorPath("/api/eveland").target).toBe("blocked");
-    // Prefix tricks do not widen a subtree.
-    expect(classifyFrontDoorPath("/api/eveland/projectsX/abc").target).toBe("blocked");
   });
 
   test("everything else is the Dashboard's", () => {
-    for (const path of ["/", "/login", "/projects/proj_1", "/_next/static/x.js", "/api", "/apix"]) {
+    for (const path of ["/", "/login", "/projects/proj_1", "/_next/static/x.js", "/apix"]) {
       expect(classifyFrontDoorPath(path).target).toBe("web");
     }
   });

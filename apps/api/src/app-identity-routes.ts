@@ -458,7 +458,7 @@ export function registerSystemIdentityRoutes(
   services: ReturnType<typeof createIdentityRouteServices>,
 ) {
   const { app, store, appSecretKey } = context;
-  app.get("/system/identity/providers", async (c) => {
+  app.get("/api/system/identity/providers", async (c) => {
     return c.json({
       providers: (await store.listIdentityProviderConnections()).map(publicProvider),
       // What an admin registers at their IdP; surfaced so the settings UI
@@ -467,7 +467,7 @@ export function registerSystemIdentityRoutes(
     });
   });
 
-  app.post("/system/identity/providers", async (c) => {
+  app.post("/api/system/identity/providers", async (c) => {
     const parsed = createIdentityProviderSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid Identity Provider", issues: parsed.error.issues }, 400);
@@ -518,7 +518,7 @@ export function registerSystemIdentityRoutes(
     }
   });
 
-  app.post("/system/identity/providers/:providerId/preflight", async (c) => {
+  app.post("/api/system/identity/providers/:providerId/preflight", async (c) => {
     const provider = await store.getIdentityProviderConnection(c.req.param("providerId"));
     if (!provider) return c.json({ error: "Identity Provider not found" }, 404);
     if (provider.type === "open") {
@@ -584,7 +584,7 @@ export function registerSystemIdentityRoutes(
     });
   });
 
-  app.patch("/system/identity/providers/:providerId", async (c) => {
+  app.patch("/api/system/identity/providers/:providerId", async (c) => {
     const parsed = updateIdentityProviderSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid Identity Provider update" }, 400);
@@ -657,13 +657,13 @@ export function registerSystemIdentityRoutes(
     }
   });
 
-  app.get("/system/identity/realms", async (c) => {
+  app.get("/api/system/identity/realms", async (c) => {
     return c.json({
       realms: await store.listIdentityRealms(c.req.query("providerConnectionId")),
     });
   });
 
-  app.post("/system/identity/realms", async (c) => {
+  app.post("/api/system/identity/realms", async (c) => {
     const parsed = createIdentityRealmSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Invalid Identity Realm" }, 400);
     const provider = await store.getIdentityProviderConnection(parsed.data.providerConnectionId);
@@ -683,18 +683,18 @@ export function registerSystemIdentityRoutes(
     return c.json({ realm: await store.createIdentityRealm(parsed.data) }, 201);
   });
 
-  app.patch("/system/identity/realms/:realmId", async (c) => {
+  app.patch("/api/system/identity/realms/:realmId", async (c) => {
     const parsed = updateIdentityRealmSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Invalid Identity Realm update" }, 400);
     const realm = await store.updateIdentityRealm(c.req.param("realmId"), parsed.data);
     return realm ? c.json({ realm }) : c.json({ error: "Identity Realm not found" }, 404);
   });
 
-  app.get("/system/identity/return-targets", async (c) => {
+  app.get("/api/system/identity/return-targets", async (c) => {
     return c.json({ targets: await store.listIdentityReturnTargets() });
   });
 
-  app.put("/system/identity/return-targets/:targetKey", async (c) => {
+  app.put("/api/system/identity/return-targets/:targetKey", async (c) => {
     const key = c.req.param("targetKey");
     if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(key)) {
       return c.json({ error: "Invalid Identity return target key." }, 400);

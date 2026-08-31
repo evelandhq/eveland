@@ -52,11 +52,11 @@ export function registerObservabilityRoutes(input: {
     appSecretKey,
   });
 
-  app.get("/system/observability", async (c) => {
+  app.get("/api/system/observability", async (c) => {
     return c.json(await policyService.getPublicPolicy());
   });
 
-  app.put("/system/observability", async (c) => {
+  app.put("/api/system/observability", async (c) => {
     const parsed = updateAgentCaptureSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -84,7 +84,7 @@ export function registerObservabilityRoutes(input: {
         );
   });
 
-  app.post("/system/observability/destinations", async (c) => {
+  app.post("/api/system/observability/destinations", async (c) => {
     const parsed = createDestinationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -137,7 +137,7 @@ export function registerObservabilityRoutes(input: {
     return c.json(await policyService.getPublicPolicy(updated), 201);
   });
 
-  app.put("/system/observability/destinations/:destinationId", async (c) => {
+  app.put("/api/system/observability/destinations/:destinationId", async (c) => {
     const parsed = updateDestinationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -191,7 +191,7 @@ export function registerObservabilityRoutes(input: {
     return c.json(await policyService.getPublicPolicy(updated));
   });
 
-  app.patch("/system/observability/destinations/:destinationId", async (c) => {
+  app.patch("/api/system/observability/destinations/:destinationId", async (c) => {
     const parsed = toggleDestinationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -225,7 +225,7 @@ export function registerObservabilityRoutes(input: {
     return c.json(await policyService.getPublicPolicy(updated));
   });
 
-  app.delete("/system/observability/destinations/:destinationId", async (c) => {
+  app.delete("/api/system/observability/destinations/:destinationId", async (c) => {
     const parsed = deleteDestinationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(

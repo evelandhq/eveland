@@ -61,7 +61,7 @@ export function registerCanonicalPlaygroundRoute(input: {
 }): void {
   const { app, store, agentAuth, playgroundProxy } = input;
 
-  app.all("/projects/:projectId/playground/eve/*", async (c) => {
+  app.all("/api/projects/:projectId/playground/eve/*", async (c) => {
     const projectId = c.req.param("projectId");
     // One canonical id from the browser (when it sent one) through API,
     // Gateway, activation and dispatcher logs; echoed on every response so a

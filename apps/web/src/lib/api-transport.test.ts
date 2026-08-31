@@ -79,7 +79,7 @@ describe("browser API transport", () => {
     });
 
     await expect(
-      apiRequest("/api/auth/sign-in/email", {
+      apiRequest("/auth/sign-in/email", {
         method: "POST",
         unauthorized: "surface",
       }),
@@ -94,7 +94,7 @@ describe("browser API transport", () => {
       location: { pathname: "/login", search: "", assign },
     });
 
-    await expect(apiRequest("/auth/session")).rejects.toBeInstanceOf(ApiUnauthorizedError);
+    await expect(apiRequest("/members/me")).rejects.toBeInstanceOf(ApiUnauthorizedError);
     expect(assign).not.toHaveBeenCalled();
   });
 

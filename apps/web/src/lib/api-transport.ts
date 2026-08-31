@@ -5,15 +5,16 @@
  * component inventing its own.
  */
 
-import { BROWSER_API_PREFIX } from "@evelandhq/core/front-door";
+import { PUBLIC_API_PREFIX } from "@evelandhq/core/front-door";
 
 /**
- * Same-origin, always: every browser call rides the public origin's
- * `/api/eveland` namespace (front-door proxy in production, the Next rewrite
- * allowlist when the dev server is dialed directly), so no cross-origin
- * cookie or CORS configuration exists on the browser side.
+ * Same-origin, always: every browser call rides the public origin's `/api`
+ * namespace (front-door proxy in production, the verbatim Next rewrite when
+ * the dev server is dialed directly), so no cross-origin cookie or CORS
+ * configuration exists on the browser side. Paths passed to the transport
+ * are subtree-relative — the prefix lives here exactly once.
  */
-export const apiBaseUrl = BROWSER_API_PREFIX;
+export const apiBaseUrl = PUBLIC_API_PREFIX;
 
 /**
  * The complete control-plane error contract. Validation failures carry

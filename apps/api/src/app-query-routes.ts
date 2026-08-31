@@ -11,7 +11,7 @@ import {
 import { resolveProjectEveVersion } from "./app-support.js";
 
 export function registerQueryRoutes(app: ApiApp, store: Store): void {
-  app.get("/usage", async (c) => {
+  app.get("/api/usage", async (c) => {
     const parsed = usageAnalyticsQuerySchema.safeParse(c.req.query());
     if (!parsed.success)
       return c.json({ error: "Invalid usage filters", issues: parsed.error.issues }, 400);
@@ -20,7 +20,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 
-  app.get("/projects/:projectId/usage", async (c) => {
+  app.get("/api/projects/:projectId/usage", async (c) => {
     const projectId = c.req.param("projectId");
     if (!(await store.getProject(projectId))) return c.json({ error: "Project not found" }, 404);
     const parsed = usageAnalyticsQuerySchema.safeParse(c.req.query());
@@ -31,13 +31,13 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 
-  app.get("/projects/:projectId/schedules", async (c) => {
+  app.get("/api/projects/:projectId/schedules", async (c) => {
     return c.json({
       schedules: await store.listProjectScheduleSummaries(c.req.param("projectId")),
     });
   });
 
-  app.post("/projects/:projectId/schedules/:scheduleId/runs", async (c) => {
+  app.post("/api/projects/:projectId/schedules/:scheduleId/runs", async (c) => {
     try {
       const run = await store.createManualScheduleRun(
         c.req.param("projectId"),
@@ -50,7 +50,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     }
   });
 
-  app.post("/projects/:projectId/schedule-runs/acknowledge", async (c) => {
+  app.post("/api/projects/:projectId/schedule-runs/acknowledge", async (c) => {
     const parsed = acknowledgeScheduleRunsSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success)
       return c.json({ error: "Invalid acknowledgement", issues: parsed.error.issues }, 400);
@@ -61,7 +61,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 
-  app.get("/projects/:projectId/schedule-attention", async (c) => {
+  app.get("/api/projects/:projectId/schedule-attention", async (c) => {
     const projectId = c.req.param("projectId");
     const attention = (await store.listScheduleAttention()).find(
       (entry) => entry.projectId === projectId,
@@ -71,7 +71,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 
-  app.get("/projects/:projectId/schedule-runs", async (c) => {
+  app.get("/api/projects/:projectId/schedule-runs", async (c) => {
     const parsed = scheduleRunListQuerySchema.safeParse(c.req.query());
     if (!parsed.success)
       return c.json({ error: "Invalid schedule-run filters", issues: parsed.error.issues }, 400);
@@ -82,7 +82,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 
-  app.get("/schedule-runs/:scheduleRunId", async (c) => {
+  app.get("/api/schedule-runs/:scheduleRunId", async (c) => {
     const run = await store.getScheduleRunDetail(c.req.param("scheduleRunId"));
     return run
       ? c.json({
@@ -95,14 +95,14 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
       : c.json({ error: "ScheduleRun not found" }, 404);
   });
 
-  app.get("/projects/:projectId/source/revision", async (c) => {
+  app.get("/api/projects/:projectId/source/revision", async (c) => {
     const revision = await store.getCurrentSourceRevision(c.req.param("projectId"));
     return c.json({
       revision: revision ? publicSourceRevision(revision) : null,
     });
   });
 
-  app.get("/projects/:projectId/eve-version", async (c) => {
+  app.get("/api/projects/:projectId/eve-version", async (c) => {
     const projectId = c.req.param("projectId");
     if (!(await store.getProject(projectId))) return c.json({ error: "Project not found" }, 404);
     return c.json({
@@ -110,13 +110,13 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 
-  app.get("/projects/:projectId/source/files", async (c) => {
+  app.get("/api/projects/:projectId/source/files", async (c) => {
     return c.json({
       files: await store.listSourceFiles(c.req.param("projectId")),
     });
   });
 
-  app.get("/projects/:projectId/source/file", async (c) => {
+  app.get("/api/projects/:projectId/source/file", async (c) => {
     const filePath = c.req.query("path");
     if (!filePath) {
       return c.json({ error: "Missing source file path" }, 400);
@@ -127,7 +127,7 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 
-  app.get("/projects/:projectId/sessions", async (c) => {
+  app.get("/api/projects/:projectId/sessions", async (c) => {
     const parsed = sessionListQuerySchema.safeParse(c.req.query());
     if (!parsed.success)
       return c.json({ error: "Invalid Session filters", issues: parsed.error.issues }, 400);
@@ -138,30 +138,30 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     });
   });
 
-  app.get("/sessions/:sessionId/events", async (c) => {
+  app.get("/api/sessions/:sessionId/events", async (c) => {
     return c.json({
       events: await store.listSessionEvents(c.req.param("sessionId")),
     });
   });
 
-  app.get("/sessions/:sessionId", async (c) => {
+  app.get("/api/sessions/:sessionId", async (c) => {
     const session = await store.getSession(c.req.param("sessionId"));
     return session ? c.json({ session }) : c.json({ error: "Session not found" }, 404);
   });
 
-  app.get("/sessions/:sessionId/usage", async (c) => {
+  app.get("/api/sessions/:sessionId/usage", async (c) => {
     return c.json({
       usage: await store.listModelUsageEvents(c.req.param("sessionId")),
     });
   });
 
-  app.get("/sessions/:sessionId/nodes", async (c) => {
+  app.get("/api/sessions/:sessionId/nodes", async (c) => {
     return c.json({
       nodes: await store.listSessionNodes(c.req.param("sessionId")),
     });
   });
 
-  app.get("/projects/:projectId/logs", async (c) => {
+  app.get("/api/projects/:projectId/logs", async (c) => {
     const type = c.req.query("type") as LogRecord["type"] | undefined;
     return c.json({
       logs: await store.listLogs(c.req.param("projectId"), type),

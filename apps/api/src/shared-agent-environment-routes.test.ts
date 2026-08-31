@@ -10,11 +10,11 @@ describe("shared Agent environment routes", () => {
     const store = createTestStore();
     const app = createApp(store, { appSecretKey });
 
-    const emptyResponse = await app.request("/platform/shared-agent-environment");
+    const emptyResponse = await app.request("/api/platform/shared-agent-environment");
     expect(emptyResponse.status).toBe(200);
     await expect(emptyResponse.json()).resolves.toEqual({ environment: null });
 
-    const savedResponse = await app.request("/platform/shared-agent-environment", {
+    const savedResponse = await app.request("/api/platform/shared-agent-environment", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -113,7 +113,7 @@ describe("shared Agent environment routes", () => {
     });
     await store.updateDeploymentStatus(stoppedDeployment.id, "stopped");
 
-    const savedResponse = await app.request("/platform/shared-agent-environment", {
+    const savedResponse = await app.request("/api/platform/shared-agent-environment", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -138,7 +138,7 @@ describe("shared Agent environment routes", () => {
       savedInternalJobs.every((job) => job.payload.reason === "shared_agent_environment_changed"),
     ).toBe(true);
 
-    const unchangedResponse = await app.request("/platform/shared-agent-environment", {
+    const unchangedResponse = await app.request("/api/platform/shared-agent-environment", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ entries: [{ key: "OPENAI_API_KEY", kind: "secret" }] }),
@@ -146,7 +146,7 @@ describe("shared Agent environment routes", () => {
     expect(unchangedResponse.status).toBe(200);
     await expect(unchangedResponse.json()).resolves.toMatchObject({ jobs: [] });
 
-    const rotatedResponse = await app.request("/platform/shared-agent-environment", {
+    const rotatedResponse = await app.request("/api/platform/shared-agent-environment", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

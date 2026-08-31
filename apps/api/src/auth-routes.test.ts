@@ -7,10 +7,10 @@ describe("control-plane auth routes", () => {
 
     expect((await app.request("/health")).status).toBe(200);
     expect((await app.request("/api/auth/get-session")).status).toBe(200);
-    const response = await app.request("/projects");
-    const agentAuthMethods = await app.request("/agent-auth/methods");
+    const response = await app.request("/api/projects");
+    const agentAuthMethods = await app.request("/api/agent-auth/methods");
     const canonicalPlayground = await app.request(
-      "/projects/proj_unauthorized/playground/eve/v1/session",
+      "/api/projects/proj_unauthorized/playground/eve/v1/session",
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -97,7 +97,7 @@ describe("control-plane auth routes", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("eveland_session=");
     expect(response.headers.get("set-cookie")).toContain("HttpOnly");
-    const session = await app.request("/auth/session", { headers: { cookie } });
+    const session = await app.request("/api/members/me", { headers: { cookie } });
     await expect(session.json()).resolves.toEqual({
       member: expect.objectContaining({ email: "admin@example.com", role: "admin" }),
     });
@@ -107,7 +107,7 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
     const issued = await invite(app, adminCookie);
-    const accepted = await app.request("/invitations/accept", {
+    const accepted = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -118,11 +118,11 @@ describe("control-plane auth routes", () => {
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
-    expect((await app.request("/system/configuration")).status).toBe(401);
-    const adminResponse = await app.request("/system/configuration", {
+    expect((await app.request("/api/system/configuration")).status).toBe(401);
+    const adminResponse = await app.request("/api/system/configuration", {
       headers: { cookie: adminCookie },
     });
-    const memberResponse = await app.request("/system/configuration", {
+    const memberResponse = await app.request("/api/system/configuration", {
       headers: { cookie: memberCookie },
     });
 
@@ -130,17 +130,17 @@ describe("control-plane auth routes", () => {
     await expect(adminResponse.json()).resolves.toEqual({ components: [] });
     expect(memberResponse.status).toBe(403);
     await expect(memberResponse.json()).resolves.toEqual({ error: "Admin access required" });
-    expect((await app.request("/system/observability")).status).toBe(401);
+    expect((await app.request("/api/system/observability")).status).toBe(401);
     expect(
       (
-        await app.request("/system/observability", {
+        await app.request("/api/system/observability", {
           headers: { cookie: adminCookie },
         })
       ).status,
     ).toBe(200);
     expect(
       (
-        await app.request("/system/observability", {
+        await app.request("/api/system/observability", {
           headers: { cookie: memberCookie },
         })
       ).status,
@@ -151,7 +151,7 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
     const issued = await invite(app, adminCookie, "health-member@example.com");
-    const accepted = await app.request("/invitations/accept", {
+    const accepted = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -162,12 +162,12 @@ describe("control-plane auth routes", () => {
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
 
-    expect((await app.request("/system/health")).status).toBe(401);
-    expect((await app.request("/system/health", { headers: { cookie: adminCookie } })).status).toBe(
-      200,
-    );
+    expect((await app.request("/api/system/health")).status).toBe(401);
     expect(
-      (await app.request("/system/health", { headers: { cookie: memberCookie } })).status,
+      (await app.request("/api/system/health", { headers: { cookie: adminCookie } })).status,
+    ).toBe(200);
+    expect(
+      (await app.request("/api/system/health", { headers: { cookie: memberCookie } })).status,
     ).toBe(403);
   });
 
@@ -175,7 +175,7 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
     const issued = await invite(app, adminCookie, "profile-member@example.com");
-    const accepted = await app.request("/invitations/accept", {
+    const accepted = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -189,14 +189,14 @@ describe("control-plane auth routes", () => {
       entries: [{ key: "OPENAI_API_KEY", kind: "secret", value: "operator-secret" }],
     };
 
-    expect((await app.request("/platform/shared-agent-environment")).status).toBe(401);
-    const memberResponse = await app.request("/platform/shared-agent-environment", {
+    expect((await app.request("/api/platform/shared-agent-environment")).status).toBe(401);
+    const memberResponse = await app.request("/api/platform/shared-agent-environment", {
       headers: { cookie: memberCookie },
     });
     expect(memberResponse.status).toBe(403);
     await expect(memberResponse.json()).resolves.toEqual({ error: "Admin access required" });
 
-    const adminResponse = await app.request("/platform/shared-agent-environment", {
+    const adminResponse = await app.request("/api/platform/shared-agent-environment", {
       method: "PUT",
       headers: { cookie: adminCookie, "content-type": "application/json" },
       body: JSON.stringify(input),
@@ -210,7 +210,7 @@ describe("control-plane auth routes", () => {
     const { cookie: otherCookie } = await signIn(app);
     const image = "data:image/png;base64,iVBORw0KGgo=";
 
-    const profile = await app.request("/profile", {
+    const profile = await app.request("/api/profile", {
       method: "PATCH",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ name: "Eveland Admin", image }),
@@ -226,12 +226,12 @@ describe("control-plane auth routes", () => {
       }),
     });
     await expect(
-      (await app.request("/auth/session", { headers: { cookie } })).json(),
+      (await app.request("/api/members/me", { headers: { cookie } })).json(),
     ).resolves.toEqual({
       member: expect.objectContaining({ image, name: "Eveland Admin" }),
     });
 
-    const password = await app.request("/profile/password", {
+    const password = await app.request("/api/profile/password", {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({
@@ -241,9 +241,9 @@ describe("control-plane auth routes", () => {
     });
 
     expect(password.status).toBe(204);
-    expect((await app.request("/auth/session", { headers: { cookie: otherCookie } })).status).toBe(
-      401,
-    );
+    expect(
+      (await app.request("/api/members/me", { headers: { cookie: otherCookie } })).status,
+    ).toBe(401);
     expect((await signIn(app)).response.status).toBe(401);
     expect((await signIn(app, "admin@example.com", "new-admin-password")).response.status).toBe(
       200,
@@ -254,7 +254,7 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie } = await signIn(app);
 
-    const profile = await app.request("/profile", {
+    const profile = await app.request("/api/profile", {
       method: "PATCH",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({
@@ -269,7 +269,7 @@ describe("control-plane auth routes", () => {
       member: expect.objectContaining({ displayTimezone: "Asia/Shanghai" }),
     });
     await expect(
-      (await app.request("/auth/session", { headers: { cookie } })).json(),
+      (await app.request("/api/members/me", { headers: { cookie } })).json(),
     ).resolves.toEqual({
       member: expect.objectContaining({ displayTimezone: "Asia/Shanghai" }),
     });
@@ -279,7 +279,7 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie } = await signIn(app);
 
-    const profile = await app.request("/profile", {
+    const profile = await app.request("/api/profile", {
       method: "PATCH",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({
@@ -296,12 +296,12 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie } = await signIn(app);
 
-    const unsupported = await app.request("/profile", {
+    const unsupported = await app.request("/api/profile", {
       method: "PATCH",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ name: "Admin", image: "data:image/svg+xml;base64,PHN2Zy8+" }),
     });
-    const oversized = await app.request("/profile", {
+    const oversized = await app.request("/api/profile", {
       method: "PATCH",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({
@@ -328,7 +328,7 @@ describe("control-plane auth routes", () => {
     });
     expect(JSON.stringify(issued.body)).not.toContain("password");
 
-    const accepted = await app.request("/invitations/accept", {
+    const accepted = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -342,7 +342,7 @@ describe("control-plane auth routes", () => {
     expect(accepted.status).toBe(200);
     const forbidden = await invite(app, memberCookie, "other@example.com");
     expect(forbidden.response.status).toBe(403);
-    const members = await app.request("/members", { headers: { cookie: memberCookie } });
+    const members = await app.request("/api/members", { headers: { cookie: memberCookie } });
     await expect(members.json()).resolves.toMatchObject({
       members: [
         expect.objectContaining({ email: "admin@example.com", role: "admin" }),
@@ -355,7 +355,7 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
     const issued = await invite(app, adminCookie, "rejoiner@example.com");
-    const accepted = await app.request("/invitations/accept", {
+    const accepted = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -366,14 +366,14 @@ describe("control-plane auth routes", () => {
     });
     expect(accepted.status).toBe(200);
     const members = await (
-      await app.request("/members", { headers: { cookie: adminCookie } })
+      await app.request("/api/members", { headers: { cookie: adminCookie } })
     ).json();
     const memberId = members.members.find(
       (member: { email: string }) => member.email === "rejoiner@example.com",
     ).userId as string;
     expect(
       (
-        await app.request(`/members/${memberId}`, {
+        await app.request(`/api/members/${memberId}`, {
           method: "DELETE",
           headers: { cookie: adminCookie },
         })
@@ -385,7 +385,7 @@ describe("control-plane auth routes", () => {
 
     // The public preview tells the accept page which flow to render, but only
     // for a valid pending token.
-    const preview = await app.request("/invitations/preview", {
+    const preview = await app.request("/api/invitations/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token }),
@@ -397,7 +397,7 @@ describe("control-plane auth routes", () => {
     });
     expect(
       (
-        await app.request("/invitations/preview", {
+        await app.request("/api/invitations/preview", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ token: "invitation_guess" }),
@@ -405,7 +405,7 @@ describe("control-plane auth routes", () => {
       ).status,
     ).toBe(404);
 
-    const wrongPassword = await app.request("/invitations/accept", {
+    const wrongPassword = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token, password: "a-brand-new-password" }),
@@ -415,7 +415,7 @@ describe("control-plane auth routes", () => {
       error: "Incorrect password for your existing account",
     });
 
-    const rejoined = await app.request("/invitations/accept", {
+    const rejoined = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token, password: "rejoiner-password" }),
@@ -423,7 +423,7 @@ describe("control-plane auth routes", () => {
     expect(rejoined.status).toBe(200);
     const rejoinedCookie = rejoined.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
     await expect(
-      (await app.request("/auth/session", { headers: { cookie: rejoinedCookie } })).json(),
+      (await app.request("/api/members/me", { headers: { cookie: rejoinedCookie } })).json(),
     ).resolves.toEqual({
       member: expect.objectContaining({
         email: "rejoiner@example.com",
@@ -437,13 +437,13 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
     const membersBefore = await (
-      await app.request("/members", { headers: { cookie: adminCookie } })
+      await app.request("/api/members", { headers: { cookie: adminCookie } })
     ).json();
     const adminId = membersBefore.members[0].userId as string;
 
     expect(
       (
-        await app.request(`/members/${adminId}`, {
+        await app.request(`/api/members/${adminId}`, {
           method: "DELETE",
           headers: { cookie: adminCookie },
         })
@@ -451,7 +451,7 @@ describe("control-plane auth routes", () => {
     ).toBe(409);
     expect(
       (
-        await app.request(`/members/${adminId}`, {
+        await app.request(`/api/members/${adminId}`, {
           method: "PATCH",
           headers: { cookie: adminCookie, "content-type": "application/json" },
           body: JSON.stringify({ role: "member" }),
@@ -460,7 +460,7 @@ describe("control-plane auth routes", () => {
     ).toBe(409);
 
     const issued = await invite(app, adminCookie);
-    const accepted = await app.request("/invitations/accept", {
+    const accepted = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -471,7 +471,7 @@ describe("control-plane auth routes", () => {
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
     const members = await (
-      await app.request("/members", { headers: { cookie: adminCookie } })
+      await app.request("/api/members", { headers: { cookie: adminCookie } })
     ).json();
     const memberId = members.members.find(
       (member: { email: string }) => member.email === "member@example.com",
@@ -479,7 +479,7 @@ describe("control-plane auth routes", () => {
 
     expect(
       (
-        await app.request(`/members/${memberId}`, {
+        await app.request(`/api/members/${memberId}`, {
           method: "PATCH",
           headers: { cookie: adminCookie, "content-type": "application/json" },
           body: JSON.stringify({ role: "admin" }),
@@ -488,15 +488,15 @@ describe("control-plane auth routes", () => {
     ).toBe(200);
     expect(
       (
-        await app.request(`/members/${memberId}`, {
+        await app.request(`/api/members/${memberId}`, {
           method: "DELETE",
           headers: { cookie: adminCookie },
         })
       ).status,
     ).toBe(204);
-    expect((await app.request("/auth/session", { headers: { cookie: memberCookie } })).status).toBe(
-      401,
-    );
+    expect(
+      (await app.request("/api/members/me", { headers: { cookie: memberCookie } })).status,
+    ).toBe(401);
   });
 
   test("rotates and revokes pending invitation links", async () => {
@@ -504,7 +504,7 @@ describe("control-plane auth routes", () => {
     const { cookie } = await signIn(app);
     const issued = await invite(app, cookie);
 
-    const reissued = await app.request(`/invitations/${issued.body.invitation.id}/resend`, {
+    const reissued = await app.request(`/api/invitations/${issued.body.invitation.id}/resend`, {
       method: "POST",
       headers: { cookie },
     });
@@ -518,7 +518,7 @@ describe("control-plane auth routes", () => {
 
     expect(
       (
-        await app.request(`/invitations/${reissuedBody.invitation.id}`, {
+        await app.request(`/api/invitations/${reissuedBody.invitation.id}`, {
           method: "DELETE",
           headers: { cookie },
         })
@@ -526,7 +526,7 @@ describe("control-plane auth routes", () => {
     ).toBe(204);
     expect(
       (
-        await app.request("/invitations/accept", {
+        await app.request("/api/invitations/accept", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -550,7 +550,7 @@ describe("control-plane auth routes", () => {
     // create response and list -- exposes a derived handle instead.
     expect(issued.body.invitation.id).not.toBe(token);
     expect(JSON.stringify(issued.body.invitation)).not.toContain(token);
-    const list = await app.request("/invitations", { headers: { cookie } });
+    const list = await app.request("/api/invitations", { headers: { cookie } });
     expect(list.status).toBe(200);
     const listBody = await list.text();
     expect(listBody).not.toContain(token);
@@ -561,13 +561,17 @@ describe("control-plane auth routes", () => {
     ).invitations.find((candidate) => candidate.email === "tokenless@example.com");
     expect(listed).toBeDefined();
     expect(
-      (await app.request(`/invitations/${listed!.id}`, { method: "DELETE", headers: { cookie } }))
-        .status,
+      (
+        await app.request(`/api/invitations/${listed!.id}`, {
+          method: "DELETE",
+          headers: { cookie },
+        })
+      ).status,
     ).toBe(204);
     // A revoked token no longer opens an account.
     expect(
       (
-        await app.request("/invitations/accept", {
+        await app.request("/api/invitations/accept", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ token, name: "Member", password: "member-password" }),
@@ -598,7 +602,7 @@ describe("control-plane auth routes", () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
     const issued = await invite(app, adminCookie);
-    const accepted = await app.request("/invitations/accept", {
+    const accepted = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -609,7 +613,7 @@ describe("control-plane auth routes", () => {
     });
     const memberCookie = accepted.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
     const members = await (
-      await app.request("/members", { headers: { cookie: adminCookie } })
+      await app.request("/api/members", { headers: { cookie: adminCookie } })
     ).json();
     const memberId = members.members.find(
       (member: { email: string }) => member.email === "member@example.com",
@@ -618,14 +622,14 @@ describe("control-plane auth routes", () => {
     // Members cannot issue reset links, not even for themselves.
     expect(
       (
-        await app.request(`/members/${memberId}/password-reset`, {
+        await app.request(`/api/members/${memberId}/password-reset`, {
           method: "POST",
           headers: { cookie: memberCookie },
         })
       ).status,
     ).toBe(403);
 
-    const created = await app.request(`/members/${memberId}/password-reset`, {
+    const created = await app.request(`/api/members/${memberId}/password-reset`, {
       method: "POST",
       headers: { cookie: adminCookie },
     });
@@ -639,7 +643,7 @@ describe("control-plane auth routes", () => {
     const resetToken = new URL(reset.resetUrl).searchParams.get("token")!;
     expect(reset.resetUrl).toContain("http://localhost:3000/reset-password?token=");
 
-    const previewed = await app.request("/password-reset/preview", {
+    const previewed = await app.request("/api/password-reset/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token: resetToken }),
@@ -649,7 +653,7 @@ describe("control-plane auth routes", () => {
 
     expect(
       (
-        await app.request("/password-reset/complete", {
+        await app.request("/api/password-reset/complete", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ token: resetToken, password: "a-replacement-password" }),
@@ -658,9 +662,9 @@ describe("control-plane auth routes", () => {
     ).toBe(204);
 
     // Completion revoked every session and replaced the credential.
-    expect((await app.request("/auth/session", { headers: { cookie: memberCookie } })).status).toBe(
-      401,
-    );
+    expect(
+      (await app.request("/api/members/me", { headers: { cookie: memberCookie } })).status,
+    ).toBe(401);
     expect((await signIn(app, "member@example.com", "member-password")).response.status).toBe(401);
     const recovered = await signIn(app, "member@example.com", "a-replacement-password");
     expect(recovered.response.status).toBe(200);
@@ -668,7 +672,7 @@ describe("control-plane auth routes", () => {
     // The consumed link is dead for both preview and completion.
     expect(
       (
-        await app.request("/password-reset/preview", {
+        await app.request("/api/password-reset/preview", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ token: resetToken }),
@@ -677,7 +681,7 @@ describe("control-plane auth routes", () => {
     ).toBe(404);
     expect(
       (
-        await app.request("/password-reset/complete", {
+        await app.request("/api/password-reset/complete", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ token: resetToken, password: "another-new-password" }),

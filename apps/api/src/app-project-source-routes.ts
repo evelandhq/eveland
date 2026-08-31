@@ -52,7 +52,7 @@ export function registerProjectSourceRoutes(input: {
   sourcePreflightTtlMs: number;
 }): void {
   const { app, store, dataDir, appSecretKey, sourcePreflightTtlMs } = input;
-  app.get("/projects/name-availability", async (c) => {
+  app.get("/api/projects/name-availability", async (c) => {
     const parsed = projectNameSchema.safeParse(c.req.query("name"));
     if (!parsed.success) {
       return c.json({ error: "Invalid project name", issues: parsed.error.issues }, 400);
@@ -62,13 +62,13 @@ export function registerProjectSourceRoutes(input: {
     });
   });
 
-  app.get("/git-credentials", async (c) => {
+  app.get("/api/git-credentials", async (c) => {
     return c.json({
       credentials: await store.listGitCredentials(currentUserId(c)),
     });
   });
 
-  app.post("/git-credentials", async (c) => {
+  app.post("/api/git-credentials", async (c) => {
     const parsed = createGitCredentialSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid Git credential input", issues: parsed.error.issues }, 400);
@@ -102,7 +102,7 @@ export function registerProjectSourceRoutes(input: {
     );
   });
 
-  app.delete("/git-credentials/:credentialId", async (c) => {
+  app.delete("/api/git-credentials/:credentialId", async (c) => {
     const deleted = await store.deleteGitCredential(currentUserId(c), c.req.param("credentialId"));
     return deleted ? c.body(null, 204) : c.json({ error: "Git credential not found" }, 404);
   });
@@ -115,7 +115,7 @@ export function registerProjectSourceRoutes(input: {
     onError: (c) => c.json({ error: "Upload too large" }, 413),
   });
 
-  app.post("/source-preflights", uploadBodyLimit, async (c) => {
+  app.post("/api/source-preflights", uploadBodyLimit, async (c) => {
     const expiresAt = new Date(Date.now() + sourcePreflightTtlMs);
     if (isMultipartRequest(c)) {
       const form = await c.req.formData();
@@ -207,12 +207,12 @@ export function registerProjectSourceRoutes(input: {
     return c.json({ preflight }, 202);
   });
 
-  app.get("/source-preflights/:preflightId", async (c) => {
+  app.get("/api/source-preflights/:preflightId", async (c) => {
     const preflight = await store.getSourcePreflight(c.req.param("preflightId"), currentUserId(c));
     return preflight ? c.json({ preflight }) : c.json({ error: "Source preflight not found" }, 404);
   });
 
-  app.post("/projects", uploadBodyLimit, async (c) => {
+  app.post("/api/projects", uploadBodyLimit, async (c) => {
     if (isMultipartRequest(c)) {
       return createZipProjectFromUpload(c, store, dataDir);
     }

@@ -77,7 +77,7 @@ export async function invite(
   cookie: string,
   email = "member@example.com",
 ) {
-  const response = await app.request("/invitations", {
+  const response = await app.request("/api/invitations", {
     method: "POST",
     headers: { cookie, "content-type": "application/json" },
     body: JSON.stringify({ email }),

@@ -11,7 +11,7 @@ describe("observability settings", () => {
     const store = createTestStore();
     const app = createApp(store);
 
-    const initial = await app.request("/system/observability");
+    const initial = await app.request("/api/system/observability");
     expect(initial.status).toBe(200);
     expect(await initial.json()).toMatchObject({
       revision: 1,
@@ -24,7 +24,7 @@ describe("observability settings", () => {
       externalDestinations: [],
     });
 
-    const updated = await app.request("/system/observability", {
+    const updated = await app.request("/api/system/observability", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -48,7 +48,7 @@ describe("observability settings", () => {
       },
     });
 
-    const stale = await app.request("/system/observability", {
+    const stale = await app.request("/api/system/observability", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -72,7 +72,7 @@ describe("observability settings", () => {
       validateObservabilityDestination: async () => undefined,
     });
 
-    const created = await app.request("/system/observability/destinations", {
+    const created = await app.request("/api/system/observability/destinations", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -123,7 +123,7 @@ describe("observability settings", () => {
     });
 
     const disabled = await app.request(
-      `/system/observability/destinations/${stored.externalDestinations[0]!.id}`,
+      `/api/system/observability/destinations/${stored.externalDestinations[0]!.id}`,
       {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -146,7 +146,7 @@ describe("observability settings", () => {
     });
 
     const removed = await app.request(
-      `/system/observability/destinations/${stored.externalDestinations[0]!.id}`,
+      `/api/system/observability/destinations/${stored.externalDestinations[0]!.id}`,
       {
         method: "DELETE",
         headers: { "content-type": "application/json" },
@@ -167,7 +167,7 @@ describe("observability settings", () => {
       validateObservabilityDestination: async () => undefined,
     });
 
-    const created = await app.request("/system/observability/destinations", {
+    const created = await app.request("/api/system/observability/destinations", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -184,7 +184,7 @@ describe("observability settings", () => {
     const destinationId = (await store.getObservabilityPolicy(DEFAULT_TEAM_ID))
       .externalDestinations[0]!.id;
 
-    const edited = await app.request(`/system/observability/destinations/${destinationId}`, {
+    const edited = await app.request(`/api/system/observability/destinations/${destinationId}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -230,18 +230,21 @@ describe("observability settings", () => {
       secretKey: "sk-lf-original",
     });
 
-    const changedKind = await app.request(`/system/observability/destinations/${destinationId}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        expectedRevision: 3,
-        config: {
-          kind: "elastic",
-          endpoint: "https://elastic.example.com:8200",
-          authorization: { type: "bearer", value: "token" },
-        },
-      }),
-    });
+    const changedKind = await app.request(
+      `/api/system/observability/destinations/${destinationId}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedRevision: 3,
+          config: {
+            kind: "elastic",
+            endpoint: "https://elastic.example.com:8200",
+            authorization: { type: "bearer", value: "token" },
+          },
+        }),
+      },
+    );
     expect(changedKind.status).toBe(400);
   });
 
@@ -252,7 +255,7 @@ describe("observability settings", () => {
       validateObservabilityDestination: async () => undefined,
     });
 
-    const response = await app.request("/system/observability/destinations", {
+    const response = await app.request("/api/system/observability/destinations", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -284,7 +287,7 @@ describe("observability settings", () => {
       validateObservabilityDestination,
     });
 
-    const response = await app.request("/system/observability/destinations", {
+    const response = await app.request("/api/system/observability/destinations", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

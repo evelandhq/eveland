@@ -21,7 +21,7 @@ const interactionError = {
     code: "interaction_required",
     interaction: {
       type: "redirect",
-      url: "/api/eveland/agent-connections/acon_1/auth/interactions/oidc/start",
+      url: "/api/agent-connections/acon_1/auth/interactions/oidc/start",
     },
   }),
 };
@@ -35,13 +35,13 @@ describe("Playground OIDC route auth", () => {
           code: "interaction_required",
           interaction: {
             type: "redirect",
-            url: "/api/eveland/agent-connections/acon_1/auth/interactions/oidc/start",
+            url: "/api/agent-connections/acon_1/auth/interactions/oidc/start",
           },
         }),
       }),
     ).toEqual({
       type: "redirect",
-      url: "/api/eveland/agent-connections/acon_1/auth/interactions/oidc/start",
+      url: "/api/agent-connections/acon_1/auth/interactions/oidc/start",
     });
     expect(
       interactionFromClientError({

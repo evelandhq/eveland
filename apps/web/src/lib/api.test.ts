@@ -24,7 +24,7 @@ describe("web api helpers", () => {
       type: "build_deploy",
       status: "queued",
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/projects/proj_123/build-deploy", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/proj_123/build-deploy", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
@@ -47,7 +47,7 @@ describe("web api helpers", () => {
     await expect(enqueueBuildDeploy("proj_123", { promote: true })).resolves.toMatchObject({
       id: "job_promote",
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/projects/proj_123/build-deploy", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/proj_123/build-deploy", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
@@ -183,7 +183,7 @@ describe("web api helpers", () => {
       type: "import_source",
       status: "queued",
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/projects/proj_123/sync-source", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/proj_123/sync-source", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
@@ -206,7 +206,7 @@ describe("web api helpers", () => {
     await expect(syncSource("proj_123", { deploy: true, promote: false })).resolves.toMatchObject({
       id: "job_preview",
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/projects/proj_123/sync-source", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/proj_123/sync-source", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
@@ -259,7 +259,7 @@ describe("web api helpers", () => {
         { key: "OPENAI_API_KEY", kind: "secret" },
       ],
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/projects/proj_123/secrets/batch", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/proj_123/secrets/batch", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
@@ -286,7 +286,7 @@ describe("web api helpers", () => {
       type: "delete_project",
       status: "queued",
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/eveland/projects/proj_123", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/proj_123", {
       method: "DELETE",
       credentials: "include",
     });

@@ -57,8 +57,8 @@ export function registerProjectRoutes(input: {
     }
     await next();
   };
-  app.use("/projects/:projectId", rejectProjectMutationsWhileDeleting);
-  app.use("/projects/:projectId/*", rejectProjectMutationsWhileDeleting);
+  app.use("/api/projects/:projectId", rejectProjectMutationsWhileDeleting);
+  app.use("/api/projects/:projectId/*", rejectProjectMutationsWhileDeleting);
 
   registerProjectSourceRoutes({ app, store, dataDir, appSecretKey, sourcePreflightTtlMs });
   registerProjectMetadataRoutes({ app, store });

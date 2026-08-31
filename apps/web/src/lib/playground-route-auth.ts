@@ -37,7 +37,7 @@ export function interactionFromClientError(error: unknown): RouteAuthInteraction
       body.code !== "interaction_required" ||
       body.interaction?.type !== "redirect" ||
       typeof body.interaction.url !== "string" ||
-      !body.interaction.url.startsWith("/api/eveland/")
+      !body.interaction.url.startsWith("/api/")
     )
       return null;
     return { type: "redirect", url: body.interaction.url };
