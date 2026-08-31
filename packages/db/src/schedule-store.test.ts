@@ -665,6 +665,10 @@ describe("schedule persistence", () => {
       deployment.id,
       new Date("2026-07-15T00:00:00.000Z"),
     );
+    // Before any run exists the summary carries no latest-run status.
+    await expect(store.listProjectScheduleSummaries(project.id)).resolves.toMatchObject([
+      { latestRunStatus: null },
+    ]);
     const zeroSessionRun = await store.createManualScheduleRun(
       project.id,
       schedule.id,
@@ -711,6 +715,9 @@ describe("schedule persistence", () => {
         schedule: expect.objectContaining({ id: schedule.id, key: "billing/sweep" }),
         version,
         targetDeploymentId: deployment.id,
+        // usedRun is newest and reports "running" until its dispatched
+        // Sessions reach a boundary event.
+        latestRunStatus: "running",
       },
     ]);
     const firstPage = await store.listScheduleRuns(project.id, {
@@ -768,5 +775,20 @@ describe("schedule persistence", () => {
       usage: expect.objectContaining({ inputTokens: 11, outputTokens: 7 }),
       sessions: [expect.any(Object), expect.any(Object)],
     });
+
+    // The summary tracks the newest run, not the newest terminal one: an
+    // ambiguous dispatch (#407) must surface even after earlier successes.
+    const ambiguousRun = await store.createManualScheduleRun(
+      project.id,
+      schedule.id,
+      new Date("2026-07-15T03:00:00.000Z"),
+    );
+    await store.completeScheduleRun(ambiguousRun.id, {
+      status: "dispatch_unknown",
+      eveSessionIds: [],
+    });
+    await expect(store.listProjectScheduleSummaries(project.id)).resolves.toMatchObject([
+      { latestRunStatus: "dispatch_unknown" },
+    ]);
   });
 });

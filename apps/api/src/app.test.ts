@@ -605,6 +605,7 @@ describe("api app", () => {
           schedule: { id: schedule.id, key: "billing/sweep" },
           version: { kind: "handler", cron: "0 3 * * *" },
           targetDeploymentId: deployment.id,
+          latestRunStatus: "running",
         },
       ],
     });

@@ -45,6 +45,8 @@ Switching the scheduler target affects only cron/manual runs created after the s
 
 Each schedule shows: name; the human-readable UTC period plus the original cron expression as the precise source of truth; timezone; enabled state; next trigger time; and the source file location.
 
+The manual "Run now" action knows the schedule's latest run status. When that status is `dispatch_unknown`, queueing another run requires explicit confirmation: the earlier scheduled input may still execute, so a plain click must not silently risk a duplicate run.
+
 Every cron or manual execution persists an independent ScheduleRun; success with no created session is a legitimate result. A ScheduleRun keeps release/deployment provenance, status, attempts, missed ticks, errors, and associated sessions, read by the Schedules history and Session-detail provenance. The worker also records, in the runtime logs by ScheduleRun ID, the pinned release/deployment/runtime, activation, Scheduler Channel dispatch, and final result phases, along with end-to-end duration. A dispatch timeout must write the actual timeout budget and the target deployment into the ScheduleRun error and logs — not just the underlying `AbortError` text; logs must never contain dispatch credentials, runtime secrets, or project secrets.
 
 Below the schedule definition table, the latest 50 ScheduleRuns are shown with further pagination. The list covers all schedules by default; clicking a schedule's "view history" stays on the Schedules page, filters to that schedule (`schedule_id = current schedule`), and scrolls to Recent runs.
