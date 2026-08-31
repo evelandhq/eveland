@@ -37,10 +37,9 @@ const DROPPED_RESPONSE_HEADERS = new Set([
 
 /**
  * Serves a platform-host request at the front door: `/.well-known/*` and
- * `/api/auth/*` go to the API verbatim, `/api/eveland/<allowlisted>/*` goes
- * to the API with the prefix stripped, everything else is the Dashboard's.
- * Streaming passes through untouched in both directions — the Playground's
- * SSE and NDJSON responses ride this path.
+ * `/api/*` go to the API verbatim, everything else is the Dashboard's. No
+ * path surgery in either direction. Streaming passes through untouched —
+ * the Playground's SSE and NDJSON responses ride this path.
  */
 export async function proxyFrontDoorRequest(
   request: Request,
@@ -48,9 +47,6 @@ export async function proxyFrontDoorRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
   const route = classifyFrontDoorPath(url.pathname);
-  if (route.target === "blocked") {
-    return Response.json({ error: "Not found" }, { status: 404 });
-  }
   const origin = (route.target === "api" ? upstreams.apiUrl : upstreams.webUrl).replace(/\/$/, "");
   const upstreamUrl = `${origin}${route.upstreamPath}${url.search}`;
 

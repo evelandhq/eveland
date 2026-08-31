@@ -16,7 +16,7 @@ export function registerProjectLifecycleRoutes(input: {
   store: ProjectLifecycleStore;
 }): void {
   const { app, store } = input;
-  app.get("/projects/:projectId/jobs", async (c) => {
+  app.get("/api/projects/:projectId/jobs", async (c) => {
     const projectId = c.req.param("projectId");
     const project = await store.getProject(projectId);
     if (!project) return c.json({ error: "Project not found" }, 404);
@@ -29,7 +29,7 @@ export function registerProjectLifecycleRoutes(input: {
     });
   });
 
-  app.delete("/projects/:projectId", async (c) => {
+  app.delete("/api/projects/:projectId", async (c) => {
     const projectId = c.req.param("projectId");
     const request = await store.requestProjectDeletion(projectId);
     if (request.outcome === "not_found") return c.json({ error: "Project not found" }, 404);
@@ -38,7 +38,7 @@ export function registerProjectLifecycleRoutes(input: {
     return c.json({ job: toPublicJob(request.job) }, 202);
   });
 
-  app.post("/projects/:projectId/build-deploy", async (c) => {
+  app.post("/api/projects/:projectId/build-deploy", async (c) => {
     const projectId = c.req.param("projectId");
     const project = await store.getProject(projectId);
     if (!project) {
@@ -60,7 +60,7 @@ export function registerProjectLifecycleRoutes(input: {
     return c.json({ job: toPublicJob(job) }, 202);
   });
 
-  app.post("/projects/:projectId/sync-source", async (c) => {
+  app.post("/api/projects/:projectId/sync-source", async (c) => {
     const projectId = c.req.param("projectId");
     const project = await store.getProject(projectId);
     if (!project) {
@@ -101,7 +101,7 @@ export function registerProjectLifecycleRoutes(input: {
     return c.json({ job: toPublicJob(job) }, 202);
   });
 
-  app.post("/projects/:projectId/restart", async (c) => {
+  app.post("/api/projects/:projectId/restart", async (c) => {
     const projectId = c.req.param("projectId");
     const project = await store.getProject(projectId);
     if (!project) {

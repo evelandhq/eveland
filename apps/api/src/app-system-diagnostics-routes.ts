@@ -17,7 +17,7 @@ export function registerSystemDiagnosticsRoutes(input: {
 }) {
   const { app, store, configurationDiagnostics, gatewayHealth } = input;
 
-  app.get("/system/configuration", async (c) => {
+  app.get("/api/system/configuration", async (c) => {
     if (!configurationDiagnostics) {
       return c.json({ error: "Configuration diagnostics unavailable" }, 503);
     }
@@ -28,7 +28,7 @@ export function registerSystemDiagnosticsRoutes(input: {
     }
   });
 
-  app.get("/system/health", async (c) => {
+  app.get("/api/system/health", async (c) => {
     const requestedHours = Number(c.req.query("hours") ?? 24);
     const historyHours = Number.isFinite(requestedHours)
       ? Math.max(1, Math.min(168, Math.round(requestedHours)))

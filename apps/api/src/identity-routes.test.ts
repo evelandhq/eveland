@@ -84,7 +84,7 @@ describe("Eveland Internal Identity routes", () => {
     const { app } = await createIdentityApp();
     const controlCookie = await signIn(app);
 
-    const response = await app.request("/auth/session", {
+    const response = await app.request("/api/members/me", {
       headers: {
         cookie: controlCookie,
         origin: chatOrigin,
@@ -133,7 +133,7 @@ describe("Eveland Internal Identity routes", () => {
     const { app } = await createIdentityApp();
     const cookie = await signIn(app);
 
-    const providerResponse = await app.request("/system/identity/providers", {
+    const providerResponse = await app.request("/api/system/identity/providers", {
       method: "POST",
       headers: {
         cookie,
@@ -159,7 +159,7 @@ describe("Eveland Internal Identity routes", () => {
     });
     expect(JSON.stringify(providerBody)).not.toContain("eveland_session");
 
-    const duplicate = await app.request("/system/identity/providers", {
+    const duplicate = await app.request("/api/system/identity/providers", {
       method: "POST",
       headers: { cookie, origin: webOrigin, "content-type": "application/json" },
       body: JSON.stringify({
@@ -171,7 +171,7 @@ describe("Eveland Internal Identity routes", () => {
     });
     expect(duplicate.status).toBe(409);
 
-    const disabledProvider = await app.request("/system/identity/providers", {
+    const disabledProvider = await app.request("/api/system/identity/providers", {
       method: "POST",
       headers: { cookie, origin: webOrigin, "content-type": "application/json" },
       body: JSON.stringify({
@@ -186,7 +186,7 @@ describe("Eveland Internal Identity routes", () => {
     };
     expect(disabledProvider.status).toBe(201);
     const enableSecond = await app.request(
-      `/system/identity/providers/${disabledProviderBody.provider.id}`,
+      `/api/system/identity/providers/${disabledProviderBody.provider.id}`,
       {
         method: "PATCH",
         headers: { cookie, origin: webOrigin, "content-type": "application/json" },
@@ -199,7 +199,7 @@ describe("Eveland Internal Identity routes", () => {
     );
     expect(enableSecond.status).toBe(409);
 
-    const realmResponse = await app.request("/system/identity/realms", {
+    const realmResponse = await app.request("/api/system/identity/realms", {
       method: "POST",
       headers: { cookie, origin: webOrigin, "content-type": "application/json" },
       body: JSON.stringify({
@@ -213,7 +213,7 @@ describe("Eveland Internal Identity routes", () => {
     const realmBody = (await realmResponse.json()) as { realm: { id: string } };
     expect(realmResponse.status).toBe(201);
 
-    const disabledRealm = await app.request(`/system/identity/realms/${realmBody.realm.id}`, {
+    const disabledRealm = await app.request(`/api/system/identity/realms/${realmBody.realm.id}`, {
       method: "PATCH",
       headers: { cookie, origin: webOrigin, "content-type": "application/json" },
       body: JSON.stringify({
@@ -226,19 +226,22 @@ describe("Eveland Internal Identity routes", () => {
       realm: { id: realmBody.realm.id, enabled: false },
     });
 
-    const immutable = await app.request(`/system/identity/providers/${providerBody.provider.id}`, {
-      method: "PATCH",
-      headers: { cookie, origin: webOrigin, "content-type": "application/json" },
-      body: JSON.stringify({
-        expectedSecurityRevision: 1,
-        displayName: "Eveland Internal",
-        internalRealmKey: "rewritten",
-        enabled: true,
-      }),
-    });
+    const immutable = await app.request(
+      `/api/system/identity/providers/${providerBody.provider.id}`,
+      {
+        method: "PATCH",
+        headers: { cookie, origin: webOrigin, "content-type": "application/json" },
+        body: JSON.stringify({
+          expectedSecurityRevision: 1,
+          displayName: "Eveland Internal",
+          internalRealmKey: "rewritten",
+          enabled: true,
+        }),
+      },
+    );
     expect(immutable.status).toBe(409);
 
-    const savedTarget = await app.request("/system/identity/return-targets/eve-chats", {
+    const savedTarget = await app.request("/api/system/identity/return-targets/eve-chats", {
       method: "PUT",
       headers: { cookie, origin: webOrigin, "content-type": "application/json" },
       body: JSON.stringify({ origin: "https://chat.example.com", enabled: true }),
@@ -251,7 +254,7 @@ describe("Eveland Internal Identity routes", () => {
         enabled: true,
       },
     });
-    const targets = await app.request("/system/identity/return-targets", {
+    const targets = await app.request("/api/system/identity/return-targets", {
       headers: { cookie },
     });
     await expect(targets.json()).resolves.toMatchObject({
@@ -264,7 +267,7 @@ describe("Eveland Internal Identity routes", () => {
     });
     expect(
       (
-        await app.request("/system/identity/return-targets/eve-chats", {
+        await app.request("/api/system/identity/return-targets/eve-chats", {
           method: "PUT",
           headers: { cookie, origin: webOrigin, "content-type": "application/json" },
           body: JSON.stringify({
@@ -728,7 +731,7 @@ describe("Open access Identity Provider", () => {
     const { app } = await createIdentityApp({ keepOpenAccess: true });
     const cookie = await signIn(app);
 
-    const response = await app.request("/system/identity/providers", {
+    const response = await app.request("/api/system/identity/providers", {
       method: "POST",
       headers: { cookie, origin: webOrigin, "content-type": "application/json" },
       body: JSON.stringify({
@@ -749,7 +752,7 @@ describe("Open access Identity Provider", () => {
     const { app, store } = await createIdentityApp({ keepOpenAccess: true });
     const cookie = await signIn(app);
 
-    const created = await app.request("/system/identity/providers", {
+    const created = await app.request("/api/system/identity/providers", {
       method: "POST",
       headers: { cookie, origin: webOrigin, "content-type": "application/json" },
       body: JSON.stringify({
@@ -765,7 +768,7 @@ describe("Open access Identity Provider", () => {
     };
 
     await disableSeededOpenIdentityProvider(store);
-    const enabled = await app.request(`/system/identity/providers/${provider.id}`, {
+    const enabled = await app.request(`/api/system/identity/providers/${provider.id}`, {
       method: "PATCH",
       headers: { cookie, origin: webOrigin, "content-type": "application/json" },
       body: JSON.stringify({

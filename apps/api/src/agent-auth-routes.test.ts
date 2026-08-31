@@ -14,8 +14,8 @@ describe("Agent Auth control-plane routes", () => {
     const project = await store.createProject({ name: "connection-descriptor", importKind: "zip" });
     const app = createApp(store, { appSecretKey });
 
-    const methods = await app.request("/agent-auth/methods");
-    const response = await app.request(`/projects/${project.id}/playground/connection`);
+    const methods = await app.request("/api/agent-auth/methods");
+    const response = await app.request(`/api/projects/${project.id}/playground/connection`);
 
     expect(methods.status).toBe(200);
     await expect(methods.json()).resolves.toMatchObject({
@@ -53,10 +53,10 @@ describe("Agent Auth control-plane routes", () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "bearer-control-plane", importKind: "zip" });
     const app = createApp(store, { appSecretKey });
-    const initial = await app.request(`/projects/${project.id}/playground/connection`);
+    const initial = await app.request(`/api/projects/${project.id}/playground/connection`);
     const initialBody = (await initial.json()) as { connection: { id: string } };
 
-    const configured = await app.request(`/agent-connections/${initialBody.connection.id}`, {
+    const configured = await app.request(`/api/agent-connections/${initialBody.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -65,12 +65,12 @@ describe("Agent Auth control-plane routes", () => {
         config: { token: "agent-token-must-stay-secret" },
       }),
     });
-    const unchanged = await app.request(`/agent-connections/${initialBody.connection.id}`, {
+    const unchanged = await app.request(`/api/agent-connections/${initialBody.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ expectedSecurityRevision: 2, method: "bearer", config: {} }),
     });
-    const stale = await app.request(`/agent-connections/${initialBody.connection.id}`, {
+    const stale = await app.request(`/api/agent-connections/${initialBody.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ expectedSecurityRevision: 1, method: "bearer", config: {} }),
@@ -95,10 +95,10 @@ describe("Agent Auth control-plane routes", () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "unsafe-header", importKind: "zip" });
     const app = createApp(store, { appSecretKey });
-    const initial = await app.request(`/projects/${project.id}/playground/connection`);
+    const initial = await app.request(`/api/projects/${project.id}/playground/connection`);
     const body = (await initial.json()) as { connection: { id: string } };
 
-    const response = await app.request(`/agent-connections/${body.connection.id}`, {
+    const response = await app.request(`/api/agent-connections/${body.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -148,9 +148,9 @@ describe("Agent Auth control-plane routes", () => {
         );
       },
     });
-    const initial = await app.request(`/projects/${project.id}/playground/connection`);
+    const initial = await app.request(`/api/projects/${project.id}/playground/connection`);
     const body = (await initial.json()) as { connection: { id: string } };
-    await app.request(`/agent-connections/${body.connection.id}`, {
+    await app.request(`/api/agent-connections/${body.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -160,14 +160,14 @@ describe("Agent Auth control-plane routes", () => {
       }),
     });
 
-    const response = await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    const response = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "hello" }),
     });
 
     expect(response.status).toBe(202);
-    await app.request(`/agent-connections/${body.connection.id}`, {
+    await app.request(`/api/agent-connections/${body.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -177,7 +177,7 @@ describe("Agent Auth control-plane routes", () => {
       }),
     });
     const continuation = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_protected`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_protected`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -185,7 +185,7 @@ describe("Agent Auth control-plane routes", () => {
       },
     );
     expect(continuation.status).toBe(202);
-    await app.request(`/agent-connections/${body.connection.id}`, {
+    await app.request(`/api/agent-connections/${body.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -195,7 +195,7 @@ describe("Agent Auth control-plane routes", () => {
       }),
     });
     const stream = await app.request(
-      `/projects/${project.id}/playground/eve/v1/session/eve_protected/stream`,
+      `/api/projects/${project.id}/playground/eve/v1/session/eve_protected/stream`,
     );
     expect(stream.status).toBe(200);
 
@@ -242,9 +242,9 @@ describe("Agent Auth control-plane routes", () => {
         );
       },
     });
-    const initial = await app.request(`/projects/${project.id}/playground/connection`);
+    const initial = await app.request(`/api/projects/${project.id}/playground/connection`);
     const connectionId = ((await initial.json()) as { connection: { id: string } }).connection.id;
-    const configured = await app.request(`/agent-connections/${connectionId}`, {
+    const configured = await app.request(`/api/agent-connections/${connectionId}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -269,7 +269,7 @@ describe("Agent Auth control-plane routes", () => {
     const state = authorization.searchParams.get("state");
     expect(state).toBeTruthy();
 
-    const callback = await app.request("/agent-auth/callback/oidc", {
+    const callback = await app.request("/api/agent-auth/callback/oidc", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -420,9 +420,9 @@ describe("Agent Auth control-plane routes", () => {
     const connectionId = await configureConnection(app, project.id, "future-interactive");
 
     const start = await app.request(
-      `/agent-connections/${connectionId}/auth/interactions/future-interactive/start?returnPath=${encodeURIComponent(`/projects/${project.id}/playground`)}`,
+      `/api/agent-connections/${connectionId}/auth/interactions/future-interactive/start?returnPath=${encodeURIComponent(`/projects/${project.id}/playground`)}`,
     );
-    const callback = await app.request("/agent-auth/callback/future-interactive", {
+    const callback = await app.request("/api/agent-auth/callback/future-interactive", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ search: "?code=opaque-code&state=opaque-state" }),
@@ -473,7 +473,7 @@ describe("Agent Auth control-plane routes", () => {
     );
     const catalogApp = createApp(store, { appSecretKey });
     const catalogResponse = await catalogApp.request(
-      `/projects/${project.id}/agent-auth/secret-references`,
+      `/api/projects/${project.id}/agent-auth/secret-references`,
     );
     expect(catalogResponse.status).toBe(200);
     const catalog = await catalogResponse.json();
@@ -496,10 +496,10 @@ describe("Agent Auth control-plane routes", () => {
         );
       },
     });
-    const initial = await app.request(`/projects/${project.id}/playground/connection`);
+    const initial = await app.request(`/api/projects/${project.id}/playground/connection`);
     const body = (await initial.json()) as { connection: { id: string } };
 
-    await app.request(`/agent-connections/${body.connection.id}`, {
+    await app.request(`/api/agent-connections/${body.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -508,13 +508,13 @@ describe("Agent Auth control-plane routes", () => {
         config: { tokenRef: { kind: "project-secret", key: "PROJECT_TOKEN" } },
       }),
     });
-    await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "project reference" }),
     });
 
-    await app.request(`/agent-connections/${body.connection.id}`, {
+    await app.request(`/api/agent-connections/${body.connection.id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -528,7 +528,7 @@ describe("Agent Auth control-plane routes", () => {
       "PROJECT_TOKEN",
       JSON.stringify(encryptSecretValue("project-token-v2", appSecretKey)),
     );
-    await app.request(`/projects/${project.id}/playground/eve/v1/session`, {
+    await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "rotated project reference" }),
@@ -557,10 +557,10 @@ describe("Agent Auth control-plane routes", () => {
         },
       }),
     });
-    const initial = await app.request(`/projects/${project.id}/playground/connection`);
+    const initial = await app.request(`/api/projects/${project.id}/playground/connection`);
     const connectionId = ((await initial.json()) as { connection: { id: string } }).connection.id;
 
-    const configured = await app.request(`/agent-connections/${connectionId}`, {
+    const configured = await app.request(`/api/agent-connections/${connectionId}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -643,7 +643,7 @@ async function deployedProject(store: ReturnType<typeof createTestStore>, name: 
 }
 
 function sendInitialTurn(app: ReturnType<typeof createApp>, projectId: string) {
-  return app.request(`/projects/${projectId}/playground/eve/v1/session`, {
+  return app.request(`/api/projects/${projectId}/playground/eve/v1/session`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ message: "hello" }),
@@ -651,9 +651,9 @@ function sendInitialTurn(app: ReturnType<typeof createApp>, projectId: string) {
 }
 
 async function authorizeOidc(app: ReturnType<typeof createApp>, projectId: string) {
-  const initial = await app.request(`/projects/${projectId}/playground/connection`);
+  const initial = await app.request(`/api/projects/${projectId}/playground/connection`);
   const connectionId = ((await initial.json()) as { connection: { id: string } }).connection.id;
-  const configured = await app.request(`/agent-connections/${connectionId}`, {
+  const configured = await app.request(`/api/agent-connections/${connectionId}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ expectedSecurityRevision: 1, method: "oidc", config: oidcConfig() }),
@@ -666,7 +666,7 @@ async function authorizeOidc(app: ReturnType<typeof createApp>, projectId: strin
     `${interaction.pathname.replace(/^\/api\/eveland/, "")}${interaction.search}`,
   );
   const state = new URL(start.headers.get("location")!).searchParams.get("state")!;
-  const callback = await app.request("/agent-auth/callback/oidc", {
+  const callback = await app.request("/api/agent-auth/callback/oidc", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ search: `?code=code&state=${encodeURIComponent(state)}` }),
@@ -707,9 +707,9 @@ async function configureConnection(
   projectId: string,
   method: string,
 ): Promise<string> {
-  const initial = await app.request(`/projects/${projectId}/playground/connection`);
+  const initial = await app.request(`/api/projects/${projectId}/playground/connection`);
   const connectionId = ((await initial.json()) as { connection: { id: string } }).connection.id;
-  const configured = await app.request(`/agent-connections/${connectionId}`, {
+  const configured = await app.request(`/api/agent-connections/${connectionId}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ expectedSecurityRevision: 1, method, config: {} }),

@@ -7,22 +7,22 @@ import { resolveCanonicalRequestBudget } from "@evelandhq/core/workflow-dispatch
 import { getPathMatch } from "next/dist/shared/lib/router/utils/path-match";
 import { describe, expect, test } from "vitest";
 import { API_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
-import { BROWSER_API_SUBTREES } from "@evelandhq/core/front-door";
+import { PUBLIC_API_PREFIX } from "@evelandhq/core/front-door";
 import nextConfig, {
-  browserApiSubtrees,
   inlinedApiInternalUrlFallback,
+  inlinedPublicApiPrefix,
   proxyTimeoutMs,
 } from "../next.config.js";
 
 // next.config cannot import workspace TypeScript, so it inlines the API
-// upstream fallback and the browser subtree allowlist; this pins both copies
-// to the single sources in core (the front door routes from the same list).
+// upstream fallback and the public API prefix; this pins both copies to the
+// single sources in core (the front door routes from the same prefix).
 describe("inlined front-door constants", () => {
   test("API upstream fallback matches @evelandhq/core/ports", () => {
     expect(inlinedApiInternalUrlFallback).toBe(API_INTERNAL_URL_FALLBACK);
   });
-  test("browser API subtrees match @evelandhq/core/front-door", () => {
-    expect([...browserApiSubtrees]).toEqual([...BROWSER_API_SUBTREES]);
+  test("public API prefix matches @evelandhq/core/front-door", () => {
+    expect(inlinedPublicApiPrefix).toBe(PUBLIC_API_PREFIX);
   });
 });
 
@@ -41,85 +41,49 @@ describe("web proxy timeout budget", () => {
   });
 });
 
-async function resolveRewriteMatchers(): Promise<Array<(path: string) => unknown>> {
-  const rewrites = await (nextConfig.rewrites as () => Promise<Array<{ source: string }>>)();
-  return rewrites.map((rewrite) => getPathMatch(rewrite.source));
-}
-
-function isBrowserReachable(matchers: Array<(path: string) => unknown>, path: string): boolean {
-  return matchers.some((matches) => matches(path) !== false);
-}
+/**
+ * The dev rewrite is the front door's verbatim twin: exactly one rule, the
+ * whole `/api` namespace, path preserved. Anything outside `/api` stays with
+ * the Dashboard — the exposure contract itself lives in the API's route
+ * namespaces (architecture-tests) and the front-door classifier, not here.
+ */
+describe("verbatim /api rewrite", () => {
+  test("forwards the /api namespace verbatim and nothing else", async () => {
+    const rewrites = await (
+      nextConfig.rewrites as () => Promise<Array<{ source: string; destination: string }>>
+    )();
+    expect(rewrites).toHaveLength(1);
+    const rewrite = rewrites[0]!;
+    expect(rewrite.source).toBe("/api/:path*");
+    expect(rewrite.destination.endsWith("/api/:path*")).toBe(true);
+    const matches = getPathMatch(rewrite.source);
+    expect(matches("/api/projects/proj_1")).not.toBe(false);
+    expect(matches("/api/identity/login")).not.toBe(false);
+    expect(matches("/apix/anything")).toBe(false);
+    expect(matches("/internal/scheduler/dispatch")).toBe(false);
+    expect(matches("/.well-known/jwks.json")).toBe(false);
+  });
+});
 
 /**
- * The browser-origin exposure contract for the API (#73): the web rewrite is
- * a fail-closed allowlist. The machine plane must never be reachable through
- * the web origin, and every API path the browser actually uses must be — so
- * an unlisted browser call fails here, not as a production 404, and a future
- * wildcard can't sneak the machine plane back in.
+ * The browser transport prefixes every path with PUBLIC_API_PREFIX, so a
+ * call-site literal that already starts with `/api/` would double the prefix
+ * and 404 — the exact bug shape the old `/api/auth/...` tunnel
+ * normalized. Scan the web sources so it fails here instead.
  */
-describe("browser API rewrite allowlist", () => {
-  test("machine-plane and non-browser endpoints are not browser-reachable", async () => {
-    const matchers = await resolveRewriteMatchers();
-    const machinePlane = [
-      "/api/eveland/internal/scheduler/dispatch",
-      "/api/eveland/internal/runtime/activations",
-      "/api/eveland/internal/runtime/activations/lease_1/renew",
-      "/api/eveland/internal/otel/v1/traces",
-      "/api/eveland/internal/observability/destinations/dest_1/v1/logs",
-      "/api/eveland/internal/workflow/dispatcher/heartbeat",
-      "/api/eveland/internal/workflow/dispatcher/registration",
-      "/api/eveland/internal/identity/open-caller-tokens",
-      "/api/eveland/internal",
-      "/api/eveland/health",
-      "/api/eveland/.well-known/jwks.json",
-    ];
-    for (const path of machinePlane) {
-      expect(isBrowserReachable(matchers, path), `${path} must not be rewritten`).toBe(false);
-    }
-  });
-
-  test("allowlist entries are static subtrees, never patterns", () => {
-    for (const subtree of browserApiSubtrees) {
-      expect(subtree).toMatch(/^[a-z0-9-]+(\/[a-z0-9-]+)*$/);
-    }
-  });
-
-  test("every API path the browser code calls is allowlisted", async () => {
-    const matchers = await resolveRewriteMatchers();
-    const roots = [
-      // The browser transport (`api-transport.ts`) prefixes these with the
-      // rewrite base in the single-public-origin topology.
-      { cwd: fileURLToPath(new URL(".", import.meta.url)), viaTransport: true },
-      // Cross-package producer of browser-facing `/api/eveland/...` URLs
-      // (agent-auth interaction redirects consumed by `playground-route-auth`).
-      {
-        cwd: fileURLToPath(new URL("../../../packages/agent-auth/src", import.meta.url)),
-        viaTransport: false,
-      },
-    ];
-    const transportCall = /(?:clientRequest|apiRequest|apiFetch)(?:<[^>]*>)?\(\s*[`"'](\/[^`"']+)/g;
-    const rewriteLiteral = /[`"'](\/api\/eveland\/[a-z][^`"']*)/g;
-
-    const uncovered: string[] = [];
-    for (const root of roots) {
-      for (const file of globSync("**/*.{ts,tsx}", { cwd: root.cwd })) {
-        // This file's own negative examples are not browser calls.
-        if (file === "next-config.test.ts") continue;
-        const source = readFileSync(resolve(root.cwd, file), "utf8");
-        const calls: string[] = [];
-        if (root.viaTransport) {
-          for (const match of source.matchAll(transportCall)) {
-            calls.push(`/api/eveland${match[1] ?? ""}`);
-          }
-        }
-        for (const match of source.matchAll(rewriteLiteral)) calls.push(match[1] ?? "");
-        for (const call of calls) {
-          // Template interpolations stand in for one opaque path segment.
-          const path = call.replace(/\$\{[^}]*\}/g, "X").replace(/[?#].*$/, "");
-          if (!isBrowserReachable(matchers, path)) uncovered.push(`${file}: ${call}`);
-        }
+describe("transport call sites", () => {
+  test("no transport path literal double-prefixes /api", () => {
+    const cwd = fileURLToPath(new URL(".", import.meta.url));
+    const transportCall =
+      /(?:clientRequest|apiRequest|apiFetch|apiGet|apiGetOptional)(?:<[^>]*>)?\(\s*[`"'](\/api\/[^`"']*)/g;
+    const offenders: string[] = [];
+    for (const file of globSync("**/*.{ts,tsx}", { cwd })) {
+      if (file === "next-config.test.ts") continue;
+      const source = readFileSync(resolve(cwd, file), "utf8");
+      for (const match of source.matchAll(transportCall)) {
+        offenders.push(`${file}: ${match[1]}`);
       }
     }
-    expect(uncovered).toEqual([]);
+    expect(offenders).toEqual([]);
   });
 });

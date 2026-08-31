@@ -169,7 +169,7 @@ describe("Playground message composition", () => {
       }),
     ).toBe(true);
     expect(fetcher).toHaveBeenCalledWith(
-      "/api/eveland/projects/proj_1/playground/eve/v1/session/eve%2F1/reset",
+      "/api/projects/proj_1/playground/eve/v1/session/eve%2F1/reset",
       {
         method: "POST",
         credentials: "same-origin",

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { API_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
+import { PUBLIC_API_PREFIX } from "@evelandhq/core/front-door";
 import { redirect } from "next/navigation";
 import type { EvelandBuildInfo } from "@evelandhq/core/build-info";
 import type { InstanceHealthReport } from "@evelandhq/core/instance-health";
@@ -38,7 +39,9 @@ import type {
   TeamMember as Member,
 } from "@evelandhq/core/contracts";
 
-const apiBaseUrl = process.env.API_URL ?? API_INTERNAL_URL_FALLBACK;
+// Server components dial the API's private origin directly; the paths are
+// the same `/api/...` the browser uses — verbatim on both origins.
+const apiBaseUrl = `${process.env.API_URL ?? API_INTERNAL_URL_FALLBACK}${PUBLIC_API_PREFIX}`;
 
 export type ProjectListItem = Project & {
   eveVersion: EveVersionInfo;
@@ -125,9 +128,9 @@ export const getSourceFile = (projectId: string, filePath: string) =>
     `/projects/${projectId}/source/file?path=${encodeURIComponent(filePath)}`,
   ).then((data) => data.file);
 export const getCurrentMember = () =>
-  apiGet<{ member: CurrentMember }>("/auth/session").then((data) => data.member);
+  apiGet<{ member: CurrentMember }>("/members/me").then((data) => data.member);
 export const getCurrentMemberOrNull = () =>
-  apiGet<{ member: CurrentMember }>("/auth/session", { unauthorized: "return-null" }).then(
+  apiGet<{ member: CurrentMember }>("/members/me", { unauthorized: "return-null" }).then(
     (data) => data?.member ?? null,
   );
 export const getMembers = () =>

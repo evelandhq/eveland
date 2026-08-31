@@ -29,7 +29,7 @@ describe("usage analytics API", () => {
     });
 
     const app = createApp(store);
-    const workspaceResponse = await app.request("/usage?range=7d");
+    const workspaceResponse = await app.request("/api/usage?range=7d");
     expect(workspaceResponse.status).toBe(200);
     await expect(workspaceResponse.json()).resolves.toMatchObject({
       usage: {
@@ -50,7 +50,7 @@ describe("usage analytics API", () => {
       },
     });
 
-    const projectResponse = await app.request(`/projects/${project.id}/usage?range=7d`);
+    const projectResponse = await app.request(`/api/projects/${project.id}/usage?range=7d`);
     expect(projectResponse.status).toBe(200);
     await expect(projectResponse.json()).resolves.toMatchObject({
       usage: {

@@ -46,7 +46,7 @@ export function registerControlPlaneAuthBoundary(input: {
   // The accept page renders profile creation for a new email and a sign-in
   // flow for an account that already exists (a removed member being
   // re-invited). POST keeps the single-use token out of URLs and access logs.
-  app.post("/invitations/preview", async (c) => {
+  app.post("/api/invitations/preview", async (c) => {
     const parsed = previewInvitationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -64,7 +64,7 @@ export function registerControlPlaneAuthBoundary(input: {
     }
   });
 
-  app.post("/invitations/accept", async (c) => {
+  app.post("/api/invitations/accept", async (c) => {
     const parsed = acceptInvitationSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -89,7 +89,7 @@ export function registerControlPlaneAuthBoundary(input: {
   // The reset page mirrors the accept page: account details render only after
   // the single-use token validates, and POST keeps the token out of URLs and
   // access logs. The raw Better Auth recovery endpoints stay 404'd above.
-  app.post("/password-reset/preview", async (c) => {
+  app.post("/api/password-reset/preview", async (c) => {
     const parsed = passwordResetPreviewSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -107,7 +107,7 @@ export function registerControlPlaneAuthBoundary(input: {
     }
   });
 
-  app.post("/password-reset/complete", async (c) => {
+  app.post("/api/password-reset/complete", async (c) => {
     const parsed = passwordResetCompleteSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -140,7 +140,7 @@ export function registerControlPlaneAuthBoundary(input: {
 
 /**
  * Structural role gate for the platform-operator surface: every current and
- * future route under /system/* and /platform/* is admin-only here, before any
+ * future route under /api/system/* and /api/platform/* is admin-only here, before any
  * handler runs, so a new operator route cannot forget the check. Registered
  * (like the session boundary above) only when auth is configured; the
  * member-403 walk in app-admin-boundary.test.ts pins the whole surface.
@@ -154,6 +154,6 @@ export function registerAdminOnlyBoundary(app: ApiApp): void {
     }
     await next();
   };
-  app.use("/system/*", adminOnly);
-  app.use("/platform/*", adminOnly);
+  app.use("/api/system/*", adminOnly);
+  app.use("/api/platform/*", adminOnly);
 }

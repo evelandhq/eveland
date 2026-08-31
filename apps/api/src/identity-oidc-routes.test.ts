@@ -336,7 +336,7 @@ describe("OIDC provider administration", () => {
   test("exposes the fixed redirect URI to the settings UI", async () => {
     const { app } = await createOidcApp();
 
-    const response = await app.request("/system/identity/providers", {
+    const response = await app.request("/api/system/identity/providers", {
       headers: { cookie: await adminCookie(app), origin: webOrigin },
     });
 
@@ -349,7 +349,7 @@ describe("OIDC provider administration", () => {
   test("preflights an OIDC provider against its discovery metadata", async () => {
     const { app, provider } = await createOidcApp();
 
-    const response = await app.request(`/system/identity/providers/${provider.id}/preflight`, {
+    const response = await app.request(`/api/system/identity/providers/${provider.id}/preflight`, {
       method: "POST",
       headers: { cookie: await adminCookie(app), origin: webOrigin },
     });
@@ -377,7 +377,7 @@ describe("OIDC provider administration", () => {
       token_endpoint_auth_methods_supported: ["private_key_jwt"],
     };
 
-    const response = await app.request(`/system/identity/providers/${provider.id}/preflight`, {
+    const response = await app.request(`/api/system/identity/providers/${provider.id}/preflight`, {
       method: "POST",
       headers: { cookie: await adminCookie(app), origin: webOrigin },
     });

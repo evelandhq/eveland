@@ -336,8 +336,9 @@ async function main(): Promise<void> {
     // Driven through the real /system HTTP API with a real admin session,
     // exactly as the Settings UI would.
     const adminCookie = await signInAdmin(publicPort);
-    const providers = (await apiRequest(apiPort, adminCookie, "GET", "/system/identity/providers"))
-      .json as {
+    const providers = (
+      await apiRequest(apiPort, adminCookie, "GET", "/api/system/identity/providers")
+    ).json as {
       providers: Array<{
         id: string;
         type: string;
@@ -352,7 +353,7 @@ async function main(): Promise<void> {
       apiPort,
       adminCookie,
       "PATCH",
-      `/system/identity/providers/${openProvider.id}`,
+      `/api/system/identity/providers/${openProvider.id}`,
       {
         expectedSecurityRevision: openProvider.securityRevision,
         displayName: openProvider.displayName,
@@ -364,7 +365,7 @@ async function main(): Promise<void> {
       apiPort,
       adminCookie,
       "POST",
-      "/system/identity/providers",
+      "/api/system/identity/providers",
       {
         type: "internal",
         displayName: "Eveland Internal",
@@ -378,13 +379,19 @@ async function main(): Promise<void> {
       `creating internal Provider failed: ${createdInternal.body}`,
     );
     const internalProviderId = (createdInternal.json as { provider: { id: string } }).provider.id;
-    const createdRealm = await apiRequest(apiPort, adminCookie, "POST", "/system/identity/realms", {
-      providerConnectionId: internalProviderId,
-      externalRealmId: "members",
-      externalRealmKind: "internal",
-      displayName: "Members",
-      enabled: true,
-    });
+    const createdRealm = await apiRequest(
+      apiPort,
+      adminCookie,
+      "POST",
+      "/api/system/identity/realms",
+      {
+        providerConnectionId: internalProviderId,
+        externalRealmId: "members",
+        externalRealmKind: "internal",
+        displayName: "Members",
+        enabled: true,
+      },
+    );
     assert.equal(
       createdRealm.statusCode,
       201,
@@ -545,7 +552,7 @@ async function main(): Promise<void> {
     // production openid-client protocol (discovery, JWKS, PKCE, basic auth).
     const idp = await startFakeIdp(servers);
     const internalProviders = (
-      await apiRequest(apiPort, adminCookie, "GET", "/system/identity/providers")
+      await apiRequest(apiPort, adminCookie, "GET", "/api/system/identity/providers")
     ).json as {
       providers: Array<{
         id: string;
@@ -561,7 +568,7 @@ async function main(): Promise<void> {
       apiPort,
       adminCookie,
       "PATCH",
-      `/system/identity/providers/${activeInternal.id}`,
+      `/api/system/identity/providers/${activeInternal.id}`,
       {
         expectedSecurityRevision: activeInternal.securityRevision,
         displayName: activeInternal.displayName,
@@ -573,7 +580,7 @@ async function main(): Promise<void> {
       apiPort,
       adminCookie,
       "POST",
-      "/system/identity/providers",
+      "/api/system/identity/providers",
       {
         type: "oidc",
         displayName: "Identity E2E IdP",
@@ -589,13 +596,19 @@ async function main(): Promise<void> {
     );
     assert.equal(createdOidc.statusCode, 201, `creating OIDC Provider failed: ${createdOidc.body}`);
     const oidcProviderId = (createdOidc.json as { provider: { id: string } }).provider.id;
-    const oidcRealm = await apiRequest(apiPort, adminCookie, "POST", "/system/identity/realms", {
-      providerConnectionId: oidcProviderId,
-      externalRealmId: "acct_42",
-      externalRealmKind: "account",
-      displayName: "E2E Account",
-      enabled: true,
-    });
+    const oidcRealm = await apiRequest(
+      apiPort,
+      adminCookie,
+      "POST",
+      "/api/system/identity/realms",
+      {
+        providerConnectionId: oidcProviderId,
+        externalRealmId: "acct_42",
+        externalRealmKind: "account",
+        displayName: "E2E Account",
+        enabled: true,
+      },
+    );
     assert.equal(oidcRealm.statusCode, 201, `creating OIDC Realm failed: ${oidcRealm.body}`);
 
     // The admin preflight runs live discovery against the IdP.
@@ -603,7 +616,7 @@ async function main(): Promise<void> {
       apiPort,
       adminCookie,
       "POST",
-      `/system/identity/providers/${oidcProviderId}/preflight`,
+      `/api/system/identity/providers/${oidcProviderId}/preflight`,
     );
     assert.equal(preflight.statusCode, 200, `preflight failed: ${preflight.body}`);
     assert.equal(

@@ -103,6 +103,12 @@ Issuer 锚定的公开端点从 origin 根迁入 `/api` 命名空间，不设过
 3. 更新所有指向公开 origin 上 `/agent-catalog` 或 `/identity/*` 的外部聊天
    客户端配置。
 
+同一系列中，Dashboard 自身的浏览器 API 也告别了 `/api/eveland/<subtree>`
+隧道：API 现在把整个公开面原生注册在 `/api/*` 下，前门对该命名空间 verbatim
+转发（Allowlist 退役——机器面留在根 `/internal/*`，前门永不转发它）。此变更
+对运维者与外部客户端不可见；只有脚本化使用过 `/api/eveland/...` URL 的自定义
+工具需要去掉该前缀。
+
 ## Better Auth Account Issuer
 
 内置的 Better Auth 1.7 线在凭据登录时匹配新的 `auth_accounts.issuer` 列。迁移 `0058` 以内联 `DEFAULT 'local:credential'` 添加该列，因此按常规顺序执行即可——**先迁移、再重启 API**；回滚到升级前的 checkout 也能继续正常写入账号（旧代码不写该列，默认值补齐）。

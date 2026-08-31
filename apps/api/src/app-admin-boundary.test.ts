@@ -9,7 +9,7 @@ describe("admin-only boundary", () => {
     const { app } = await createAuthApp();
     const { cookie: adminCookie } = await signIn(app);
     const issued = await invite(app, adminCookie, "walk-member@example.com");
-    const accepted = await app.request("/invitations/accept", {
+    const accepted = await app.request("/api/invitations/accept", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -29,7 +29,7 @@ describe("admin-only boundary", () => {
       .filter(
         (route) =>
           route.method !== "ALL" &&
-          (route.path.startsWith("/system/") || route.path.startsWith("/platform/")),
+          (route.path.startsWith("/api/system/") || route.path.startsWith("/api/platform/")),
       )
       .map((route) => ({
         method: route.method,

@@ -22,7 +22,7 @@ export function registerProjectMetadataRoutes(input: {
   store: ProjectMetadataStore;
 }): void {
   const { app, store } = input;
-  app.get("/projects", async (c) => {
+  app.get("/api/projects", async (c) => {
     const [projects, activity, attention] = await Promise.all([
       store.listProjects(),
       store.listProjectActivity({ days: ACTIVITY_WINDOW_DAYS }),
@@ -53,7 +53,7 @@ export function registerProjectMetadataRoutes(input: {
     });
   });
 
-  app.get("/projects/:projectId", async (c) => {
+  app.get("/api/projects/:projectId", async (c) => {
     const project = await store.getProject(c.req.param("projectId"));
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
@@ -61,7 +61,7 @@ export function registerProjectMetadataRoutes(input: {
     return c.json({ project });
   });
 
-  app.patch("/projects/:projectId", async (c) => {
+  app.patch("/api/projects/:projectId", async (c) => {
     const parsed = updateProjectMetadataSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(

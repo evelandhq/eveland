@@ -18,13 +18,13 @@ export function registerSecretRoutes(input: {
 }): void {
   const { app, store, appSecretKey, enqueueLiveDeploymentRestarts } = input;
 
-  app.get("/projects/:projectId/secrets", async (c) => {
+  app.get("/api/projects/:projectId/secrets", async (c) => {
     return c.json({
       secrets: await store.listSecrets(c.req.param("projectId")),
     });
   });
 
-  app.post("/projects/:projectId/secrets", async (c) => {
+  app.post("/api/projects/:projectId/secrets", async (c) => {
     const parsed = secretSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json({ error: "Invalid secret input", issues: parsed.error.issues }, 400);
@@ -41,7 +41,7 @@ export function registerSecretRoutes(input: {
     return c.json({ secret, jobs: jobs.map(toPublicJob) }, 201);
   });
 
-  app.post("/projects/:projectId/secrets/batch", async (c) => {
+  app.post("/api/projects/:projectId/secrets/batch", async (c) => {
     const parsed = batchSecretSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(
@@ -82,7 +82,7 @@ export function registerSecretRoutes(input: {
     return c.json({ secrets, jobs: jobs.map(toPublicJob) }, 201);
   });
 
-  app.put("/projects/:projectId/secrets/:secretId", async (c) => {
+  app.put("/api/projects/:projectId/secrets/:secretId", async (c) => {
     const parsed = updateSecretSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid environment entry input", issues: parsed.error.issues }, 400);
@@ -100,21 +100,21 @@ export function registerSecretRoutes(input: {
     return c.json({ secret, jobs: jobs.map(toPublicJob) });
   });
 
-  app.delete("/projects/:projectId/secrets/:secretId", async (c) => {
+  app.delete("/api/projects/:projectId/secrets/:secretId", async (c) => {
     const projectId = c.req.param("projectId");
     const deleted = await store.deleteSecret(projectId, c.req.param("secretId"));
     const jobs = deleted ? await enqueueLiveDeploymentRestarts(projectId) : [];
     return c.json({ deleted, jobs: jobs.map(toPublicJob) });
   });
 
-  app.get("/platform/shared-agent-environment", async (c) => {
+  app.get("/api/platform/shared-agent-environment", async (c) => {
     const record = await store.getSharedAgentEnvironmentRecord();
     return c.json({
       environment: record ? publicSharedAgentEnvironment(record) : null,
     });
   });
 
-  app.put("/platform/shared-agent-environment", async (c) => {
+  app.put("/api/platform/shared-agent-environment", async (c) => {
     const parsed = sharedAgentEnvironmentSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json(

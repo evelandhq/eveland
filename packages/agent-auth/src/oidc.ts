@@ -320,7 +320,7 @@ export function createOidcAuthorizationCodeProvider(options: OidcAuthorizationCo
       ? {
           interaction: {
             type: "redirect",
-            url: `/api/eveland/agent-connections/${encodeURIComponent(connectionId)}/auth/interactions/oidc/start?returnPath=${encodeURIComponent(returnPath)}`,
+            url: `/api/agent-connections/${encodeURIComponent(connectionId)}/auth/interactions/oidc/start?returnPath=${encodeURIComponent(returnPath)}`,
           },
         }
       : {}),

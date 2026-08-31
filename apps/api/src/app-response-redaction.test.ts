@@ -27,20 +27,22 @@ describe("control-plane responses redact internal fields", () => {
     const app = createApp(store);
 
     const bodies = Object.entries({
-      session: await serializedBody(await app.request(`/sessions/${session.id}`)),
-      sessions: await serializedBody(await app.request(`/projects/${project.id}/sessions`)),
-      usage: await serializedBody(await app.request("/usage")),
-      projectUsage: await serializedBody(await app.request(`/projects/${project.id}/usage`)),
+      session: await serializedBody(await app.request(`/api/sessions/${session.id}`)),
+      sessions: await serializedBody(await app.request(`/api/projects/${project.id}/sessions`)),
+      usage: await serializedBody(await app.request("/api/usage")),
+      projectUsage: await serializedBody(await app.request(`/api/projects/${project.id}/usage`)),
       scheduleRuns: await serializedBody(
-        await app.request(`/projects/${project.id}/schedule-runs`),
+        await app.request(`/api/projects/${project.id}/schedule-runs`),
       ),
-      scheduleRunDetail: await serializedBody(await app.request(`/schedule-runs/${run.id}`)),
+      scheduleRunDetail: await serializedBody(await app.request(`/api/schedule-runs/${run.id}`)),
       sourceRevision: await serializedBody(
-        await app.request(`/projects/${project.id}/source/revision`),
+        await app.request(`/api/projects/${project.id}/source/revision`),
       ),
-      deployments: await serializedBody(await app.request(`/projects/${project.id}/deployments`)),
-      projects: await serializedBody(await app.request("/projects")),
-      schedules: await serializedBody(await app.request(`/projects/${project.id}/schedules`)),
+      deployments: await serializedBody(
+        await app.request(`/api/projects/${project.id}/deployments`),
+      ),
+      projects: await serializedBody(await app.request("/api/projects")),
+      schedules: await serializedBody(await app.request(`/api/projects/${project.id}/schedules`)),
     });
     for (const [route, body] of bodies) {
       for (const key of FORBIDDEN_KEYS) {
@@ -57,7 +59,7 @@ describe("control-plane responses redact internal fields", () => {
     const { project } = await createScheduleRunFixture(store, false);
     const app = createApp(store);
 
-    const response = await app.request(`/projects/${project.id}/source/revision`);
+    const response = await app.request(`/api/projects/${project.id}/source/revision`);
     expect(response.status).toBe(200);
     const { revision } = (await response.json()) as { revision: Record<string, unknown> };
     expect(revision).toMatchObject({ projectId: project.id, kind: "zip" });
@@ -69,7 +71,7 @@ describe("control-plane responses redact internal fields", () => {
     const { project } = await createScheduleRunFixture(store, false);
     const app = createApp(store);
 
-    const response = await app.request(`/projects/${project.id}/schedules`);
+    const response = await app.request(`/api/projects/${project.id}/schedules`);
     expect(response.status).toBe(200);
     const { schedules } = (await response.json()) as {
       schedules: Array<{ version: { sourcePath: string } | null }>;
@@ -82,7 +84,7 @@ describe("control-plane responses redact internal fields", () => {
     const { project } = await createScheduleRunFixture(store, false);
     const app = createApp(store);
 
-    const response = await app.request(`/projects/${project.id}/deployments`);
+    const response = await app.request(`/api/projects/${project.id}/deployments`);
     expect(response.status).toBe(200);
     const body = (await response.json()) as { deployments: Array<{ hostPort: number }> };
     expect(body.deployments[0]?.hostPort).toBe(41993);
