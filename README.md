@@ -60,9 +60,9 @@ Open the Dashboard at `http://localhost:17300` and the public documentation site
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`,
   `pnpm dev:workflow-dispatcher`, and `pnpm dev:docs` in separate terminals when
   isolated logs are more useful. `dev:worker` does not start the dispatcher.
-- Public development endpoints use `http://<projectSlug>.agent.localhost:17302`;
+- Public development endpoints use `http://<projectSlug>.agent.localhost:17300`;
   immutable previews use
-  `http://<eightCharacterDeploymentKey>--<projectSlug>.agent.localhost:17302`.
+  `http://<eightCharacterDeploymentKey>--<projectSlug>.agent.localhost:17300`.
   Deployment ports stay bound to `127.0.0.1` and are not product URLs.
 
 ## Documentation map
