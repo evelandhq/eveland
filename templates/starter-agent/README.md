@@ -64,8 +64,9 @@ unchanged under `eve dev` too.
 
 ## Ground rules baked into this template
 
-- **Text files only.** Binary files are silently dropped by source import;
-  never add images or archives to the project.
+- **Text files only.** Binary files do deploy, but they are invisible in the
+  Dashboard's Source page and bloat every upload — this template stays pure
+  text so what you browse is exactly what runs.
 - **No sandbox backend.** The platform injects its managed sandbox; an
   authored `agent/sandbox/` would be replaced anyway.
 - **The "remind me" beat needs the workflow dispatcher** (part of every
