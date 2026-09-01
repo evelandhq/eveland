@@ -100,7 +100,18 @@ export function childEnvironment(
   parentEnv: NodeJS.ProcessEnv,
   envFileValues: Record<string, string>,
 ): NodeJS.ProcessEnv {
-  return { ...parentEnv, ...envFileValues };
+  const merged = { ...parentEnv, ...envFileValues };
+  // The pinned interpreter's bin dir (where the installer put pnpm/corepack
+  // for a private Node) leads PATH: `pnpm exec ...` must resolve the same
+  // toolchain from a fresh shell, launchd, or a reboot as from the installer.
+  const nodeBinDir = envFileValues.EVELAND_NODE ? path.dirname(envFileValues.EVELAND_NODE) : null;
+  if (nodeBinDir) {
+    const rest = (merged.PATH ?? "")
+      .split(path.delimiter)
+      .filter((dir) => dir && dir !== nodeBinDir);
+    merged.PATH = [nodeBinDir, ...rest].join(path.delimiter);
+  }
+  return merged;
 }
 
 export function absoluteProcessDir(repoRootDir: string, spec: ProcessSpec): string {

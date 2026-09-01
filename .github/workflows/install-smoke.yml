@@ -54,8 +54,14 @@ jobs:
           # is exercised for real, not skipped because Docker was pre-baked.
           sudo systemctl stop docker docker.socket containerd 2>/dev/null || true
           sudo apt-get remove -y -qq docker-ce docker-ce-cli docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin containerd.io moby-engine moby-cli moby-compose moby-containerd 2>/dev/null || true
-          sudo rm -f /usr/bin/docker /usr/local/bin/docker
+          sudo apt-get remove -y -qq docker-compose-v2 docker-compose 2>/dev/null || true
+          sudo rm -f /usr/bin/docker /usr/local/bin/docker /usr/bin/docker-compose /usr/local/bin/docker-compose
+          # Compose v2 is a CLI plugin: a bare Ubuntu has none of these dirs.
+          sudo rm -rf /usr/libexec/docker/cli-plugins /usr/local/lib/docker/cli-plugins /usr/lib/docker/cli-plugins "$HOME/.docker/cli-plugins" /root/.docker/cli-plugins
           if command -v docker >/dev/null 2>&1; then echo "docker still present: $(command -v docker)"; exit 1; fi
+          for plugin in /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose; do
+            if [ -e "$plugin" ]; then echo "compose plugin still present: $plugin"; exit 1; fi
+          done
 
       - name: Run the installer non-interactively
         run: |

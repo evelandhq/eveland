@@ -103,7 +103,18 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 # --- Re-run against a completed install: this is an upgrade ------------------
+REPAIR_NODE=0
 if [ -f "$ETC_DIR/install.json" ] && grep -q '"bootstrapCompleted": true' "$ETC_DIR/install.json" 2>/dev/null; then
+  pinned_node="$(sed -n 's/^EVELAND_NODE=//p' "$ETC_DIR/eveland.env" 2>/dev/null | head -1)"
+  if [ -n "$pinned_node" ] && ! "$pinned_node" --version >/dev/null 2>&1; then
+    # The documented recovery for `nvm uninstall`: the shims exec this very
+    # interpreter, so forwarding to them would fail instantly. Re-resolve,
+    # re-pin, and regenerate the shims below instead.
+    note "Pinned Node $pinned_node no longer runs — repairing the pin and the shims"
+    REPAIR_NODE=1
+  fi
+fi
+if [ "$REPAIR_NODE" -eq 0 ] && [ -f "$ETC_DIR/install.json" ] && grep -q '"bootstrapCompleted": true' "$ETC_DIR/install.json" 2>/dev/null; then
   note "Existing completed install at $PREFIX — forwarding to eveland-ctl update"
   # An explicitly pinned version stays pinned; a bare re-run means "newest".
   if [ "$INTERACTIVE" -eq 1 ]; then
@@ -136,6 +147,9 @@ if [ "$OS_KIND" = linux ] && [ "$(id -u)" = 0 ] && command -v apt-get >/dev/null
   command -v git >/dev/null 2>&1 || base_missing="$base_missing git"
   command -v curl >/dev/null 2>&1 || base_missing="$base_missing curl"
   command -v docker >/dev/null 2>&1 || base_missing="$base_missing docker.io"
+  # docker.io does NOT pull in Compose v2 (Ubuntu ships it as the separate,
+  # merely Suggested docker-compose-v2 package) and the ctl needs it at once.
+  docker compose version >/dev/null 2>&1 || base_missing="$base_missing docker-compose-v2"
   if [ -n "$base_missing" ]; then
     note "Installing base prerequisites via apt:$base_missing"
     # shellcheck disable=SC2086
@@ -148,6 +162,9 @@ command -v git >/dev/null 2>&1 || fail "git is required. Install it (macOS: xcod
 command -v curl >/dev/null 2>&1 || fail "curl is required."
 if ! command -v docker >/dev/null 2>&1; then
   fail "docker is required (Postgres and the OTLP Collector run in containers). Install Docker and re-run."
+fi
+if ! docker compose version >/dev/null 2>&1; then
+  fail "docker compose (v2) is required. Install it (Debian/Ubuntu: apt-get install docker-compose-v2; Docker Desktop ships it) and re-run."
 fi
 
 # --- Node >= 24, three tiers -------------------------------------------------
@@ -227,8 +244,11 @@ cd "$SOURCE_DIR"
 git fetch --tags --quiet || true
 if [ -n "$REQUESTED_VERSION" ]; then
   TARGET_REV="$REQUESTED_VERSION"
+elif [ "$REPAIR_NODE" -eq 1 ]; then
+  TARGET_REV="$(git rev-parse HEAD)" # a repair never moves the checkout; that is update's job
 else
-  TARGET_REV="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+  # Exact vX.Y.Z only: a pre-release tag sorts above the stable it precedes.
+  TARGET_REV="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
   [ -n "$TARGET_REV" ] || TARGET_REV="$(git rev-parse HEAD)"
 fi
 note "Checking out $TARGET_REV"
@@ -254,7 +274,12 @@ note "Installing dependencies (this can take a few minutes)"
 SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile
 
 # --- Pin the interpreter for eveland-ctl's doctor and the shims --------------
-if [ -f "$ETC_DIR/eveland.env" ] && grep -q '^EVELAND_NODE=' "$ETC_DIR/eveland.env"; then
+if [ "$REPAIR_NODE" -eq 1 ]; then
+  # Replace the dead pin in place (0600 preserved: same inode, no recreate).
+  sed "s|^EVELAND_NODE=.*|EVELAND_NODE=$EVELAND_NODE|" "$ETC_DIR/eveland.env" > "$ETC_DIR/.eveland.env.repin" \
+    && cat "$ETC_DIR/.eveland.env.repin" > "$ETC_DIR/eveland.env" && rm -f "$ETC_DIR/.eveland.env.repin"
+  note "Re-pinned EVELAND_NODE=$EVELAND_NODE"
+elif [ -f "$ETC_DIR/eveland.env" ] && grep -q '^EVELAND_NODE=' "$ETC_DIR/eveland.env"; then
   : # already pinned; eveland-ctl owns this file after first boot
 else
   echo "EVELAND_NODE=$EVELAND_NODE" >> "$ETC_DIR/eveland.env"
@@ -268,6 +293,9 @@ write_shim() { # write_shim <name> <entry-relative-to-source>
 #!/bin/sh
 # eveland shim — written by install.sh; regenerated on update.
 export EVELAND_HOME="\${EVELAND_HOME:-$PREFIX}"
+# The pinned interpreter's bin dir leads PATH: with a private Node that is
+# the only place pnpm/corepack live, and a fresh shell has never seen it.
+export PATH="$NODE_BIN_DIR:\$PATH"
 exec "$EVELAND_NODE" "\$EVELAND_HOME/source/$entry" "\$@"
 EOF
   chmod +x "$tmp"

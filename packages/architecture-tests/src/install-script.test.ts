@@ -70,6 +70,39 @@ describe("install.sh publication", () => {
     expect(script).toContain("systemctl enable --now docker");
   });
 
+  test("Compose v2 is installed on the fresh host and hard-checked everywhere (docker.io alone lacks it)", () => {
+    expect(script).toContain('base_missing="$base_missing docker-compose-v2"');
+    expect(script).toContain("if ! docker compose version >/dev/null 2>&1; then");
+    expect(script).toContain("docker compose (v2) is required");
+  });
+
+  test("the shims put the pinned interpreter's bin dir on PATH — a private Node is the only place pnpm lives", () => {
+    const shim = script.slice(
+      script.indexOf("write_shim() {"),
+      script.indexOf("write_shim eveland "),
+    );
+    expect(shim).toContain('export PATH="$NODE_BIN_DIR:\\$PATH"');
+    // PATH is exported before the exec line.
+    expect(shim.indexOf("export PATH=")).toBeLessThan(shim.indexOf('exec "$EVELAND_NODE"'));
+  });
+
+  test("the default target is the newest exact vX.Y.Z tag, never a pre-release that sorts above it", () => {
+    expect(script).toContain("grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -1");
+  });
+
+  test("a re-run repairs a dead pinned Node instead of forwarding to a shim that cannot start", () => {
+    const repairIndex = script.indexOf('"$pinned_node" --version >/dev/null 2>&1');
+    const forwardIndex = script.indexOf("forwarding to eveland-ctl update");
+    expect(repairIndex).toBeGreaterThan(-1);
+    expect(repairIndex).toBeLessThan(forwardIndex);
+    expect(script).toContain('[ "$REPAIR_NODE" -eq 0 ] && [ -f "$ETC_DIR/install.json" ]');
+    // The repair re-pins in place and never moves the checkout.
+    expect(script).toContain("s|^EVELAND_NODE=.*|EVELAND_NODE=$EVELAND_NODE|");
+    expect(script).toContain(
+      'elif [ "$REPAIR_NODE" -eq 1 ]; then\n  TARGET_REV="$(git rev-parse HEAD)"',
+    );
+  });
+
   test("the shims execute the two real bin entrypoints", () => {
     expect(script).toContain("packages/cli/src/bin.ts");
     expect(script).toContain("packages/ctl/src/bin.ts");

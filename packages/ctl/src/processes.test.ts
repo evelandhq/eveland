@@ -48,6 +48,16 @@ describe("the supervised topology", () => {
 });
 
 describe("childEnvironment", () => {
+  test("the pinned interpreter's bin dir leads PATH so pnpm resolves from any shell or a reboot", () => {
+    const merged = childEnvironment(
+      { PATH: "/usr/bin:/opt/eveland/node/bin:/bin" },
+      { EVELAND_NODE: "/opt/eveland/node/bin/node" },
+    );
+    expect(merged.PATH).toBe("/opt/eveland/node/bin:/usr/bin:/bin");
+    // Without a pin the shell's PATH is left alone.
+    expect(childEnvironment({ PATH: "/usr/bin" }, {}).PATH).toBe("/usr/bin");
+  });
+
   test("the platform env file overrides the invoking shell, never the reverse", () => {
     const merged = childEnvironment(
       { PATH: "/usr/bin", NODE_ENV: "test", EXTRA: "shell" },
