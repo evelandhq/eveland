@@ -13,6 +13,13 @@ export type JobPumpOptions<T> = {
 export type JobPump = {
   /** Blocks new claims, wakes idle loops, and resolves once in-flight runs finish. */
   stop(): Promise<void>;
+  /**
+   * Wakes idle loops for an immediate claim (e.g. a Postgres NOTIFY reported a
+   * fresh enqueue). A wake that lands while a claim is in flight still forces
+   * one more claim before that loop may idle — the in-flight claim may have
+   * missed the job the wake signals.
+   */
+  wake(): void;
 };
 
 /**
@@ -34,6 +41,9 @@ export function startJobPump<T>(options: JobPumpOptions<T>): JobPump {
   });
   const sleep = options.sleep ?? defaultSleep;
 
+  let wakeVersion = 0;
+  let wakeGate = createGate();
+
   let claimChain: Promise<unknown> = Promise.resolve();
   const claimSerialized = (): Promise<T | null> => {
     const next = claimChain.then(() => (stopped ? null : options.claim()));
@@ -43,6 +53,7 @@ export function startJobPump<T>(options: JobPumpOptions<T>): JobPump {
 
   async function loop(): Promise<void> {
     while (!stopped) {
+      const versionBeforeClaim = wakeVersion;
       let item: T | null = null;
       try {
         item = await claimSerialized();
@@ -58,7 +69,8 @@ export function startJobPump<T>(options: JobPumpOptions<T>): JobPump {
         continue;
       }
       if (stopped) return;
-      await Promise.race([sleep(options.idleDelayMs), stopSignal]);
+      if (wakeVersion !== versionBeforeClaim) continue;
+      await Promise.race([sleep(options.idleDelayMs), wakeGate.promise, stopSignal]);
     }
   }
 
@@ -69,7 +81,22 @@ export function startJobPump<T>(options: JobPumpOptions<T>): JobPump {
       notifyStop();
       await Promise.all(loops);
     },
+    wake() {
+      if (stopped) return;
+      wakeVersion += 1;
+      const sleepers = wakeGate;
+      wakeGate = createGate();
+      sleepers.open();
+    },
   };
+}
+
+function createGate(): { promise: Promise<void>; open: () => void } {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
 }
 
 function defaultSleep(ms: number): Promise<void> {

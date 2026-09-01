@@ -176,6 +176,72 @@ describe("startJobPump", () => {
     await stopping;
     expect(claim.mock.calls.length).toBe(claimsBeforeStop);
   });
+
+  test("wake() interrupts idle loops so the next claim happens without waiting out the delay", async () => {
+    const claim = vi.fn(async () => null);
+    const pump = startJobPump({
+      concurrency: 2,
+      idleDelayMs: 60_000,
+      sleep: () => new Promise(() => {}), // never resolves on its own
+      claim,
+      run: async () => {},
+      onError: () => {},
+    });
+
+    await settle();
+    const idleClaims = claim.mock.calls.length;
+    pump.wake();
+    await settle();
+    // Every idle loop re-claimed once, then went back to sleep.
+    expect(claim.mock.calls.length).toBe(idleClaims + 2);
+    await pump.stop();
+  });
+
+  test("a wake landing during a claim triggers an immediate re-claim instead of sleeping", async () => {
+    const gate = deferred();
+    let claims = 0;
+    const sleep = vi.fn(() => new Promise<void>(() => {}));
+    const pump = startJobPump({
+      concurrency: 1,
+      idleDelayMs: 60_000,
+      sleep,
+      claim: async () => {
+        claims += 1;
+        if (claims === 1) await gate.promise;
+        return null;
+      },
+      run: async () => {},
+      onError: () => {},
+    });
+
+    await settle();
+    // The enqueue this wake signals may have been missed by the in-flight
+    // claim, so the loop must claim again before it is allowed to idle.
+    pump.wake();
+    gate.resolve();
+    await settle();
+    expect(claims).toBe(2);
+    await pump.stop();
+  });
+
+  test("wake() after stop() does not restart the loops", async () => {
+    const claim = vi.fn(async () => null);
+    const pump = startJobPump({
+      concurrency: 1,
+      idleDelayMs: 1,
+      sleep: async () => {},
+      claim,
+      run: async () => {},
+      onError: () => {},
+    });
+
+    await settle();
+    await pump.stop();
+    const claimsAtStop = claim.mock.calls.length;
+    pump.wake();
+    await settle();
+    expect(claim.mock.calls.length).toBe(claimsAtStop);
+  });
 });
 
 describe("nonOverlapping", () => {

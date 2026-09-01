@@ -3,6 +3,7 @@ import {
   createIsolatedPostgresDatabase,
   type IsolatedPostgresDatabase,
 } from "./postgres-integration.test-support.js";
+import { listenForQueuedJobs } from "./job-queue-listener.js";
 import { createPostgresStore } from "./postgres-store.js";
 
 const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
@@ -84,4 +85,34 @@ describe.skipIf(!databaseUrl)("Postgres job leases", () => {
       await store.deleteProject(project.id);
     }
   });
+
+  test("a job-queue listener wakes on every enqueue committed by another connection", async () => {
+    const store = createPostgresStore(harness.database);
+    let wakes = 0;
+    const listener = await listenForQueuedJobs(harness.database, () => {
+      wakes += 1;
+    });
+    // Subscribing reports itself as a wake so a worker re-checks the queue
+    // after any (re)connect it may have missed notifications during.
+    const baseline = wakes;
+    let project: Awaited<ReturnType<typeof store.createProject>> | undefined;
+    try {
+      project = await store.createProject({
+        name: `Notify integration ${Date.now()}`,
+        importKind: "zip",
+      });
+      await waitUntil(() => wakes > baseline, "an enqueue notification");
+    } finally {
+      await listener.close();
+      if (project) await store.deleteProject(project.id);
+    }
+  });
 });
+
+async function waitUntil(predicate: () => boolean, what: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${what}.`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}

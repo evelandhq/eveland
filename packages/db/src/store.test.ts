@@ -1,6 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { describe, expect, test } from "vitest";
 import { projects } from "./schema.js";
+import { JOB_QUEUE_CHANNEL } from "./job-queue-listener.js";
 import { createPgliteTestStore } from "./test-store.js";
 import { createTestStore } from "./vitest-store.js";
 
@@ -396,6 +397,26 @@ describe("SQL Store jobs", () => {
       projectId: projects[1]!.id,
       type: "build_deploy",
     });
+  });
+
+  test("enqueues notify the job-queue channel so an idle worker wakes immediately", async () => {
+    const database = await createPgliteTestStore();
+    try {
+      const payloads: string[] = [];
+      await database.client.listen(JOB_QUEUE_CHANNEL, (payload) => payloads.push(payload));
+
+      const project = await database.store.createProject({
+        name: "Notify Agent",
+        importKind: "zip",
+      });
+      await database.store.enqueueJob(project.id, "build_deploy");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // createProject enqueues the initial import_source; both inserts notify.
+      expect(payloads).toEqual(["import_source", "build_deploy"]);
+    } finally {
+      await database.close();
+    }
   });
 
   test("claims latency-sensitive jobs ahead of older queued work from other projects", async () => {
