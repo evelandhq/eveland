@@ -9,6 +9,7 @@ import { createId } from "@evelandhq/core/ids";
 import { decodeJobPayload } from "@evelandhq/core/jobs";
 import { getNextRunAt } from "@evelandhq/core/schedules";
 import type { StoreDatabase } from "./client.js";
+import { JOB_QUEUE_CHANNEL } from "./job-queue-listener.js";
 import {
   agentAuthCredentials,
   jobs,
@@ -110,6 +111,8 @@ export async function insertJobRowTx<Type extends JobType>(
     })
     .returning();
   if (!row) throw new Error(`Failed to enqueue ${input.type} job.`);
+  // Delivered on commit, so a rolled-back enqueue never wakes the worker.
+  await tx.execute(sql`select pg_notify(${JOB_QUEUE_CHANNEL}, ${input.type})`);
   return row;
 }
 

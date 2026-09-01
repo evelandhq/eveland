@@ -9,6 +9,7 @@ import { formatBuildInfo } from "@evelandhq/core/build-info";
 import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
 import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
 import { writeConfigurationSnapshotFile } from "@evelandhq/core/server/config-diagnostics";
+import { listenForQueuedJobs } from "@evelandhq/db";
 import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { runClaimedJob } from "./jobs/process.js";
 import {
@@ -292,6 +293,21 @@ const jobPump = startJobPump({
   },
 });
 
+// NOTIFY wakes the pump the moment another process enqueues, cutting the
+// idle-poll latency out of the session-create path. Purely an optimization:
+// on subscription failure the pump's polling continues unchanged, and
+// postgres.js re-subscribes lost listener connections on its own (each
+// re-subscription fires a wake to cover the gap).
+const jobQueueListener = await listenForQueuedJobs(storeFactory.database, () =>
+  jobPump.wake(),
+).catch((error: unknown) => {
+  console.warn(
+    "Job-queue NOTIFY listener is unavailable; falling back to queue polling:",
+    error instanceof Error ? error.message : String(error),
+  );
+  return null;
+});
+
 const runTick = nonOverlapping(tick, (error) => console.error(error));
 runTick();
 publishTelemetry();
@@ -396,6 +412,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     // the pre-pump shutdown behavior.
     void jobPump.stop();
     void Promise.all([
+      jobQueueListener?.close() ?? Promise.resolve(),
       storeFactory.close(),
       workflowRetentionScheduler.close(),
       capacityObservability.shutdown(),
