@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { openSync } from "node:fs";
-import { access, mkdir, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -22,6 +22,7 @@ import {
   type ApplianceLayout,
 } from "./home.ts";
 import { runImplicitLogin } from "./implicit-login.ts";
+import { provisionLinuxHost } from "./linux-host.ts";
 import { defaultTcpProbe } from "./net-probe.ts";
 import { runSeedAgent } from "./seed-agent.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
@@ -452,6 +453,27 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
         method: io.env.EVELAND_INSTALL_METHOD === "install.sh" ? "install.sh" : "manual",
         osMode: deps.platform,
         bootstrapCompleted: false,
+      });
+    }
+    if (deps.platform === "linux") {
+      // The production-host contract (sandbox toolchain, bwrap AppArmor
+      // profile, service users, /workspace, system-PATH node/pnpm) is part
+      // of the install, not homework left for the worker preflight to fail.
+      const nodeBinDir = envFile.values.EVELAND_NODE
+        ? path.dirname(envFile.values.EVELAND_NODE)
+        : path.dirname(process.execPath);
+      await provisionLinuxHost({
+        stdout: io.stdout,
+        stderr: io.stderr,
+        execCommand: resolved.execCommand,
+        streamCommand: deps.streamCommand,
+        fileExists: resolved.fileExists,
+        writeTextFile:
+          io.writeTextFile ?? ((filePath, content) => writeFile(filePath, content, "utf8")),
+        env: io.env,
+        repoRootDir: resolved.repoRootDir,
+        nodeBinDir,
+        getuid: io.getuid ?? process.getuid ?? (() => -1),
       });
     }
     if (!parsed.values["skip-infra"]) {

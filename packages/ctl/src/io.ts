@@ -47,4 +47,6 @@ export type LifecycleIo = {
   tcpProbe?: TcpProbe;
   openUrl?: (url: string) => Promise<void>;
   random?: (size: number) => Buffer;
+  getuid?: () => number;
+  writeTextFile?: (filePath: string, content: string) => Promise<void>;
 };

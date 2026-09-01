@@ -1,11 +1,12 @@
 name: install smoke
 
 # The one-line installer's real-machine gate: a fresh Ubuntu runner (a full
-# systemd VM, like the systemd-smoke workflow uses) runs install.sh
-# non-interactively from this very checkout, which hands off to
-# `eveland-ctl start` — first-boot bootstrap, migrations, supervision,
-# implicit CLI login, and seeding the built-in agent through the real
-# `eveland deploy` — and must end with `eveland-ctl doctor` green.
+# systemd VM) runs install.sh non-interactively from this very checkout with
+# NO pre-provisioning beyond what any GitHub runner ships — the installer and
+# the ctl bootstrap own the whole host contract themselves (Node resolution,
+# sandbox toolchain via apt, bwrap AppArmor profile, service users,
+# /workspace, system-PATH toolchain). The run must end with doctor green,
+# working implicit login, a seeded built-in agent path, and a clean stop.
 #
 # Runs nightly, on demand, and on PRs that touch the installer surface.
 
@@ -38,44 +39,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - name: Install sandbox host dependencies
-        run: |
-          sudo apt-get update
-          # Parity with systemd-smoke.yml: the worker's systemd preflight and
-          # the bwrap build sandbox need this toolchain on the host.
-          sudo apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq openssl python-is-python3 python3 python3-pip ripgrep unzip zstd
-          sudo mkdir -p /workspace
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
-      - name: Put the sandbox toolchain on the system PATH
-        run: |
-          # Deployment units run with a plain system PATH (see
-          # systemd-smoke.yml for the rationale).
-          sudo corepack enable
-          sudo corepack install --global pnpm@11.7.0
-          sudo ln -sf "$(command -v node)" /usr/local/bin/node
-          sudo ln -sf "$(command -v npm)" /usr/local/bin/npm
-          sudo -i sh -lc 'command -v node npm pnpm rg jq zstd'
-
-      - name: Provision worker users
-        run: |
-          id -u eveland-build >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
-          id -u eveland-app >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app
-
       - name: Run the installer non-interactively
         run: |
           # Root installs to /opt/eveland exactly like a real Linux box; the
           # checkout is cloned locally at this PR's merge commit instead of
           # the newest release tag. `safe.directory` lets root read the
-          # runner-owned workspace.
+          # runner-owned workspace. Deliberately NO setup-node / pnpm /
+          # apt steps here: resolving Node (the runner's is < 24, so the
+          # tarball tier runs) and provisioning the host is the product's
+          # own job.
           sudo git config --global --add safe.directory '*'
           sudo -E env "PATH=$PATH" \
             EVELAND_REPO_URL="$GITHUB_WORKSPACE" \
@@ -108,3 +80,4 @@ jobs:
         run: |
           sudo tail -n 100 /opt/eveland/logs/*.log || true
           sudo tail -n 50 /opt/eveland/logs/install.log || true
+          sudo journalctl -u 'eveland-*' -n 100 --no-pager || true
