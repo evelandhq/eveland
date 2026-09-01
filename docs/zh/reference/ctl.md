@@ -35,16 +35,16 @@ curl -fsSL https://eveland.ai/install.sh | bash
 
 ## 命令
 
-| 命令                                              | 行为                                                                                                                                                                                       |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `eveland-ctl start [--foreground] [--skip-infra]` | 先拉起 infra 容器(Postgres、OTLP Collector),再在 ctl 监督下拉起五个平台进程。幂等:平台已在运行则直接短路。`--foreground` 让监督进程留在前台(Ctrl-C 即停);`--skip-infra` 表示容器由别处管理 |
-| `eveland-ctl stop`                                | 向监督进程发 SIGTERM 并确认进程树退出(必要时升级为 SIGKILL)。infra 容器保持运行                                                                                                            |
-| `eveland-ctl restart`                             | 先 `stop` 再 `start`                                                                                                                                                                       |
-| `eveland-ctl status`                              | 监督进程视图 ⊕ 实时健康探测 ⊕ infra 可达性;全部健康才退出 0                                                                                                                                |
-| `eveland-ctl logs [process] [-f] [--tail N]`      | 平台进程自己的 stdout/stderr(来自 `logs/`)。已部署项目的日志属于 `eveland logs`                                                                                                            |
-| `eveland-ctl doctor`                              | 完整机器体检(见下);一次收集所有问题,任何 failure 都退出 1                                                                                                                                  |
-
-`update` 与 `install` 是预留动词,后续版本落地;ctl 会明说"尚未可用"而不是报未知命令。
+| 命令                                                           | 行为                                                                                                                                                                                       |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `eveland-ctl start [--foreground] [--skip-infra]`              | 先拉起 infra 容器(Postgres、OTLP Collector),再在 ctl 监督下拉起五个平台进程。幂等:平台已在运行则直接短路。`--foreground` 让监督进程留在前台(Ctrl-C 即停);`--skip-infra` 表示容器由别处管理 |
+| `eveland-ctl stop`                                             | 向监督进程发 SIGTERM 并确认进程树退出(必要时升级为 SIGKILL)。infra 容器保持运行                                                                                                            |
+| `eveland-ctl restart`                                          | 先 `stop` 再 `start`                                                                                                                                                                       |
+| `eveland-ctl status`                                           | 监督进程视图 ⊕ 实时健康探测 ⊕ infra 可达性;全部健康才退出 0                                                                                                                                |
+| `eveland-ctl logs [process] [-f] [--tail N]`                   | 平台进程自己的 stdout/stderr(来自 `logs/`)。已部署项目的日志属于 `eveland logs`                                                                                                            |
+| `eveland-ctl doctor`                                           | 完整机器体检(见下);一次收集所有问题,任何 failure 都退出 1                                                                                                                                  |
+| `eveland-ctl update [--version <tag>] [--yes] [--skip-backup]` | 升级 appliance 到某个 release tag(见下)                                                                                                                                                    |
+| `eveland-ctl install --systemd`                                | 仅 Linux、仅 root:把安装转正为 systemd 系统服务(见下)                                                                                                                                      |
 
 ## 首次引导
 
@@ -61,6 +61,23 @@ curl -fsSL https://eveland.ai/install.sh | bash
 macOS 没有 systemd,所以 `start` 把一个监督进程 daemon 化,由它拥有五个平台进程——Agent Gateway、Platform API、Dashboard、Worker、workflow dispatcher(docs 站是 dev-only,永不受监督)。子进程崩溃按指数退避重启(1 秒起倍增,封顶 30 秒;稳定运行满一分钟则清零),各子进程输出落在 `logs/<name>.log`,对监督进程的一次 SIGTERM 即可按序停掉全组。五个进程中四个直接跑 TypeScript 源码(`tsx`),与生产 Compose 一致;只有 Dashboard 需要先有生产构建(`pnpm --filter @evelandhq/web build`),否则 `start` 拒绝启动。Linux 上同一监督器支撑 `--foreground`;把平台装成 systemd 单元是 `install --systemd` 动词,与 `update` 一起落地。
 
 配置以同一方式到达每个子进程:父进程环境负责 PATH 类管道,平台 env 文件覆盖其上——权威是文件,不是调用方 shell。`NODE_ENV` 也来自文件:平台的 fail-closed 规则(dev 兜底 secrets 只在显式 `NODE_ENV=development` 下生效)原样适用。
+
+## 升级
+
+`eveland-ctl update` 把 appliance 的源码 checkout 移到更新的 release tag(默认最新;`--version` 可钉住),把平台攒下的伤疤逐条产品化为步骤。开发 checkout 会被拒绝(那是 `git pull` 的事)。顺序有讲究:
+
+1. **breaking 先行**:用 `git show` 读**目标版本**的 `CHANGELOG.md`(运行中的 checkout 根本没听说过新版本),抽出沿途每个 `⚠ BREAKING CHANGES` 段落,要求操作者确认(`--yes` 非交互接受;未确认则在任何东西移动之前中止)。
+2. **备份**:`pg_dump` 落进 `backups/`,文件名带着它保护的版本号。dump 失败拒绝继续(`--skip-backup` 是逃生口)。
+3. **脏树处理**:unmerged index 先 reset(stash 会被它噎住);真实的本地改动进**带名** stash(`eveland-ctl-update-<ts>`),更新完成后交互式询问是否恢复。ignored 文件不受影响。
+4. checkout → `pnpm install --frozen-lockfile` → Dashboard 构建 → `db:migrate` → stop + start(带常规就绪门)。
+5. **eve 窗口检测**:若本次更新移动了受支持的 eve 窗口(经 starter 模板的 pin 观测),ctl 大声警告:按旧窗口构建的 Release 会 attest 为 unknown、其 schedule 进死信,直到每个项目 rebuild 并 promote。
+6. 重启后探测固化的 `EVELAND_NODE`——被 `nvm uninstall` 无声移除的解释器会得到明确的"重跑安装脚本"指引,而不是一个谜。
+
+对已完成安装重跑公开安装脚本会转发到这里。
+
+## systemd 转正
+
+`eveland-ctl install --systemd`(Linux、root、首次引导完成后)把安装从 ctl 自带监督器转正为 systemd 系统服务——生产默认形态。它先停掉 ctl 监督器,向 `/etc/systemd/system` 写入每个平台进程一个 unit(命名与文档已久的 `eveland-worker.service` / `eveland-workflow-dispatcher.service` 收敛),都读取同一份 `etc/eveland.env` 且 PATH 带上固化 Node 的 bin 目录,然后 `daemon-reload` + `enable --now`。此后 `start`/`stop`/`restart`/`status` 委托 systemctl,`logs` 读 journald(`-f` 直接指向 `journalctl -f`)。平台从此随机器重启。
 
 ## Doctor
 

@@ -29,6 +29,8 @@ export type InstallMetadata = {
   method: "install.sh" | "manual";
   osMode: "darwin" | "linux";
   bootstrapCompleted: boolean;
+  /** Who owns the platform processes; absent means the ctl supervisor. */
+  supervision?: "ctl" | "systemd";
 };
 
 export function resolveApplianceRoot(env: NodeJS.ProcessEnv, platform = process.platform): string {

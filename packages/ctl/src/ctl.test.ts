@@ -63,9 +63,12 @@ describe("unknown command hints", () => {
     expect(unknownCommandMessage("deply")).toContain("`eveland deploy`");
   });
 
-  test("reserved verbs that are not built yet say so instead of 'unknown'", () => {
-    expect(unknownCommandMessage("update")).toContain("not available yet");
-    expect(unknownCommandMessage("install")).toContain("not available yet");
+  test("update and install are real commands now, listed in help", async () => {
+    const { io, out } = makeIo();
+    await runCtl(["help"], io);
+    const help = out.join("\n");
+    expect(help).toContain("  update");
+    expect(help).toContain("  install");
   });
 
   test("garbage gets the generic message", () => {

@@ -44,7 +44,8 @@ A development checkout needs none of this: without `etc/eveland.env`, the ctl fa
 | `eveland-ctl logs [process] [-f] [--tail N]`      | The platform processes' own stdout/stderr from `logs/`. A deployed project's logs belong to `eveland logs`                                                                                                                                                                                     |
 | `eveland-ctl doctor`                              | The full machine checklist (below); collects every problem in one pass and exits 1 on any failure                                                                                                                                                                                              |
 
-`update` and `install` are reserved verbs that land in a later release; the ctl says so instead of calling them unknown.
+| `eveland-ctl update [--version <tag>] [--yes] [--skip-backup]` | Upgrade the appliance to a release tag (below) |
+| `eveland-ctl install --systemd` | Linux only, root only: promote the install to systemd system services (below) |
 
 ## First boot
 
@@ -61,6 +62,23 @@ With the token in hand, the bootstrap seeds the **built-in agent** (`stella`): i
 macOS has no systemd, so `start` daemonizes one supervisor that owns the five platform processes — Agent Gateway, Platform API, Dashboard, Worker, and the workflow dispatcher (the docs site is dev-only and never supervised). A crashed child restarts with exponential backoff (1 s doubling to a 30 s cap; a child that stays up a minute resets its streak), each child's output lands in `logs/<name>.log`, and one SIGTERM to the supervisor stops the set in order. Four of the five run their TypeScript sources directly (`tsx`), matching production Compose; only the Dashboard needs its production build (`pnpm --filter @evelandhq/web build`) before `start` will proceed. On Linux the same supervisor backs `--foreground`; installing the platform as systemd units is the `install --systemd` verb, which lands with `update`.
 
 Configuration reaches every child the same way: the parent environment for PATH-style plumbing with the platform env file laid over it, so the file — not the invoking shell — is authoritative. `NODE_ENV` comes from the file too: the platform's fail-closed rule (dev fallback secrets only under an explicit `NODE_ENV=development`) applies unchanged.
+
+## Update
+
+`eveland-ctl update` moves the appliance's source checkout to a newer release tag (default: the newest; `--version` pins one), with the platform's collected scars productized as steps. It refuses a development checkout (that's `git pull`). The order matters:
+
+1. **Breaking changes first**: the target's `CHANGELOG.md` (read via `git show` — the running checkout has never heard of the new version) is scanned for every `⚠ BREAKING CHANGES` block between here and there, and the operator must confirm (`--yes` accepts non-interactively; an unconfirmed update aborts before anything moves).
+2. **Backup**: `pg_dump` into `backups/`, named after the version it protects. A failed dump refuses to proceed (`--skip-backup` is the escape hatch).
+3. **Dirty-tree handling**: an unmerged index is reset first (stash chokes on it); real local changes go into a **named** stash (`eveland-ctl-update-<ts>`) offered back — interactively — after the update. Ignored files are untouched.
+4. Checkout → `pnpm install --frozen-lockfile` → Dashboard build → `db:migrate` → stop + start (with the normal readiness gate).
+5. **Eve-window detection**: if the supported eve window moved with the update (observed via the starter template's pin), the ctl warns loudly that Releases built against the old window attest as unknown and dead-letter their schedules until every project is rebuilt and promoted.
+6. The pinned `EVELAND_NODE` is probed after restart — an interpreter silently removed by `nvm uninstall` gets an explicit re-run-the-installer instruction instead of a mystery.
+
+Re-running the public installer against a completed install forwards here.
+
+## systemd installation
+
+`eveland-ctl install --systemd` (Linux, root, after a completed first boot) promotes the install from the ctl's own supervisor to systemd system services — the production default. It stops the ctl supervisor, writes one unit per platform process into `/etc/systemd/system` (names converging with the long-documented `eveland-worker.service` / `eveland-workflow-dispatcher.service`), each reading the single `etc/eveland.env` with the pinned Node's bin directory on PATH, then `daemon-reload` + `enable --now`. From then on `start`/`stop`/`restart`/`status` delegate to systemctl, and `logs` reads journald (`-f` points at `journalctl -f` directly). The platform now restarts with the machine.
 
 ## Doctor
 

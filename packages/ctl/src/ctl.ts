@@ -3,6 +3,8 @@ import { runDoctor } from "./doctor.ts";
 import { runRestart, runStart, runStop, runSupervise, type LifecycleIo } from "./lifecycle.ts";
 import { runCtlLogs } from "./logs.ts";
 import { runStatus } from "./status.ts";
+import { runInstallCommand } from "./systemd.ts";
+import { runUpdate } from "./update.ts";
 
 /**
  * eveland-ctl: the platform operator's tool. It manages THIS machine's
@@ -51,15 +53,20 @@ const commands: Record<string, Command> = {
     description: "Check this machine against everything a healthy install needs",
     run: runDoctor,
   },
+  update: {
+    description: "Upgrade the appliance to a newer release (backup, migrate, restart)",
+    run: runUpdate,
+  },
+  install: {
+    description: "install --systemd: promote a Linux install to systemd services",
+    run: runInstallCommand,
+  },
   _supervise: {
     description: "(internal) the daemonized supervisor behind `start`",
     hidden: true,
     run: runSupervise,
   },
 };
-
-// Reserved verbs that exist in the command surface but not in this build yet.
-const PLANNED_COMMANDS = new Set(["update", "install"]);
 
 export async function runCtl(argv: string[], io: CtlIo): Promise<number> {
   const [name, ...rest] = argv;
@@ -85,9 +92,6 @@ export async function runCtl(argv: string[], io: CtlIo): Promise<number> {
 }
 
 export function unknownCommandMessage(name: string): string {
-  if (PLANNED_COMMANDS.has(name)) {
-    return `'${name}' is not available yet in this build of eveland-ctl.`;
-  }
   if (EVELAND_COMMANDS.has(name)) {
     return `'${name}' talks to a platform as an agent author — try \`eveland ${name}\`.`;
   }

@@ -25,7 +25,12 @@ import { runImplicitLogin } from "./implicit-login.ts";
 import { defaultTcpProbe } from "./net-probe.ts";
 import { runSeedAgent } from "./seed-agent.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
-import { absoluteProcessDir, childEnvironment, PLATFORM_PROCESSES } from "./processes.ts";
+import {
+  absoluteProcessDir,
+  childEnvironment,
+  PLATFORM_PROCESSES,
+  systemdUnitName,
+} from "./processes.ts";
 import {
   isProcessAlive,
   readSupervisorPid,
@@ -258,6 +263,64 @@ async function waitForReadiness(
  * development checkout (its own .env, no appliance config) is never
  * bootstrapped: it is already configured by hand.
  */
+/** After `install --systemd`, systemctl owns the processes, not the ctl supervisor. */
+export async function systemdSupervised(resolved: ResolvedLifecycle): Promise<boolean> {
+  const metadata = await readInstallMetadata(resolved.layout);
+  return metadata?.supervision === "systemd";
+}
+
+async function startViaSystemd(
+  io: LifecycleIo,
+  resolved: ResolvedLifecycle,
+  skipInfra: boolean,
+): Promise<number> {
+  const envFile = await requirePlatformEnvFile(io, resolved);
+  if (!skipInfra) {
+    await ensureInfraUp(io, resolved, envFile.path);
+  }
+  for (const spec of PLATFORM_PROCESSES) {
+    const result = await resolved.execCommand(["systemctl", "start", systemdUnitName(spec.key)], {
+      cwd: resolved.repoRootDir,
+    });
+    if (result.code !== 0) {
+      io.stderr(`systemctl start ${systemdUnitName(spec.key)} failed:\n${result.output.trim()}`);
+      return 1;
+    }
+  }
+  const ready = new Set<string>();
+  for (let waited = 0; waited <= READINESS_DEADLINE_MS; waited += READINESS_POLL_MS) {
+    for (const spec of PLATFORM_PROCESSES) {
+      if (ready.has(spec.key)) continue;
+      if (spec.readinessUrl) {
+        if (await probeReady(resolved.fetchImpl, spec.readinessUrl)) {
+          ready.add(spec.key);
+          io.stdout(`  ${spec.label} is ready`);
+        }
+      } else {
+        const active = await resolved.execCommand(
+          ["systemctl", "is-active", systemdUnitName(spec.key)],
+          { cwd: resolved.repoRootDir },
+        );
+        if (active.output.trim() === "active") {
+          ready.add(spec.key);
+          io.stdout(`  ${spec.label} is running`);
+        }
+      }
+    }
+    if (ready.size === PLATFORM_PROCESSES.length) {
+      io.stdout("");
+      io.stdout(`Eveland is running at ${publicOrigin(envFile)}`);
+      return 0;
+    }
+    await resolved.sleep(READINESS_POLL_MS);
+  }
+  const missing = PLATFORM_PROCESSES.filter((spec) => !ready.has(spec.key)).map((s) => s.label);
+  io.stderr(
+    `Timed out waiting for: ${missing.join(", ")}. Check \`systemctl status 'eveland-*'\` and \`journalctl -u eveland-<name>\`.`,
+  );
+  return 1;
+}
+
 async function detectBootstrapNeeded(resolved: ResolvedLifecycle): Promise<boolean> {
   const applianceEnvExists = await resolved.fileExists(resolved.layout.envFilePath);
   const devEnvExists = await resolved.fileExists(path.join(resolved.repoRootDir, ".env"));
@@ -348,6 +411,9 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
     allowPositionals: false,
   });
   const resolved = resolveLifecycle(io);
+  if (await systemdSupervised(resolved)) {
+    return startViaSystemd(io, resolved, Boolean(parsed.values["skip-infra"]));
+  }
   const existingPid = await readSupervisorPid(resolved.layout);
   if (existingPid !== null && resolved.isAlive(existingPid)) {
     io.stdout(`Eveland is already running (supervisor pid ${existingPid}).`);
@@ -425,6 +491,22 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
 
 export async function runStop(_args: string[], io: LifecycleIo): Promise<number> {
   const resolved = resolveLifecycle(io);
+  if (await systemdSupervised(resolved)) {
+    let failed = false;
+    for (const spec of PLATFORM_PROCESSES) {
+      const result = await resolved.execCommand(["systemctl", "stop", systemdUnitName(spec.key)], {
+        cwd: resolved.repoRootDir,
+      });
+      if (result.code !== 0) {
+        io.stderr(`systemctl stop ${systemdUnitName(spec.key)} failed:\n${result.output.trim()}`);
+        failed = true;
+      }
+    }
+    if (!failed) {
+      io.stdout("Stopped the systemd services. Infrastructure containers keep running.");
+    }
+    return failed ? 1 : 0;
+  }
   const pid = await readSupervisorPid(resolved.layout);
   if (pid === null || !resolved.isAlive(pid)) {
     if (pid !== null) await removeSupervisorFiles(resolved.layout);

@@ -1,8 +1,14 @@
 import { OTEL_PLATFORM_HOST_HTTP_PORT, POSTGRES_HOST_PORT } from "@evelandhq/core/ports";
 import { loadPlatformEnvFile } from "./env-file.ts";
-import { publicOrigin, resolveLifecycle, type FetchLike, type LifecycleIo } from "./lifecycle.ts";
+import {
+  publicOrigin,
+  resolveLifecycle,
+  systemdSupervised,
+  type FetchLike,
+  type LifecycleIo,
+} from "./lifecycle.ts";
 import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
-import { PLATFORM_PROCESSES } from "./processes.ts";
+import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
 import { readSupervisorPid, readSupervisorState } from "./state-files.ts";
 
 /**
@@ -35,40 +41,61 @@ export async function runStatus(
   });
 
   let healthy = true;
-  const supervisorPid = await readSupervisorPid(resolved.layout);
-  const supervisorAlive = supervisorPid !== null && resolved.isAlive(supervisorPid);
-  const state = await readSupervisorState(resolved.layout);
-
-  if (!supervisorAlive) {
-    io.stdout("Supervisor: not running");
-    healthy = false;
+  if (await systemdSupervised(resolved)) {
+    io.stdout("Supervision: systemd (installed via `eveland-ctl install --systemd`)");
+    io.stdout("");
+    io.stdout("Processes:");
+    for (const spec of PLATFORM_PROCESSES) {
+      const active = await resolved.execCommand(
+        ["systemctl", "is-active", systemdUnitName(spec.key)],
+        { cwd: resolved.repoRootDir },
+      );
+      const unitState = active.output.trim() || "unknown";
+      const ready = spec.readinessUrl ? await probe(resolved.fetchImpl, spec.readinessUrl) : null;
+      const ok = unitState === "active" && ready !== false;
+      if (!ok) healthy = false;
+      const parts = [unitState];
+      if (ready !== null) parts.push(ready ? "health ok" : "health FAILED");
+      io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
+    }
   } else {
-    io.stdout(`Supervisor: running (pid ${supervisorPid}, since ${state?.startedAt ?? "unknown"})`);
-  }
+    const supervisorPid = await readSupervisorPid(resolved.layout);
+    const supervisorAlive = supervisorPid !== null && resolved.isAlive(supervisorPid);
+    const state = await readSupervisorState(resolved.layout);
 
-  io.stdout("");
-  io.stdout("Processes:");
-  for (const spec of PLATFORM_PROCESSES) {
-    const child = state?.children[spec.key];
-    const alive = child?.pid != null && resolved.isAlive(child.pid);
-    const ready = spec.readinessUrl ? await probe(resolved.fetchImpl, spec.readinessUrl) : null;
-    const parts: string[] = [];
     if (!supervisorAlive) {
-      parts.push("down");
-    } else if (alive) {
-      parts.push(`up (pid ${child!.pid})`);
-      if (child!.restarts > 0) parts.push(`${child!.restarts} restarts`);
+      io.stdout("Supervisor: not running");
+      healthy = false;
     } else {
-      parts.push(
-        child
-          ? `down (${child.status}${child.lastExit ? `, last exit ${child.lastExit}` : ""})`
-          : "unknown",
+      io.stdout(
+        `Supervisor: running (pid ${supervisorPid}, since ${state?.startedAt ?? "unknown"})`,
       );
     }
-    if (ready !== null) parts.push(ready ? "health ok" : "health FAILED");
-    const ok = supervisorAlive && alive && ready !== false;
-    if (!ok) healthy = false;
-    io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
+
+    io.stdout("");
+    io.stdout("Processes:");
+    for (const spec of PLATFORM_PROCESSES) {
+      const child = state?.children[spec.key];
+      const alive = child?.pid != null && resolved.isAlive(child.pid);
+      const ready = spec.readinessUrl ? await probe(resolved.fetchImpl, spec.readinessUrl) : null;
+      const parts: string[] = [];
+      if (!supervisorAlive) {
+        parts.push("down");
+      } else if (alive) {
+        parts.push(`up (pid ${child!.pid})`);
+        if (child!.restarts > 0) parts.push(`${child!.restarts} restarts`);
+      } else {
+        parts.push(
+          child
+            ? `down (${child.status}${child.lastExit ? `, last exit ${child.lastExit}` : ""})`
+            : "unknown",
+        );
+      }
+      if (ready !== null) parts.push(ready ? "health ok" : "health FAILED");
+      const ok = supervisorAlive && alive && ready !== false;
+      if (!ok) healthy = false;
+      io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
+    }
   }
 
   io.stdout("");

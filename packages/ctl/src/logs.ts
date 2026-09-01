@@ -1,8 +1,8 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { resolveLifecycle, type LifecycleIo } from "./lifecycle.ts";
-import { PLATFORM_PROCESSES } from "./processes.ts";
+import { resolveLifecycle, systemdSupervised, type LifecycleIo } from "./lifecycle.ts";
+import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
 
 /**
  * `eveland-ctl logs`: the supervised processes' log files under the appliance
@@ -32,6 +32,30 @@ export async function runCtlLogs(
   if (name && !known.includes(name)) {
     io.stderr(`Unknown process '${name}'. Known: ${known.join(", ")}.`);
     return 1;
+  }
+
+  // Under systemd supervision the logs live in the journal, not logs/.
+  if (await systemdSupervised(resolved)) {
+    if (parsed.values.follow) {
+      io.stderr(
+        `Following journald logs is best done directly: journalctl -f ${(name ? [name] : PLATFORM_PROCESSES.map((spec) => spec.key)).map((key) => `-u ${systemdUnitName(key)}`).join(" ")}`,
+      );
+      return 1;
+    }
+    const keys = name ? [name] : PLATFORM_PROCESSES.map((spec) => spec.key);
+    for (const key of keys) {
+      if (key === "supervisor") continue;
+      const result = await resolved.execCommand(
+        ["journalctl", "-u", systemdUnitName(key), "-n", String(tailLines), "--no-pager"],
+        { cwd: resolved.repoRootDir },
+      );
+      if (keys.length > 1) io.stdout(`==> ${key} <==`);
+      for (const line of result.output.split("\n")) {
+        if (line !== "") io.stdout(line);
+      }
+      if (keys.length > 1) io.stdout("");
+    }
+    return 0;
   }
 
   let files: string[];

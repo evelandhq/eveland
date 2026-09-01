@@ -82,6 +82,15 @@ export function processByKey(key: string): ProcessSpec | undefined {
 }
 
 /**
+ * The systemd unit name for a platform process. Worker and dispatcher
+ * deliberately converge with the long-documented eveland-worker /
+ * eveland-workflow-dispatcher service names from infra/systemd.
+ */
+export function systemdUnitName(key: string): string {
+  return `eveland-${key}.service`;
+}
+
+/**
  * The environment a supervised child receives: the parent environment for
  * PATH/HOME-style plumbing, with every value from the platform env file laid
  * over it. The env file wins so the appliance configuration is authoritative

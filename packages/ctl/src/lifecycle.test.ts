@@ -291,6 +291,51 @@ describe("runStart first boot", () => {
   });
 });
 
+describe("systemd supervision mode", () => {
+  async function makeSystemdHarness() {
+    const harness = await makeHarness({ env: VALID_ENV });
+    await writeInstallMetadata(harness.layout, {
+      version: 1,
+      installedAt: "2026-09-01T00:00:00.000Z",
+      method: "install.sh",
+      osMode: "linux",
+      bootstrapCompleted: true,
+      supervision: "systemd",
+    });
+    harness.io.execCommand = async (argv) => {
+      harness.execCalls.push(argv);
+      if (argv[0] === "systemctl" && argv[1] === "is-active")
+        return { code: 0, output: "active\n" };
+      return { code: 0, output: "ok" };
+    };
+    return harness;
+  }
+
+  test("start delegates to systemctl and never spawns the ctl supervisor", async () => {
+    const harness = await makeSystemdHarness();
+    let daemonSpawned = false;
+    harness.io.spawnDaemon = async () => {
+      daemonSpawned = true;
+      return 1;
+    };
+    expect(await runStart([], harness.io)).toBe(0);
+    expect(daemonSpawned).toBe(false);
+    for (const key of ["gateway", "api", "web", "worker", "workflow-dispatcher"]) {
+      expect(harness.execCalls).toContainEqual(["systemctl", "start", `eveland-${key}.service`]);
+    }
+    expect(harness.out.join("\n")).toContain("Eveland is running at http://localhost:17300");
+  });
+
+  test("stop delegates to systemctl stop for every unit", async () => {
+    const harness = await makeSystemdHarness();
+    expect(await runStop([], harness.io)).toBe(0);
+    for (const key of ["gateway", "api", "web", "worker", "workflow-dispatcher"]) {
+      expect(harness.execCalls).toContainEqual(["systemctl", "stop", `eveland-${key}.service`]);
+    }
+    expect(harness.out.join("\n")).toContain("Stopped the systemd services");
+  });
+});
+
 describe("runStop", () => {
   test("not running is a calm no-op that cleans stale files", async () => {
     const harness = await makeHarness({ env: VALID_ENV });
