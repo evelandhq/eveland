@@ -26,27 +26,35 @@ export type ControlPlaneAuthBoundaryPort = Pick<
 >;
 
 // Source throttle for the one unauthenticated write endpoint. The Agent
-// Gateway is the only public listener and stamps x-forwarded-for, so the
-// first hop is trustworthy; direct loopback callers (dev) share one bucket.
-// State is per app instance — a restart forgives, which is fine for a
-// throttle whose job is raising the cost of flooding, not perfect fairness.
-const DEVICE_CODE_RATE_LIMIT = { max: 10, windowMs: 10 * 60_000 };
+// Gateway is the only public listener and it strips every client-supplied
+// forwarding header, rewriting x-forwarded-for to the observed socket peer —
+// so the whole header value is gateway-owned and the key space is real
+// client addresses, not attacker-chosen strings. Direct loopback callers
+// (dev) share one bucket. State is per app instance — a restart forgives,
+// which is fine for a throttle whose job is raising the cost of flooding.
+const DEVICE_CODE_RATE_LIMIT = { max: 10, windowMs: 10 * 60_000, maxSources: 4096 };
 
 export function createDeviceCodeRateLimiter(now: () => number = Date.now) {
+  // Hard-capacity store, O(1) per request: Map iteration order is insertion
+  // order and every hit re-inserts its key, so the first key is always the
+  // least-recently-active one — evicting it bounds memory without ever
+  // scanning the table on the request path. Eviction forgives that source's
+  // history (degrade open); filling the table needs real address diversity
+  // now that the key is gateway-observed.
   const requests = new Map<string, number[]>();
   return (source: string): boolean => {
     const cutoff = now() - DEVICE_CODE_RATE_LIMIT.windowMs;
     const recent = (requests.get(source) ?? []).filter((timestamp) => timestamp > cutoff);
+    requests.delete(source);
     if (recent.length >= DEVICE_CODE_RATE_LIMIT.max) {
       requests.set(source, recent);
       return false;
     }
     recent.push(now());
     requests.set(source, recent);
-    if (requests.size > 10_000) {
-      for (const [key, timestamps] of requests) {
-        if (!timestamps.some((timestamp) => timestamp > cutoff)) requests.delete(key);
-      }
+    if (requests.size > DEVICE_CODE_RATE_LIMIT.maxSources) {
+      const oldest = requests.keys().next().value;
+      if (oldest !== undefined) requests.delete(oldest);
     }
     return true;
   };

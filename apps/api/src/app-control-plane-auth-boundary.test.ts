@@ -1,7 +1,31 @@
 import type { AuthPrincipal } from "@evelandhq/core/contracts";
 import { Hono } from "hono";
 import { expect, test, vi } from "vitest";
-import { registerControlPlaneAuthBoundary } from "./app-control-plane-auth-boundary.js";
+import {
+  createDeviceCodeRateLimiter,
+  registerControlPlaneAuthBoundary,
+} from "./app-control-plane-auth-boundary.js";
+
+test("device-code rate limiter has a hard source capacity with O(1) LRU eviction", () => {
+  let clock = 0;
+  const allow = createDeviceCodeRateLimiter(() => clock);
+
+  // Per-source window: 10 pass, the 11th is refused, and the window slides.
+  for (let index = 0; index < 10; index += 1) expect(allow("10.0.0.1")).toBe(true);
+  expect(allow("10.0.0.1")).toBe(false);
+  clock += 10 * 60_000 + 1;
+  expect(allow("10.0.0.1")).toBe(true);
+
+  // Capacity is a hard bound, not a scan trigger: flooding with more unique
+  // keys than the table holds evicts the least-recently-active sources
+  // instead of growing memory. An evicted source starts a fresh window
+  // rather than carrying history — degrade open by design, and filling the
+  // table now requires real address diversity (the gateway owns the key).
+  for (let index = 0; index < 10; index += 1) allow("10.0.0.2");
+  expect(allow("10.0.0.2")).toBe(false);
+  for (let index = 0; index < 4_600; index += 1) allow(`flood-${index}`);
+  for (let index = 0; index < 10; index += 1) expect(allow("10.0.0.2")).toBe(true);
+});
 import { registerMemberRoutes } from "./app-member-routes.js";
 import { registerSystemDiagnosticsRoutes } from "./app-system-diagnostics-routes.js";
 import { createAuthTestContext, signIn } from "./auth-routes.test-support.js";
