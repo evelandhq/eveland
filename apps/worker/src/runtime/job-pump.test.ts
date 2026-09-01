@@ -275,4 +275,41 @@ describe("nonOverlapping", () => {
     expect(fn).toHaveBeenCalledTimes(2);
     expect(errors.map((error) => (error as Error).message)).toEqual(["boom"]);
   });
+
+  test("reports a run that outlasts the slow threshold, with its duration", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const gate = deferred();
+      const slowDurations: number[] = [];
+      const guarded = nonOverlapping(
+        () => gate.promise,
+        () => {},
+        { thresholdMs: 100, onSlow: (durationMs) => slowDurations.push(durationMs) },
+      );
+
+      guarded();
+      vi.setSystemTime(Date.now() + 250);
+      gate.resolve();
+      await settle();
+      expect(slowDurations).toEqual([250]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a run within the slow threshold reports nothing", async () => {
+    const onSlow = vi.fn();
+    const guarded = nonOverlapping(
+      async () => {},
+      () => {},
+      {
+        thresholdMs: 60_000,
+        onSlow,
+      },
+    );
+
+    guarded();
+    await settle();
+    expect(onSlow).not.toHaveBeenCalled();
+  });
 });

@@ -14,7 +14,7 @@ import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { runClaimedJob } from "./jobs/process.js";
 import {
   cleanupExpiredSourcePreflights,
-  processNextSourcePreflight,
+  runClaimedSourcePreflight,
 } from "./jobs/process-source-preflight.js";
 import {
   resolveMaxConcurrentHeavyJobs,
@@ -240,7 +240,6 @@ async function tick() {
             Number(process.env.WORKER_JOB_RECOVERY_BATCH_SIZE ?? 25),
           ),
           cleanupExpiredSourcePreflights(store),
-          processNextSourcePreflight(store, workerId),
         ]);
         lastTickError = null;
         span.setStatus({ code: SpanStatusCode.OK });
@@ -308,7 +307,47 @@ const jobQueueListener = await listenForQueuedJobs(storeFactory.database, () =>
   return null;
 });
 
-const runTick = nonOverlapping(tick, (error) => console.error(error));
+// A Git preflight clones and scans inline — minutes-scale on a large repo or
+// slow network, the only unbounded work the control loop used to await. Its
+// own single-slot pump keeps a slow clone from pausing the reconcilers (the
+// tick guard skips overlapping runs) while still draining any preflight
+// backlog back-to-back. Repeat-processing safety comes from the DB claim and
+// attempt fence, not from serialization with the tick.
+const sourcePreflightPump = startJobPump({
+  concurrency: 1,
+  idleDelayMs: intervalMs,
+  claim: () => store.claimNextSourcePreflight(workerId),
+  run: (preflight) => runClaimedSourcePreflight(store, preflight),
+  onError: (error) => {
+    platformObservability.emitLog({
+      severity: "error",
+      eventName: "eveland.worker.source_preflight_pump.failed",
+      body: "Worker source-preflight pump iteration failed.",
+      attributes: {
+        "error.type": error instanceof Error ? error.name : "UnknownError",
+      },
+    });
+    console.error(error);
+  },
+});
+
+const runTick = nonOverlapping(tick, (error) => console.error(error), {
+  thresholdMs: intervalMs,
+  onSlow: (durationMs) => {
+    console.warn(
+      `Worker control-loop tick took ${durationMs}ms (interval ${intervalMs}ms); overlapping ticks were skipped while it ran.`,
+    );
+    platformObservability.emitLog({
+      severity: "warn",
+      eventName: "eveland.worker.tick.slow",
+      body: "Worker control-loop tick outlasted its interval; overlapping ticks were skipped.",
+      attributes: {
+        "eveland.worker.tick.duration_ms": durationMs,
+        "eveland.worker.poll_interval_ms": intervalMs,
+      },
+    });
+  },
+});
 runTick();
 publishTelemetry();
 const timer = setInterval(runTick, intervalMs);
@@ -411,6 +450,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     // (they die with the process and are later recovered as stale), matching
     // the pre-pump shutdown behavior.
     void jobPump.stop();
+    void sourcePreflightPump.stop();
     void Promise.all([
       jobQueueListener?.close() ?? Promise.resolve(),
       storeFactory.close(),

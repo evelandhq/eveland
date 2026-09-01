@@ -25,6 +25,20 @@ export async function processNextSourcePreflight(
 ): Promise<boolean> {
   const preflight = await store.claimNextSourcePreflight(workerId);
   if (!preflight) return false;
+  await runClaimedSourcePreflight(store, preflight, options);
+  return true;
+}
+
+type ClaimedSourcePreflight = NonNullable<
+  Awaited<ReturnType<SourcePreflightStore["claimNextSourcePreflight"]>>
+>;
+
+/** Executes a preflight this worker already claimed, settling the row either way. */
+export async function runClaimedSourcePreflight(
+  store: SourcePreflightStore,
+  preflight: ClaimedSourcePreflight,
+  options: ProcessJobOptions = {},
+): Promise<void> {
   let managedAttemptDir: string | null = null;
 
   try {
@@ -66,11 +80,9 @@ export async function processNextSourcePreflight(
         if (!completed) throw new Error(`Source preflight ${preflight.id} lost its worker lease.`);
       },
     });
-    return true;
   } catch (error) {
     if (managedAttemptDir) await rm(managedAttemptDir, { recursive: true, force: true });
     await store.failSourcePreflight(preflight.id, preflight.attempts, errorMessage(error));
-    return true;
   }
 }
 
