@@ -336,7 +336,12 @@ describe("runStart first boot", () => {
     const written: Record<string, string> = {};
     io.writeTextFile = async (filePath, content) => {
       written[filePath] = content;
-      await writeFile(filePath, content, "utf8");
+      // Only materialize files under the test's own tmp roots: host
+      // provisioning also "writes" /etc/apparmor.d/bwrap, which must stay a
+      // recorded intent (a Linux CI runner would EACCES on the real path).
+      if (filePath.startsWith(unitDir) || filePath.startsWith(harness.layout.root)) {
+        await writeFile(filePath, content, "utf8");
+      }
     };
     // Host provisioning probes: every command exists, users exist, apt is
     // present (its update/install go through the recorded streamCommand).
