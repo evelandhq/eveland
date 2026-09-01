@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { ApiError, apiRequest, type FetchLike } from "./api-client.ts";
 import { removeCredential, resolveToken, saveCredential } from "./credentials.ts";
 import { runDeviceFlow } from "./device-flow.ts";
+import { initProject } from "./init.ts";
 import { resolveOrigin } from "./origin.ts";
 
 /**
@@ -43,6 +44,25 @@ function parseOriginFlag(args: string[]) {
 }
 
 const commands: Record<string, Command> = {
+  init: {
+    description: "Scaffold a new agent project from the starter template (no login needed)",
+    run: async (args, io) => {
+      const { positionals } = parseOriginFlag(args);
+      const targetDir = positionals[0];
+      if (!targetDir) {
+        io.stderr("Usage: eveland init <directory>");
+        return 1;
+      }
+      const { projectName, files } = await initProject({ targetDir });
+      io.stdout(`Created ${projectName} (${files.length} files):`);
+      for (const file of files) io.stdout(`  ${file}`);
+      io.stdout("");
+      io.stdout("Next steps:");
+      io.stdout(`  eveland login --origin <url>   authenticate against your instance`);
+      io.stdout(`  eveland deploy                 (coming) build and promote it`);
+      return 0;
+    },
+  },
   login: {
     description: "Authenticate this machine against an eveland instance (device flow)",
     run: async (args, io) => {

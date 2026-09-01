@@ -25,6 +25,7 @@ For headless use (CI), set `EVELAND_TOKEN`: it always overrides the stored crede
 
 | Command                           | Behavior                                                                  |
 | --------------------------------- | ------------------------------------------------------------------------- |
+| `eveland init <dir>`              | Scaffold a new agent project from the in-tree starter template (no login) |
 | `eveland login [--origin <url>]`  | Device-flow authentication; stores the credential for the origin          |
 | `eveland logout [--origin <url>]` | Forgets the stored credential (a set `EVELAND_TOKEN` still authenticates) |
 | `eveland whoami [--origin <url>]` | Prints origin, user, role, token scopes, and token provenance             |

@@ -123,6 +123,16 @@ jobs:
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/agent-sandbox-e2e.ts
 
+      # The starter template (templates/starter-agent) is what `eveland init`
+      # copies to users; a template that stops building rots silently until a
+      # user hits it. The ratchet pins its declared eve version to the window;
+      # this proves the declaration builds and boots for real.
+      - name: Starter template build e2e
+        run: |
+          sudo -E env "PATH=$PATH" \
+            EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
+            pnpm --filter @evelandhq/worker exec tsx src/integration/template-build-e2e.ts
+
       - name: Gateway e2e against the systemd runtime
         run: |
           sudo -E env "PATH=$PATH" \

@@ -190,7 +190,12 @@ describe("Eve compatibility repository contract", () => {
     expect(sdkPeerRange).toContain(policyFloor!);
 
     const packagePaths = globSync(
-      ["apps/**/package.json", "packages/**/package.json", "infra/**/package.json"],
+      [
+        "apps/**/package.json",
+        "packages/**/package.json",
+        "infra/**/package.json",
+        "templates/**/package.json",
+      ],
       {
         cwd: repositoryRoot,
         exclude: ["**/node_modules/**", "**/.next/**"],
@@ -199,6 +204,7 @@ describe("Eve compatibility repository contract", () => {
     const latestConsumers = new Set<string>();
     const legacyMatrixConsumers = new Set<string>();
     const standaloneFixtureConsumers = new Set<string>();
+    const templateConsumers = new Set<string>();
     const peerConsumers = new Set<string>();
     const matrixDependencyNames = new Set<string>(
       EVE_COMPATIBILITY_POLICY.supportedLines.map(({ dependencyName }) => dependencyName),
@@ -211,11 +217,17 @@ describe("Eve compatibility repository contract", () => {
       };
       const isWorkspacePackage = /^(?:apps|packages)\/[^/]+\/package\.json$/.test(packagePath);
       const isPublishedSdk = packagePath === "packages/sdk/package.json";
+      // Templates ship what `eveland init` copies verbatim to users, so they
+      // carry the real verified version literal — `catalog:` is a fixture-only
+      // marker the platform's specifier grammar rejects.
+      const isTemplate = /^templates\/[^/]+\/package\.json$/.test(packagePath);
       for (const dependencies of [packageJson.dependencies, packageJson.devDependencies]) {
         for (const dependencyName of Object.keys(dependencies ?? {}).filter((name) =>
           matrixDependencyNames.has(name),
         )) {
-          if (isWorkspacePackage && dependencyName === "eve") {
+          if (isTemplate) {
+            templateConsumers.add(packagePath);
+          } else if (isWorkspacePackage && dependencyName === "eve") {
             latestConsumers.add(packagePath);
           } else if (isWorkspacePackage) {
             legacyMatrixConsumers.add(packagePath);
@@ -223,13 +235,15 @@ describe("Eve compatibility repository contract", () => {
             standaloneFixtureConsumers.add(packagePath);
           }
           expect(dependencies?.[dependencyName], packagePath).toBe(
-            isWorkspacePackage
-              ? dependencyName === "eve"
-                ? isPublishedSdk
-                  ? latestLine!.verifiedVersion
-                  : "catalog:"
-                : "catalog:eve-matrix"
-              : "catalog:",
+            isTemplate
+              ? latestLine!.verifiedVersion
+              : isWorkspacePackage
+                ? dependencyName === "eve"
+                  ? isPublishedSdk
+                    ? latestLine!.verifiedVersion
+                    : "catalog:"
+                  : "catalog:eve-matrix"
+                : "catalog:",
           );
         }
       }
@@ -262,6 +276,7 @@ describe("Eve compatibility repository contract", () => {
       "infra/integration/fixtures/schedule-scale-zero/package.json",
       "infra/integration/fixtures/workflow-wake/package.json",
     ]);
+    expect([...templateConsumers].sort()).toEqual(["templates/starter-agent/package.json"]);
     expect([...peerConsumers].sort()).toEqual(["packages/sdk/package.json"]);
   });
 
