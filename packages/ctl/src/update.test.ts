@@ -167,7 +167,8 @@ async function makeHarness(
         gitCalls.push(argv);
         const sub = argv[1];
         if (sub === "tag") return { code: 0, output: "v0.50.0-rc.1\nv0.49.0\nv0.48.0\nv0.47.0\n" };
-        if (sub === "rev-parse") return { code: 0, output: checkedOut ? "beef049\n" : "abc0480\n" };
+        if (sub === "rev-parse" && argv[2] !== "refs/stash")
+          return { code: 0, output: checkedOut ? "beef049\n" : "abc0480\n" };
         if (sub === "show") {
           return options.breaking === false
             ? {
@@ -182,6 +183,10 @@ async function makeHarness(
           return tag ? { code: 0, output: `${tag}\n` } : { code: 128, output: "fatal: no tag" };
         }
         if (sub === "status") return { code: 0, output: options.dirty ? " M src/app.ts\n" : "" };
+        if (sub === "rev-parse" && argv[2] === "refs/stash")
+          return { code: 0, output: "5745a5h\n" };
+        if (sub === "stash" && argv[2] === "list")
+          return { code: 0, output: "0ther000 stash@{0}\n5745a5h stash@{1}\n" };
         if (sub === "checkout") {
           timeline.push("checkout");
           checkedOut = true;
@@ -327,7 +332,13 @@ describe("runUpdate (phase 1, the old code)", () => {
     expect(await runUpdate([], harness.io)).toBe(1);
     // package.json now says 0.49.0 while the platform is stopped...
     const pending = await readPendingUpdate(harness.layout);
-    expect(pending).toMatchObject({ from: "0.48.0", target: "v0.49.0", stashName: null });
+    expect(pending).toMatchObject({
+      from: "0.48.0",
+      target: "v0.49.0",
+      stashName: null,
+      stashRef: null,
+      evePinBefore: "0.47.6",
+    });
     expect(pending!.backupPath).toBe(harness.pgDumps[0]);
     expect(harness.err.join("\n")).toContain("re-running `eveland-ctl update` resumes it");
 
@@ -362,14 +373,36 @@ describe("runUpdate (phase 1, the old code)", () => {
       return argv.includes("_finish-update") && !harness.timeline.includes("resumed") ? 1 : 0;
     };
     expect(await runUpdate([], harness.io)).toBe(1);
-    expect((await readPendingUpdate(harness.layout))?.stashName).toMatch(/^eveland-ctl-update-/);
+    const recorded = await readPendingUpdate(harness.layout);
+    expect(recorded?.stashName).toMatch(/^eveland-ctl-update-/);
+    expect(recorded?.stashRef).toBe("5745a5h");
     harness.timeline.push("resumed");
     expect(await runUpdate([], harness.io)).toBe(0);
-    expect(harness.gitCalls.some((argv) => argv[1] === "stash" && argv[2] === "pop")).toBe(true);
+    // The RECORDED stash commit is applied, not whatever is newest.
+    expect(harness.gitCalls).toContainEqual(["git", "stash", "apply", "5745a5h"]);
     // The stash was pushed exactly once (by the interrupted run).
     expect(
       harness.gitCalls.filter((argv) => argv[1] === "stash" && argv[2] === "push"),
     ).toHaveLength(1);
+  });
+
+  test("an eve-window move is still reported when the update completes on a RESUME", async () => {
+    // The first attempt moves the checkout (and the pin) and then fails; the
+    // resumed run only ever sees the target tree, so the pin it compares
+    // against must come from the record.
+    const harness = await makeHarness({ evePinAfter: "0.48.0", confirmAnswers: [true, false] });
+    let fail = true;
+    harness.io.streamCommand = async (argv) => {
+      harness.streamed.push(argv);
+      return fail && argv.includes("_finish-update") ? 1 : 0;
+    };
+    expect(await runUpdate([], harness.io)).toBe(1);
+    expect((await readPendingUpdate(harness.layout))?.evePinBefore).toBe("0.47.6");
+    expect(harness.out.join("\n")).not.toContain("eve window moved");
+    fail = false;
+    expect(await runUpdate([], harness.io)).toBe(0);
+    expect(harness.out.join("\n")).toContain("eve window moved");
+    expect(harness.out.join("\n")).toContain("redeploy and promote EVERY project");
   });
 
   test("the pending record lives under run/, next to the supervisor files", async () => {
@@ -496,13 +529,17 @@ describe("runUpdate (phase 1, the old code)", () => {
     expect(harness.gitCalls.some((argv) => argv[1] === "stash")).toBe(false);
   });
 
-  test("a dirty tree is stashed by name and offered back afterwards", async () => {
+  test("a dirty tree is stashed by name and the EXACT stash commit is offered back afterwards", async () => {
     const dirty = await makeHarness({ dirty: true, confirmAnswers: [true, true] });
     expect(await runUpdate([], dirty.io)).toBe(0);
     const stashPush = dirty.gitCalls.find((argv) => argv[1] === "stash" && argv[2] === "push");
     expect(stashPush).toBeDefined();
     expect(stashPush!.join(" ")).toContain("eveland-ctl-update-");
-    expect(dirty.gitCalls.some((argv) => argv[1] === "stash" && argv[2] === "pop")).toBe(true);
+    // Restored by sha and dropped by its current index — never a bare `pop`,
+    // which would take whatever the operator stashed most recently.
+    expect(dirty.gitCalls).toContainEqual(["git", "stash", "apply", "5745a5h"]);
+    expect(dirty.gitCalls).toContainEqual(["git", "stash", "drop", "stash@{1}"]);
+    expect(dirty.gitCalls.some((argv) => argv[1] === "stash" && argv[2] === "pop")).toBe(false);
   });
 
   test("an eve-window move warns loudly about rebuild+promote", async () => {

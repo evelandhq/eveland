@@ -126,6 +126,10 @@ export type PendingUpdate = {
   target: string;
   backupPath: string | null;
   stashName: string | null;
+  /** The stash COMMIT created for the dirty tree: restored by sha, never as "the newest stash". */
+  stashRef: string | null;
+  /** The starter template's eve pin BEFORE the checkout moved: the window comparison survives a resume. */
+  evePinBefore: string | null;
   startedAt: string;
 };
 
@@ -326,6 +330,7 @@ export async function runUpdate(
   const status = await git(["status", "--porcelain"]);
   const dirtyLines = status.output.split("\n").filter((line) => line.trim() !== "");
   let stashName: string | null = null;
+  let stashRef: string | null = null;
   if (dirtyLines.length > 0) {
     if (
       dirtyLines.some((line) => line.startsWith("U") || line[1] === "U" || line.startsWith("AA"))
@@ -341,7 +346,14 @@ export async function runUpdate(
       io.stderr(recovery("Stashing local changes failed"));
       return 1;
     }
+    const ref = await git(["rev-parse", "refs/stash"]);
+    stashRef = ref.code === 0 ? ref.output.trim().split("\n")[0] || null : null;
   }
+
+  // The eve window BEFORE the checkout moves, persisted with the record: a
+  // resumed run reads the target tree and could not detect the move itself.
+  const templatePath = path.join(repo, "templates/starter-agent/package.json");
+  const evePinBefore = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
 
   // From here the checkout may report the target version: record the
   // in-flight update so a failed step is resumed, never mistaken for done.
@@ -350,10 +362,32 @@ export async function runUpdate(
     target,
     backupPath,
     stashName,
+    stashRef,
+    evePinBefore,
     startedAt: new Date().toISOString(),
   };
   await writePendingUpdate(resolved.layout, pendingRecord);
   return completeUpdate(context, pendingRecord);
+}
+
+/** Apply the recorded stash commit by sha, then drop that exact entry (never "the newest"). */
+async function restoreStash(
+  git: UpdateContext["git"],
+  stashRef: string | null,
+): Promise<{ ok: boolean; detail: string }> {
+  if (!stashRef) {
+    const pop = await git(["stash", "pop"]);
+    return { ok: pop.code === 0, detail: pop.output.trim() };
+  }
+  const apply = await git(["stash", "apply", stashRef]);
+  if (apply.code !== 0) return { ok: false, detail: apply.output.trim() };
+  const list = await git(["stash", "list", "--format=%H %gd"]);
+  const entry = list.output
+    .split("\n")
+    .map((line) => line.trim().split(" "))
+    .find(([sha]) => sha === stashRef)?.[1];
+  if (entry) await git(["stash", "drop", entry]);
+  return { ok: true, detail: "" };
 }
 
 /**
@@ -363,15 +397,11 @@ export async function runUpdate(
  */
 async function completeUpdate(context: UpdateContext, pending: PendingUpdate): Promise<number> {
   const { io, repo, git, streamCommand, prompter } = context;
-  const { target, backupPath, stashName } = pending;
+  const { target, backupPath, stashName, stashRef, evePinBefore } = pending;
   const recovery = (failedStep: string) =>
     recoveryPlan({ failedStep, fromVersion: pending.from, backupPath, repo }) +
     "\n              (This update is recorded as in progress: re-running `eveland-ctl update` resumes it.)";
-
-  // The eve window before the checkout moves (on a resume the tree may
-  // already be at the target; the warning below is then simply not emitted).
   const templatePath = path.join(repo, "templates/starter-agent/package.json");
-  const evePinBefore = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
 
   const checkout = await git(["checkout", "--quiet", target]);
   if (checkout.code !== 0) {
@@ -428,8 +458,11 @@ async function completeUpdate(context: UpdateContext, pending: PendingUpdate): P
       false,
     );
     if (restore) {
-      const pop = await git(["stash", "pop"]);
-      io.stdout(pop.code === 0 ? "Stash restored." : `Stash restore failed:\n${pop.output.trim()}`);
+      // Exactly the recorded stash commit: an operator may have stashed
+      // other work while fixing a failed attempt, and `pop` would take
+      // whichever entry is newest.
+      const restored = await restoreStash(git, stashRef);
+      io.stdout(restored.ok ? "Stash restored." : `Stash restore failed:\n${restored.detail}`);
     } else {
       io.stdout(`Local changes remain stashed as '${stashName}' (git stash list).`);
     }
