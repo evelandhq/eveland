@@ -8,9 +8,17 @@ import { createApp } from "./app.js";
 import { createStoreFromEnv } from "@evelandhq/db/factory";
 import {
   authAccounts,
+  authDeviceCodes,
   authSessions,
   authVerifications,
   invitations,
+  oauthAccessTokens,
+  oauthClientAssertions,
+  oauthClientResources,
+  oauthClients,
+  oauthConsents,
+  oauthRefreshTokens,
+  oauthResources,
   teamMemberships,
   teams,
   users,
@@ -37,10 +45,19 @@ const authDatabase = drizzleAdapter(storeFactory.database.db, {
     organization: teams,
     member: teamMemberships,
     invitation: invitations,
+    deviceCode: authDeviceCodes,
+    oauthClient: oauthClients,
+    oauthResource: oauthResources,
+    oauthClientResource: oauthClientResources,
+    oauthAccessToken: oauthAccessTokens,
+    oauthRefreshToken: oauthRefreshTokens,
+    oauthConsent: oauthConsents,
+    oauthClientAssertion: oauthClientAssertions,
   },
 });
 const auth = createBetterAuthRuntime({ database: authDatabase, ...betterAuthConfig });
 await auth.bootstrapDefaultAdmin(resolveAdminConfig(process.env));
+await auth.bootstrapCliOAuthClient();
 
 serve({
   fetch: createApp(storeFactory.store, {

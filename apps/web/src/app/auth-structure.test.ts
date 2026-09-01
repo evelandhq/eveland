@@ -12,6 +12,7 @@ describe("team management web surfaces", () => {
       "./login/page.tsx",
       "./accept-invite/page.tsx",
       "./reset-password/page.tsx",
+      "./device/page.tsx",
       "./settings/layout.tsx",
       "./settings/profile/page.tsx",
       "./settings/git-credentials/page.tsx",

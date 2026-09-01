@@ -13,6 +13,45 @@ function upstreams(fetchImplementation: typeof fetch) {
 }
 
 describe("front-door proxy", () => {
+  test("strips client forwarding headers and stamps the observed peer address", async () => {
+    // The API rate-limits the unauthenticated device-code endpoint by
+    // x-forwarded-for; a client-chosen value would mint a fresh bucket per
+    // request, so the gateway must own the header entirely.
+    let forwarded: Headers | undefined;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      forwarded = new Headers(init?.headers);
+      return new Response("{}", { status: 200 });
+    });
+    await proxyFrontDoorRequest(
+      new Request("http://localhost:17300/api/auth/device/code", {
+        method: "POST",
+        headers: {
+          "x-forwarded-for": "6.6.6.6, 7.7.7.7",
+          "x-real-ip": "6.6.6.6",
+          forwarded: "for=6.6.6.6",
+          "x-custom": "kept",
+        },
+      }),
+      upstreams(fetchMock as unknown as typeof fetch),
+      "203.0.113.20",
+    );
+    expect(forwarded?.get("x-forwarded-for")).toBe("203.0.113.20");
+    expect(forwarded?.get("x-real-ip")).toBeNull();
+    expect(forwarded?.get("forwarded")).toBeNull();
+    expect(forwarded?.get("x-custom")).toBe("kept");
+
+    // No connection info still never lets the client value through.
+    await proxyFrontDoorRequest(
+      new Request("http://localhost:17300/api/auth/device/code", {
+        method: "POST",
+        headers: { "x-forwarded-for": "6.6.6.6" },
+      }),
+      upstreams(fetchMock as unknown as typeof fetch),
+      null,
+    );
+    expect(forwarded?.get("x-forwarded-for")).toBe("unknown");
+  });
+
   test("routes the /api namespace to the API verbatim, query preserved", async () => {
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     await proxyFrontDoorRequest(

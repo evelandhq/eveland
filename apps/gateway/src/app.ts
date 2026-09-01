@@ -207,7 +207,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       // routes above answer it on every host), so the public surface is
       // exactly the classified table plus the Dashboard fallback.
       if (options.frontDoor) {
-        return proxyFrontDoorRequest(context.req.raw, options.frontDoor);
+        return proxyFrontDoorRequest(context.req.raw, options.frontDoor, remoteAddress(context));
       }
       return context.json({ error: "Route not found" }, 404);
     }

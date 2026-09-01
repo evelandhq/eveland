@@ -3,7 +3,13 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { admin, organization } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
 import { adminAc, defaultStatements, memberAc } from "better-auth/plugins/organization/access";
+import {
+  getOAuthProviderApi,
+  oauthDeviceAuthorization,
+  oauthProvider,
+} from "@better-auth/oauth-provider";
 import { createId } from "@evelandhq/core/ids";
+import { CLI_OAUTH_CLIENT_SEED, CLI_TOKEN_SCOPES } from "./cli-auth.js";
 import type {
   AuthPrincipal,
   TeamInvitation,
@@ -16,6 +22,7 @@ const INVITATION_DURATION_MS = 7 * 24 * 60 * 60 * 1_000;
 const PASSWORD_RESET_DURATION_MS = 24 * 60 * 60 * 1_000;
 const PASSWORD_RESET_IDENTIFIER_PREFIX = "eveland-password-reset:";
 const DEFAULT_ORGANIZATION_ID = "team_local";
+const DEVICE_CODE_PENDING_LIMIT = 100;
 const DEFAULT_ORGANIZATION_SLUG = "eveland";
 const organizationAccessControl = createAccessControl(defaultStatements);
 const organizationAdminRole = organizationAccessControl.newRole({ ...adminAc.statements });
@@ -30,6 +37,22 @@ type BetterAuthRuntimeOptions = {
 };
 
 export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
+  // CLI access tokens are opaque (disableJwtPlugin): rows in
+  // oauth_access_tokens, revocable in the database and validated locally via
+  // getOAuthProviderApi below — no JWKS, no introspection credential. The TTL
+  // mirrors the browser session policy; there is no refresh token
+  // (offline_access is not in the scope set), so an expired token means
+  // `eveland login` again.
+  const oauthProviderOptions = {
+    scopes: [...CLI_TOKEN_SCOPES] as string[],
+    accessTokenExpiresIn: 30 * 24 * 60 * 60,
+    disableJwtPlugin: true,
+    // Required by the plugin but only reachable through the authorization-code
+    // flow, which the control-plane allowlist never exposes.
+    loginPage: "/login",
+    consentPage: "/login",
+  };
+
   const auth = betterAuth({
     appName: "Eveland",
     baseURL: options.baseURL,
@@ -88,6 +111,16 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
         roles: { admin: organizationAdminRole, member: organizationMemberRole },
       }),
       admin(),
+      // RFC 8628 device authorization for `eveland login`: the device plugin
+      // owns code creation and user approval, the provider owns client
+      // validation and scoped token issuance at /oauth2/token.
+      oauthProvider(oauthProviderOptions),
+      oauthDeviceAuthorization({
+        // Short-lived on purpose: the browser opens immediately, and the TTL
+        // is also the exposure window of the unauthenticated code table.
+        expiresIn: "10m",
+        verificationUri: `${options.webOrigin}/device`,
+      }),
     ],
   });
 
@@ -158,6 +191,116 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
         });
       }
     }
+  }
+
+  // The device/code endpoint is unauthenticated by design (RFC 8628), and
+  // better-auth only deletes a device code when it is redeemed or polled
+  // after expiry/denial — a code nobody ever polls again would sit in the
+  // table forever. Enforcement runs AFTER each successful code creation
+  // (post-insert, so there is no check-then-insert race): sweep expired
+  // rows, then evict the oldest UNCLAIMED codes beyond the cap. Refusing at
+  // the cap instead would let 100 anonymous requests lock every CLI login
+  // out; fair eviction keeps new logins possible under flood, and codes a
+  // signed-in session has already claimed (userId set) or approved are never
+  // evicted — an in-flight approval cannot be flushed by an attacker.
+  async function trimDeviceCodes(): Promise<void> {
+    const context = await auth.$context;
+    const now = new Date();
+    await context.adapter.deleteMany({
+      model: "deviceCode",
+      where: [{ field: "expiresAt", operator: "lt", value: now }],
+    });
+    const live = await context.adapter.count({
+      model: "deviceCode",
+      where: [{ field: "expiresAt", operator: "gt", value: now }],
+    });
+    const excess = live - DEVICE_CODE_PENDING_LIMIT;
+    if (excess <= 0) return;
+    const oldestPending = await context.adapter.findMany<{ id: string; userId: string | null }>({
+      model: "deviceCode",
+      where: [{ field: "status", value: "pending" }],
+      sortBy: { field: "expiresAt", direction: "asc" },
+      limit: excess + DEVICE_CODE_PENDING_LIMIT,
+    });
+    const evictable = oldestPending
+      .filter((record) => !record.userId)
+      .slice(0, excess)
+      .map((record) => record.id);
+    if (evictable.length > 0) {
+      await context.adapter.deleteMany({
+        model: "deviceCode",
+        where: [{ field: "id", operator: "in", value: evictable }],
+      });
+    }
+  }
+
+  // Re-applied on every boot: this first-party client's policy (grant types,
+  // scopes, public/no-secret) is owned by the code, not by database edits.
+  async function bootstrapCliOAuthClient(): Promise<void> {
+    const context = await auth.$context;
+    const now = new Date();
+    const existing = await context.adapter.findOne<{ id: string }>({
+      model: "oauthClient",
+      where: [{ field: "clientId", value: CLI_OAUTH_CLIENT_SEED.clientId }],
+    });
+    if (existing) {
+      await context.adapter.update({
+        model: "oauthClient",
+        where: [{ field: "id", value: existing.id }],
+        update: { ...CLI_OAUTH_CLIENT_SEED, updatedAt: now },
+      });
+    } else {
+      await context.adapter.create({
+        model: "oauthClient",
+        data: { ...CLI_OAUTH_CLIENT_SEED, createdAt: now, updatedAt: now },
+      });
+    }
+  }
+
+  /**
+   * Resolves a CLI OAuth access token (Authorization: Bearer) to a principal.
+   * The returned principal carries `tokenScopes`, and the auth boundary
+   * restricts such principals to the scope-mapped surface — a leaked CLI
+   * token never grants team administration, whatever the user's role.
+   */
+  async function authenticateAccessToken(request: Request): Promise<AuthPrincipal | null> {
+    const header = request.headers.get("authorization");
+    if (!header) return null;
+    const [scheme, token, ...rest] = header.trim().split(/\s+/);
+    if (scheme?.toLowerCase() !== "bearer" || !token || rest.length > 0) return null;
+    const context = await auth.$context;
+    const providerContext = { context } as Parameters<typeof getOAuthProviderApi>[0];
+    let payload: { sub?: string; scope?: unknown };
+    try {
+      payload = await getOAuthProviderApi(
+        providerContext,
+        oauthProviderOptions,
+      ).requireActiveAccessToken(token);
+    } catch {
+      return null;
+    }
+    if (!payload.sub) return null;
+    const user = await context.internalAdapter.findUserById(payload.sub);
+    if (!user) return null;
+    const membership = await context.adapter.findOne<{ role: string; createdAt: Date }>({
+      model: "member",
+      where: [
+        { field: "organizationId", value: DEFAULT_ORGANIZATION_ID },
+        { field: "userId", value: user.id },
+      ],
+    });
+    if (!membership) return null;
+    return {
+      userId: user.id,
+      email: user.email,
+      image: user.image ?? null,
+      displayTimezone: (user as { displayTimezone?: string | null }).displayTimezone ?? null,
+      name: user.name,
+      role: membership.role === "admin" ? "admin" : "member",
+      joinedAt: membership.createdAt.toISOString(),
+      tokenScopes:
+        typeof payload.scope === "string" ? payload.scope.split(" ").filter(Boolean) : [],
+    };
   }
 
   async function authenticate(request: Request): Promise<AuthPrincipal | null> {
@@ -578,7 +721,10 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     handler: auth.handler,
     auth,
     bootstrapDefaultAdmin,
+    bootstrapCliOAuthClient,
+    trimDeviceCodes,
     authenticate,
+    authenticateAccessToken,
     resolveInternalIdentity,
     invite,
     acceptInvitation,
@@ -661,6 +807,14 @@ function authIdPrefix(model: string): string {
       verification: "verification",
       member: "membership",
       invitation: "invitation",
+      deviceCode: "device",
+      oauthClient: "oauthclient",
+      oauthResource: "oauthresource",
+      oauthClientResource: "oauthclientresource",
+      oauthAccessToken: "oauthaccess",
+      oauthRefreshToken: "oauthrefresh",
+      oauthConsent: "oauthconsent",
+      oauthClientAssertion: "oauthassertion",
     }[model] ?? "auth"
   );
 }

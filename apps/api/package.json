@@ -14,6 +14,7 @@
     "test": "vitest run --maxWorkers=2 --testTimeout=30000"
   },
   "dependencies": {
+    "@better-auth/oauth-provider": "^1.7.2",
     "@evelandhq/agent-auth": "workspace:*",
     "@evelandhq/core": "workspace:*",
     "@evelandhq/db": "workspace:*",

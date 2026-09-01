@@ -25,6 +25,13 @@ const DROPPED_REQUEST_HEADERS = new Set([
   "upgrade",
   "accept-encoding",
   "host",
+  // Client-supplied forwarding headers are stripped and rebuilt below: the
+  // API rate-limits the unauthenticated device-code endpoint by
+  // x-forwarded-for, so the value must be gateway-owned — a client-chosen
+  // one would let an attacker mint a fresh rate-limit bucket per request.
+  "forwarded",
+  "x-forwarded-for",
+  "x-real-ip",
 ]);
 
 const DROPPED_RESPONSE_HEADERS = new Set([
@@ -44,6 +51,7 @@ const DROPPED_RESPONSE_HEADERS = new Set([
 export async function proxyFrontDoorRequest(
   request: Request,
   upstreams: FrontDoorUpstreams,
+  remoteIp?: string | null,
 ): Promise<Response> {
   const url = new URL(request.url);
   const route = classifyFrontDoorPath(url.pathname);
@@ -56,6 +64,9 @@ export async function proxyFrontDoorRequest(
   }
   headers.set("x-forwarded-host", url.host);
   headers.set("x-forwarded-proto", url.protocol.replace(/:$/, ""));
+  // Gateway-owned client identity: the API's device-code throttle keys on
+  // this value, so it must be the observed socket peer, never client input.
+  headers.set("x-forwarded-for", remoteIp ?? "unknown");
 
   const fetchImplementation = upstreams.fetchImplementation ?? fetch;
   const hasBody = request.method !== "GET" && request.method !== "HEAD" && request.body !== null;

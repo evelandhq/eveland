@@ -36,7 +36,11 @@ Project 详情路由使用独立的 Project 外壳：左上角返回 Projects，
 
 Dashboard 中所有绝对日期与时间——包括列表、详情、Logs、Session Timeline、ScheduleRun、Usage 与 Instance Health 图表坐标和 Tooltip——统一按当前用户的 Display timezone 展示，不得由 Next.js Server Component 的运行时默认时区决定。Schedule 的原始 cron 和其声明的 `UTC` 时区仍按源码语义展示；`nextRunAt`、due/start/complete 等实际时间点使用个人时区。
 
-Profile 更新复用 Better Auth 用户记录。Better Auth 的 HTTP 面按 allowlist 暴露：仅 `sign-in/email`、`sign-out`、`get-session` 公开可路由，其余端点（含 `update-user`、`change-password`、sign-up、organization、admin 族，以及未来版本新增的任何端点）一律 404——密码修改必须走 Eveland 的 `/profile/password`（强制撤销其他 Session），邀请与成员管理走 Eveland-owned 端点。
+Profile 更新复用 Better Auth 用户记录。Better Auth 的 HTTP 面按 allowlist 暴露：仅 `sign-in/email`、`sign-out`、`get-session` 与 CLI device authorization 族（`device/code`、`device`、`device/approve`、`device/deny`、`oauth2/token`）公开可路由，其余端点（含 `update-user`、`change-password`、sign-up、organization、admin 族、OAuth provider 其余端点，以及未来版本新增的任何端点）一律 404——密码修改必须走 Eveland 的 `/profile/password`（强制撤销其他 Session），邀请与成员管理走 Eveland-owned 端点。
+
+## Device authorization (/device)
+
+`eveland login` 走 RFC 8628 device flow：CLI 显示 user code 并打开浏览器到 `/device`。该页面要求已登录 Session，先预览请求内容（client 与所请求的 scope——`deploy` 与 `observe`，永非全权），并要求显式 Authorize 或 Deny。批准后 CLI 兑换一个 scoped、可撤销的 access token；无论批准者角色如何，该 token 都无法触达成员管理或运维面。
 
 ## Git Credentials (/settings/git-credentials)
 

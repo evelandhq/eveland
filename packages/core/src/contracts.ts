@@ -50,6 +50,12 @@ export type TeamInvitation = {
 export type AuthPrincipal = TeamMember & {
   image: string | null;
   displayTimezone: string | null;
+  /**
+   * Present only when the principal authenticated with a CLI OAuth access
+   * token instead of a browser session. The API's auth boundary restricts
+   * token-authenticated requests to the surface these scopes allow.
+   */
+  tokenScopes?: string[];
 };
 
 export type Project = {

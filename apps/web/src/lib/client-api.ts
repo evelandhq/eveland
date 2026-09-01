@@ -105,6 +105,45 @@ export async function signOut(): Promise<void> {
   });
 }
 
+/**
+ * RFC 8628 device authorization (the eveland CLI login). The user code is an
+ * opaque string: the form trims whitespace and uppercases, but hyphens are
+ * preserved — the server must see exactly what the CLI displayed.
+ */
+export type DeviceAuthorizationPreview = {
+  user_code: string;
+  status: string;
+  client_id?: string;
+  scope?: string;
+};
+
+export async function previewDeviceAuthorization(
+  userCode: string,
+): Promise<DeviceAuthorizationPreview> {
+  return clientRequest(`/auth/device?user_code=${encodeURIComponent(userCode)}`, {
+    method: "GET",
+  });
+}
+
+// Approve/deny require the signed-in browser session; the /device page is
+// session-gated, so a 401 here really is an expired session and the
+// transport's default redirect back to login is the right answer.
+export async function approveDeviceAuthorization(userCode: string): Promise<void> {
+  await clientRequest("/auth/device/approve", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userCode }),
+  });
+}
+
+export async function denyDeviceAuthorization(userCode: string): Promise<void> {
+  await clientRequest("/auth/device/deny", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userCode }),
+  });
+}
+
 export async function getCurrentMember(): Promise<CurrentMember> {
   return clientRequest<{ member: CurrentMember }>("/members/me", { method: "GET" }).then(
     (data) => data.member,

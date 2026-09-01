@@ -10,6 +10,7 @@ const titledPages = [
   ["./accept-invite/page.tsx", "Accept invitation"],
   ["./agent-auth/oidc/callback/layout.tsx", "Playground authentication"],
   ["./(main)/deployments/page.tsx", "Deployments"],
+  ["./device/page.tsx", "Device authorization"],
   ["./login/page.tsx", "Sign in"],
   ["./new/page.tsx", "New project"],
   ["./(main)/projects/page.tsx", "Projects"],

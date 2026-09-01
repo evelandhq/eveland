@@ -414,6 +414,13 @@
       "when": 1788150522657,
       "tag": "0058_better_auth_issuer",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1788243793328,
+      "tag": "0059_cli_device_authorization",
+      "breakpoints": true
     }
   ]
 }
