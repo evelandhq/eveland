@@ -227,7 +227,20 @@ export class Supervisor {
     }
     // The wrapper died but the real server may still hold the port inside
     // the old process group; a replacement would crash-loop on it forever.
-    await this.reapGroup(entry);
+    // An unkillable group (permissions, D state) keeps the entry in backoff
+    // — never respawned into a live group — and is retried at the cap.
+    while (!(await this.reapGroup(entry))) {
+      if (this.stopping) {
+        entry.status = "stopped";
+        return;
+      }
+      entry.status = "backoff";
+      this.deps.log(
+        `${entry.spec.key}: process group ${entry.lastPid} survived SIGKILL; not respawning into it, retrying in ${RESTART_BACKOFF_CAP_MS / 1000}s`,
+      );
+      await this.publish();
+      await this.deps.sleep(RESTART_BACKOFF_CAP_MS);
+    }
     if (this.stopping) {
       entry.status = "stopped";
       return;
@@ -237,10 +250,13 @@ export class Supervisor {
     await this.publish();
   }
 
-  /** TERM then KILL a dead child's lingering process group before respawning into it. */
-  private async reapGroup(entry: Entry): Promise<void> {
+  /**
+   * TERM then KILL a dead child's lingering process group before respawning
+   * into it. Resolves true only once the group is confirmed empty.
+   */
+  private async reapGroup(entry: Entry): Promise<boolean> {
     const pid = entry.lastPid;
-    if (pid === null || !this.deps.groupAlive(pid)) return;
+    if (pid === null || !this.deps.groupAlive(pid)) return true;
     this.deps.log(`${entry.spec.key} left processes in group ${pid}; reaping before restart`);
     this.deps.killGroup(pid, "SIGTERM");
     const pollMs = 100;
@@ -261,6 +277,7 @@ export class Supervisor {
         await this.deps.sleep(pollMs);
       }
     }
+    return !this.deps.groupAlive(pid);
   }
 
   private async publish(): Promise<void> {

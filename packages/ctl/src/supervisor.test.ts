@@ -17,7 +17,12 @@ type FakeChild = {
 };
 
 function makeHarness(
-  options: { autoExitOnTerm?: boolean; lingeringGroups?: Map<number, number> } = {},
+  options: {
+    autoExitOnTerm?: boolean;
+    lingeringGroups?: Map<number, number>;
+    /** A group SIGKILL cannot clear (permission failure, D state). */
+    unkillable?: boolean;
+  } = {},
 ) {
   const spawned: Record<string, FakeChild[]> = {};
   let nextPid = 100;
@@ -38,7 +43,7 @@ function makeHarness(
     },
     killGroup: (pid, signal) => {
       groupKills.push({ pid, signal });
-      if (signal === "SIGKILL") lingeringGroups.set(pid, 0);
+      if (signal === "SIGKILL" && !options.unkillable) lingeringGroups.set(pid, 0);
     },
     spawnChild: (spec) => {
       const pid = nextPid++;
@@ -233,6 +238,26 @@ describe("Supervisor", () => {
     // wrapper would otherwise collide with the survivor on its port.
     expect(harness.spawned.alpha).toHaveLength(2);
     expect(harness.logs.some((line) => line.includes("reaping before restart"))).toBe(true);
+  });
+
+  test("a group that survives SIGKILL is never respawned into; the entry stays in backoff", async () => {
+    const harness = makeHarness({ unkillable: true });
+    const supervisor = new Supervisor(harness.processes, harness.deps);
+    await supervisor.start();
+    const alphaPid = harness.spawned.alpha![0]!.pid;
+    harness.lingeringGroups.set(alphaPid, Number.MAX_SAFE_INTEGER);
+    harness.spawned.alpha![0]!.exit(1);
+    for (let i = 0; i < 400; i += 1) await settle();
+    // No duplicate-port crash loop: exactly the original spawn exists.
+    expect(harness.spawned.alpha).toHaveLength(1);
+    expect(supervisor.state().children.alpha?.status).toBe("backoff");
+    expect(harness.logs.some((line) => line.includes("survived SIGKILL; not respawning"))).toBe(
+      true,
+    );
+    // The reaper keeps retrying at the cap, and stop() still ends cleanly.
+    expect(harness.groupKills.filter((kill) => kill.pid === alphaPid).length).toBeGreaterThan(2);
+    await supervisor.stop();
+    expect(supervisor.state().children.alpha?.status).toBe("stopped");
   });
 
   test("a crashed wrapper with an empty group is respawned without any group signal", async () => {
