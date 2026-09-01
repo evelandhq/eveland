@@ -39,10 +39,14 @@ describe("starter-agent template", () => {
     expect(files).toContain(path.join("agent", "instructions.md"));
     expect(files).toContain(path.join("agent", "agent.ts"));
     expect(files).toContain(path.join("agent", "channels", "eve.ts"));
-    // Deliberate absences: the platform injects the sandbox backend, and a
-    // default cron schedule would spend tokens on a timer.
+    // Deliberate absences: the platform injects the sandbox backend, a
+    // default cron schedule would spend tokens on a timer, and per-user
+    // memory under the default Open identity provider would silently share
+    // one memory across all public visitors (review finding on #442) — the
+    // README documents how to enable it once identity is Internal/OIDC.
     expect(files.some((file) => file.startsWith(path.join("agent", "sandbox")))).toBe(false);
     expect(files.some((file) => file.startsWith(path.join("agent", "schedules")))).toBe(false);
+    expect(files.some((file) => file.startsWith(path.join("agent", "memory")))).toBe(false);
   });
 
   test("the eve channel keeps its capability-detectable literal shape", async () => {

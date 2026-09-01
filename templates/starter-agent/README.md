@@ -1,7 +1,7 @@
 # Starter agent
 
 A working eve agent for the eveland platform: a tour guide that demonstrates
-sessions, tools, cross-session memory, durable timers, and the public URL.
+sessions, tools, durable timers, and the public URL.
 Scaffolded by `eveland init`; also seeded as an instance's first agent.
 
 ## Layout
@@ -11,7 +11,6 @@ Scaffolded by `eveland init`; also seeded as an instance's first agent.
 | `agent/instructions.md` | The persona — its **first line** is the one to edit          |
 | `agent/agent.ts`        | Model pin                                                    |
 | `agent/tools/`          | One file per tool; `sleep.ts` re-exports eve's durable sleep |
-| `agent/memory.ts`       | Per-user memory (explicit backend — see the comment inside)  |
 | `agent/channels/eve.ts` | Chat channel + authentication; keep its literal shape        |
 
 ## Deploy it
@@ -36,6 +35,32 @@ cron: "0 9 * * *"
 
 Summarize yesterday's sessions in two sentences.
 ```
+
+## Enabling per-user memory (deliberately not on by default)
+
+Agent memory scoped `byPrincipal` is only as isolated as the identities behind
+it. A new instance's Identity Provider defaults to `Open`, where every public
+visitor shares one identity — per-user memory there would silently share one
+memory (and the personal details users tell the agent) across all visitors.
+Once the instance uses `Internal` or `OIDC` identity (Settings → Identity),
+add `agent/memory.ts`:
+
+```ts
+import { defineMemory } from "eve/memory";
+import { fileMemory } from "eve/memory/file";
+import { byPrincipal } from "eve/memory/scope";
+import { evelandMemoryBackend } from "eveland/memory";
+
+export default defineMemory({
+  scope: byPrincipal,
+  provider: fileMemory({ backend: evelandMemoryBackend() }),
+});
+```
+
+The explicit backend matters: bare `fileMemory()` only auto-resolves under
+`eve dev`; `evelandMemoryBackend()` reads the platform-injected
+`EVELAND_MEMORY_ROOT` and steps aside anywhere else, so the file works
+unchanged under `eve dev` too.
 
 ## Ground rules baked into this template
 
