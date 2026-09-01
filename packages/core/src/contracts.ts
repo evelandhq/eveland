@@ -225,7 +225,14 @@ export type JobPayloadMap = {
     deploymentId?: string;
     reason?: string;
   };
-  trigger_schedule: { scheduleRunId: string };
+  trigger_schedule: {
+    scheduleRunId: string;
+    // Denormalized from the ScheduleRun so the claim SQL can scope this job's
+    // exclusion to its target Deployment without joining schedule_runs.
+    // Absent on rows enqueued before the field existed; those claim as
+    // project-exclusive.
+    deploymentId?: string;
+  };
   ensure_deployment_running: {
     deploymentId: string;
     runtimeInstanceId: string;

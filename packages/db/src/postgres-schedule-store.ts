@@ -327,10 +327,12 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
           })
           .returning();
         if (!run) throw new Error("Failed to create manual ScheduleRun.");
+        // deploymentId is denormalized from the ScheduleRun so the claim SQL
+        // can scope this job's exclusion to its target Deployment.
         await insertJobRowTx(tx, {
           projectId,
           type: "trigger_schedule",
-          payload: { scheduleRunId: run.id },
+          payload: { scheduleRunId: run.id, deploymentId: run.deploymentId },
           createdAt: now,
           updatedAt: now,
         });
@@ -412,7 +414,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
           await insertJobRowTx(tx, {
             projectId: row.schedule.projectId,
             type: "trigger_schedule",
-            payload: { scheduleRunId: run.id },
+            payload: { scheduleRunId: run.id, deploymentId: run.deploymentId },
             createdAt: input.now,
             updatedAt: input.now,
           });

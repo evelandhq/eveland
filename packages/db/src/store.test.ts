@@ -296,15 +296,18 @@ describe("SQL Store jobs", () => {
     });
   });
 
-  test("never claims a job for a project that already has a running job", async () => {
+  test("serializes the source-and-release lane and unknown-target restarts per project", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Serial Agent", importKind: "zip" });
     const running = await store.claimNextJob("worker-a");
     expect(running).toMatchObject({ projectId: project.id, type: "import_source" });
     await store.enqueueJob(project.id, "build_deploy");
+    // No deploymentId: the restart resolves the production Deployment at run
+    // time, so its target is unknown at claim time and it stays exclusive.
     await store.enqueueJob(project.id, "restart_deployment");
 
-    // Same project: both queued jobs must wait for the running one.
+    // The queued build waits for the running import; the unknown-target
+    // restart waits for any running job in the project.
     await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
 
     // A different project is not blocked by this project's running job.
@@ -319,6 +322,133 @@ describe("SQL Store jobs", () => {
     const next = await store.claimNextJob("worker-c");
     expect(next).toMatchObject({ projectId: project.id, type: "build_deploy" });
     await expect(store.claimNextJob("worker-d")).resolves.toBeNull();
+  });
+
+  test("claims session-critical Deployment jobs past the same project's running build", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Cold Session Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "build_deploy");
+    const build = await store.claimNextJob("worker-a");
+    expect(build).toMatchObject({ projectId: project.id, type: "build_deploy" });
+
+    // The idle-reaped stable Deployment's activation and a schedule dispatch
+    // target existing Deployments the build never touches, so neither waits
+    // out the minutes-long build (issue #448).
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: "dep_stable",
+      runtimeInstanceId: "ri_session",
+    });
+    await store.enqueueJob(project.id, "trigger_schedule", {
+      scheduleRunId: "srun_due",
+      deploymentId: "dep_preview",
+    });
+    await expect(store.claimNextJob("worker-b")).resolves.toMatchObject({
+      type: "ensure_deployment_running",
+    });
+    await expect(store.claimNextJob("worker-c")).resolves.toMatchObject({
+      type: "trigger_schedule",
+    });
+
+    // The source-and-release lane itself still serializes behind the build.
+    await store.enqueueJob(project.id, "build_deploy");
+    await expect(store.claimNextJob("worker-d")).resolves.toBeNull();
+  });
+
+  test("serializes jobs targeting the same Deployment", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Same Target Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: "dep_a",
+      runtimeInstanceId: "ri_a",
+    });
+    const activation = await store.claimNextJob("worker-a");
+    expect(activation).toMatchObject({ type: "ensure_deployment_running" });
+
+    // Same Deployment: archive and restart wait for the running activation.
+    await store.enqueueJob(project.id, "archive_deployment", { deploymentId: "dep_a" });
+    await store.enqueueJob(project.id, "restart_deployment", { deploymentId: "dep_a" });
+    await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
+
+    // A different Deployment of the same project is not blocked.
+    await store.enqueueJob(project.id, "archive_deployment", { deploymentId: "dep_b" });
+    await expect(store.claimNextJob("worker-b")).resolves.toMatchObject({
+      type: "archive_deployment",
+      payload: { deploymentId: "dep_b" },
+    });
+
+    // Completion unblocks the oldest queued job for dep_a -- one at a time.
+    await store.completeJob(activation!.id);
+    await expect(store.claimNextJob("worker-c")).resolves.toMatchObject({
+      type: "archive_deployment",
+      payload: { deploymentId: "dep_a" },
+    });
+    await expect(store.claimNextJob("worker-d")).resolves.toBeNull();
+  });
+
+  test("treats a Deployment job without a claim-time target as project-exclusive", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Unknown Target Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "restart_deployment");
+    const restart = await store.claimNextJob("worker-a");
+    expect(restart).toMatchObject({ type: "restart_deployment" });
+
+    // The running restart's target is unknown, so even a Deployment-scoped
+    // activation waits.
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: "dep_a",
+      runtimeInstanceId: "ri_a",
+    });
+    await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
+    await store.completeJob(restart!.id);
+    const activation = await store.claimNextJob("worker-b");
+    expect(activation).toMatchObject({ type: "ensure_deployment_running" });
+
+    // And the reverse: an unknown-target candidate waits for any running job.
+    await store.enqueueJob(project.id, "restart_deployment");
+    await expect(store.claimNextJob("worker-c")).resolves.toBeNull();
+  });
+
+  test("keeps a legacy trigger_schedule without a denormalized target project-exclusive", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Legacy Trigger Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.enqueueJob(project.id, "build_deploy");
+    const build = await store.claimNextJob("worker-a");
+    expect(build).toMatchObject({ type: "build_deploy" });
+
+    // Enqueued before deploymentId was denormalized into the payload: the
+    // claim SQL cannot see its target, so it conservatively waits.
+    await store.enqueueJob(project.id, "trigger_schedule", { scheduleRunId: "srun_legacy" });
+    await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
+    await store.completeJob(build!.id);
+    await expect(store.claimNextJob("worker-b")).resolves.toMatchObject({
+      type: "trigger_schedule",
+    });
+  });
+
+  test("a running delete_project blocks every candidate without the deletion-status gate", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Direct Delete Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    // Enqueued directly, without requestProjectDeletion marking the project
+    // deleting, so only the running-job exclusion arm is in play.
+    await store.enqueueJob(project.id, "delete_project");
+    const deletion = await store.claimNextJob("worker-a");
+    expect(deletion).toMatchObject({ type: "delete_project" });
+
+    await store.enqueueJob(project.id, "ensure_deployment_running", {
+      deploymentId: "dep_a",
+      runtimeInstanceId: "ri_a",
+    });
+    await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
   });
 
   test("claims queued jobs once and tracks completion", async () => {

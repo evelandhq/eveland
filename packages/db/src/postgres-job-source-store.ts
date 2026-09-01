@@ -1,7 +1,9 @@
 import { createId } from "@evelandhq/core/ids";
 import {
+  DEPLOYMENT_SCOPED_JOB_TYPES,
   HEAVY_JOB_TYPES,
   LATENCY_SENSITIVE_JOB_TYPES,
+  PROJECT_MUTATION_JOB_TYPES,
   decodeJobPayload,
 } from "@evelandhq/core/jobs";
 import type { Job, JobType } from "@evelandhq/core/contracts";
@@ -232,6 +234,14 @@ export function createPostgresJobSourceStore({
         LATENCY_SENSITIVE_JOB_TYPES.map((type) => sql`${type}`),
         sql`, `,
       );
+      const projectMutationTypes = sql.join(
+        PROJECT_MUTATION_JOB_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      );
+      const deploymentScopedTypes = sql.join(
+        DEPLOYMENT_SCOPED_JOB_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      );
       // Concurrent claims each count committed running heavy jobs, so two
       // simultaneous claims can momentarily overshoot the cap by one; the
       // single worker serializes claims (its job pump admits single-file even
@@ -265,16 +275,43 @@ export function createPostgresJobSourceStore({
                 from ${jobs} candidate
                 join ${projects} project on project.id = candidate.project_id
                 where candidate.status = 'queued'
-                  -- One running job per project: concurrent jobs for the same
-                  -- project interleave stop/start/updateProjectState and race
-                  -- host-port allocation, so a queued job waits until the
-                  -- project's running job completes, fails, or is recovered as
-                  -- stale. Other projects' jobs are unaffected.
+                  -- Exclusion is scoped to what a job can actually touch
+                  -- (issue #448). delete_project, and any Deployment-scoped
+                  -- job whose target is unknown at claim time, are exclusive
+                  -- with the whole project; import/build serialize the
+                  -- source-and-release lane among themselves; Deployment-
+                  -- scoped jobs serialize per target Deployment (the CAS and
+                  -- activation-lease defenses stand alone for the lease-
+                  -- holding paths, but restart holds no lease). Everything
+                  -- else runs concurrently, so a minutes-long build no longer
+                  -- starves the same project's session-critical activation
+                  -- past Eve's fixed 30-second command-hook wait.
                   and not exists (
                     select 1 from ${jobs} running
                     where running.project_id = candidate.project_id
                       and running.id <> candidate.id
                       and running.status = 'running'
+                      and (
+                        candidate.type = 'delete_project'
+                        or running.type = 'delete_project'
+                        or (
+                          candidate.type in (${deploymentScopedTypes})
+                          and candidate.payload->>'deploymentId' is null
+                        )
+                        or (
+                          running.type in (${deploymentScopedTypes})
+                          and running.payload->>'deploymentId' is null
+                        )
+                        or (
+                          candidate.type in (${projectMutationTypes})
+                          and running.type in (${projectMutationTypes})
+                        )
+                        or (
+                          candidate.type in (${deploymentScopedTypes})
+                          and running.type in (${deploymentScopedTypes})
+                          and candidate.payload->>'deploymentId' = running.payload->>'deploymentId'
+                        )
+                      )
                   )
                   and (
                     project.deletion_status is distinct from 'deleting'

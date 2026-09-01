@@ -274,7 +274,9 @@ describe("schedule persistence", () => {
     });
     await expect(store.claimNextJob("planner-test")).resolves.toMatchObject({
       type: "trigger_schedule",
-      payload: { scheduleRunId: runs[0]?.id },
+      // deploymentId is denormalized so the claim SQL can scope exclusion to
+      // the target Deployment.
+      payload: { scheduleRunId: runs[0]?.id, deploymentId: deployment.id },
     });
     await expect(store.claimNextJob("planner-test")).resolves.toBeNull();
 
