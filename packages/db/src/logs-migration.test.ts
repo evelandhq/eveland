@@ -8,10 +8,12 @@ describe("logs seq cursor migration", () => {
     "utf8",
   );
 
-  test("stages the column instead of a blocking bigserial rewrite", () => {
-    // ADD COLUMN with no default is metadata-only; the naive
-    // `ADD COLUMN seq bigserial NOT NULL` would rewrite and exclusively lock
-    // the whole (unbounded) logs table for the duration of the upgrade.
+  test("stages the column: single write pass, deterministic order, both read indexes", () => {
+    // The migration runs in one transaction, so it IS a stop-the-world
+    // migration either way (the upgrade docs say so); staging buys a single
+    // write pass over the table — a naive `ADD COLUMN seq bigserial NOT
+    // NULL` would rewrite every row once for the column and again for the
+    // deterministic renumbering — and full control of historical ordering.
     expect(migration).toContain('ALTER TABLE "logs" ADD COLUMN "seq" bigint;');
     expect(migration).not.toContain("bigserial");
     const stages = [
@@ -22,6 +24,7 @@ describe("logs seq cursor migration", () => {
       `SET DEFAULT nextval('logs_seq_seq')`,
       '"seq" SET NOT NULL',
       'CREATE INDEX "logs_project_seq_idx"',
+      'CREATE INDEX "logs_project_type_seq_idx"',
     ];
     let position = -1;
     for (const stage of stages) {

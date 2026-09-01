@@ -5,4 +5,5 @@ WITH "ordered" AS (SELECT "id", row_number() OVER (ORDER BY "created_at", "id") 
 SELECT setval('logs_seq_seq', (SELECT coalesce(max("seq"), 0) + 1 FROM "logs"), false);--> statement-breakpoint
 ALTER TABLE "logs" ALTER COLUMN "seq" SET DEFAULT nextval('logs_seq_seq');--> statement-breakpoint
 ALTER TABLE "logs" ALTER COLUMN "seq" SET NOT NULL;--> statement-breakpoint
-CREATE INDEX "logs_project_seq_idx" ON "logs" USING btree ("project_id","seq");
+CREATE INDEX "logs_project_seq_idx" ON "logs" USING btree ("project_id","seq");--> statement-breakpoint
+CREATE INDEX "logs_project_type_seq_idx" ON "logs" USING btree ("project_id","type","seq");

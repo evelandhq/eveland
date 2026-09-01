@@ -1,5 +1,5 @@
 {
-  "id": "bae0492e-4c83-45db-a520-7300d886fd76",
+  "id": "805fd8d4-71a7-4988-9a52-e840647e9c9b",
   "prevId": "4b53d486-2b3c-4f1b-a837-7ca0fa2a0cc7",
   "version": "7",
   "dialect": "postgresql",
@@ -2751,6 +2751,33 @@
           "columns": [
             {
               "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "logs_project_type_seq_idx": {
+          "name": "logs_project_type_seq_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

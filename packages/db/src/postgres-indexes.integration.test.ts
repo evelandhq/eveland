@@ -79,17 +79,40 @@ describe.skipIf(!database)("hot-path index usage", () => {
   });
 
   test("project log reads use the project/seq index for order and cursor anchoring", async () => {
-    // The bounded tail/cursor protocol orders and anchors on seq; created_at
-    // ordering left the query surface with it (its index is dropped in 0060).
-    const orderedPlan = await planFor(`
+    // Bitmap scans don't preserve index order, and on an empty test table the
+    // planner may pick one over either seq index arbitrarily; forcing plain
+    // index scans makes the assertion say what it means — this query shape is
+    // served by this index in seq order, no Sort node required.
+    const { db } = database!;
+    await db.execute(sql.raw("set enable_bitmapscan = off"));
+    try {
+      // The bounded tail/cursor protocol orders and anchors on seq;
+      // created_at ordering left the query surface with it (its index is
+      // dropped in 0060).
+      const orderedPlan = await planFor(`
       select * from logs where project_id = 'proj_probe' order by seq
     `);
-    expect(orderedPlan).toContain("logs_project_seq_idx");
+      expect(orderedPlan).toContain("logs_project_seq_idx");
+      expect(orderedPlan).not.toContain("Sort");
 
-    const cursorPlan = await planFor(`
+      const cursorPlan = await planFor(`
       select * from logs where project_id = 'proj_probe' and seq > 42 order by seq limit 500
     `);
-    expect(cursorPlan).toContain("logs_project_seq_idx");
+      expect(cursorPlan).toContain("logs_project_seq_idx");
+
+      // The CLI's default read is type-filtered; without the typed index a
+      // sparse type walks arbitrarily many other-type rows to fill the
+      // limit, so the API-side cap would not bound database work.
+      const typedPlan = await planFor(`
+      select * from logs
+      where project_id = 'proj_probe' and type = 'runtime' and seq > 42
+      order by seq limit 500
+    `);
+      expect(typedPlan).toContain("logs_project_type_seq_idx");
+      expect(typedPlan).not.toContain("Sort");
+    } finally {
+      await db.execute(sql.raw("set enable_bitmapscan = on"));
+    }
   });
 });
 
@@ -119,6 +142,66 @@ describe.skipIf(!database)("concurrent Session event appends", () => {
       const indices = appends.map((event) => event.index).sort((a, b) => a - b);
       expect(new Set(indices).size).toBe(appends.length);
       expect(indices).toEqual(Array.from({ length: appends.length }, (_, i) => i));
+    } finally {
+      await store.deleteProject(project.id);
+    }
+  });
+});
+
+describe.skipIf(!database)("concurrent log appends", () => {
+  test("appendLog serializes per project so seq is commit-ordered — a cursor never skips", async () => {
+    const { createPostgresStore } = await import("./postgres-store.js");
+    const { projects } = await import("./schema.js");
+    const { eq } = await import("drizzle-orm");
+    const { setTimeout: delay } = await import("node:timers/promises");
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({
+      name: `Log append integration ${Date.now()}`,
+      importKind: "zip",
+    });
+    try {
+      // The race the FOR UPDATE closes: a transaction could allocate a lower
+      // seq but commit after a higher one, leaving a follower's `seq >
+      // cursor` permanently blind to it. Hold the project lock in an open
+      // transaction and prove a concurrent appendLog cannot even allocate
+      // until it commits.
+      let holderDone = false;
+      const holder = database!.db.transaction(async (tx) => {
+        await tx
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.id, project.id))
+          .for("update");
+        await delay(400);
+        holderDone = true;
+      });
+      await delay(100);
+      const blocked = store.appendLog({ projectId: project.id, type: "runtime", line: "waited" });
+      const outcome = await Promise.race([
+        blocked.then(() => "appended" as const),
+        delay(150).then(() => "still-blocked" as const),
+      ]);
+      expect(outcome).toBe("still-blocked");
+      await holder;
+      await blocked;
+      expect(holderDone).toBe(true);
+
+      // Under a real pooled hammer, cursor paging must recover every line
+      // with strictly increasing positions and no gaps against the full set.
+      const written = await Promise.all(
+        Array.from({ length: 40 }, (_, index) =>
+          store.appendLog({ projectId: project.id, type: "build", line: `hammer ${index}` }),
+        ),
+      );
+      const collected: string[] = [];
+      let cursor = "0";
+      for (;;) {
+        const page = await store.listLogsPage(project.id, "build", { limit: 7, after: cursor });
+        collected.push(...page.logs.map((log) => log.line));
+        if (page.logs.length < 7) break;
+        cursor = page.cursor;
+      }
+      expect(collected.sort()).toEqual(written.map((log) => log.line).sort());
     } finally {
       await store.deleteProject(project.id);
     }

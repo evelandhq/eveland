@@ -1473,10 +1473,13 @@ export const logs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // Every log read is project-scoped and ordered/anchored on seq; the
-    // optional type filter stays a residual on top of this. The old
+    // Every log read is project-scoped and ordered/anchored on seq; the old
     // (project_id, created_at) index served the created_at ordering that no
-    // query emits any more and is dropped in migration 0060.
+    // query emits any more and is dropped in migration 0060. The typed index
+    // exists because the CLI's default read is type-filtered ("runtime"):
+    // with only the untyped index, a sparse type makes the database walk
+    // arbitrarily many rows of other types to fill a small limit.
     index("logs_project_seq_idx").on(table.projectId, table.seq),
+    index("logs_project_type_seq_idx").on(table.projectId, table.type, table.seq),
   ],
 );

@@ -1,5 +1,5 @@
 import type { LogRecord } from "@evelandhq/core/contracts";
-import { and, desc, eq, gt, isNull, lt, max, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import {
   logRowToLog,
   sessionEventRowToSessionEvent,
@@ -139,12 +139,11 @@ export function createPostgresSessionQueryStore({
     // (the CLI's tail/follow, deploy's build-log watcher) page it. Ordering
     // and the cursor ride the monotonic seq column: createdAt has
     // millisecond resolution and burst-written lines collide on it, so a
-    // time-anchored cursor could skip same-instant rows. The cursor is the
-    // last-seen seq as an opaque string; an EMPTY page still returns a
-    // usable watermark (the scope's current max seq), so a follower that
-    // starts before any log exists never has to re-read unbounded history —
-    // the review case where >limit lines arrive between the empty first
-    // poll and the next one.
+    // time-anchored cursor could skip same-instant rows (appendLog
+    // serializes per project so seq is also commit-ordered). The cursor is
+    // the last-seen seq as an opaque string, and an EMPTY tail still returns
+    // cursor 0, so a follower that starts before any log exists never needs
+    // an unbounded re-read and never skips the lines that arrive next.
     async listLogsPage(
       projectId,
       type: LogRecord["type"] | undefined,
@@ -166,14 +165,12 @@ export function createPostgresSessionQueryStore({
       const rows = await db.select().from(logs).where(scope).orderBy(desc(logs.seq)).limit(limit);
       rows.reverse();
       const last = rows.at(-1)?.seq;
-      if (last !== undefined) {
-        return { logs: rows.map(logRowToLog), cursor: String(last) };
-      }
-      const [watermark] = await db
-        .select({ max: max(logs.seq) })
-        .from(logs)
-        .where(scope);
-      return { logs: [], cursor: String(watermark?.max ?? 0) };
+      // An empty scope pins the cursor at 0: logs are never deleted, so
+      // "empty" means nothing committed in scope has ever existed and 0
+      // skips nothing. Reading a separate max(seq) watermark here would race
+      // — a row committing between the two queries would sit inside the
+      // watermark yet never have been returned.
+      return { logs: rows.map(logRowToLog), cursor: String(last ?? 0) };
     },
   };
 }

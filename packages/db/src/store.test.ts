@@ -721,6 +721,9 @@ describe("SQL Store jobs", () => {
     const fresh = await store.createProject({ name: "Fresh Agent", importKind: "zip" });
     const empty = await store.listLogsPage(fresh.id, "build", { limit: 5 });
     expect(empty.logs).toEqual([]);
+    // Constant 0, not a max(seq) snapshot: a separate watermark query could
+    // race a commit landing between the two reads and skip it forever.
+    expect(empty.cursor).toBe("0");
     const later = await store.appendLog({ projectId: fresh.id, type: "build", line: "born" });
     const sinceEmpty = await store.listLogsPage(fresh.id, "build", {
       limit: 10,
