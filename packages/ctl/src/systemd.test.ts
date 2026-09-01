@@ -99,6 +99,9 @@ describe("the appliance Compose overlay", () => {
     expect(overlay).toContain("eveland-appliance-web-next:/workspace/apps/web/.next");
     expect(overlay).toContain("eveland-gateway-data-mask:/workspace/.eveland-data");
     expect(overlay).toContain("EVELAND_GATEWAY_PUBLIC_SCHEME: http");
+    // Host networking has no service DNS; the front door's web upstream
+    // must be loopback.
+    expect(overlay).toContain("EVELAND_WEB_INTERNAL_URL: http://127.0.0.1:17302");
     expect(overlay).toContain('EVELAND_GATEWAY_PUBLIC_PORT: "17300"');
     expect(overlay).toContain("/opt/eveland/data/otel:/var/lib/eveland/otel");
     // Worker and dispatcher never appear: they are host units, not services.

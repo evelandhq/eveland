@@ -4,6 +4,7 @@ import type { PlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata, type ApplianceLayout } from "./home.ts";
 import { writeInstallMetadata } from "./bootstrap.ts";
 import type { ExecCommand, FetchLike, LifecycleIo } from "./io.ts";
+import { WEB_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
 import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
 
 /**
@@ -222,6 +223,9 @@ export function renderApplianceOverlay(options: {
     "      - eveland-gateway-data-mask:/workspace/.eveland-data",
     "    environment:",
     `      EVELAND_GATEWAY_PUBLIC_SCHEME: ${scheme}`,
+    // Host networking kills the compose service DNS: the base file's
+    // service-named front-door web upstream must become loopback.
+    `      EVELAND_WEB_INTERNAL_URL: ${WEB_INTERNAL_URL_FALLBACK}`,
     "  web:",
     "    volumes: !override",
     "      - .:/workspace",
