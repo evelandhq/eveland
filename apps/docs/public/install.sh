@@ -105,13 +105,24 @@ fi
 # --- Re-run against a completed install: this is an upgrade ------------------
 if [ -f "$ETC_DIR/install.json" ] && grep -q '"bootstrapCompleted": true' "$ETC_DIR/install.json" 2>/dev/null; then
   note "Existing completed install at $PREFIX — forwarding to eveland-ctl update"
-  exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update
+  # An explicitly pinned version stays pinned; a bare re-run means "newest".
+  if [ "$INTERACTIVE" -eq 1 ]; then
+    # shellcheck disable=SC2086
+    exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update \
+      ${REQUESTED_VERSION:+--version "$REQUESTED_VERSION"} </dev/tty
+  fi
+  # shellcheck disable=SC2086
+  exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update --no-prompt \
+    ${REQUESTED_VERSION:+--version "$REQUESTED_VERSION"}
 fi
 
 mkdir -p "$PREFIX" "$LOG_DIR" "$ETC_DIR" "$BIN_DIR" 2>/dev/null \
   || fail "cannot create $PREFIX. On Linux, run with sudo or pass --prefix \$HOME/.eveland."
 
-# Everything from here is logged; on failure, point at the log.
+# Everything from here is logged; on failure, point at the log. The log must
+# never be world-readable: eveland-ctl's own output flows into it, and while
+# no credential is ever printed, an install log is operational history.
+touch "$LOG_FILE" && chmod 600 "$LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1
 trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "Install failed (exit $status). Full log: $LOG_FILE" >&2; fi' EXIT
 note "Logging to $LOG_FILE"
@@ -282,7 +293,12 @@ if [ "$NO_START" -eq 1 ]; then
   exit 0
 fi
 note "Handing off to eveland-ctl start"
-start_args=""
-[ "$INTERACTIVE" -eq 1 ] || start_args="--no-prompt"
-# shellcheck disable=SC2086
-exec env EVELAND_HOME="$PREFIX" EVELAND_INSTALL_METHOD=install.sh "$BIN_DIR/eveland-ctl" start $start_args
+# `curl | bash` leaves stdin attached to the (exhausted) pipe, so eveland-ctl
+# would see a non-TTY stdin and silently take every default. Reattach the
+# terminal so its first-boot questions actually reach the operator.
+if [ "$INTERACTIVE" -eq 1 ]; then
+  exec env EVELAND_HOME="$PREFIX" EVELAND_INSTALL_METHOD=install.sh \
+    "$BIN_DIR/eveland-ctl" start </dev/tty
+fi
+exec env EVELAND_HOME="$PREFIX" EVELAND_INSTALL_METHOD=install.sh \
+  "$BIN_DIR/eveland-ctl" start --no-prompt

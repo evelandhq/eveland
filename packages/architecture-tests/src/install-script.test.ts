@@ -40,6 +40,20 @@ describe("install.sh publication", () => {
     expect(script).not.toMatch(/\[ -[et] \/dev\/tty \]/);
   });
 
+  test("interactive handoffs reattach stdin to the terminal — curl|bash leaves stdin on the pipe", () => {
+    // Both exec targets (start and the update forward) must carry </dev/tty
+    // in the interactive branch, or eveland-ctl silently takes every default.
+    expect(script).toMatch(/eveland-ctl" start <\/dev\/tty/);
+    expect(script).toMatch(/--version "\$REQUESTED_VERSION"\} <\/dev\/tty/);
+  });
+
+  test("the install log is created 0600 before anything is teed into it", () => {
+    const teeIndex = script.indexOf('tee -a "$LOG_FILE"');
+    const chmodIndex = script.indexOf('chmod 600 "$LOG_FILE"');
+    expect(chmodIndex).toBeGreaterThan(-1);
+    expect(chmodIndex).toBeLessThan(teeIndex);
+  });
+
   test("the curl front door is safe: explicit https, -f against error pages", () => {
     // The documented one-liner appears in the script's own header.
     expect(script).toContain("curl -fsSL https://eveland.ai/install.sh | bash");

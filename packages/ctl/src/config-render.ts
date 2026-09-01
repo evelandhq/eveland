@@ -88,7 +88,9 @@ export function defaultBootstrapInputs(env: NodeJS.ProcessEnv): BootstrapInputs 
   return {
     publicOrigin: PUBLIC_ORIGIN_FALLBACK,
     adminEmail: "admin@example.com",
-    adminPassword: generateAdminPassword(),
+    // An operator-provided EVELAND_ADMIN_PASSWORD in the environment wins;
+    // otherwise generate. Either way the value never crosses stdout.
+    adminPassword: env.EVELAND_ADMIN_PASSWORD?.trim() || generateAdminPassword(),
     anthropicApiKey: env.ANTHROPIC_API_KEY?.trim() || undefined,
     openaiApiKey: env.OPENAI_API_KEY?.trim() || undefined,
   };

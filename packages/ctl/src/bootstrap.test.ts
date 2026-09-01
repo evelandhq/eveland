@@ -80,44 +80,50 @@ describe("gatherBootstrapInputs", () => {
     expect(inputs.anthropicApiKey).toBeUndefined();
   });
 
-  test("prompted answers win and the origin is normalized", async () => {
+  test("prompted answers win and the origin is normalized; the password is never a prompt", async () => {
     const { deps } = await makeDeps({
       prompter: scriptedPrompter([
         "https://eveland.example.com/", // origin (trailing slash normalized away)
         "Ops@Example.com ", // email (lowercased, trimmed)
-        "chosen-password-123", // password
         "sk-ant-typed", // anthropic key (interactive ask)
       ]),
     });
     const inputs = await gatherBootstrapInputs(deps);
     expect(inputs.publicOrigin).toBe("https://eveland.example.com");
     expect(inputs.adminEmail).toBe("ops@example.com");
-    expect(inputs.adminPassword).toBe("chosen-password-123");
+    // A prompted password would be echoed into the teed install log; it is
+    // always generated (or taken from the environment) instead.
+    expect(inputs.adminPassword.length).toBeGreaterThanOrEqual(12);
     expect(inputs.anthropicApiKey).toBe("sk-ant-typed");
+  });
+
+  test("an EVELAND_ADMIN_PASSWORD already in the environment wins over generation", async () => {
+    const { deps } = await makeDeps({ env: { EVELAND_ADMIN_PASSWORD: "operator-chosen-pw" } });
+    expect((await gatherBootstrapInputs(deps)).adminPassword).toBe("operator-chosen-pw");
   });
 
   test("a shell ANTHROPIC_API_KEY is offered and can be declined", async () => {
     const accepted = await makeDeps({
       env: { ANTHROPIC_API_KEY: "sk-ant-shell" },
-      prompter: scriptedPrompter(["", "", "", true]),
+      prompter: scriptedPrompter(["", "", true]),
     });
     expect((await gatherBootstrapInputs(accepted.deps)).anthropicApiKey).toBe("sk-ant-shell");
 
     const declined = await makeDeps({
       env: { ANTHROPIC_API_KEY: "sk-ant-shell" },
-      prompter: scriptedPrompter(["", "", "", false]),
+      prompter: scriptedPrompter(["", "", false]),
     });
     expect((await gatherBootstrapInputs(declined.deps)).anthropicApiKey).toBeUndefined();
   });
 
-  test("a too-short admin password is rejected before anything is written", async () => {
-    const { deps } = await makeDeps({ prompter: scriptedPrompter(["", "", "short"]) });
+  test("a too-short environment-provided admin password is rejected before anything is written", async () => {
+    const { deps } = await makeDeps({ env: { EVELAND_ADMIN_PASSWORD: "short" } });
     await expect(gatherBootstrapInputs(deps)).rejects.toThrow(/at least 12 characters/);
   });
 });
 
 describe("runBootstrapConfig", () => {
-  test("renders etc/eveland.env once (0600) and prints the admin login", async () => {
+  test("renders etc/eveland.env once (0600); the password never crosses stdout", async () => {
     const { deps, out, layout } = await makeDeps({});
     const envFile = await runBootstrapConfig(deps);
     expect(envFile.path).toBe(layout.envFilePath);
@@ -125,7 +131,10 @@ describe("runBootstrapConfig", () => {
     expect(mode).toBe(0o600);
     const onDisk = parseEnvFile(await readFile(layout.envFilePath, "utf8"));
     expect(onDisk).toEqual(envFile.values);
-    expect(out.join("\n")).toContain("Password:");
+    // Output is teed into the install log by the installer: the password
+    // value must not appear in it — only the pointer to the 0600 file.
+    expect(out.join("\n")).not.toContain(envFile.values.EVELAND_ADMIN_PASSWORD);
+    expect(out.join("\n")).toContain("grep EVELAND_ADMIN_PASSWORD");
 
     // Second run reuses the file verbatim: secrets are minted exactly once.
     const again = await runBootstrapConfig(deps);

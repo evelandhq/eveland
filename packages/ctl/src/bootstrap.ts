@@ -80,8 +80,11 @@ export async function gatherBootstrapInputs(deps: BootstrapDeps): Promise<Bootst
   }
 
   const adminEmail = (await prompter.ask("Admin email", defaults.adminEmail)).trim().toLowerCase();
-  const passwordAnswer = (await prompter.ask("Admin password (blank to generate)", "")).trim();
-  const adminPassword = passwordAnswer || defaults.adminPassword;
+  // Never prompted: a typed answer would be echoed into the install log the
+  // installer tees. The password is always generated (or taken from an
+  // EVELAND_ADMIN_PASSWORD already in the environment) and lives only in the
+  // 0600 etc/eveland.env.
+  const adminPassword = defaults.adminPassword;
   if (adminPassword.length < 12) {
     throw new Error("The admin password must be at least 12 characters.");
   }
@@ -168,9 +171,11 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
   await chmod(layout.envFilePath, 0o600);
   io.stdout(`Wrote ${layout.envFilePath} (0600; all secrets freshly generated).`);
   io.stdout("");
-  io.stdout("Dashboard admin login (also recorded in that file):");
-  io.stdout(`  Email:    ${inputs.adminEmail}`);
-  io.stdout(`  Password: ${inputs.adminPassword}`);
+  // The password itself never crosses stdout: this output is teed into the
+  // install log by the installer, and a log must not hold credentials.
+  io.stdout(`Dashboard admin login: ${inputs.adminEmail}`);
+  io.stdout("  The generated password is recorded only in that file — read it with:");
+  io.stdout(`  grep EVELAND_ADMIN_PASSWORD ${layout.envFilePath}`);
   io.stdout("");
   return { path: layout.envFilePath, values: rendered.values };
 }
