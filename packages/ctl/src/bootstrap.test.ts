@@ -35,6 +35,7 @@ async function makeDeps(options: {
   webBuildExists?: boolean;
   postgresUp?: boolean;
   commandExit?: number | null;
+  onTag?: boolean;
 }) {
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-bootstrap-"));
   const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-bootstraprepo-"));
@@ -56,8 +57,11 @@ async function makeDeps(options: {
       return options.commandExit ?? 0;
     },
     execCommand: async (argv) => {
+      if (argv[0] === "git" && argv[1] === "rev-parse") return { code: 0, output: "abc1234\n" };
       if (argv[0] === "git" && argv[1] === "describe") {
-        return { code: 0, output: "v0.48.0\n" };
+        return options.onTag === false
+          ? { code: 128, output: "fatal: no tag exactly matches" }
+          : { code: 0, output: "v0.48.0\n" };
       }
       if (argv.includes("pg_isready")) {
         return { code: (options.postgresUp ?? true) ? 0 : 1, output: "" };
@@ -202,14 +206,14 @@ describe("runBootstrapPrepare", () => {
     expect(commands).toEqual([["pnpm", "--filter", "@evelandhq/api", "db:migrate"]]);
   });
 
-  test("pins the checkout revision into the env file for release identity", async () => {
+  test("pins release identity: exact short SHA, and stable only on an exact release tag", async () => {
     const { deps, layout } = await makeDeps({ webBuildExists: true });
     const envFile = await runBootstrapConfig(deps);
     await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
-    expect(envFile.values.EVELAND_REVISION).toBe("v0.48.0");
+    expect(envFile.values.EVELAND_REVISION).toBe("abc1234");
     expect(envFile.values.EVELAND_RELEASE_CHANNEL).toBe("stable");
     const onDisk = parseEnvFile(await readFile(layout.envFilePath, "utf8"));
-    expect(onDisk.EVELAND_REVISION).toBe("v0.48.0");
+    expect(onDisk.EVELAND_REVISION).toBe("abc1234");
     // The upsert touched exactly one key: secrets survived byte-for-byte.
     expect(onDisk.APP_SECRET_KEY).toBe(envFile.values.APP_SECRET_KEY);
   });
@@ -228,6 +232,16 @@ describe("runBootstrapPrepare", () => {
     await expect(
       runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] }),
     ).rejects.toThrow(/migration failed/);
+  });
+});
+
+describe("runBootstrapPrepare on a non-release checkout", () => {
+  test("a bare SHA / branch checkout is `edge`, never impersonating a stable release", async () => {
+    const { deps } = await makeDeps({ webBuildExists: true, onTag: false });
+    const envFile = await runBootstrapConfig(deps);
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
+    expect(envFile.values.EVELAND_RELEASE_CHANNEL).toBe("edge");
+    expect(envFile.values.EVELAND_REVISION).toBe("abc1234");
   });
 });
 

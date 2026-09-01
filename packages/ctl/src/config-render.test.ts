@@ -26,6 +26,8 @@ describe("renderPlatformEnv", () => {
     const { values } = render("darwin");
     for (const key of [
       "NODE_ENV",
+      // EVELAND_RELEASE_CHANNEL / EVELAND_REVISION are derived from the
+      // checkout at boot/update, never rendered as static values.
       "EVELAND_PUBLIC_ORIGIN",
       "EVELAND_AGENT_BASE_DOMAINS",
       "DATABASE_URL",

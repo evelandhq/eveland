@@ -46,10 +46,9 @@ export function renderPlatformEnv(options: {
 
   const values: Record<string, string> = {
     NODE_ENV: "production",
-    // Release identity: an appliance runs release tags, and the About page
-    // flags a channel/revision mismatch across processes. EVELAND_REVISION
-    // is upserted separately at bootstrap and refreshed by update.
-    EVELAND_RELEASE_CHANNEL: "stable",
+    // Release identity (EVELAND_RELEASE_CHANNEL / EVELAND_REVISION) is not
+    // rendered here: it is derived from the checkout and upserted at first
+    // boot and on every update (release-identity.ts).
     EVELAND_PUBLIC_ORIGIN: inputs.publicOrigin,
     EVELAND_AGENT_BASE_DOMAINS: deriveAgentBaseDomains(inputs.publicOrigin),
     DATABASE_URL: databaseUrl,

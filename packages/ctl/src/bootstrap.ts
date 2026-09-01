@@ -8,6 +8,7 @@ import {
   type BootstrapInputs,
 } from "./config-render.ts";
 import { parseEnvFile, upsertEnvFileValue, type PlatformEnvFile } from "./env-file.ts";
+import { deriveReleaseIdentity } from "./release-identity.ts";
 import type { ApplianceLayout, InstallMetadata } from "./home.ts";
 import type { ExecCommand, LifecycleIo, StreamCommand } from "./io.ts";
 import type { Prompter } from "./prompt.ts";
@@ -181,6 +182,20 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
   return { path: layout.envFilePath, values: rendered.values };
 }
 
+/** Writes the checkout's channel + revision into the env file (and the in-memory values). */
+export async function pinReleaseIdentity(
+  execCommand: ExecCommand,
+  repoRootDir: string,
+  envFile: PlatformEnvFile,
+): Promise<void> {
+  const identity = await deriveReleaseIdentity(execCommand, repoRootDir);
+  if (!identity) return;
+  await upsertEnvFileValue(envFile.path, "EVELAND_RELEASE_CHANNEL", identity.channel);
+  await upsertEnvFileValue(envFile.path, "EVELAND_REVISION", identity.revision);
+  envFile.values.EVELAND_RELEASE_CHANNEL = identity.channel;
+  envFile.values.EVELAND_REVISION = identity.revision;
+}
+
 /** Build + database preparation. Idempotent; safe to re-run after a failure. */
 export async function runBootstrapPrepare(
   deps: BootstrapDeps,
@@ -193,16 +208,9 @@ export async function runBootstrapPrepare(
 ): Promise<void> {
   const { io } = deps;
 
-  // Release identity: pin the actual checkout revision so the About page
-  // reports something better than "unknown". Refreshed again by update.
-  const describe = await deps.execCommand(["git", "describe", "--tags", "--always"], {
-    cwd: deps.repoRootDir,
-  });
-  if (describe.code === 0 && describe.output.trim() !== "") {
-    const revision = describe.output.trim().split("\n")[0]!;
-    await upsertEnvFileValue(envFile.path, "EVELAND_REVISION", revision);
-    envFile.values.EVELAND_REVISION = revision;
-  }
+  // Release identity: the exact short SHA, and a channel that is `stable`
+  // only on an exact vX.Y.Z tag. Refreshed again by update.
+  await pinReleaseIdentity(deps.execCommand, deps.repoRootDir, envFile);
 
   const childEnv = { ...io.env, ...envFile.values };
 
