@@ -9,7 +9,16 @@ import type { LifecycleIo } from "./io.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
 import type { Prompter } from "./prompt.ts";
 import { writeSupervisorRecord, writeSupervisorState } from "./state-files.ts";
-import { isForwardMove, recoveryPlan, runFinishUpdate, runUpdate, type PgDump } from "./update.ts";
+import {
+  isForwardMove,
+  newestStableTag,
+  pendingUpdatePath,
+  readPendingUpdate,
+  recoveryPlan,
+  runFinishUpdate,
+  runUpdate,
+  type PgDump,
+} from "./update.ts";
 
 const CHANGELOG_AT_TARGET = `# Changelog
 
@@ -157,7 +166,7 @@ async function makeHarness(
       if (argv[0] === "git") {
         gitCalls.push(argv);
         const sub = argv[1];
-        if (sub === "tag") return { code: 0, output: "v0.49.0\nv0.48.0\nv0.47.0\n" };
+        if (sub === "tag") return { code: 0, output: "v0.50.0-rc.1\nv0.49.0\nv0.48.0\nv0.47.0\n" };
         if (sub === "rev-parse") return { code: 0, output: checkedOut ? "beef049\n" : "abc0480\n" };
         if (sub === "show") {
           return options.breaking === false
@@ -233,6 +242,14 @@ describe("isForwardMove", () => {
   });
 });
 
+describe("newestStableTag", () => {
+  test("skips pre-releases that sort above the newest stable", () => {
+    expect(newestStableTag("v0.50.0-rc.1\nv0.49.0\nv0.48.0\n")).toBe("v0.49.0");
+    expect(newestStableTag("v0.50.0-rc.1\n")).toBeUndefined();
+    expect(newestStableTag("")).toBeUndefined();
+  });
+});
+
 describe("recoveryPlan", () => {
   test("never claims a source rollback is safe; points at the rollback notes and the backup", () => {
     const plan = recoveryPlan({
@@ -279,6 +296,87 @@ describe("runUpdate (phase 1, the old code)", () => {
     expect(harness.out.join("\n")).toContain("Updated to v0.49.0.");
     const backups = await readdir(harness.layout.backupsDir);
     expect(backups[0]).toContain("v0.48.0");
+  });
+
+  test("the default target is the newest STABLE tag, not a pre-release that sorts above it", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    expect(await runUpdate([], harness.io)).toBe(0);
+    expect(harness.out.join("\n")).toContain("Updating v0.48.0 -> v0.49.0");
+    expect(harness.gitCalls.find((argv) => argv[1] === "checkout")).toEqual([
+      "git",
+      "checkout",
+      "--quiet",
+      "v0.49.0",
+    ]);
+  });
+
+  test("a completed update leaves no pending record behind", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    expect(await runUpdate([], harness.io)).toBe(0);
+    expect(await readPendingUpdate(harness.layout)).toBeNull();
+  });
+
+  test("an update that fails after the checkout is RESUMED by the next run, never 'already up to date'", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    let failInstall = true;
+    harness.io.streamCommand = async (argv) => {
+      harness.streamed.push(argv);
+      if (argv.includes("_finish-update")) harness.timeline.push("finish-update");
+      return failInstall && argv[1] === "install" ? 1 : 0;
+    };
+    expect(await runUpdate([], harness.io)).toBe(1);
+    // package.json now says 0.49.0 while the platform is stopped...
+    const pending = await readPendingUpdate(harness.layout);
+    expect(pending).toMatchObject({ from: "0.48.0", target: "v0.49.0", stashName: null });
+    expect(pending!.backupPath).toBe(harness.pgDumps[0]);
+    expect(harness.err.join("\n")).toContain("re-running `eveland-ctl update` resumes it");
+
+    // ...and the re-run resumes from the record instead of declaring victory.
+    failInstall = false;
+    const before = {
+      dumps: harness.pgDumps.length,
+      checkouts: harness.timeline.filter((t) => t === "checkout").length,
+    };
+    expect(await runUpdate([], harness.io)).toBe(0);
+    expect(harness.out.join("\n")).toContain("Resuming the interrupted update v0.48.0 -> v0.49.0");
+    expect(harness.out.join("\n")).not.toContain("Already up to date");
+    // No second backup (the first one still protects v0.48.0's data); the
+    // idempotent steps re-run and phase 2 gets the ORIGINAL from/backup.
+    expect(harness.pgDumps).toHaveLength(before.dumps);
+    expect(harness.timeline.filter((t) => t === "checkout").length).toBe(before.checkouts + 1);
+    expect(finishUpdateCall(harness)!.slice(2)).toEqual([
+      "_finish-update",
+      "--from",
+      "0.48.0",
+      "--backup",
+      harness.pgDumps[0],
+    ]);
+    expect(await readPendingUpdate(harness.layout)).toBeNull();
+    expect(harness.out.join("\n")).toContain("Updated to v0.49.0.");
+  });
+
+  test("a resume offers the stash recorded by the interrupted run back", async () => {
+    const harness = await makeHarness({ dirty: true, confirmAnswers: [true, true] });
+    harness.io.streamCommand = async (argv) => {
+      harness.streamed.push(argv);
+      return argv.includes("_finish-update") && !harness.timeline.includes("resumed") ? 1 : 0;
+    };
+    expect(await runUpdate([], harness.io)).toBe(1);
+    expect((await readPendingUpdate(harness.layout))?.stashName).toMatch(/^eveland-ctl-update-/);
+    harness.timeline.push("resumed");
+    expect(await runUpdate([], harness.io)).toBe(0);
+    expect(harness.gitCalls.some((argv) => argv[1] === "stash" && argv[2] === "pop")).toBe(true);
+    // The stash was pushed exactly once (by the interrupted run).
+    expect(
+      harness.gitCalls.filter((argv) => argv[1] === "stash" && argv[2] === "push"),
+    ).toHaveLength(1);
+  });
+
+  test("the pending record lives under run/, next to the supervisor files", async () => {
+    const harness = await makeHarness({});
+    expect(pendingUpdatePath(harness.layout)).toBe(
+      path.join(harness.layout.runDir, "update-pending.json"),
+    );
   });
 
   test("the old code never builds, migrates, pins identity, or starts on its own", async () => {

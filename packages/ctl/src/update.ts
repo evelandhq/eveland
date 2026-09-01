@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
@@ -115,6 +115,55 @@ export function recoveryPlan(options: {
   ].join("\n");
 }
 
+/**
+ * The record phase 1 writes before the checkout moves. If anything after
+ * that fails (checkout, pnpm install, phase 2), package.json already reports
+ * the target version, so a re-run must resume from this record instead of
+ * declaring itself "already up to date" over a stopped platform.
+ */
+export type PendingUpdate = {
+  from: string;
+  target: string;
+  backupPath: string | null;
+  stashName: string | null;
+  startedAt: string;
+};
+
+export function pendingUpdatePath(layout: { runDir: string }): string {
+  return path.join(layout.runDir, "update-pending.json");
+}
+
+export async function readPendingUpdate(layout: { runDir: string }): Promise<PendingUpdate | null> {
+  try {
+    const parsed = JSON.parse(await readFile(pendingUpdatePath(layout), "utf8")) as PendingUpdate;
+    return typeof parsed.from === "string" && typeof parsed.target === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writePendingUpdate(layout: { runDir: string }, record: PendingUpdate) {
+  await mkdir(layout.runDir, { recursive: true });
+  await writeFile(pendingUpdatePath(layout), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+}
+
+/** The newest exact vX.Y.Z tag: a pre-release sorts above the stable it precedes and is never a default target. */
+export function newestStableTag(tagListOutput: string): string | undefined {
+  return tagListOutput
+    .split("\n")
+    .map((line) => line.trim())
+    .find((tag) => parseReleaseTag(tag) !== null);
+}
+
+type UpdateContext = {
+  io: LifecycleIo;
+  repo: string;
+  layout: { runDir: string };
+  git: (gitArgs: string[]) => Promise<{ code: number | null; output: string }>;
+  streamCommand: NonNullable<LifecycleIo["streamCommand"]>;
+  prompter: { confirm: (question: string, defaultValue: boolean) => Promise<boolean> };
+};
+
 export async function runUpdate(
   args: string[],
   io: LifecycleIo & { pgDump?: PgDump },
@@ -144,6 +193,28 @@ export async function runUpdate(
   const prompter = parsed.values["no-prompt"]
     ? nonInteractivePrompter()
     : (io.prompter ?? createPrompter());
+  const context: UpdateContext = {
+    io,
+    repo,
+    layout: resolved.layout,
+    git,
+    streamCommand,
+    prompter,
+  };
+
+  // An interrupted update comes first: the checkout may already report the
+  // target version while the platform sits stopped from phase 1.
+  const pending = await readPendingUpdate(resolved.layout);
+  if (pending) {
+    io.stdout(
+      `Resuming the interrupted update v${pending.from} -> ${pending.target} ` +
+        `(started ${pending.startedAt}; backup ${pending.backupPath ?? "skipped"}).`,
+    );
+    // Whatever is still up must be down before the tree moves again.
+    const stopCode = await runStop([], io);
+    if (stopCode !== 0) return stopCode;
+    return completeUpdate(context, pending);
+  }
 
   const fetch = await git(["fetch", "--tags", "--quiet"]);
   if (fetch.code !== 0) {
@@ -157,10 +228,7 @@ export async function runUpdate(
   let target = parsed.values.version;
   if (!target) {
     const tags = await git(["tag", "--list", "v*", "--sort=-v:refname"]);
-    target = tags.output
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)[0];
+    target = newestStableTag(tags.output);
   }
   if (!target) {
     io.stderr("No release tag found to update to.");
@@ -253,10 +321,6 @@ export async function runUpdate(
   const recovery = (failedStep: string) =>
     recoveryPlan({ failedStep, fromVersion: currentVersion, backupPath, repo });
 
-  // The eve window before the checkout moves.
-  const templatePath = path.join(repo, "templates/starter-agent/package.json");
-  const evePinBefore = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
-
   // Dirty-tree handling: an unmerged index breaks stash, so reset it first;
   // real modifications go into a named stash we offer to restore afterwards.
   const status = await git(["status", "--porcelain"]);
@@ -278,6 +342,36 @@ export async function runUpdate(
       return 1;
     }
   }
+
+  // From here the checkout may report the target version: record the
+  // in-flight update so a failed step is resumed, never mistaken for done.
+  const pendingRecord: PendingUpdate = {
+    from: currentVersion,
+    target,
+    backupPath,
+    stashName,
+    startedAt: new Date().toISOString(),
+  };
+  await writePendingUpdate(resolved.layout, pendingRecord);
+  return completeUpdate(context, pendingRecord);
+}
+
+/**
+ * Everything after the pending record exists: checkout, pnpm install, the
+ * handover to the new checkout's ctl, then the record is cleared. Shared by
+ * a fresh update and a resumed one (every step is idempotent).
+ */
+async function completeUpdate(context: UpdateContext, pending: PendingUpdate): Promise<number> {
+  const { io, repo, git, streamCommand, prompter } = context;
+  const { target, backupPath, stashName } = pending;
+  const recovery = (failedStep: string) =>
+    recoveryPlan({ failedStep, fromVersion: pending.from, backupPath, repo }) +
+    "\n              (This update is recorded as in progress: re-running `eveland-ctl update` resumes it.)";
+
+  // The eve window before the checkout moves (on a resume the tree may
+  // already be at the target; the warning below is then simply not emitted).
+  const templatePath = path.join(repo, "templates/starter-agent/package.json");
+  const evePinBefore = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
 
   const checkout = await git(["checkout", "--quiet", target]);
   if (checkout.code !== 0) {
@@ -305,15 +399,19 @@ export async function runUpdate(
       path.join(repo, "packages/ctl/src/bin.ts"),
       "_finish-update",
       "--from",
-      currentVersion,
+      pending.from,
       ...(backupPath ? ["--backup", backupPath] : []),
     ],
     { cwd: repo, env: io.env },
   );
   if (finish !== 0) {
-    io.stderr("The updated eveland-ctl could not finish the update; see its recovery plan above.");
+    io.stderr(
+      "The updated eveland-ctl could not finish the update; see its recovery plan above. " +
+        "Re-running `eveland-ctl update` resumes from here.",
+    );
     return 1;
   }
+  await rm(pendingUpdatePath(context.layout), { force: true });
 
   const evePinAfter = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
   if (evePinBefore && evePinAfter && evePinBefore !== evePinAfter) {
