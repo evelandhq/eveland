@@ -17,6 +17,7 @@
     "routing",
     "scheduling",
     "observability",
-    "dashboard"
+    "dashboard",
+    "cli"
   ]
 }
