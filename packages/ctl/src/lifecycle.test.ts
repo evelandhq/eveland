@@ -251,7 +251,7 @@ describe("runStart first boot", () => {
     expect(harness.out.join("\n")).toContain("Eveland is running at http://localhost:17300");
   });
 
-  test("a failed implicit login is a warning, not a failed start", async () => {
+  test("a failed implicit login is a warning; bootstrap completes but seeding stays pending", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
     harness.io.fetchImpl = async (url) => {
@@ -265,7 +265,49 @@ describe("runStart first boot", () => {
 
     expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
     expect(harness.err.join("\n")).toContain("eveland login");
-    expect((await readInstallMetadata(harness.layout))?.bootstrapCompleted).toBe(true);
+    const metadata = await readInstallMetadata(harness.layout);
+    expect(metadata?.bootstrapCompleted).toBe(true);
+    expect(metadata?.seedCompleted).toBe(false);
+  });
+
+  test("a completed install with pending seeding retries it on the next start until it sticks", async () => {
+    const harness = await makeHarness({ env: undefined, webBuild: false });
+    harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
+    harness.io.tcpProbe = async () => true;
+    // First boot: readiness fine, but every auth call fails -> seed pending.
+    harness.io.fetchImpl = async (url) =>
+      new URL(url).pathname.startsWith("/api/auth/")
+        ? new Response("{}", { status: 500 })
+        : new Response("{}", { status: 200 });
+    const streamed: string[][] = [];
+    harness.io.streamCommand = async (argv) => {
+      streamed.push(argv);
+      return 0;
+    };
+    expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
+    expect((await readInstallMetadata(harness.layout))?.seedCompleted).toBe(false);
+    expect(streamed.some((argv) => argv.includes("deploy"))).toBe(false);
+
+    // Next start: platform not running any more, auth now works -> the
+    // promised retry actually runs login + seeding and marks it complete.
+    // (The non-bootstrap path requires the real Dashboard build artifact.)
+    await mkdir(path.join(harness.repo, "apps/web/.next"), { recursive: true });
+    await writeFile(path.join(harness.repo, "apps/web/.next/BUILD_ID"), "x", "utf8");
+    await removeSupervisorFiles(harness.layout);
+    harness.alivePids.clear();
+    harness.io.fetchImpl = deviceFlowFetch();
+    expect(await runStart([], harness.io)).toBe(0);
+    expect(harness.out.join("\n")).toContain("Retrying the built-in agent seeding");
+    expect(streamed.some((argv) => argv.includes("deploy"))).toBe(true);
+    expect((await readInstallMetadata(harness.layout))?.seedCompleted).toBe(true);
+
+    // A third start with everything complete does not retry again.
+    const seedCallsSoFar = streamed.filter((argv) => argv.includes("deploy")).length;
+    await removeSupervisorFiles(harness.layout);
+    harness.alivePids.clear();
+    harness.io.fetchImpl = deviceFlowFetch();
+    expect(await runStart([], harness.io)).toBe(0);
+    expect(streamed.filter((argv) => argv.includes("deploy")).length).toBe(seedCallsSoFar);
   });
 
   test("a development checkout with its own .env never bootstraps", async () => {

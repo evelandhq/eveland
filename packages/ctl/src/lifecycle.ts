@@ -350,6 +350,7 @@ function bootstrapDeps(
     platform: resolved.platform,
     prompter: noPrompt ? nonInteractivePrompter() : (io.prompter ?? createPrompter()),
     streamCommand: io.streamCommand ?? defaultStreamCommand(io.stdout),
+    execCommand: resolved.execCommand,
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
     sleep: resolved.sleep,
     fileExists: resolved.fileExists,
@@ -357,53 +358,89 @@ function bootstrapDeps(
   };
 }
 
+/**
+ * Login + seeding after readiness. The seed outcome is recorded separately
+ * from bootstrap completion: the platform IS complete without the built-in
+ * agent, but a failed seed marks `seedCompleted: false` so the very next
+ * `start` retries it — the recovery the failure message promises.
+ */
+async function runLoginAndSeed(
+  io: LifecycleIo,
+  resolved: ResolvedLifecycle,
+  envFile: PlatformEnvFile,
+): Promise<boolean> {
+  const origin = publicOrigin(envFile);
+  const adminEmail = envFile.values.EVELAND_ADMIN_EMAIL;
+  const adminPassword = envFile.values.EVELAND_ADMIN_PASSWORD;
+  if (!adminEmail || !adminPassword) return true; // nothing to seed with
+  try {
+    const login = await runImplicitLogin({
+      apiBaseUrl: API_INTERNAL_URL_FALLBACK,
+      publicOrigin: origin,
+      adminEmail,
+      adminPassword,
+      fetchImpl: resolved.fetchImpl,
+      sleep: resolved.sleep,
+      env: io.env,
+      print: io.stdout,
+    });
+    try {
+      await runSeedAgent({
+        repoRootDir: resolved.repoRootDir,
+        publicOrigin: origin,
+        accessToken: login.accessToken,
+        envValues: envFile.values,
+        parentEnv: io.env,
+        streamCommand: io.streamCommand ?? defaultStreamCommand(io.stdout),
+        print: io.stdout,
+      });
+      return true;
+    } catch (error) {
+      // The platform is fully usable without the built-in agent; the next
+      // `eveland-ctl start` retries, and the error text carries the manual
+      // `eveland deploy` recovery for the impatient.
+      io.stderr(error instanceof Error ? error.message : String(error));
+      io.stderr("The next `eveland-ctl start` will retry the seeding.");
+      return false;
+    }
+  } catch (error) {
+    // Login is a convenience, not a gate: the platform is up either way and
+    // `eveland login` recovers it interactively.
+    io.stderr(error instanceof Error ? error.message : String(error));
+    io.stderr("Continuing without CLI login; run `eveland login` later.");
+    io.stderr("The next `eveland-ctl start` will retry login and seeding.");
+    return false;
+  }
+}
+
 async function finishBootstrap(
   io: LifecycleIo,
   resolved: ResolvedLifecycle,
   envFile: PlatformEnvFile,
 ): Promise<void> {
-  const origin = publicOrigin(envFile);
-  const adminEmail = envFile.values.EVELAND_ADMIN_EMAIL;
-  const adminPassword = envFile.values.EVELAND_ADMIN_PASSWORD;
-  if (adminEmail && adminPassword) {
-    try {
-      const login = await runImplicitLogin({
-        apiBaseUrl: API_INTERNAL_URL_FALLBACK,
-        publicOrigin: origin,
-        adminEmail,
-        adminPassword,
-        fetchImpl: resolved.fetchImpl,
-        sleep: resolved.sleep,
-        env: io.env,
-        print: io.stdout,
-      });
-      try {
-        await runSeedAgent({
-          repoRootDir: resolved.repoRootDir,
-          publicOrigin: origin,
-          accessToken: login.accessToken,
-          envValues: envFile.values,
-          parentEnv: io.env,
-          streamCommand: io.streamCommand ?? defaultStreamCommand(io.stdout),
-          print: io.stdout,
-        });
-      } catch (error) {
-        // The platform is fully usable without the built-in agent; the error
-        // text carries the manual `eveland deploy` recovery.
-        io.stderr(error instanceof Error ? error.message : String(error));
-      }
-    } catch (error) {
-      // Login is a convenience, not a gate: the platform is up either way and
-      // `eveland login` recovers it interactively.
-      io.stderr(error instanceof Error ? error.message : String(error));
-      io.stderr("Continuing without CLI login; run `eveland login` later.");
-    }
-  }
+  const seedCompleted = await runLoginAndSeed(io, resolved, envFile);
   const metadata = await readInstallMetadata(resolved.layout);
   if (metadata) {
-    await writeInstallMetadata(resolved.layout, { ...metadata, bootstrapCompleted: true });
+    await writeInstallMetadata(resolved.layout, {
+      ...metadata,
+      bootstrapCompleted: true,
+      seedCompleted,
+    });
   }
-  await io.openUrl?.(origin).catch(() => {});
+  await io.openUrl?.(publicOrigin(envFile)).catch(() => {});
+}
+
+/** The retry path a failed seed promises: run on a normal start until it sticks. */
+async function retrySeedIfPending(
+  io: LifecycleIo,
+  resolved: ResolvedLifecycle,
+  envFile: PlatformEnvFile,
+): Promise<void> {
+  const metadata = await readInstallMetadata(resolved.layout);
+  if (!metadata || metadata.seedCompleted !== false) return;
+  io.stdout("Retrying the built-in agent seeding left unfinished by a previous start...");
+  const seedCompleted = await runLoginAndSeed(io, resolved, envFile);
+  await writeInstallMetadata(resolved.layout, { ...metadata, seedCompleted });
 }
 
 export async function runStart(args: string[], io: LifecycleIo): Promise<number> {
@@ -511,6 +548,8 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
   if (!ok) return 1;
   if (bootstrapping) {
     await finishBootstrap(io, resolved, envFile);
+  } else {
+    await retrySeedIfPending(io, resolved, envFile);
   }
   io.stdout("");
   io.stdout(`Eveland is running at ${publicOrigin(envFile)}`);

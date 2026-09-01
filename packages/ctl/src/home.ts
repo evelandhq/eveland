@@ -29,6 +29,12 @@ export type InstallMetadata = {
   method: "install.sh" | "manual";
   osMode: "darwin" | "linux";
   bootstrapCompleted: boolean;
+  /**
+   * Whether the built-in agent seeding succeeded. `false` makes the next
+   * `start` retry login+seed after readiness; absent (pre-seeding installs)
+   * or `true` means nothing to redo.
+   */
+  seedCompleted?: boolean;
   /** Who owns the platform processes; absent means the ctl supervisor. */
   supervision?: "ctl" | "systemd";
 };

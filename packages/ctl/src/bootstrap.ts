@@ -7,9 +7,9 @@ import {
   renderPlatformEnv,
   type BootstrapInputs,
 } from "./config-render.ts";
-import { parseEnvFile, type PlatformEnvFile } from "./env-file.ts";
+import { parseEnvFile, upsertEnvFileValue, type PlatformEnvFile } from "./env-file.ts";
 import type { ApplianceLayout, InstallMetadata } from "./home.ts";
-import type { LifecycleIo, StreamCommand } from "./io.ts";
+import type { ExecCommand, LifecycleIo, StreamCommand } from "./io.ts";
 import type { Prompter } from "./prompt.ts";
 import type { TcpProbe } from "./net-probe.ts";
 
@@ -56,6 +56,7 @@ export type BootstrapDeps = {
   platform: "darwin" | "linux";
   prompter: Prompter;
   streamCommand: StreamCommand;
+  execCommand: ExecCommand;
   tcpProbe: TcpProbe;
   sleep: (ms: number) => Promise<void>;
   fileExists: (filePath: string) => Promise<boolean>;
@@ -186,6 +187,18 @@ export async function runBootstrapPrepare(
   envFile: PlatformEnvFile,
 ): Promise<void> {
   const { io } = deps;
+
+  // Release identity: pin the actual checkout revision so the About page
+  // reports something better than "unknown". Refreshed again by update.
+  const describe = await deps.execCommand(["git", "describe", "--tags", "--always"], {
+    cwd: deps.repoRootDir,
+  });
+  if (describe.code === 0 && describe.output.trim() !== "") {
+    const revision = describe.output.trim().split("\n")[0]!;
+    await upsertEnvFileValue(envFile.path, "EVELAND_REVISION", revision);
+    envFile.values.EVELAND_REVISION = revision;
+  }
+
   const childEnv = { ...io.env, ...envFile.values };
 
   if (!(await deps.fileExists(path.join(deps.repoRootDir, "apps/web/.next/BUILD_ID")))) {

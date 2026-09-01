@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { applianceLayout, resolveApplianceRoot } from "./home.ts";
 
@@ -31,6 +31,31 @@ export function parseEnvFile(raw: string): Record<string, string> {
     values[key] = value;
   }
   return values;
+}
+
+/**
+ * Replaces (or appends) exactly one key in an env file, preserving every
+ * other line byte-for-byte. Used for machine facts that legitimately change
+ * over the install's life (EVELAND_REVISION on update) — never for secrets,
+ * which are minted once and untouched.
+ */
+export async function upsertEnvFileValue(
+  filePath: string,
+  key: string,
+  value: string,
+): Promise<void> {
+  const raw = await readFile(filePath, "utf8");
+  const lines = raw.split("\n");
+  const pattern = new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`);
+  const index = lines.findIndex((line) => pattern.test(line));
+  if (index >= 0) {
+    lines[index] = `${key}=${value}`;
+  } else {
+    const trailing = lines.at(-1) === "" ? lines.pop() : undefined;
+    lines.push(`${key}=${value}`);
+    if (trailing !== undefined) lines.push(trailing);
+  }
+  await writeFile(filePath, lines.join("\n"), "utf8");
 }
 
 export async function loadPlatformEnvFile(options: {

@@ -138,6 +138,7 @@ async function makeHarness(
               }
             : { code: 0, output: CHANGELOG_AT_TARGET };
         }
+        if (sub === "describe") return { code: 0, output: "v0.49.0\n" };
         if (sub === "status") return { code: 0, output: options.dirty ? " M src/app.ts\n" : "" };
         if (sub === "checkout") {
           if (options.evePinAfter) {
@@ -193,6 +194,12 @@ describe("runUpdate", () => {
     // The backup landed in backups/ and names the version it protects.
     const backups = await readdir(harness.layout.backupsDir);
     expect(backups[0]).toContain("v0.48.0");
+    // Release identity followed the checkout.
+    const { readFile } = await import("node:fs/promises");
+    const { parseEnvFile } = await import("./env-file.ts");
+    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(onDisk.EVELAND_REVISION).toBe("v0.49.0");
+    expect(onDisk.APP_SECRET_KEY).toBe("k");
   });
 
   test("breaking changes are shown and an unconfirmed update aborts before any backup or checkout", async () => {

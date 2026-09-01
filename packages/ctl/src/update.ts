@@ -5,7 +5,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { defaultStreamCommand } from "./bootstrap.ts";
 import { breakingChangesBetween } from "./changelog.ts";
-import { loadPlatformEnvFile } from "./env-file.ts";
+import { loadPlatformEnvFile, upsertEnvFileValue } from "./env-file.ts";
 import { readInstallMetadata } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { resolveLifecycle, runStart, runStop } from "./lifecycle.ts";
@@ -216,6 +216,15 @@ export async function runUpdate(
   if (checkout.code !== 0) {
     io.stderr(`git checkout ${target} failed:\n${checkout.output.trim()}`);
     return 1;
+  }
+
+  // Refresh the pinned release identity so every process (and the About
+  // page) reports the revision actually running after the restart.
+  const describe = await git(["describe", "--tags", "--always"]);
+  if (describe.code === 0 && describe.output.trim() !== "") {
+    const revision = describe.output.trim().split("\n")[0]!;
+    await upsertEnvFileValue(envFile.path, "EVELAND_REVISION", revision);
+    envFile.values.EVELAND_REVISION = revision;
   }
 
   const childEnv = {

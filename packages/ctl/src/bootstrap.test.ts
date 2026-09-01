@@ -55,6 +55,12 @@ async function makeDeps(options: {
       commands.push(argv);
       return options.commandExit ?? 0;
     },
+    execCommand: async (argv) => {
+      if (argv[0] === "git" && argv[1] === "describe") {
+        return { code: 0, output: "v0.48.0\n" };
+      }
+      return { code: 0, output: "" };
+    },
     tcpProbe: async () => options.postgresUp ?? true,
     sleep: async () => {},
     fileExists: async (filePath) => {
@@ -191,6 +197,18 @@ describe("runBootstrapPrepare", () => {
     const envFile = await runBootstrapConfig(deps);
     await runBootstrapPrepare(deps, envFile);
     expect(commands).toEqual([["pnpm", "--filter", "@evelandhq/api", "db:migrate"]]);
+  });
+
+  test("pins the checkout revision into the env file for release identity", async () => {
+    const { deps, layout } = await makeDeps({ webBuildExists: true });
+    const envFile = await runBootstrapConfig(deps);
+    await runBootstrapPrepare(deps, envFile);
+    expect(envFile.values.EVELAND_REVISION).toBe("v0.48.0");
+    expect(envFile.values.EVELAND_RELEASE_CHANNEL).toBe("stable");
+    const onDisk = parseEnvFile(await readFile(layout.envFilePath, "utf8"));
+    expect(onDisk.EVELAND_REVISION).toBe("v0.48.0");
+    // The upsert touched exactly one key: secrets survived byte-for-byte.
+    expect(onDisk.APP_SECRET_KEY).toBe(envFile.values.APP_SECRET_KEY);
   });
 
   test("an unreachable Postgres fails with a compose hint instead of a migrate stack trace", async () => {
