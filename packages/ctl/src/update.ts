@@ -3,21 +3,28 @@ import { createWriteStream } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { defaultStreamCommand } from "./bootstrap.ts";
+import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
 import { breakingChangesBetween } from "./changelog.ts";
-import { loadPlatformEnvFile, upsertEnvFileValue } from "./env-file.ts";
+import { loadPlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
-import { resolveLifecycle, runStart, runStop } from "./lifecycle.ts";
+import { resolveLifecycle, runStart, runStop, systemdModeContext } from "./lifecycle.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
+import { installSystemdArtifacts } from "./systemd-mode.ts";
 
 /**
- * `eveland-ctl update`: move the appliance's source checkout to a newer
- * release tag with every scar this platform has collected productized —
- * breaking changes acknowledged before anything moves, a pg_dump taken
- * first, dirty trees stashed by name instead of clobbered, and an
- * eve-window move surfaced loudly because stale Releases attest as unknown
- * and dead-letter their schedules until rebuilt and promoted.
+ * `eveland-ctl update`: move the appliance's source checkout FORWARD to a
+ * newer release tag, in two phases:
+ *
+ *   phase 1 (this, the OLD code): acknowledge breaking changes, pg_dump,
+ *     stop the whole platform, stash a dirty tree, checkout, pnpm install;
+ *   phase 2 (`_finish-update`, run from the NEW checkout so the new ctl
+ *     owns its own artifacts): refresh release identity, regenerate the
+ *     systemd form's units/env allowlists/overlay, build, migrate, start.
+ *
+ * Only forward moves are allowed: migrations are not reversed
+ * automatically, so a rollback follows the release's rollback notes
+ * (docs/operations/upgrades) — never a casual `--version <older>`.
  */
 
 export type PgDump = (
@@ -64,6 +71,48 @@ function templateEvePin(packageJsonRaw: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/** `vX.Y.Z` → [X, Y, Z]; anything else (a SHA, a branch, a pre-release) → null. */
+export function parseReleaseTag(tag: string): [number, number, number] | null {
+  const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+export function isForwardMove(currentVersion: string, targetTag: string): boolean {
+  const current = parseReleaseTag(`v${currentVersion}`);
+  const target = parseReleaseTag(targetTag);
+  if (!current || !target) return false;
+  for (let i = 0; i < 3; i += 1) {
+    if (target[i]! !== current[i]!) return target[i]! > current[i]!;
+  }
+  return false;
+}
+
+/**
+ * The failure text every post-stop step prints. It never claims a source
+ * rollback is safe: migrations are not reversed automatically, so the
+ * release's rollback notes decide, and the database backup is the floor.
+ */
+export function recoveryPlan(options: {
+  failedStep: string;
+  fromVersion: string;
+  backupPath: string | null;
+  repo: string;
+}): string {
+  const { failedStep, fromVersion, backupPath, repo } = options;
+  return [
+    `${failedStep} — the platform is left STOPPED so a half-updated tree cannot run.`,
+    "To retry:     fix the cause and re-run `eveland-ctl update`.",
+    "To roll back: migrations already applied are NOT reversed automatically. Follow the",
+    '              release\'s rollback notes (docs/operations/upgrades, "Rollback boundary").',
+    `              Only if those notes say v${fromVersion} is compatible with the applied migrations:`,
+    `                git -C ${repo} checkout v${fromVersion} && (cd ${repo} && SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile) && eveland-ctl start`,
+    backupPath
+      ? `              Otherwise restore the database from ${backupPath} first.`
+      : "              Otherwise restore the database from your own backup first (this run skipped pg_dump).",
+  ].join("\n");
 }
 
 export async function runUpdate(
@@ -121,6 +170,14 @@ export async function runUpdate(
     io.stdout(`Already up to date (v${currentVersion}).`);
     return 0;
   }
+  if (!isForwardMove(currentVersion, target)) {
+    io.stderr(
+      `update only moves forward to a newer release tag (running v${currentVersion}, asked for ${target}). ` +
+        "A rollback follows the release's rollback notes (docs/operations/upgrades) — " +
+        "migrations are not reversed automatically; a pre-release or bare revision is not a release.",
+    );
+    return 1;
+  }
   io.stdout(`Updating v${currentVersion} -> ${target}`);
 
   // Breaking changes between here and there, from the TARGET's changelog —
@@ -166,13 +223,11 @@ export async function runUpdate(
   }
 
   // Backup before anything moves.
+  let backupPath: string | null = null;
   if (!parsed.values["skip-backup"]) {
     await mkdir(resolved.layout.backupsDir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backupPath = path.join(
-      resolved.layout.backupsDir,
-      `eveland-v${currentVersion}-${stamp}.sql`,
-    );
+    backupPath = path.join(resolved.layout.backupsDir, `eveland-v${currentVersion}-${stamp}.sql`);
     io.stdout(`Backing up the database to ${backupPath}...`);
     const dump = await (io.pgDump ?? defaultPgDump())(backupPath, {
       cwd: repo,
@@ -195,18 +250,8 @@ export async function runUpdate(
   const stopCode = await runStop([], io);
   if (stopCode !== 0) return stopCode;
 
-  // From here on a failure leaves the platform DOWN on purpose (a half-built
-  // tree must not run); every failure prints this exact recovery.
-  const backupNote = parsed.values["skip-backup"]
-    ? "no database backup was taken (--skip-backup)"
-    : `the database backup is in ${resolved.layout.backupsDir}`;
   const recovery = (failedStep: string) =>
-    [
-      `${failedStep} — the platform is left STOPPED so a half-updated tree cannot run.`,
-      "To retry:    fix the cause and re-run `eveland-ctl update`.",
-      `To roll back: git -C ${repo} checkout v${currentVersion} && (cd ${repo} && SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile) && eveland-ctl start`,
-      `Note: ${backupNote}; migrations already applied are forward-compatible by contract.`,
-    ].join("\n");
+    recoveryPlan({ failedStep, fromVersion: currentVersion, backupPath, repo });
 
   // The eve window before the checkout moves.
   const templatePath = path.join(repo, "templates/starter-agent/package.json");
@@ -229,6 +274,7 @@ export async function runUpdate(
     const stash = await git(["stash", "push", "--include-untracked", "-m", stashName]);
     if (stash.code !== 0) {
       io.stderr(`git stash failed:\n${stash.output.trim()}`);
+      io.stderr(recovery("Stashing local changes failed"));
       return 1;
     }
   }
@@ -240,21 +286,6 @@ export async function runUpdate(
     return 1;
   }
 
-  // Refresh the pinned release identity so every process (and the About
-  // page) reports the revision actually running after the restart.
-  const describe = await git(["describe", "--tags", "--always"]);
-  if (describe.code === 0 && describe.output.trim() !== "") {
-    const revision = describe.output.trim().split("\n")[0]!;
-    await upsertEnvFileValue(envFile.path, "EVELAND_REVISION", revision);
-    envFile.values.EVELAND_REVISION = revision;
-  }
-
-  const childEnv = {
-    ...io.env,
-    ...envFile.values,
-    SHARP_IGNORE_GLOBAL_LIBVIPS: "1",
-  };
-
   io.stdout("Installing dependencies...");
   const install = await streamCommand(["pnpm", "install", "--frozen-lockfile"], {
     cwd: repo,
@@ -265,41 +296,23 @@ export async function runUpdate(
     return 1;
   }
 
-  io.stdout("Building the Dashboard...");
-  const build = await streamCommand(["pnpm", "--filter", "@evelandhq/web", "build"], {
-    cwd: repo,
-    env: childEnv,
-  });
-  if (build !== 0) {
-    io.stderr(recovery("The Dashboard build failed"));
+  // Phase 2 runs from the NEW checkout: this process still executes the old
+  // code and must not decide the new version's artifacts or start sequence.
+  io.stdout("Handing over to the updated eveland-ctl...");
+  const finish = await streamCommand(
+    [
+      process.execPath,
+      path.join(repo, "packages/ctl/src/bin.ts"),
+      "_finish-update",
+      "--from",
+      currentVersion,
+      ...(backupPath ? ["--backup", backupPath] : []),
+    ],
+    { cwd: repo, env: io.env },
+  );
+  if (finish !== 0) {
+    io.stderr("The updated eveland-ctl could not finish the update; see its recovery plan above.");
     return 1;
-  }
-
-  io.stdout("Applying database migrations...");
-  const migrate = await streamCommand(["pnpm", "--filter", "@evelandhq/api", "db:migrate"], {
-    cwd: repo,
-    env: childEnv,
-  });
-  if (migrate !== 0) {
-    io.stderr(recovery("Database migration failed"));
-    return 1;
-  }
-
-  io.stdout("Starting the updated platform...");
-  const startCode = await runStart([], io);
-  if (startCode !== 0) return startCode;
-
-  // Node self-heal check: nvm uninstall silently breaks the pinned
-  // interpreter; the shims and units depend on it.
-  const pinnedNode = envFile.values.EVELAND_NODE;
-  if (pinnedNode) {
-    const probe = await resolved.execCommand([pinnedNode, "--version"], { cwd: repo });
-    if (probe.code !== 0) {
-      io.stderr(
-        `EVELAND_NODE=${pinnedNode} no longer runs (removed by nvm uninstall?). ` +
-          "Re-run the installer to re-resolve and re-pin Node.",
-      );
-    }
   }
 
   const evePinAfter = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
@@ -326,5 +339,95 @@ export async function runUpdate(
 
   io.stdout("");
   io.stdout(`Updated to ${target}.`);
+  return 0;
+}
+
+/**
+ * The hidden `_finish-update` command, executed from the NEW checkout by
+ * phase 1: refresh release identity, regenerate the systemd form's
+ * artifacts (units, env allowlists, Compose overlay — so permission and
+ * topology fixes reach installed machines), build, migrate, start. Every
+ * failure prints the same recovery plan phase 1 uses.
+ */
+export async function runFinishUpdate(args: string[], io: LifecycleIo): Promise<number> {
+  const parsed = parseArgs({
+    args,
+    options: { from: { type: "string" }, backup: { type: "string" } },
+    allowPositionals: false,
+  });
+  const resolved = resolveLifecycle(io);
+  const repo = resolved.repoRootDir;
+  const fromVersion = parsed.values.from ?? "unknown";
+  const backupPath = parsed.values.backup ?? null;
+  const recovery = (failedStep: string) =>
+    recoveryPlan({ failedStep, fromVersion, backupPath, repo });
+  const streamCommand = io.streamCommand ?? defaultStreamCommand(io.stdout);
+
+  const envFile = await loadPlatformEnvFile({
+    env: io.env,
+    repoRoot: repo,
+    platform: resolved.platform,
+  });
+  if (!envFile) {
+    io.stderr(recovery(`No configuration found at ${resolved.layout.envFilePath}`));
+    return 1;
+  }
+
+  // Release identity follows the checkout (exact short SHA; stable only on
+  // an exact release tag).
+  await pinReleaseIdentity(resolved.execCommand, repo, envFile);
+
+  const metadata = await readInstallMetadata(resolved.layout);
+  const systemdForm = metadata?.supervision === "systemd";
+  if (systemdForm) {
+    // The new version owns its artifacts: units, per-service env
+    // allowlists, and the Compose overlay are regenerated and reloaded.
+    io.stdout("Regenerating the systemd form's units, env allowlists, and Compose overlay...");
+    const installed = await installSystemdArtifacts(systemdModeContext(io, resolved), envFile);
+    if (installed !== 0) {
+      io.stderr(recovery("Regenerating the systemd artifacts failed"));
+      return 1;
+    }
+  } else {
+    io.stdout("Building the Dashboard...");
+    const build = await streamCommand(["pnpm", "--filter", "@evelandhq/web", "build"], {
+      cwd: repo,
+      env: { ...io.env, ...envFile.values, SHARP_IGNORE_GLOBAL_LIBVIPS: "1" },
+    });
+    if (build !== 0) {
+      io.stderr(recovery("The Dashboard build failed"));
+      return 1;
+    }
+  }
+
+  io.stdout("Applying database migrations...");
+  const migrate = await streamCommand(["pnpm", "--filter", "@evelandhq/api", "db:migrate"], {
+    cwd: repo,
+    env: { ...io.env, ...envFile.values },
+  });
+  if (migrate !== 0) {
+    io.stderr(recovery("Database migration failed"));
+    return 1;
+  }
+
+  io.stdout("Starting the updated platform...");
+  const started = await runStart([], io);
+  if (started !== 0) {
+    io.stderr(recovery("Starting the updated platform failed"));
+    return started;
+  }
+
+  // Node self-heal check: nvm uninstall silently breaks the pinned
+  // interpreter; the shims and units depend on it.
+  const pinnedNode = envFile.values.EVELAND_NODE;
+  if (pinnedNode) {
+    const probe = await resolved.execCommand([pinnedNode, "--version"], { cwd: repo });
+    if (probe.code !== 0) {
+      io.stderr(
+        `EVELAND_NODE=${pinnedNode} no longer runs (removed by nvm uninstall?). ` +
+          "Re-run the installer to re-resolve and re-pin Node.",
+      );
+    }
+  }
   return 0;
 }

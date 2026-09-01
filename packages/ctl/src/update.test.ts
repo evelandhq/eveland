@@ -1,14 +1,15 @@
-import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { writeInstallMetadata } from "./bootstrap.ts";
+import { parseEnvFile } from "./env-file.ts";
 import { applianceLayout } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
-import { writeSupervisorRecord, writeSupervisorState } from "./state-files.ts";
-import { runUpdate, type PgDump } from "./update.ts";
 import type { Prompter } from "./prompt.ts";
+import { writeSupervisorRecord, writeSupervisorState } from "./state-files.ts";
+import { isForwardMove, recoveryPlan, runFinishUpdate, runUpdate, type PgDump } from "./update.ts";
 
 const CHANGELOG_AT_TARGET = `# Changelog
 
@@ -34,14 +35,18 @@ type Harness = Awaited<ReturnType<typeof makeHarness>>;
 async function makeHarness(
   options: {
     installed?: boolean;
+    supervision?: "ctl" | "systemd";
     dirty?: boolean;
     breaking?: boolean;
     evePinAfter?: string;
     confirmAnswers?: boolean[];
+    /** What `git describe --tags --exact-match` answers after the checkout. */
+    tagAfter?: string | null;
   } = {},
 ) {
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-update-"));
   const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-updaterepo-"));
+  const unitDir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-updateunits-"));
   const layout = applianceLayout(home);
   await mkdir(layout.etcDir, { recursive: true });
   await writeFile(
@@ -53,6 +58,8 @@ async function makeHarness(
       "EVELAND_ADMIN_EMAIL=admin@example.com",
       "EVELAND_ADMIN_PASSWORD=long-enough-password",
       "DATABASE_URL=postgres://x",
+      "EVELAND_RELEASE_CHANNEL=stable",
+      "EVELAND_REVISION=0000000",
     ].join("\n"),
     "utf8",
   );
@@ -61,8 +68,9 @@ async function makeHarness(
       version: 1,
       installedAt: "2026-09-01T00:00:00.000Z",
       method: "install.sh",
-      osMode: "darwin",
+      osMode: options.supervision === "systemd" ? "linux" : "darwin",
       bootstrapCompleted: true,
+      supervision: options.supervision ?? "ctl",
     });
   }
   // The "running" checkout: version 0.48.0, an eve pin, dependencies, web build.
@@ -83,8 +91,10 @@ async function makeHarness(
   const streamed: string[][] = [];
   const pgDumps: string[] = [];
   const timeline: string[] = [];
+  const written: Record<string, string> = {};
   const confirmQueue = [...(options.confirmAnswers ?? [])];
   const alivePids = new Set<number>();
+  let checkedOut = false;
   // The platform is RUNNING when an update begins.
   alivePids.add(4242);
   await writeSupervisorRecord(layout, { pid: 4242, identity: "id-4242" });
@@ -95,9 +105,13 @@ async function makeHarness(
     confirm: async (_q, d) => confirmQueue.shift() ?? d,
   };
 
-  const io: LifecycleIo & { pgDump: PgDump } = {
+  const io: LifecycleIo & {
+    pgDump: PgDump;
+    systemdUnitDir: string;
+    writeTextFile: (filePath: string, content: string) => Promise<void>;
+  } = {
     env: { EVELAND_HOME: home },
-    platform: "darwin",
+    platform: options.supervision === "systemd" ? "linux" : "darwin",
     stdout: (line) => out.push(line),
     stderr: (line) => err.push(line),
     repoRootDir: repo,
@@ -111,6 +125,12 @@ async function makeHarness(
     },
     fetchImpl: async () => new Response("{}", { status: 200 }),
     tcpProbe: async () => true,
+    getuid: () => 0,
+    systemdUnitDir: unitDir,
+    writeTextFile: async (filePath, content) => {
+      written[filePath] = content;
+      await writeFile(filePath, content, "utf8");
+    },
     spawnDaemon: async () => {
       timeline.push("start-daemon");
       await writeSupervisorRecord(layout, { pid: 4242, identity: "id-4242" });
@@ -130,13 +150,15 @@ async function makeHarness(
     },
     streamCommand: async (argv) => {
       streamed.push(argv);
+      if (argv.includes("_finish-update")) timeline.push("finish-update");
       return 0;
     },
     execCommand: async (argv) => {
       if (argv[0] === "git") {
         gitCalls.push(argv);
         const sub = argv[1];
-        if (sub === "tag") return { code: 0, output: "v0.49.0\nv0.48.0\n" };
+        if (sub === "tag") return { code: 0, output: "v0.49.0\nv0.48.0\nv0.47.0\n" };
+        if (sub === "rev-parse") return { code: 0, output: checkedOut ? "beef049\n" : "abc0480\n" };
         if (sub === "show") {
           return options.breaking === false
             ? {
@@ -146,10 +168,14 @@ async function makeHarness(
               }
             : { code: 0, output: CHANGELOG_AT_TARGET };
         }
-        if (sub === "describe") return { code: 0, output: "v0.49.0\n" };
+        if (sub === "describe") {
+          const tag = options.tagAfter === undefined ? "v0.49.0" : options.tagAfter;
+          return tag ? { code: 0, output: `${tag}\n` } : { code: 128, output: "fatal: no tag" };
+        }
         if (sub === "status") return { code: 0, output: options.dirty ? " M src/app.ts\n" : "" };
         if (sub === "checkout") {
           timeline.push("checkout");
+          checkedOut = true;
           if (options.evePinAfter) {
             await writeFile(
               path.join(repo, "templates/starter-agent/package.json"),
@@ -166,7 +192,11 @@ async function makeHarness(
         }
         return { code: 0, output: "" };
       }
-      // docker info / compose during restart
+      if (argv[0] === "systemctl") {
+        timeline.push(`systemctl ${argv[1]}`);
+        if (argv[1] === "is-active") return { code: 0, output: "active\n" };
+      }
+      // docker info / compose during start
       return { code: 0, output: "ok" };
     },
     pgDump: async (backupPath) => {
@@ -175,66 +205,147 @@ async function makeHarness(
       return 0;
     },
   };
-  return { io, out, err, gitCalls, streamed, pgDumps, timeline, layout, repo };
+  return { io, out, err, gitCalls, streamed, pgDumps, timeline, written, layout, repo, unitDir };
 }
 
 function gitSubcommands(harness: Harness): string[] {
   return harness.gitCalls.map((argv) => argv[1]!);
 }
 
-describe("runUpdate", () => {
+function finishUpdateCall(harness: Harness): string[] | undefined {
+  return harness.streamed.find((argv) => argv.includes("_finish-update"));
+}
+
+describe("isForwardMove", () => {
+  test("only a strictly newer release tag counts as forward", () => {
+    expect(isForwardMove("0.48.0", "v0.49.0")).toBe(true);
+    expect(isForwardMove("0.48.0", "v1.0.0")).toBe(true);
+    expect(isForwardMove("0.48.0", "v0.48.1")).toBe(true);
+    expect(isForwardMove("0.48.0", "v0.48.0")).toBe(false);
+    expect(isForwardMove("0.48.0", "v0.47.9")).toBe(false);
+    expect(isForwardMove("0.48.0", "v0.9.9")).toBe(false);
+  });
+
+  test("a SHA, a branch, or a pre-release is never a release to move to", () => {
+    expect(isForwardMove("0.48.0", "deadbeef")).toBe(false);
+    expect(isForwardMove("0.48.0", "main")).toBe(false);
+    expect(isForwardMove("0.48.0", "v0.49.0-rc.1")).toBe(false);
+  });
+});
+
+describe("recoveryPlan", () => {
+  test("never claims a source rollback is safe; points at the rollback notes and the backup", () => {
+    const plan = recoveryPlan({
+      failedStep: "Database migration failed",
+      fromVersion: "0.48.0",
+      backupPath: "/opt/eveland/backups/x.sql",
+      repo: "/opt/eveland/source",
+    });
+    expect(plan).toContain("left STOPPED");
+    expect(plan).toContain("NOT reversed automatically");
+    expect(plan).toContain("Rollback boundary");
+    expect(plan).toContain("Only if those notes say v0.48.0 is compatible");
+    expect(plan).toContain("restore the database from /opt/eveland/backups/x.sql");
+    expect(plan).not.toMatch(/forward-compatible/i);
+  });
+});
+
+describe("runUpdate (phase 1, the old code)", () => {
   test("refuses a development checkout", async () => {
     const harness = await makeHarness({ installed: false });
     expect(await runUpdate([], harness.io)).toBe(1);
     expect(harness.err.join("\n")).toContain("git pull");
   });
 
-  test("full pipeline: backup -> checkout -> install -> build -> migrate -> restart", async () => {
+  test("pipeline: backup -> stop -> checkout -> install -> hand over to the NEW checkout's ctl", async () => {
     const harness = await makeHarness({ confirmAnswers: [true] });
     expect(await runUpdate([], harness.io)).toBe(0);
     expect(harness.pgDumps).toHaveLength(1);
     expect(gitSubcommands(harness)).toContain("checkout");
-    expect(harness.streamed).toEqual([
-      ["pnpm", "install", "--frozen-lockfile"],
-      ["pnpm", "--filter", "@evelandhq/web", "build"],
-      ["pnpm", "--filter", "@evelandhq/api", "db:migrate"],
+    expect(harness.streamed.map((argv) => argv.slice(0, 2))).toEqual([
+      ["pnpm", "install"],
+      [process.execPath, path.join(harness.repo, "packages/ctl/src/bin.ts")],
+    ]);
+    // Phase 2 is the new checkout's bin, told where it came from and where
+    // the backup is — the old code decides nothing past this point.
+    const finish = finishUpdateCall(harness)!;
+    expect(finish.slice(2)).toEqual([
+      "_finish-update",
+      "--from",
+      "0.48.0",
+      "--backup",
+      harness.pgDumps[0],
     ]);
     expect(harness.out.join("\n")).toContain("Updated to v0.49.0.");
-    // The backup landed in backups/ and names the version it protects.
     const backups = await readdir(harness.layout.backupsDir);
     expect(backups[0]).toContain("v0.48.0");
-    // Release identity followed the checkout.
-    const { readFile } = await import("node:fs/promises");
-    const { parseEnvFile } = await import("./env-file.ts");
-    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
-    expect(onDisk.EVELAND_REVISION).toBe("v0.49.0");
-    expect(onDisk.APP_SECRET_KEY).toBe("k");
   });
 
-  test("the platform stops BEFORE the working tree moves, and starts only after migrate", async () => {
+  test("the old code never builds, migrates, pins identity, or starts on its own", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    expect(await runUpdate([], harness.io)).toBe(0);
+    const flat = harness.streamed.map((argv) => argv.join(" "));
+    expect(flat.some((line) => line.includes("db:migrate"))).toBe(false);
+    expect(flat.some((line) => line.includes("@evelandhq/web build"))).toBe(false);
+    expect(harness.timeline).not.toContain("start-daemon");
+    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(onDisk.EVELAND_REVISION).toBe("0000000");
+  });
+
+  test("the platform stops BEFORE the working tree moves, and the handover comes after", async () => {
     const harness = await makeHarness({ confirmAnswers: [true] });
     expect(await runUpdate([], harness.io)).toBe(0);
     const stopIndex = harness.timeline.indexOf("stop-signal");
     const checkoutIndex = harness.timeline.indexOf("checkout");
-    const startIndex = harness.timeline.indexOf("start-daemon");
+    const finishIndex = harness.timeline.indexOf("finish-update");
     expect(stopIndex).toBeGreaterThanOrEqual(0);
     expect(stopIndex).toBeLessThan(checkoutIndex);
-    expect(checkoutIndex).toBeLessThan(startIndex);
+    expect(checkoutIndex).toBeLessThan(finishIndex);
   });
 
-  test("a failed migration leaves the platform stopped, with the explicit recovery plan", async () => {
+  test("a failed pnpm install leaves the platform stopped with the safe recovery plan", async () => {
     const harness = await makeHarness({ confirmAnswers: [true] });
     harness.io.streamCommand = async (argv) => {
       harness.streamed.push(argv);
-      return argv.includes("db:migrate") ? 1 : 0;
+      return argv[1] === "install" ? 1 : 0;
     };
     expect(await runUpdate([], harness.io)).toBe(1);
     const stderr = harness.err.join("\n");
     expect(stderr).toContain("left STOPPED");
-    expect(stderr).toContain("checkout v0.48.0");
-    expect(stderr).toContain("eveland-ctl start");
+    expect(stderr).toContain("NOT reversed automatically");
+    expect(stderr).toContain("Rollback boundary");
     expect(harness.timeline).toContain("stop-signal");
-    expect(harness.timeline).not.toContain("start-daemon");
+    expect(finishUpdateCall(harness)).toBeUndefined();
+  });
+
+  test("a failing phase 2 is reported without a second recovery plan (the new ctl printed its own)", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    harness.io.streamCommand = async (argv) => {
+      harness.streamed.push(argv);
+      return argv.includes("_finish-update") ? 1 : 0;
+    };
+    expect(await runUpdate([], harness.io)).toBe(1);
+    expect(harness.err.join("\n")).toContain("could not finish the update");
+    expect(harness.out.join("\n")).not.toContain("Updated to");
+  });
+
+  test("a downgrade is refused before anything moves", async () => {
+    const harness = await makeHarness({});
+    expect(await runUpdate(["--version", "v0.47.0"], harness.io)).toBe(1);
+    expect(harness.err.join("\n")).toContain("only moves forward");
+    expect(harness.err.join("\n")).toContain("rollback notes");
+    expect(harness.pgDumps).toHaveLength(0);
+    expect(harness.timeline).not.toContain("stop-signal");
+    expect(gitSubcommands(harness)).not.toContain("checkout");
+  });
+
+  test("a bare revision or pre-release is not a release to update to", async () => {
+    for (const target of ["deadbeef", "main", "v0.49.0-rc.1"]) {
+      const harness = await makeHarness({});
+      expect(await runUpdate(["--version", target], harness.io)).toBe(1);
+      expect(harness.err.join("\n")).toContain("only moves forward");
+      expect(gitSubcommands(harness)).not.toContain("checkout");
+    }
   });
 
   test("breaking changes are shown and an unconfirmed update aborts before any backup or checkout", async () => {
@@ -271,6 +382,16 @@ describe("runUpdate", () => {
     expect(gitSubcommands(harness)).not.toContain("checkout");
   });
 
+  test("--skip-backup hands over without a --backup, and the plan says so", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    expect(await runUpdate(["--skip-backup"], harness.io)).toBe(0);
+    expect(harness.pgDumps).toHaveLength(0);
+    expect(finishUpdateCall(harness)!.slice(2)).toEqual(["_finish-update", "--from", "0.48.0"]);
+    expect(
+      recoveryPlan({ failedStep: "x", fromVersion: "0.48.0", backupPath: null, repo: "/r" }),
+    ).toContain("this run skipped pg_dump");
+  });
+
   test("a clean tree is never stashed", async () => {
     const harness = await makeHarness({ confirmAnswers: [true] });
     expect(await runUpdate([], harness.io)).toBe(0);
@@ -297,5 +418,89 @@ describe("runUpdate", () => {
     const harness = await makeHarness({ confirmAnswers: [true] });
     expect(await runUpdate([], harness.io)).toBe(0);
     expect(harness.out.join("\n")).not.toContain("eve window moved");
+  });
+});
+
+describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
+  const FROM = ["--from", "0.48.0", "--backup", "/b/x.sql"];
+
+  test("ctl form: pins identity, builds, migrates, starts — in that order", async () => {
+    const harness = await makeHarness({});
+    // Phase 2 begins with the platform stopped.
+    harness.io.sendSignal!(4242, "SIGTERM");
+    expect(await runFinishUpdate(FROM, harness.io)).toBe(0);
+    expect(harness.streamed).toEqual([
+      ["pnpm", "--filter", "@evelandhq/web", "build"],
+      ["pnpm", "--filter", "@evelandhq/api", "db:migrate"],
+    ]);
+    expect(harness.timeline).toContain("start-daemon");
+    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(onDisk.EVELAND_REVISION).toBe("abc0480");
+    expect(onDisk.EVELAND_RELEASE_CHANNEL).toBe("stable");
+    expect(onDisk.APP_SECRET_KEY).toBe("k");
+  });
+
+  test("a checkout that is not an exact release tag is stamped edge, not stable", async () => {
+    const harness = await makeHarness({ tagAfter: null });
+    harness.io.sendSignal!(4242, "SIGTERM");
+    expect(await runFinishUpdate(FROM, harness.io)).toBe(0);
+    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(onDisk.EVELAND_RELEASE_CHANNEL).toBe("edge");
+  });
+
+  test("systemd form: regenerates units, env allowlists and overlay, then migrates and starts via systemd", async () => {
+    const harness = await makeHarness({ supervision: "systemd" });
+    expect(await runFinishUpdate(FROM, harness.io), harness.err.join("\n")).toBe(0);
+    // The new version's artifacts, written by the new ctl.
+    expect(Object.keys(harness.written)).toContain(
+      path.join(harness.unitDir, "eveland-workflow-dispatcher.service"),
+    );
+    expect(Object.keys(harness.written)).toContain(
+      path.join(harness.unitDir, "eveland-worker.service"),
+    );
+    const etc = await readdir(harness.layout.etcDir);
+    expect(etc).toContain("compose.appliance.yml");
+    expect(etc).toContain("eveland-gateway.env");
+    expect(etc).toContain("eveland-web.env");
+    expect(etc).toContain("eveland-workflow-dispatcher.env");
+    expect(harness.timeline).toContain("systemctl daemon-reload");
+    // No host-side Dashboard build (the web container builds its own), but
+    // migrations still run, and the start goes through systemd.
+    const flat = harness.streamed.map((argv) => argv.join(" "));
+    expect(flat.some((line) => line.includes("@evelandhq/web build"))).toBe(false);
+    expect(flat.some((line) => line.includes("db:migrate"))).toBe(true);
+    expect(harness.timeline).toContain("systemctl start");
+    expect(harness.timeline).not.toContain("start-daemon");
+  });
+
+  test("a failed migration leaves the platform stopped, with the safe recovery plan", async () => {
+    const harness = await makeHarness({});
+    harness.io.sendSignal!(4242, "SIGTERM");
+    harness.io.streamCommand = async (argv) => {
+      harness.streamed.push(argv);
+      return argv.includes("db:migrate") ? 1 : 0;
+    };
+    expect(await runFinishUpdate(FROM, harness.io)).toBe(1);
+    const stderr = harness.err.join("\n");
+    expect(stderr).toContain("Database migration failed");
+    expect(stderr).toContain("left STOPPED");
+    expect(stderr).toContain("NOT reversed automatically");
+    expect(stderr).toContain("restore the database from /b/x.sql");
+    expect(harness.timeline).not.toContain("start-daemon");
+  });
+
+  test("a start that fails after a good migration lands in the same recovery plan", async () => {
+    const harness = await makeHarness({});
+    harness.io.sendSignal!(4242, "SIGTERM");
+    harness.io.spawnDaemon = async () => {
+      // The daemon "crashes": pidfile written but the pid is never alive.
+      await writeSupervisorRecord(harness.layout, { pid: 9999, identity: "id-9999" });
+      return 9999;
+    };
+    expect(await runFinishUpdate(FROM, harness.io)).toBe(1);
+    const stderr = harness.err.join("\n");
+    expect(stderr).toContain("Starting the updated platform failed");
+    expect(stderr).toContain("left STOPPED");
+    expect(stderr).toContain("Rollback boundary");
   });
 });

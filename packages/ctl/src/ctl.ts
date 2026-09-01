@@ -4,7 +4,7 @@ import { runRestart, runStart, runStop, runSupervise, type LifecycleIo } from ".
 import { runCtlLogs } from "./logs.ts";
 import { runStatus } from "./status.ts";
 import { runInstallCommand } from "./systemd.ts";
-import { runUpdate } from "./update.ts";
+import { runFinishUpdate, runUpdate } from "./update.ts";
 
 /**
  * eveland-ctl: the platform operator's tool. It manages THIS machine's
@@ -65,6 +65,11 @@ const commands: Record<string, Command> = {
     description: "(internal) the daemonized supervisor behind `start`",
     hidden: true,
     run: runSupervise,
+  },
+  "_finish-update": {
+    description: "(internal) phase 2 of `update`, run from the new checkout",
+    hidden: true,
+    run: runFinishUpdate,
   },
 };
 
