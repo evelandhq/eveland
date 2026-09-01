@@ -23,13 +23,17 @@ Headless 场景（CI）设置 `EVELAND_TOKEN`：它永远覆盖存储的凭证�
 
 ## 命令
 
-| 命令                                                  | 行为                                                |
-| ----------------------------------------------------- | --------------------------------------------------- |
-| `eveland init <dir>`                                  | 从源码树内置模板脚手架新 agent 项目（无需登录）     |
-| `eveland login [--origin <url>]`                      | device flow 认证；按 origin 存储凭证                |
-| `eveland logout [--origin <url>]`                     | 忘掉存储的凭证（已设置的 `EVELAND_TOKEN` 仍然生效） |
-| `eveland whoami [--origin <url>]`                     | 打印 origin、用户、角色、token scope 与 token 来源  |
-| `eveland deploy [dir] [--name <slug>] [--no-promote]` | 上传 → 服务端构建（日志打到终端）→ promote          |
+| 命令                                                                                 | 行为                                                                     |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `eveland init <dir>`                                                                 | 从源码树内置模板脚手架新 agent 项目（无需登录）                          |
+| `eveland login [--origin <url>]`                                                     | device flow 认证；按 origin 存储凭证                                     |
+| `eveland logout [--origin <url>]`                                                    | 忘掉存储的凭证（已设置的 `EVELAND_TOKEN` 仍然生效）                      |
+| `eveland whoami [--origin <url>]`                                                    | 打印 origin、用户、角色、token scope 与 token 来源                       |
+| `eveland deploy [dir] [--name <slug>] [--no-promote]`                                | 上传 → 服务端构建（日志打到终端）→ promote                               |
+| `eveland logs [dir] [--name <slug>] [--type build\|deploy\|runtime] [-f] [--tail N]` | 打印项目日志尾部（默认 runtime、100 行）；`-f` 持续跟随                  |
+| `eveland env list\|set KEY=value [--variable]\|rm KEY [--name <slug>]`               | 走 secrets API 管理项目环境——值只写不读；每次变更都会重启在线 deployment |
+
+需要定位项目的命令（`logs`、`env`）与 `deploy` 用同一规则解析目标：`--name` 优先，其次工作目录 `package.json` 的 name，最后目录名。
 
 ## Deploy
 
