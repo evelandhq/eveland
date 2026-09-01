@@ -225,9 +225,42 @@ export class Supervisor {
       entry.status = "stopped";
       return;
     }
+    // The wrapper died but the real server may still hold the port inside
+    // the old process group; a replacement would crash-loop on it forever.
+    await this.reapGroup(entry);
+    if (this.stopping) {
+      entry.status = "stopped";
+      return;
+    }
     entry.restarts += 1;
     this.spawn(entry);
     await this.publish();
+  }
+
+  /** TERM then KILL a dead child's lingering process group before respawning into it. */
+  private async reapGroup(entry: Entry): Promise<void> {
+    const pid = entry.lastPid;
+    if (pid === null || !this.deps.groupAlive(pid)) return;
+    this.deps.log(`${entry.spec.key} left processes in group ${pid}; reaping before restart`);
+    this.deps.killGroup(pid, "SIGTERM");
+    const pollMs = 100;
+    for (
+      let waited = 0;
+      waited < STOP_TERM_GRACE_MS && this.deps.groupAlive(pid);
+      waited += pollMs
+    ) {
+      await this.deps.sleep(pollMs);
+    }
+    if (this.deps.groupAlive(pid)) {
+      this.deps.killGroup(pid, "SIGKILL");
+      for (
+        let waited = 0;
+        waited < STOP_KILL_GRACE_MS && this.deps.groupAlive(pid);
+        waited += pollMs
+      ) {
+        await this.deps.sleep(pollMs);
+      }
+    }
   }
 
   private async publish(): Promise<void> {

@@ -214,6 +214,37 @@ describe("Supervisor", () => {
     expect(harness.groupKills).toEqual([]);
   });
 
+  test("a crashed wrapper whose process group lives is reaped (TERM, then KILL) before the respawn", async () => {
+    const harness = makeHarness();
+    const supervisor = new Supervisor(harness.processes, harness.deps);
+    await supervisor.start();
+    const alphaPid = harness.spawned.alpha![0]!.pid;
+    // The wrapper died but its server child survives in the group; it only
+    // yields to SIGKILL (the fake resets the group on SIGKILL).
+    harness.lingeringGroups.set(alphaPid, Number.MAX_SAFE_INTEGER);
+    harness.spawned.alpha![0]!.exit(1);
+    // The reap polls through the TERM grace, sleeping in the fake clock.
+    for (let i = 0; i < 200; i += 1) await settle();
+    const signalsForAlpha = harness.groupKills
+      .filter((kill) => kill.pid === alphaPid)
+      .map((kill) => kill.signal);
+    expect(signalsForAlpha).toEqual(["SIGTERM", "SIGKILL"]);
+    // The respawn happened only after the old group was empty: a fresh
+    // wrapper would otherwise collide with the survivor on its port.
+    expect(harness.spawned.alpha).toHaveLength(2);
+    expect(harness.logs.some((line) => line.includes("reaping before restart"))).toBe(true);
+  });
+
+  test("a crashed wrapper with an empty group is respawned without any group signal", async () => {
+    const harness = makeHarness();
+    const supervisor = new Supervisor(harness.processes, harness.deps);
+    await supervisor.start();
+    harness.spawned.alpha![0]!.exit(1);
+    await settle();
+    expect(harness.spawned.alpha).toHaveLength(2);
+    expect(harness.groupKills).toEqual([]);
+  });
+
   test("a crash during shutdown is recorded as stopped, not restarted", async () => {
     const harness = makeHarness();
     const supervisor = new Supervisor(harness.processes, harness.deps);
