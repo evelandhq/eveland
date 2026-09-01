@@ -19,7 +19,7 @@ import {
   type LifecycleIo,
 } from "./lifecycle.ts";
 import { isProcessAlive, readSupervisorPid } from "./state-files.ts";
-import { defaultTcpProbe, type TcpProbe } from "./status.ts";
+import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
 
 /**
  * `eveland-ctl doctor`: every check this installation has historically been

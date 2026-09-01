@@ -1,0 +1,199 @@
+import { spawn } from "node:child_process";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { POSTGRES_HOST_PORT } from "@evelandhq/core/ports";
+import {
+  defaultBootstrapInputs,
+  renderPlatformEnv,
+  type BootstrapInputs,
+} from "./config-render.ts";
+import { parseEnvFile, type PlatformEnvFile } from "./env-file.ts";
+import type { ApplianceLayout, InstallMetadata } from "./home.ts";
+import type { LifecycleIo, StreamCommand } from "./io.ts";
+import type { Prompter } from "./prompt.ts";
+import type { TcpProbe } from "./net-probe.ts";
+
+/**
+ * First-boot bootstrap, run inside `eveland-ctl start` when the appliance has
+ * no completed installation. Every step is idempotent — an interrupted
+ * bootstrap resumes by re-running start: an existing etc/eveland.env is
+ * reused verbatim (never re-rendered, secrets are minted exactly once), and
+ * migrations/build steps are safe to repeat.
+ */
+
+export type { StreamCommand } from "./io.ts";
+
+export function defaultStreamCommand(print: (line: string) => void): StreamCommand {
+  return (argv, options) =>
+    new Promise((resolve) => {
+      const [command, ...rest] = argv;
+      const child = spawn(command!, rest, {
+        cwd: options.cwd,
+        env: options.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let buffer = "";
+      const emit = (chunk: Buffer) => {
+        buffer += chunk.toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) print(`  ${line}`);
+      };
+      child.stdout.on("data", emit);
+      child.stderr.on("data", emit);
+      child.on("error", () => resolve(null));
+      child.on("close", (code) => {
+        if (buffer) print(`  ${buffer}`);
+        resolve(code);
+      });
+    });
+}
+
+export type BootstrapDeps = {
+  io: LifecycleIo;
+  layout: ApplianceLayout;
+  repoRootDir: string;
+  platform: "darwin" | "linux";
+  prompter: Prompter;
+  streamCommand: StreamCommand;
+  tcpProbe: TcpProbe;
+  sleep: (ms: number) => Promise<void>;
+  fileExists: (filePath: string) => Promise<boolean>;
+  random?: (size: number) => Buffer;
+};
+
+export async function gatherBootstrapInputs(deps: BootstrapDeps): Promise<BootstrapInputs> {
+  const defaults = defaultBootstrapInputs(deps.io.env);
+  const { prompter } = deps;
+
+  const originAnswer = await prompter.ask(
+    "Public origin (the URL this platform will be reached at)",
+    defaults.publicOrigin,
+  );
+  let publicOrigin: string;
+  try {
+    publicOrigin = new URL(originAnswer.trim()).origin;
+  } catch {
+    throw new Error(
+      `Invalid public origin '${originAnswer}': expected a URL like https://eveland.example.com`,
+    );
+  }
+
+  const adminEmail = (await prompter.ask("Admin email", defaults.adminEmail)).trim().toLowerCase();
+  const passwordAnswer = (await prompter.ask("Admin password (blank to generate)", "")).trim();
+  const adminPassword = passwordAnswer || defaults.adminPassword;
+  if (adminPassword.length < 12) {
+    throw new Error("The admin password must be at least 12 characters.");
+  }
+
+  let anthropicApiKey = defaults.anthropicApiKey;
+  if (anthropicApiKey) {
+    const use = await prompter.confirm(
+      "Found ANTHROPIC_API_KEY in your shell — use it for the built-in agent?",
+      true,
+    );
+    if (!use) anthropicApiKey = undefined;
+  } else if (prompter.interactive) {
+    anthropicApiKey =
+      (await prompter.ask("Anthropic API key for the built-in agent (blank to skip)", "")).trim() ||
+      undefined;
+  }
+  let openaiApiKey = defaults.openaiApiKey;
+  if (openaiApiKey) {
+    const use = await prompter.confirm(
+      "Found OPENAI_API_KEY in your shell — use it for the built-in agent?",
+      true,
+    );
+    if (!use) openaiApiKey = undefined;
+  }
+
+  return { publicOrigin, adminEmail, adminPassword, anthropicApiKey, openaiApiKey };
+}
+
+export async function writeInstallMetadata(
+  layout: ApplianceLayout,
+  metadata: InstallMetadata,
+): Promise<void> {
+  await mkdir(layout.etcDir, { recursive: true });
+  await writeFile(layout.installJsonPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+}
+
+/** Directory scaffolding + configuration rendering. Returns the env file to run with. */
+export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformEnvFile> {
+  const { io, layout } = deps;
+  for (const dir of [
+    layout.etcDir,
+    layout.dataDir,
+    layout.logsDir,
+    layout.runDir,
+    layout.backupsDir,
+  ]) {
+    await mkdir(dir, { recursive: true });
+  }
+
+  if (await deps.fileExists(layout.envFilePath)) {
+    io.stdout(`Reusing existing configuration at ${layout.envFilePath} (secrets are minted once).`);
+    const raw = await readFile(layout.envFilePath, "utf8");
+    return { path: layout.envFilePath, values: parseEnvFile(raw) };
+  }
+
+  io.stdout("");
+  io.stdout("First boot: this machine has no eveland configuration yet.");
+  const inputs = await gatherBootstrapInputs(deps);
+  const rendered = renderPlatformEnv({
+    platform: deps.platform,
+    applianceRoot: layout.root,
+    inputs,
+    random: deps.random,
+  });
+  await writeFile(layout.envFilePath, rendered.content, { mode: 0o600 });
+  await chmod(layout.envFilePath, 0o600);
+  io.stdout(`Wrote ${layout.envFilePath} (0600; all secrets freshly generated).`);
+  io.stdout("");
+  io.stdout("Dashboard admin login (also recorded in that file):");
+  io.stdout(`  Email:    ${inputs.adminEmail}`);
+  io.stdout(`  Password: ${inputs.adminPassword}`);
+  io.stdout("");
+  return { path: layout.envFilePath, values: rendered.values };
+}
+
+/** Build + database preparation. Idempotent; safe to re-run after a failure. */
+export async function runBootstrapPrepare(
+  deps: BootstrapDeps,
+  envFile: PlatformEnvFile,
+): Promise<void> {
+  const { io } = deps;
+  const childEnv = { ...io.env, ...envFile.values };
+
+  if (!(await deps.fileExists(path.join(deps.repoRootDir, "apps/web/.next/BUILD_ID")))) {
+    io.stdout("Building the Dashboard (first boot only; a few minutes)...");
+    const code = await deps.streamCommand(["pnpm", "--filter", "@evelandhq/web", "build"], {
+      cwd: deps.repoRootDir,
+      env: childEnv,
+    });
+    if (code !== 0) throw new Error("The Dashboard build failed; see the output above.");
+  }
+
+  io.stdout("Waiting for Postgres...");
+  const deadlineMs = 60_000;
+  let up = false;
+  for (let waited = 0; waited < deadlineMs; waited += 1_000) {
+    if (await deps.tcpProbe("127.0.0.1", POSTGRES_HOST_PORT)) {
+      up = true;
+      break;
+    }
+    await deps.sleep(1_000);
+  }
+  if (!up) {
+    throw new Error(
+      `Postgres did not come up on 127.0.0.1:${POSTGRES_HOST_PORT}. Check \`docker compose ps\` in ${deps.repoRootDir}.`,
+    );
+  }
+
+  io.stdout("Applying database migrations...");
+  const migrate = await deps.streamCommand(["pnpm", "--filter", "@evelandhq/api", "db:migrate"], {
+    cwd: deps.repoRootDir,
+    env: childEnv,
+  });
+  if (migrate !== 0) throw new Error("Database migration failed; see the output above.");
+}

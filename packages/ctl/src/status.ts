@@ -1,7 +1,7 @@
-import net from "node:net";
 import { OTEL_PLATFORM_HOST_HTTP_PORT, POSTGRES_HOST_PORT } from "@evelandhq/core/ports";
 import { loadPlatformEnvFile } from "./env-file.ts";
 import { publicOrigin, resolveLifecycle, type FetchLike, type LifecycleIo } from "./lifecycle.ts";
+import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
 import { readSupervisorPid, readSupervisorState } from "./state-files.ts";
 
@@ -11,24 +11,7 @@ import { readSupervisorPid, readSupervisorState } from "./state-files.ts";
  * stale after a crash, so both sides are always shown.
  */
 
-export type TcpProbe = (host: string, port: number) => Promise<boolean>;
-
-export function defaultTcpProbe(): TcpProbe {
-  return (host, port) =>
-    new Promise((resolve) => {
-      const socket = net.connect({ host, port, timeout: 2_000 });
-      socket.once("connect", () => {
-        socket.destroy();
-        resolve(true);
-      });
-      const fail = () => {
-        socket.destroy();
-        resolve(false);
-      };
-      socket.once("timeout", fail);
-      socket.once("error", fail);
-    });
-}
+export type { TcpProbe } from "./net-probe.ts";
 
 async function probe(fetchImpl: FetchLike, url: string): Promise<boolean> {
   try {

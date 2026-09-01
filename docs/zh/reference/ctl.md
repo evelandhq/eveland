@@ -34,6 +34,14 @@ description: 平台运维工具——appliance 根目录布局、进程监督、
 
 `update` 与 `install` 是预留动词,后续版本落地;ctl 会明说"尚未可用"而不是报未知命令。
 
+## 首次引导
+
+`start` 的幂等还包括更大的一层:在没有完成安装的机器上(没有 `etc/eveland.env`,或 `etc/install.json` 未标记完成),它会先走首次引导再启动。带自己 `.env` 的开发 checkout 永远不会被引导。
+
+引导只问 decide-per-install 的问题——公开 origin(默认 `http://localhost:17300`)、admin 邮箱、admin 密码(留空则生成强密码并打印一次)——并探测 shell 里现成的 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`,询问是否给内置 agent 使用。其余一切要么生成(`APP_SECRET_KEY`、`BETTER_AUTH_SECRET`、gateway/OTLP/scheduler secrets——全部 CSPRNG,两个 scheduler secret 相互独立,worker preflight 有此要求),要么按 OS 派生(macOS 用 `host.docker.internal` 形态的部署地址,Linux 用回环;`EVELAND_RUNTIME` docker vs systemd)。dispatcher 激活 token 渲染为与 gateway service token 同值——因为 API 校验激活请求用的正是这个凭证。渲染出的 `etc/eveland.env` 权限 `0600` 且**只写一次**——中断后重跑会原样复用,secrets 恰好铸造一次。`--no-prompt`(或无 TTY)全取默认值;`NODE_ENV=production` 意味着占位 secrets 永远不可能生效。
+
+渲染之后,引导按需构建 Dashboard、拉起 infra 容器、等待 Postgres、应用迁移、启动平台(admin 账号由 API 启动时依 `EVELAND_ADMIN_*` 自行种下)。进程就绪后执行**隐式 CLI login**:与 `eveland login` 完全相同的 RFC 8628 device flow——同一个种子客户端、同样的 `deploy observe` scope、一枚正常可吊销的 token——只是批准环节用引导刚种下的 admin 会话在回环 API 上无头驱动,凭证写进 CLI 自己的存储(`~/.config/eveland/credentials/`)。黄金路径 `eveland init` → `eveland deploy` 因此不会碰到登录墙。login 失败只是警告而非启动失败(`eveland login` 可补救)。最后在平台 origin 上打开浏览器(headless 安装只打印 URL)。
+
 ## 监督
 
 macOS 没有 systemd,所以 `start` 把一个监督进程 daemon 化,由它拥有五个平台进程——Agent Gateway、Platform API、Dashboard、Worker、workflow dispatcher(docs 站是 dev-only,永不受监督)。子进程崩溃按指数退避重启(1 秒起倍增,封顶 30 秒;稳定运行满一分钟则清零),各子进程输出落在 `logs/<name>.log`,对监督进程的一次 SIGTERM 即可按序停掉全组。五个进程中四个直接跑 TypeScript 源码(`tsx`),与生产 Compose 一致;只有 Dashboard 需要先有生产构建(`pnpm --filter @evelandhq/web build`),否则 `start` 拒绝启动。Linux 上同一监督器支撑 `--foreground`;把平台装成 systemd 单元是 `install --systemd` 动词,与 `update` 一起落地。

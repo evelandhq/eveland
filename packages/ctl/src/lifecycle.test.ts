@@ -1,11 +1,18 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
+import { writeInstallMetadata } from "./bootstrap.ts";
+import { parseEnvFile } from "./env-file.ts";
+import { applianceLayout, readInstallMetadata, resolveApplianceRoot } from "./home.ts";
 import { runStart, runStop, type LifecycleIo } from "./lifecycle.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
-import { applianceLayout, resolveApplianceRoot } from "./home.ts";
-import { readSupervisorPid, writeSupervisorPid, writeSupervisorState } from "./state-files.ts";
+import {
+  readSupervisorPid,
+  removeSupervisorFiles,
+  writeSupervisorPid,
+  writeSupervisorState,
+} from "./state-files.ts";
 
 async function makeCheckout(options: { env?: string; nodeModules?: boolean; webBuild?: boolean }) {
   const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-repo-"));
@@ -105,13 +112,6 @@ describe("runStart", () => {
     expect(harness.execCalls).toEqual([]);
   });
 
-  test("without configuration it explains both expected locations", async () => {
-    const harness = await makeHarness({});
-    await expect(runStart([], harness.io)).rejects.toThrow(
-      /No platform configuration found.*eveland\.env.*\.env/s,
-    );
-  });
-
   test("refuses to start without installed dependencies or a Dashboard build", async () => {
     const harness = await makeHarness({ env: VALID_ENV, nodeModules: false, webBuild: false });
     expect(await runStart([], harness.io)).toBe(1);
@@ -148,6 +148,134 @@ describe("runStart", () => {
     expect(await runStart(["--skip-infra"], harness.io)).toBe(1);
     expect(harness.err.join("\n")).toContain("supervisor exited during startup");
     expect(harness.err.join("\n")).toContain("boom: bad config");
+  });
+});
+
+describe("runStart first boot", () => {
+  function deviceFlowFetch(): (url: string, init?: RequestInit) => Promise<Response> {
+    let approved = false;
+    let claimed = false;
+    return async (url, init) => {
+      const { pathname } = new URL(url);
+      if (pathname === "/api/auth/device/code") {
+        return Response.json({ device_code: "dev-1", user_code: "CODE", interval: 5 });
+      }
+      if (pathname === "/api/auth/sign-in/email") {
+        return new Response("{}", {
+          status: 200,
+          headers: { "set-cookie": "session=abc; Path=/" },
+        });
+      }
+      if (pathname === "/api/auth/device") {
+        claimed = true;
+        return Response.json({ status: "pending" });
+      }
+      if (pathname === "/api/auth/device/approve") {
+        approved = claimed;
+        return new Response("{}", { status: 200 });
+      }
+      if (pathname === "/api/auth/oauth2/token") {
+        return approved
+          ? Response.json({ access_token: "tok", token_type: "Bearer", scope: "deploy observe" })
+          : Response.json({ error: "authorization_pending" }, { status: 400 });
+      }
+      // Everything else is a readiness/health probe.
+      void init;
+      return new Response("{}", { status: 200 });
+    };
+  }
+
+  test("an unconfigured appliance bootstraps end to end: config, infra, migrate, login, browser", async () => {
+    const harness = await makeHarness({ env: undefined, webBuild: false });
+    const configHome = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
+    harness.io.env.XDG_CONFIG_HOME = configHome;
+    harness.io.fetchImpl = deviceFlowFetch();
+    harness.io.tcpProbe = async () => true;
+    const streamed: string[][] = [];
+    harness.io.streamCommand = async (argv) => {
+      streamed.push(argv);
+      return 0;
+    };
+    const opened: string[] = [];
+    harness.io.openUrl = async (url) => {
+      opened.push(url);
+    };
+
+    expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
+
+    // Rendered config exists with generated secrets and production NODE_ENV.
+    const rendered = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(rendered.NODE_ENV).toBe("production");
+    expect(rendered.APP_SECRET_KEY).toBeTruthy();
+
+    // The Dashboard build and migrations ran; infra came up.
+    expect(streamed).toEqual([
+      ["pnpm", "--filter", "@evelandhq/web", "build"],
+      ["pnpm", "--filter", "@evelandhq/api", "db:migrate"],
+    ]);
+    expect(harness.execCalls).toContainEqual([
+      "docker",
+      "compose",
+      "up",
+      "-d",
+      "postgres",
+      "otel-collector",
+    ]);
+
+    // Implicit login stored a CLI credential for the public origin.
+    const credentials = await readdir(path.join(configHome, "eveland", "credentials"));
+    expect(credentials).toHaveLength(1);
+
+    // Bootstrap completed and the browser opened on the platform.
+    expect((await readInstallMetadata(harness.layout))?.bootstrapCompleted).toBe(true);
+    expect(opened).toEqual(["http://localhost:17300"]);
+    expect(harness.out.join("\n")).toContain("Eveland is running at http://localhost:17300");
+  });
+
+  test("a failed implicit login is a warning, not a failed start", async () => {
+    const harness = await makeHarness({ env: undefined, webBuild: false });
+    harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
+    harness.io.fetchImpl = async (url) => {
+      if (new URL(url).pathname.startsWith("/api/auth/")) {
+        return new Response("{}", { status: 500 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+    harness.io.tcpProbe = async () => true;
+    harness.io.streamCommand = async () => 0;
+
+    expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
+    expect(harness.err.join("\n")).toContain("eveland login");
+    expect((await readInstallMetadata(harness.layout))?.bootstrapCompleted).toBe(true);
+  });
+
+  test("a development checkout with its own .env never bootstraps", async () => {
+    const harness = await makeHarness({ env: VALID_ENV });
+    expect(await runStart([], harness.io)).toBe(0);
+    expect(await readInstallMetadata(harness.layout)).toBeNull();
+    await expect(readFile(harness.layout.envFilePath, "utf8")).rejects.toThrow();
+  });
+
+  test("an interrupted bootstrap resumes without re-rendering secrets", async () => {
+    const harness = await makeHarness({ env: undefined, webBuild: false });
+    harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
+    harness.io.fetchImpl = deviceFlowFetch();
+    harness.io.tcpProbe = async () => true;
+    harness.io.streamCommand = async () => 0;
+    expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
+    const first = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+
+    // Simulate an incomplete install: completed flag reset, supervisor gone.
+    const metadata = await readInstallMetadata(harness.layout);
+    await writeInstallMetadata(harness.layout, { ...metadata!, bootstrapCompleted: false });
+    await removeSupervisorFiles(harness.layout);
+    harness.alivePids.clear();
+    harness.io.fetchImpl = deviceFlowFetch();
+
+    expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
+    const second = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(second.APP_SECRET_KEY).toBe(first.APP_SECRET_KEY);
+    expect((await readInstallMetadata(harness.layout))?.bootstrapCompleted).toBe(true);
   });
 });
 

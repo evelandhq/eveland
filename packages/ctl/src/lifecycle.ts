@@ -4,9 +4,26 @@ import { access, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import { API_INTERNAL_URL_FALLBACK, PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import {
+  defaultStreamCommand,
+  runBootstrapConfig,
+  runBootstrapPrepare,
+  writeInstallMetadata,
+  type BootstrapDeps,
+} from "./bootstrap.ts";
+import type { ExecCommand, FetchLike, LifecycleIo, SpawnDaemon } from "./io.ts";
 import { loadPlatformEnvFile, type PlatformEnvFile } from "./env-file.ts";
-import { applianceLayout, repoRoot, resolveApplianceRoot, type ApplianceLayout } from "./home.ts";
+import {
+  applianceLayout,
+  readInstallMetadata,
+  repoRoot,
+  resolveApplianceRoot,
+  type ApplianceLayout,
+} from "./home.ts";
+import { runImplicitLogin } from "./implicit-login.ts";
+import { defaultTcpProbe } from "./net-probe.ts";
+import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
 import { absoluteProcessDir, childEnvironment, PLATFORM_PROCESSES } from "./processes.ts";
 import {
   isProcessAlive,
@@ -18,34 +35,7 @@ import {
 } from "./state-files.ts";
 import { Supervisor, type SupervisedProcess } from "./supervisor.ts";
 
-export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
-
-export type LifecycleIo = {
-  env: NodeJS.ProcessEnv;
-  stdout: (line: string) => void;
-  stderr: (line: string) => void;
-  platform?: NodeJS.Platform;
-  fetchImpl?: FetchLike;
-  sleep?: (ms: number) => Promise<void>;
-  execCommand?: ExecCommand;
-  spawnDaemon?: SpawnDaemon;
-  fileExists?: (filePath: string) => Promise<boolean>;
-  isAlive?: (pid: number) => boolean;
-  sendSignal?: (pid: number, signal: NodeJS.Signals) => void;
-  repoRootDir?: string;
-};
-
-export type ExecCommand = (
-  argv: string[],
-  options: { cwd: string },
-) => Promise<{ code: number | null; output: string }>;
-
-export type SpawnDaemon = (options: {
-  argv: string[];
-  cwd: string;
-  env: NodeJS.ProcessEnv;
-  logFile: string;
-}) => Promise<number | undefined>;
+export type { ExecCommand, FetchLike, LifecycleIo, SpawnDaemon } from "./io.ts";
 
 export const READINESS_DEADLINE_MS = 120_000;
 export const READINESS_POLL_MS = 500;
@@ -142,14 +132,20 @@ export function publicOrigin(envFile: PlatformEnvFile): string {
   return envFile.values.EVELAND_PUBLIC_ORIGIN?.trim() || PUBLIC_ORIGIN_FALLBACK;
 }
 
-async function preflightStart(resolved: ResolvedLifecycle): Promise<string[]> {
+async function preflightStart(
+  resolved: ResolvedLifecycle,
+  options: { requireWebBuild: boolean },
+): Promise<string[]> {
   const problems: string[] = [];
   if (!(await resolved.fileExists(path.join(resolved.repoRootDir, "node_modules")))) {
     problems.push(
       `Dependencies are not installed in ${resolved.repoRootDir}. Run \`pnpm install --frozen-lockfile\` first.`,
     );
   }
-  if (!(await resolved.fileExists(path.join(resolved.repoRootDir, "apps/web/.next/BUILD_ID")))) {
+  if (
+    options.requireWebBuild &&
+    !(await resolved.fileExists(path.join(resolved.repoRootDir, "apps/web/.next/BUILD_ID")))
+  ) {
     problems.push(
       "The Dashboard has no production build (apps/web/.next is missing). " +
         "Run `pnpm --filter @evelandhq/web build` first.",
@@ -234,12 +230,82 @@ async function waitForReadiness(
   return false;
 }
 
+/**
+ * Bootstrap is needed on an appliance whose install never completed. A
+ * development checkout (its own .env, no appliance config) is never
+ * bootstrapped: it is already configured by hand.
+ */
+async function detectBootstrapNeeded(resolved: ResolvedLifecycle): Promise<boolean> {
+  const applianceEnvExists = await resolved.fileExists(resolved.layout.envFilePath);
+  const devEnvExists = await resolved.fileExists(path.join(resolved.repoRootDir, ".env"));
+  if (!applianceEnvExists && devEnvExists) return false;
+  const metadata = await readInstallMetadata(resolved.layout);
+  return metadata?.bootstrapCompleted !== true;
+}
+
+function bootstrapDeps(
+  io: LifecycleIo,
+  resolved: ResolvedLifecycle,
+  noPrompt: boolean,
+): BootstrapDeps {
+  if (resolved.platform !== "darwin" && resolved.platform !== "linux") {
+    throw new Error(`Unsupported platform '${resolved.platform}'.`);
+  }
+  return {
+    io,
+    layout: resolved.layout,
+    repoRootDir: resolved.repoRootDir,
+    platform: resolved.platform,
+    prompter: noPrompt ? nonInteractivePrompter() : (io.prompter ?? createPrompter()),
+    streamCommand: io.streamCommand ?? defaultStreamCommand(io.stdout),
+    tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
+    sleep: resolved.sleep,
+    fileExists: resolved.fileExists,
+    random: io.random,
+  };
+}
+
+async function finishBootstrap(
+  io: LifecycleIo,
+  resolved: ResolvedLifecycle,
+  envFile: PlatformEnvFile,
+): Promise<void> {
+  const origin = publicOrigin(envFile);
+  const adminEmail = envFile.values.EVELAND_ADMIN_EMAIL;
+  const adminPassword = envFile.values.EVELAND_ADMIN_PASSWORD;
+  if (adminEmail && adminPassword) {
+    try {
+      await runImplicitLogin({
+        apiBaseUrl: API_INTERNAL_URL_FALLBACK,
+        publicOrigin: origin,
+        adminEmail,
+        adminPassword,
+        fetchImpl: resolved.fetchImpl,
+        sleep: resolved.sleep,
+        env: io.env,
+        print: io.stdout,
+      });
+    } catch (error) {
+      // Login is a convenience, not a gate: the platform is up either way and
+      // `eveland login` recovers it interactively.
+      io.stderr(error instanceof Error ? error.message : String(error));
+      io.stderr("Continuing without CLI login; run `eveland login` later.");
+    }
+  }
+  const metadata = await readInstallMetadata(resolved.layout);
+  if (metadata) {
+    await writeInstallMetadata(resolved.layout, { ...metadata, bootstrapCompleted: true });
+  }
+  await io.openUrl?.(origin).catch(() => {});
+}
+
 export async function runStart(args: string[], io: LifecycleIo): Promise<number> {
   const parsed = parseArgs({
     args,
     options: {
       foreground: { type: "boolean" },
       "skip-infra": { type: "boolean" },
+      "no-prompt": { type: "boolean" },
     },
     allowPositionals: false,
   });
@@ -254,18 +320,48 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
     await removeSupervisorFiles(resolved.layout);
   }
 
-  const envFile = await requirePlatformEnvFile(io, resolved);
-  const problems = await preflightStart(resolved);
-  if (problems.length > 0) {
-    for (const problem of problems) io.stderr(problem);
-    return 1;
-  }
-  if (!parsed.values["skip-infra"]) {
-    await ensureInfraUp(io, resolved);
+  const bootstrapping = await detectBootstrapNeeded(resolved);
+  let envFile: PlatformEnvFile;
+  if (bootstrapping) {
+    const deps = bootstrapDeps(io, resolved, Boolean(parsed.values["no-prompt"]));
+    const problems = await preflightStart(resolved, { requireWebBuild: false });
+    if (problems.length > 0) {
+      for (const problem of problems) io.stderr(problem);
+      return 1;
+    }
+    if (parsed.values.foreground) {
+      io.stdout("First boot always runs the supervisor in the background;");
+      io.stdout("use `eveland-ctl stop` and `start --foreground` afterwards.");
+    }
+    envFile = await runBootstrapConfig(deps);
+    const existingMetadata = await readInstallMetadata(resolved.layout);
+    if (!existingMetadata) {
+      await writeInstallMetadata(resolved.layout, {
+        version: 1,
+        installedAt: new Date().toISOString(),
+        method: io.env.EVELAND_INSTALL_METHOD === "install.sh" ? "install.sh" : "manual",
+        osMode: deps.platform,
+        bootstrapCompleted: false,
+      });
+    }
+    if (!parsed.values["skip-infra"]) {
+      await ensureInfraUp(io, resolved);
+    }
+    await runBootstrapPrepare(deps, envFile);
+  } else {
+    envFile = await requirePlatformEnvFile(io, resolved);
+    const problems = await preflightStart(resolved, { requireWebBuild: true });
+    if (problems.length > 0) {
+      for (const problem of problems) io.stderr(problem);
+      return 1;
+    }
+    if (!parsed.values["skip-infra"]) {
+      await ensureInfraUp(io, resolved);
+    }
   }
   await mkdir(resolved.layout.logsDir, { recursive: true });
 
-  if (parsed.values.foreground) {
+  if (!bootstrapping && parsed.values.foreground) {
     io.stdout(`Starting Eveland in the foreground (config: ${envFile.path}). Ctrl-C stops it.`);
     return runSupervise(["--root", resolved.layout.root], io);
   }
@@ -281,6 +377,9 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
   io.stdout(`Starting Eveland (config: ${envFile.path}, supervisor pid ${pid ?? "?"})...`);
   const ok = await waitForReadiness(io, resolved, supervisorLog);
   if (!ok) return 1;
+  if (bootstrapping) {
+    await finishBootstrap(io, resolved, envFile);
+  }
   io.stdout("");
   io.stdout(`Eveland is running at ${publicOrigin(envFile)}`);
   return 0;
