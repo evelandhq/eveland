@@ -175,6 +175,9 @@ export const authDeviceCodes = pgTable(
   (table) => [
     uniqueIndex("auth_device_codes_device_code_idx").on(table.deviceCode),
     uniqueIndex("auth_device_codes_user_code_idx").on(table.userCode),
+    // The admission sweep deletes expired rows and counts pending ones by
+    // expiry on every unauthenticated code request.
+    index("auth_device_codes_expires_idx").on(table.expiresAt),
   ],
 );
 

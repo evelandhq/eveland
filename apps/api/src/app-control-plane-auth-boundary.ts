@@ -22,6 +22,7 @@ export type ControlPlaneAuthBoundaryPort = Pick<
   | "completePasswordReset"
   | "authenticate"
   | "authenticateAccessToken"
+  | "admitDeviceCodeRequest"
 >;
 
 const allowedAuthPaths = new Set([
@@ -48,9 +49,21 @@ export function registerControlPlaneAuthBoundary(input: {
   // Allowlist, not denylist: Better Auth upgrades must not silently widen the
   // public control-plane surface. Password and team mutations go through
   // Eveland-owned routes that enforce the platform's security invariants.
-  app.on(["GET", "POST"], "/api/auth/*", (c) => {
+  app.on(["GET", "POST"], "/api/auth/*", async (c) => {
     const path = new URL(c.req.url).pathname;
     if (!allowedAuthPaths.has(path)) return c.notFound();
+    // Unauthenticated code creation is admission-controlled (expired-row
+    // sweep + pending cap) so the device-code table stays bounded.
+    if (path === "/api/auth/device/code" && !(await auth.admitDeviceCodeRequest())) {
+      return c.json(
+        {
+          error: "slow_down",
+          error_description:
+            "Too many pending device authorizations on this instance. Try again shortly.",
+        },
+        429,
+      );
+    }
     return auth.handler(c.req.raw);
   });
 

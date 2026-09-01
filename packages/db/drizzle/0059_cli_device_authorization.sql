@@ -143,6 +143,7 @@ ALTER TABLE "oauth_refresh_tokens" ADD CONSTRAINT "oauth_refresh_tokens_session_
 ALTER TABLE "oauth_refresh_tokens" ADD CONSTRAINT "oauth_refresh_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_device_codes_device_code_idx" ON "auth_device_codes" USING btree ("device_code");--> statement-breakpoint
 CREATE UNIQUE INDEX "auth_device_codes_user_code_idx" ON "auth_device_codes" USING btree ("user_code");--> statement-breakpoint
+CREATE INDEX "auth_device_codes_expires_idx" ON "auth_device_codes" USING btree ("expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "oauth_access_tokens_token_idx" ON "oauth_access_tokens" USING btree ("token");--> statement-breakpoint
 CREATE INDEX "oauth_access_tokens_client_idx" ON "oauth_access_tokens" USING btree ("client_id");--> statement-breakpoint
 CREATE INDEX "oauth_access_tokens_session_idx" ON "oauth_access_tokens" USING btree ("session_id");--> statement-breakpoint

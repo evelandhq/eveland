@@ -22,6 +22,7 @@ const INVITATION_DURATION_MS = 7 * 24 * 60 * 60 * 1_000;
 const PASSWORD_RESET_DURATION_MS = 24 * 60 * 60 * 1_000;
 const PASSWORD_RESET_IDENTIFIER_PREFIX = "eveland-password-reset:";
 const DEFAULT_ORGANIZATION_ID = "team_local";
+const DEVICE_CODE_PENDING_LIMIT = 100;
 const DEFAULT_ORGANIZATION_SLUG = "eveland";
 const organizationAccessControl = createAccessControl(defaultStatements);
 const organizationAdminRole = organizationAccessControl.newRole({ ...adminAc.statements });
@@ -188,6 +189,26 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
         });
       }
     }
+  }
+
+  // The device/code endpoint is unauthenticated by design (RFC 8628), and
+  // better-auth only deletes a device code when it is redeemed or polled
+  // after expiry/denial — a code nobody ever polls again would sit in the
+  // table forever. Admission makes the table bounded by construction: sweep
+  // expired rows first, then refuse new codes while too many live ones are
+  // pending. The limit is far above any legitimate concurrent-login count.
+  async function admitDeviceCodeRequest(): Promise<boolean> {
+    const context = await auth.$context;
+    const now = new Date();
+    await context.adapter.deleteMany({
+      model: "deviceCode",
+      where: [{ field: "expiresAt", operator: "lt", value: now }],
+    });
+    const pending = await context.adapter.count({
+      model: "deviceCode",
+      where: [{ field: "expiresAt", operator: "gt", value: now }],
+    });
+    return pending < DEVICE_CODE_PENDING_LIMIT;
   }
 
   // Re-applied on every boot: this first-party client's policy (grant types,
@@ -678,6 +699,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     auth,
     bootstrapDefaultAdmin,
     bootstrapCliOAuthClient,
+    admitDeviceCodeRequest,
     authenticate,
     authenticateAccessToken,
     resolveInternalIdentity,

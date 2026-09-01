@@ -176,6 +176,52 @@ describe("eveland CLI device authorization", () => {
     expect(badScope.status).toBeGreaterThanOrEqual(400);
   });
 
+  test("bounds the device-code table: expired rows are swept, a pending cap answers 429", async () => {
+    const { app, auth } = await createAuthApp();
+    const context = await auth.auth.$context;
+
+    // Expired residue (codes nobody ever polled again) is swept by the next
+    // unauthenticated code request instead of accumulating forever.
+    await context.adapter.create({
+      model: "deviceCode",
+      data: {
+        deviceCode: "stale-device-code",
+        userCode: "STALE-CODE",
+        expiresAt: new Date(Date.now() - 60_000),
+        status: "pending",
+      },
+    });
+    await requestDeviceCode(app);
+    const stale = await context.adapter.findOne({
+      model: "deviceCode",
+      where: [{ field: "userCode", value: "STALE-CODE" }],
+    });
+    expect(stale).toBeNull();
+
+    // Fill the table to the pending cap; the next request is refused instead
+    // of growing the table (one live code already exists from the request
+    // above).
+    const farFuture = new Date(Date.now() + 60 * 60_000);
+    for (let index = 0; index < 99; index += 1) {
+      await context.adapter.create({
+        model: "deviceCode",
+        data: {
+          deviceCode: `filler-device-${index}`,
+          userCode: `FILLER-${index}`,
+          expiresAt: farFuture,
+          status: "pending",
+        },
+      });
+    }
+    const refused = await app.request("/api/auth/device/code", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ client_id: EVELAND_CLI_CLIENT_ID, scope: "deploy observe" }),
+    });
+    expect(refused.status).toBe(429);
+    await expect(refused.json()).resolves.toMatchObject({ error: "slow_down" });
+  });
+
   test("keeps the rest of the oauth provider surface unroutable", async () => {
     const { app } = await createAuthApp();
     for (const path of [

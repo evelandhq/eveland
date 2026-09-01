@@ -69,12 +69,26 @@ The platform signs in with email and password; users, password accounts, and
 sessions use Better Auth, and team members and invitations use the Organization
 plugin. First startup idempotently creates a default admin; there is no built-in
 production default password — the initial password and `BETTER_AUTH_SECRET` must be
-configured explicitly. Except for health checks and invitation acceptance, every
-platform API requires a valid member session; public Agent Gateway traffic uses an
-independent authentication boundary. Better Auth's HTTP surface is exposed by
-allowlist: only sign-in, sign-out, and get-session are publicly routable, every
-other endpoint (including anything future versions add) is a 404, and password
-changes and member management go through Eveland-owned endpoints.
+configured explicitly. Except for health checks, invitation acceptance, and the
+CLI device-authorization endpoints below, every platform API requires either a
+valid member session or a scoped CLI access token; public Agent Gateway traffic
+uses an independent authentication boundary. Better Auth's HTTP surface is
+exposed by allowlist: only sign-in, sign-out, get-session, and the device
+authorization family (device code request, verification, approve, deny, and the
+OAuth token endpoint) are publicly routable, every other endpoint (including
+anything future versions add) is a 404, and password changes and member
+management go through Eveland-owned endpoints.
+
+The `eveland` CLI authenticates with the standard device authorization flow: it
+requests a device code as a platform-seeded public OAuth client, a signed-in
+member explicitly approves or denies the request on the Dashboard's device
+approval page, and the CLI redeems the approved code for an opaque, expiring,
+database-revocable access token. Token-authenticated requests carry the token's
+scopes and are confined to a deny-by-default scope map — deployment delivery
+and read-only observation only. A CLI token never grants member administration
+or the operator surface, whatever the approving member's role; unauthenticated
+device-code creation is admission-controlled so it cannot grow storage without
+bound.
 
 The public `/health` of the API and Agent Gateway returns, beyond liveness, the
 Eveland product `version`, Git `revision`, release `channel`, and current

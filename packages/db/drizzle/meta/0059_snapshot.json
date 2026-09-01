@@ -1,5 +1,5 @@
 {
-  "id": "2d44429d-6c75-4c43-9c34-4df74805d3cc",
+  "id": "4b53d486-2b3c-4f1b-a837-7ca0fa2a0cc7",
   "prevId": "3d711130-6fc7-4c19-8f6a-54fd6e3c15af",
   "version": "7",
   "dialect": "postgresql",
@@ -872,6 +872,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "auth_device_codes_expires_idx": {
+          "name": "auth_device_codes_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

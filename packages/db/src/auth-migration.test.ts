@@ -70,6 +70,10 @@ describe("CLI device authorization migration", () => {
     expect(migration).toContain(
       'CREATE UNIQUE INDEX "auth_device_codes_user_code_idx" ON "auth_device_codes" USING btree ("user_code");',
     );
+    // The unauthenticated code-request admission sweep filters on expiry.
+    expect(migration).toContain(
+      'CREATE INDEX "auth_device_codes_expires_idx" ON "auth_device_codes" USING btree ("expires_at");',
+    );
     expect(migration).toContain(
       'CREATE UNIQUE INDEX "oauth_clients_client_id_idx" ON "oauth_clients" USING btree ("client_id");',
     );
