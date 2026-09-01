@@ -23,11 +23,16 @@ Headless 场景（CI）设置 `EVELAND_TOKEN`：它永远覆盖存储的凭证�
 
 ## 命令
 
-| 命令                              | 行为                                                |
-| --------------------------------- | --------------------------------------------------- |
-| `eveland init <dir>`              | 从源码树内置模板脚手架新 agent 项目（无需登录）     |
-| `eveland login [--origin <url>]`  | device flow 认证；按 origin 存储凭证                |
-| `eveland logout [--origin <url>]` | 忘掉存储的凭证（已设置的 `EVELAND_TOKEN` 仍然生效） |
-| `eveland whoami [--origin <url>]` | 打印 origin、用户、角色、token scope 与 token 来源  |
+| 命令                                                  | 行为                                                |
+| ----------------------------------------------------- | --------------------------------------------------- |
+| `eveland init <dir>`                                  | 从源码树内置模板脚手架新 agent 项目（无需登录）     |
+| `eveland login [--origin <url>]`                      | device flow 认证；按 origin 存储凭证                |
+| `eveland logout [--origin <url>]`                     | 忘掉存储的凭证（已设置的 `EVELAND_TOKEN` 仍然生效） |
+| `eveland whoami [--origin <url>]`                     | 打印 origin、用户、角色、token scope 与 token 来源  |
+| `eveland deploy [dir] [--name <slug>] [--no-promote]` | 上传 → 服务端构建（日志打到终端）→ promote          |
+
+## Deploy
+
+`eveland deploy` **忠实打包**目录——Release 从完整上传树构建，因此只排除 `.git` 与 `node_modules`；dotfile、构建产物、二进制资源全部随包（二进制与超 256 KiB 的文件会部署但在 Source 页不可见，CLI 对此给出 warning）。本地预检只在真正致命处秒级失败：缺 instructions、缺 `eve` 依赖（`dependencies` 或 `devDependencies`）、超上传总量上限、eve 版本对照实例窗口（`GET /api/instance`），以及**secrets**——任意深度的含值 `.env*` 文件与带凭证的 `.npmrc` 行一律 fail closed 且无任何 override：secret 值永不进入 source record 或 Release，受支持的路径是 `eveland env set`（`.env.example`/`.env.sample`/`.env.template` 与纯 registry 配置的 `.npmrc` 放行）。新 slug **preflight 先行**（与 Dashboard 同路径）——先上传 `/api/source-preflights` 等 worker 校验，再用 `preflightId` 建项目——校验失败永远不会留下占 slug 的坏项目。已有 zip 项目走 multipart `POST /api/projects/:id/sync-source` 替换源码；git 导入的项目会被拒绝（应 push 到其仓库）。构建日志轮询打到终端。**promote 是默认行为**：不 promote 的话路由与 schedule 目标都留在旧 deployment 上；`--no-promote` 显式只部署 preview。
 
 未知命令会提示最近的匹配，包括跨二进制提示：`eveland doctor` 会指向 `eveland-ctl doctor`。

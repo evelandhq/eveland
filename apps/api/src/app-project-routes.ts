@@ -63,5 +63,5 @@ export function registerProjectRoutes(input: {
   registerProjectSourceRoutes({ app, store, dataDir, appSecretKey, sourcePreflightTtlMs });
   registerProjectMetadataRoutes({ app, store });
   registerProjectDeploymentRoutes({ app, store, options });
-  registerProjectLifecycleRoutes({ app, store });
+  registerProjectLifecycleRoutes({ app, store, dataDir });
 }

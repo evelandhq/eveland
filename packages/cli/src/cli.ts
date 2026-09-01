@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { ApiError, apiRequest, type FetchLike } from "./api-client.ts";
 import { removeCredential, resolveToken, saveCredential } from "./credentials.ts";
+import { runDeploy } from "./deploy.ts";
 import { runDeviceFlow } from "./device-flow.ts";
 import { initProject } from "./init.ts";
 import { resolveOrigin } from "./origin.ts";
@@ -43,6 +44,14 @@ function parseOriginFlag(args: string[]) {
   return { origin: parsed.values.origin, positionals: parsed.positionals };
 }
 
+async function requireToken(origin: string, io: CliIo): Promise<string> {
+  const resolved = await resolveToken(origin, io.env);
+  if (!resolved) {
+    throw new Error(`Not logged in to ${origin}. Run \`eveland login --origin ${origin}\`.`);
+  }
+  return resolved.token;
+}
+
 const commands: Record<string, Command> = {
   init: {
     description: "Scaffold a new agent project from the starter template (no login needed)",
@@ -58,8 +67,8 @@ const commands: Record<string, Command> = {
       for (const file of files) io.stdout(`  ${file}`);
       io.stdout("");
       io.stdout("Next steps:");
-      io.stdout(`  eveland login --origin <url>   authenticate against your instance`);
-      io.stdout(`  eveland deploy                 (coming) build and promote it`);
+      io.stdout(`  eveland login --origin <url>    authenticate against your instance`);
+      io.stdout(`  cd ${targetDir} && eveland deploy    build and promote it`);
       return 0;
     },
   },
@@ -92,6 +101,35 @@ const commands: Record<string, Command> = {
         fetchImpl: io.fetchImpl,
       });
       io.stdout(`Logged in to ${origin} as ${whoami.member.email}.`);
+      return 0;
+    },
+  },
+  deploy: {
+    description: "Upload this directory, build it on the platform, and promote it",
+    run: async (args, io) => {
+      const parsed = parseArgs({
+        args,
+        options: {
+          origin: { type: "string" },
+          name: { type: "string" },
+          "no-promote": { type: "boolean" },
+        },
+        allowPositionals: true,
+      });
+      const origin = await resolveOrigin(parsed.values.origin, io.env);
+      const token = await requireToken(origin, io);
+      const result = await runDeploy({
+        origin,
+        token,
+        dir: parsed.positionals[0] ?? ".",
+        name: parsed.values.name,
+        promote: !parsed.values["no-promote"],
+        io: { fetchImpl: io.fetchImpl, print: io.stdout, sleep: io.sleep },
+      });
+      io.stdout("");
+      io.stdout(`Deployed ${result.slug}${result.promoted ? "" : " (preview only)"}.`);
+      if (result.stableUrl) io.stdout(`Stable:  ${result.stableUrl}`);
+      for (const preview of result.previewUrls) io.stdout(`Preview: ${preview}`);
       return 0;
     },
   },

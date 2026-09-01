@@ -1,3 +1,8 @@
+import {
+  LATEST_VERIFIED_EVE_VERSION,
+  SUPPORTED_EVE_VERSION_RANGE,
+  SUPPORTED_EVE_VERSION_RANGES,
+} from "@evelandhq/core/eve-compatibility";
 import type { createBetterAuthRuntime } from "./auth.js";
 import {
   invitationSchema,
@@ -33,6 +38,20 @@ export function registerMemberRoutes(input: {
   const { app, auth, webOrigin } = input;
 
   app.get("/api/members/me", (c) => c.json({ member: c.get("principal") }));
+
+  // Instance-wide facts a client needs before it has any project: today the
+  // eve compatibility window, which the CLI checks locally before uploading
+  // source. Member-readable (any authenticated principal, any token scope) —
+  // it discloses platform policy, not tenant data.
+  app.get("/api/instance", (c) =>
+    c.json({
+      eve: {
+        supportedRanges: SUPPORTED_EVE_VERSION_RANGES,
+        expected: SUPPORTED_EVE_VERSION_RANGE,
+        latestVerified: LATEST_VERIFIED_EVE_VERSION,
+      },
+    }),
+  );
 
   app.patch("/api/profile", async (c) => {
     const parsed = profileSchema.safeParse(await c.req.json().catch(() => null));

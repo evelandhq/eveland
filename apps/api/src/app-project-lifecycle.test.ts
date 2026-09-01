@@ -1,6 +1,16 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, test, vi } from "vitest";
 import { createApp } from "./app.js";
 import { createTestStore } from "@evelandhq/db/vitest";
+import { createZipArchiveFixture } from "./app.test-support.js";
+
+async function zipUploadForm(fields: Record<string, string> = {}): Promise<FormData> {
+  const archivePath = await createZipArchiveFixture();
+  const form = new FormData();
+  form.set("archive", new File([await readFile(archivePath)], "source.zip"));
+  for (const [key, value] of Object.entries(fields)) form.set(key, value);
+  return form;
+}
 
 describe("api app", () => {
   test("syncs the latest git source with deployment and promotion chained", async () => {
@@ -40,6 +50,74 @@ describe("api app", () => {
       deployAfterImport: true,
       promoteAfterDeploy: true,
     });
+  });
+
+  test("replaces a zip project's source from a multipart upload", async () => {
+    const store = createTestStore();
+    const app = createApp(store);
+    const project = await store.createProject({
+      name: "Zip Agent",
+      importKind: "zip",
+      sourcePath: "/tmp/original",
+    });
+
+    const response = await app.request(`/api/projects/${project.id}/sync-source`, {
+      method: "POST",
+      body: await zipUploadForm({ deploy: "true", promote: "true" }),
+    });
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      job: expect.objectContaining({ type: "import_source", status: "queued" }),
+    });
+    const jobs = await store.listProjectJobs(project.id, { type: "import_source" });
+    const uploaded = jobs.find((job) => job.payload.sourcePath !== "/tmp/original");
+    expect(uploaded?.payload).toMatchObject({
+      importKind: "zip",
+      deployAfterImport: true,
+      promoteAfterDeploy: true,
+    });
+    expect(String(uploaded?.payload.sourcePath)).toContain("uploads");
+  });
+
+  test("zip source upload guards: git projects, promote-without-deploy, empty archives", async () => {
+    const store = createTestStore();
+    const app = createApp(store);
+    const gitProject = await store.createProject({
+      name: "Git Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/agent.git",
+    });
+    const gitUpload = await app.request(`/api/projects/${gitProject.id}/sync-source`, {
+      method: "POST",
+      body: await zipUploadForm(),
+    });
+    expect(gitUpload.status).toBe(400);
+    await expect(gitUpload.json()).resolves.toEqual({
+      error: "Only zip projects accept a source upload.",
+    });
+
+    const zipProject = await store.createProject({
+      name: "Zip Guard Agent",
+      importKind: "zip",
+      sourcePath: "/tmp/original",
+    });
+    const promoteOnly = await app.request(`/api/projects/${zipProject.id}/sync-source`, {
+      method: "POST",
+      body: await zipUploadForm({ promote: "true" }),
+    });
+    expect(promoteOnly.status).toBe(400);
+    await expect(promoteOnly.json()).resolves.toEqual({
+      error: "A synced source must be deployed before it can be promoted.",
+    });
+
+    const emptyForm = new FormData();
+    emptyForm.set("deploy", "true");
+    const missingArchive = await app.request(`/api/projects/${zipProject.id}/sync-source`, {
+      method: "POST",
+      body: emptyForm,
+    });
+    expect(missingArchive.status).toBe(400);
+    await expect(missingArchive.json()).resolves.toMatchObject({ error: "Invalid zip upload" });
   });
 
   test("syncs the latest git source into a preview without promotion", async () => {

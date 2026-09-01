@@ -23,11 +23,16 @@ For headless use (CI), set `EVELAND_TOKEN`: it always overrides the stored crede
 
 ## Commands
 
-| Command                           | Behavior                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------- |
-| `eveland init <dir>`              | Scaffold a new agent project from the in-tree starter template (no login) |
-| `eveland login [--origin <url>]`  | Device-flow authentication; stores the credential for the origin          |
-| `eveland logout [--origin <url>]` | Forgets the stored credential (a set `EVELAND_TOKEN` still authenticates) |
-| `eveland whoami [--origin <url>]` | Prints origin, user, role, token scopes, and token provenance             |
+| Command                                               | Behavior                                                                  |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- |
+| `eveland init <dir>`                                  | Scaffold a new agent project from the in-tree starter template (no login) |
+| `eveland login [--origin <url>]`                      | Device-flow authentication; stores the credential for the origin          |
+| `eveland logout [--origin <url>]`                     | Forgets the stored credential (a set `EVELAND_TOKEN` still authenticates) |
+| `eveland whoami [--origin <url>]`                     | Prints origin, user, role, token scopes, and token provenance             |
+| `eveland deploy [dir] [--name <slug>] [--no-promote]` | Upload → server-side build (logs to the terminal) → promote               |
+
+## Deploy
+
+`eveland deploy` packages the directory **faithfully** — the Release builds from the full uploaded tree, so only `.git` and `node_modules` are excluded; dotfiles, build output, and binary assets all ship (binaries and files over 256 KiB deploy but stay invisible in the Source page, which the CLI warns about). The local preflight fails in under a second on the genuinely fatal cases: missing instructions, a missing `eve` dependency (`dependencies` or `devDependencies`), the upload cap, the eve specifier against the instance's window from `GET /api/instance`, and **secrets**: value-bearing `.env*` files at any depth and credential-carrying `.npmrc` lines fail closed with no override — secret values must never enter the source record or a Release; `eveland env set` is the supported path (`.env.example`/`.env.sample`/`.env.template` and plain registry `.npmrc` config pass). A new slug goes **preflight-first** like the Dashboard — upload to `/api/source-preflights`, wait for the worker's validation, then create from the `preflightId` — so a failed validation never leaves a broken project squatting on the slug. An existing zip project's source is replaced through multipart `POST /api/projects/:id/sync-source`; a git-imported project is refused (push to its repository instead). Build logs are polled to the terminal. **Promote is the default**: without it, routes and the schedule target stay on the old deployment. `--no-promote` deploys a preview only.
 
 An unknown command suggests the nearest match, including cross-binary hints: `eveland doctor` points to `eveland-ctl doctor`.

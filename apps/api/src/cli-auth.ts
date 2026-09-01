@@ -51,6 +51,8 @@ type ScopeRule = {
 const SCOPE_RULES: readonly ScopeRule[] = [
   // Identity read for `eveland whoami` — any valid CLI token.
   { scope: "any", methods: ["GET"], pattern: /^\/api\/members\/me$/ },
+  // Instance policy (the eve window) for the deploy preflight.
+  { scope: "any", methods: ["GET"], pattern: /^\/api\/instance$/ },
 
   // Read the delivery surface. Secrets, the Playground plane, and agent-auth
   // configuration are excluded: observation must not leak credentials or open
@@ -68,6 +70,8 @@ const SCOPE_RULES: readonly ScopeRule[] = [
   // still applies underneath).
   { scope: "deploy", methods: ["POST"], pattern: /^\/api\/projects$/ },
   { scope: "deploy", methods: ["POST"], pattern: /^\/api\/source-preflights$/ },
+  // Polling the preflight it just created — the Dashboard's own create flow.
+  { scope: "deploy", methods: ["GET"], pattern: /^\/api\/source-preflights\/[A-Za-z0-9_-]+$/ },
   {
     scope: "deploy",
     methods: ["POST"],
