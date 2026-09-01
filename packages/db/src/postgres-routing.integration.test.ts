@@ -2,8 +2,9 @@ import type { AgentEventObservation } from "@evelandhq/core/observability";
 import { afterAll, describe, expect, test } from "vitest";
 import { createDatabase } from "./client.js";
 import { createPostgresStore } from "./postgres-store.js";
+import { resolvePostgresTestUrl } from "./postgres-integration.test-support.js";
 
-const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
+const databaseUrl = resolvePostgresTestUrl();
 const database = databaseUrl ? createDatabase(databaseUrl) : null;
 
 afterAll(async () => database?.close());

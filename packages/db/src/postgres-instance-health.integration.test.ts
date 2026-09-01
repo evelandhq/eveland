@@ -3,8 +3,9 @@ import { eq } from "drizzle-orm";
 import { createDatabase } from "./client.js";
 import { createPostgresStore } from "./postgres-store.js";
 import { hostMetricSamples, workerHeartbeats } from "./schema.js";
+import { resolvePostgresTestUrl } from "./postgres-integration.test-support.js";
 
-const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
+const databaseUrl = resolvePostgresTestUrl();
 const database = databaseUrl ? createDatabase(databaseUrl) : null;
 
 afterAll(async () => database?.close());

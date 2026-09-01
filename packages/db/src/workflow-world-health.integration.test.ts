@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { collectWorkflowDispatchWorkload } from "./workflow-world-health.js";
+import { resolvePostgresTestUrl } from "./postgres-integration.test-support.js";
 
 /**
  * Runs the real counting query against a real Postgres. The tables are a
@@ -11,7 +12,7 @@ import { collectWorkflowDispatchWorkload } from "./workflow-world-health.js";
  * dedicated database (not the shared test database) keeps this from colliding
  * with the worker's own `workflow`-schema stand-ins.
  */
-const baseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
+const baseUrl = resolvePostgresTestUrl();
 const databaseName = `eveland_wf_health_${randomBytes(6).toString("hex")}`;
 const admin = baseUrl ? postgres(baseUrl, { max: 1 }) : null;
 let worldUrl: string | undefined;
