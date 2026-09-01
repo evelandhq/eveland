@@ -30,7 +30,7 @@ describe("the systemd form's units", () => {
     expect(unit).toContain("User=root");
     expect(unit).toContain("WorkingDirectory=/opt/eveland/source/apps/worker");
     expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland.env");
-    expect(unit).toContain("ExecStart=/usr/bin/env pnpm exec tsx src/worker.ts");
+    expect(unit).toContain("ExecStart=/opt/eveland/source/node_modules/.bin/tsx src/worker.ts");
     expect(unit).toContain("Restart=on-failure");
   });
 
@@ -45,7 +45,7 @@ describe("the systemd form's units", () => {
     expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland-workflow-dispatcher.env");
     expect(unit).toContain("StartLimitIntervalSec=300");
     expect(unit).toContain("StartLimitBurst=10");
-    expect(unit).toContain("ExecStart=/usr/bin/env pnpm exec tsx src/main.ts");
+    expect(unit).toContain("ExecStart=/opt/eveland/source/node_modules/.bin/tsx src/main.ts");
   });
 });
 

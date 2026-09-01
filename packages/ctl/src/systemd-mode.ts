@@ -129,7 +129,9 @@ export function renderWorkerUnit(options: {
     `WorkingDirectory=${path.join(options.sourceDir, "apps/worker")}`,
     `EnvironmentFile=${options.envFilePath}`,
     `Environment=PATH=${options.nodeBinDir}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
-    "ExecStart=/usr/bin/env pnpm exec tsx src/worker.ts",
+    // tsx directly, not through pnpm: corepack's pnpm shim needs a writable
+    // HOME cache, which a unit environment does not guarantee.
+    `ExecStart=${path.join(options.sourceDir, "node_modules/.bin/tsx")} src/worker.ts`,
     "Restart=on-failure",
     "RestartSec=5",
     "",
@@ -159,7 +161,9 @@ export function renderDispatcherUnit(options: {
     `WorkingDirectory=${path.join(options.sourceDir, "apps/workflow-dispatcher")}`,
     `EnvironmentFile=${dispatcherEnvFilePath(options.etcDir)}`,
     `Environment=PATH=${options.nodeBinDir}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
-    "ExecStart=/usr/bin/env pnpm exec tsx src/main.ts",
+    // tsx directly, not through pnpm: corepack's pnpm shim wants a writable
+    // HOME cache, which DynamicUser (HOME=/) hard-fails on.
+    `ExecStart=${path.join(options.sourceDir, "node_modules/.bin/tsx")} src/main.ts`,
     "Restart=on-failure",
     "RestartSec=5",
     "# A crash loop burns one restart every RestartSec; cap it so a broken",
