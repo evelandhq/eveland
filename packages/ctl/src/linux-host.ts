@@ -113,6 +113,33 @@ async function commandExistsOnSystemPath(deps: LinuxHostDeps, command: string): 
   return result.code === 0;
 }
 
+async function debInstalled(deps: LinuxHostDeps, pkg: string): Promise<boolean> {
+  const result = await deps.execCommand(["dpkg", "-s", pkg], { cwd: deps.repoRootDir });
+  return result.code === 0;
+}
+
+/**
+ * Docker + Compose v2 on an apt host, from ONE package family. Ubuntu's
+ * docker-compose-v2 depends on docker.io, which conflicts with Docker CE's
+ * containerd.io; Docker CE ships Compose as docker-compose-plugin. A host
+ * with neither gets Ubuntu's pair; a host whose Docker family is unknown
+ * (static binary, snap) is told how to add Compose instead of guessed at.
+ */
+export async function dockerPackagesToInstall(deps: LinuxHostDeps): Promise<string[]> {
+  if (!(await commandExists(deps, "docker"))) return ["docker.io", "docker-compose-v2"];
+  const compose = await deps.execCommand(["docker", "compose", "version"], {
+    cwd: deps.repoRootDir,
+  });
+  if (compose.code === 0) return [];
+  if (await debInstalled(deps, "docker-ce")) return ["docker-compose-plugin"];
+  if (await debInstalled(deps, "docker.io")) return ["docker-compose-v2"];
+  throw new Error(
+    "docker is installed but `docker compose` is not, and its package family is unknown. " +
+      "Install Compose v2 the way you installed Docker (Docker CE: apt-get install docker-compose-plugin; " +
+      "Ubuntu: apt-get install docker-compose-v2) and re-run.",
+  );
+}
+
 async function userExists(deps: LinuxHostDeps, user: string): Promise<boolean> {
   const result = await deps.execCommand(["id", "-u", user], { cwd: deps.repoRootDir });
   return result.code === 0;
@@ -142,14 +169,17 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
     if (install !== 0) {
       throw new Error("apt-get install of the sandbox toolchain failed; see the output above.");
     }
-    if (!(await commandExists(deps, "docker"))) {
-      deps.stdout("Installing docker.io (no Docker found on this host)...");
-      const dockerInstall = await deps.streamCommand(["apt-get", "install", "-y", "docker.io"], {
-        cwd: deps.repoRootDir,
-        env: aptEnv,
-      });
+    const dockerPackages = await dockerPackagesToInstall(deps);
+    if (dockerPackages.length > 0) {
+      deps.stdout(`Installing ${dockerPackages.join(" ")} via apt...`);
+      const dockerInstall = await deps.streamCommand(
+        ["apt-get", "install", "-y", ...dockerPackages],
+        { cwd: deps.repoRootDir, env: aptEnv },
+      );
       if (dockerInstall !== 0) {
-        throw new Error("apt-get install docker.io failed; install Docker and re-run.");
+        throw new Error(
+          `apt-get install ${dockerPackages.join(" ")} failed; install Docker and Compose v2 and re-run.`,
+        );
       }
     }
   } else {
@@ -227,18 +257,7 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
   // 5. The system-PATH toolchain: deployment units and bwrap sandboxes run
   // with a plain system PATH, so the pinned node (and pnpm via corepack)
   // must be reachable there, not only in the installer's environment.
-  for (const binary of ["node", "npm", "npx"]) {
-    const target = path.join(deps.nodeBinDir, binary);
-    if (await deps.fileExists(target)) {
-      const link = await deps.execCommand(
-        ["ln", "-sf", target, path.join("/usr/local/bin", binary)],
-        { cwd: deps.repoRootDir },
-      );
-      if (link.code !== 0) {
-        throw new Error(`Linking ${binary} onto the system PATH failed:\n${link.output.trim()}`);
-      }
-    }
-  }
+  await linkNodeOnSystemPath(deps);
   if (!(await commandExistsOnSystemPath(deps, "pnpm"))) {
     const pin = await pinnedPnpmVersion(deps.repoRootDir);
     deps.stdout(`Installing pnpm@${pin} onto the system PATH via corepack...`);
@@ -257,6 +276,29 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
     }
   }
   deps.stdout("Linux host provisioning complete.");
+}
+
+/**
+ * (Re)points /usr/local/bin/{node,npm,npx} at the pinned interpreter. Also
+ * run whenever the systemd artifacts are regenerated: a Node repair or an
+ * update may have moved the pin, and a stale link would keep pointing at
+ * an interpreter nvm removed.
+ */
+export async function linkNodeOnSystemPath(
+  deps: Pick<LinuxHostDeps, "execCommand" | "fileExists" | "nodeBinDir" | "repoRootDir">,
+): Promise<void> {
+  for (const binary of ["node", "npm", "npx"]) {
+    const target = path.join(deps.nodeBinDir, binary);
+    if (await deps.fileExists(target)) {
+      const link = await deps.execCommand(
+        ["ln", "-sf", target, path.join("/usr/local/bin", binary)],
+        { cwd: deps.repoRootDir },
+      );
+      if (link.code !== 0) {
+        throw new Error(`Linking ${binary} onto the system PATH failed:\n${link.output.trim()}`);
+      }
+    }
+  }
 }
 
 async function pinnedPnpmVersion(repoRootDir: string): Promise<string> {

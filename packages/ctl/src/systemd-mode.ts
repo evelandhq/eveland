@@ -1,10 +1,11 @@
-import { chmod, writeFile } from "node:fs/promises";
+import { access, chmod, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { PlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata, type ApplianceLayout } from "./home.ts";
 import { writeInstallMetadata } from "./bootstrap.ts";
 import type { ExecCommand, FetchLike, LifecycleIo } from "./io.ts";
 import { WEB_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
+import { linkNodeOnSystemPath } from "./linux-host.ts";
 import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
 
 /**
@@ -329,6 +330,20 @@ export async function installSystemdArtifacts(
   const writeTextFile =
     io.writeTextFile ??
     (async (filePath: string, content: string) => writeFile(filePath, content, "utf8"));
+
+  // The interpreter may have moved since provisioning (a Node repair, an
+  // update): the system-PATH links deployment units rely on follow the pin,
+  // exactly like the units below bake the new bin dir in.
+  await linkNodeOnSystemPath({
+    execCommand: context.execCommand,
+    fileExists: (filePath) =>
+      access(filePath).then(
+        () => true,
+        () => false,
+      ),
+    nodeBinDir,
+    repoRootDir: context.repoRootDir,
+  });
 
   const dispatcherEnv = dispatcherEnvFilePath(layout.etcDir);
   await writeTextFile(dispatcherEnv, renderDispatcherEnv(envFile.values));

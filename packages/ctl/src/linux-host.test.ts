@@ -15,6 +15,10 @@ type HarnessOptions = {
   existingCommands?: string[];
   existingUsers?: string[];
   existingPaths?: string[];
+  /** dpkg-installed packages (Docker family detection). */
+  debPackages?: string[];
+  /** Whether `docker compose version` succeeds. */
+  composeWorks?: boolean;
 };
 
 async function makeDeps(options: HarnessOptions = {}) {
@@ -46,6 +50,12 @@ async function makeDeps(options: HarnessOptions = {}) {
     stderr: (line) => err.push(line),
     execCommand: async (argv) => {
       execCalls.push(argv);
+      if (argv[0] === "docker" && argv[1] === "compose") {
+        return { code: (options.composeWorks ?? true) ? 0 : 1, output: "" };
+      }
+      if (argv[0] === "dpkg" && argv[1] === "-s") {
+        return { code: (options.debPackages ?? []).includes(argv[2]!) ? 0 : 1, output: "" };
+      }
       // Plain probes and fixed-system-PATH probes both resolve against the
       // same fake command set.
       const shIndex = argv.indexOf("sh");
@@ -116,17 +126,59 @@ describe("provisionLinuxHost", () => {
     ]);
   });
 
-  test("docker.io installs only when no docker exists — a Docker CE host must not get the conflicting package", async () => {
-    const withDocker = await makeDeps({ existingCommands: ["docker", "pnpm"] });
-    await provisionLinuxHost(withDocker.deps);
-    expect(withDocker.streamCalls.some((argv) => argv.includes("docker.io"))).toBe(false);
-    expect(
-      withDocker.streamCalls.find((argv) => argv[1] === "install")!.includes("docker.io"),
-    ).toBe(false);
+  test("Docker + Compose come from ONE package family; a Docker CE host never gets Ubuntu's docker.io pair", async () => {
+    // Docker CE with Compose already working: nothing to install.
+    const ceWithCompose = await makeDeps({
+      existingCommands: ["docker", "pnpm"],
+      debPackages: ["docker-ce"],
+      composeWorks: true,
+    });
+    await provisionLinuxHost(ceWithCompose.deps);
+    expect(ceWithCompose.streamCalls.some((argv) => argv.join(" ").includes("docker"))).toBe(false);
 
+    // Docker CE without Compose: the plugin from Docker's own family.
+    const ceNoCompose = await makeDeps({
+      existingCommands: ["docker", "pnpm"],
+      debPackages: ["docker-ce"],
+      composeWorks: false,
+    });
+    await provisionLinuxHost(ceNoCompose.deps);
+    expect(ceNoCompose.streamCalls).toContainEqual([
+      "apt-get",
+      "install",
+      "-y",
+      "docker-compose-plugin",
+    ]);
+    expect(ceNoCompose.streamCalls.some((argv) => argv.includes("docker.io"))).toBe(false);
+
+    // Ubuntu's docker.io without Compose: docker-compose-v2.
+    const ioNoCompose = await makeDeps({
+      existingCommands: ["docker", "pnpm"],
+      debPackages: ["docker.io"],
+      composeWorks: false,
+    });
+    await provisionLinuxHost(ioNoCompose.deps);
+    expect(ioNoCompose.streamCalls).toContainEqual([
+      "apt-get",
+      "install",
+      "-y",
+      "docker-compose-v2",
+    ]);
+
+    // No Docker at all: Ubuntu's pair, in one apt call.
     const withoutDocker = await makeDeps({ existingCommands: ["pnpm"] });
     await provisionLinuxHost(withoutDocker.deps);
-    expect(withoutDocker.streamCalls).toContainEqual(["apt-get", "install", "-y", "docker.io"]);
+    expect(withoutDocker.streamCalls).toContainEqual([
+      "apt-get",
+      "install",
+      "-y",
+      "docker.io",
+      "docker-compose-v2",
+    ]);
+
+    // Docker of unknown provenance without Compose: told, not guessed at.
+    const unknown = await makeDeps({ existingCommands: ["docker", "pnpm"], composeWorks: false });
+    await expect(provisionLinuxHost(unknown.deps)).rejects.toThrow(/package family is unknown/);
   });
 
   test("existing users and an existing profile are left alone", async () => {
