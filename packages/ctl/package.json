@@ -1,0 +1,21 @@
+{
+  "name": "@evelandhq/ctl",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "bin": {
+    "eveland-ctl": "./src/bin.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --maxWorkers=2 --testTimeout=30000"
+  },
+  "dependencies": {
+    "@evelandhq/core": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11"
+  }
+}

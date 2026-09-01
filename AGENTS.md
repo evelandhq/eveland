@@ -128,6 +128,12 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
   Token minting.
 - `packages/agent-scheduler`: release-time injection of the private Scheduler
   Channel.
+- `packages/cli`: the `eveland` CLI — the agent author's client of the public
+  `/api` contract. Depends on no workspace package so it stays runnable
+  anywhere the source tree lands.
+- `packages/ctl`: the `eveland-ctl` ops CLI — supervises this machine's
+  platform processes and checks its health. Bound to the source tree by
+  design, so it may use core's shared constants.
 - `packages/sdk`: the published `eveland` npm package. It must never import a
   workspace package -- Agents install it from the registry, not from here.
 - `infra`: Compose, Traefik, systemd, Lima, and real integration-smoke assets.
@@ -140,7 +146,8 @@ worker, workflow-dispatcher -> @evelandhq/workflow-world (external npm)
 session-collector -> core + db
 agent-auth, identity-broker -> core + db
 agent-observer, agent-scheduler -> core
-platform-observability, architecture-tests -> no Eveland package
+ctl -> core
+platform-observability, architecture-tests, cli -> no Eveland package
 sdk -> no Eveland package at all
 db -> core
 core -> no other Eveland package

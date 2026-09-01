@@ -8,6 +8,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "eveland": "node packages/cli/src/bin.ts",
+    "eveland-ctl": "node packages/ctl/src/bin.ts",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "lint": "oxlint",
