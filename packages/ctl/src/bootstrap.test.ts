@@ -142,6 +142,30 @@ describe("runBootstrapConfig", () => {
   });
 });
 
+describe("runBootstrapConfig with an installer-pre-seeded file", () => {
+  test("a file holding only machine facts (EVELAND_NODE) still gets a full render, preserving them", async () => {
+    const { deps, layout } = await makeDeps({});
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(layout.etcDir, { recursive: true });
+    await writeFile(layout.envFilePath, "EVELAND_NODE=/opt/eveland/node/bin/node\n", "utf8");
+
+    const envFile = await runBootstrapConfig(deps);
+    // The render happened (a pre-seeded file has no APP_SECRET_KEY)...
+    expect(envFile.values.APP_SECRET_KEY).toBeTruthy();
+    expect(envFile.values.NODE_ENV).toBe("production");
+    // ...and the installer's pin survived, in memory and on disk.
+    expect(envFile.values.EVELAND_NODE).toBe("/opt/eveland/node/bin/node");
+    const onDisk = parseEnvFile(await readFile(layout.envFilePath, "utf8"));
+    expect(onDisk.EVELAND_NODE).toBe("/opt/eveland/node/bin/node");
+    expect(onDisk.APP_SECRET_KEY).toBe(envFile.values.APP_SECRET_KEY);
+
+    // A third run now sees a rendered config and reuses it verbatim.
+    const again = await runBootstrapConfig(deps);
+    expect(again.values.APP_SECRET_KEY).toBe(envFile.values.APP_SECRET_KEY);
+    expect(again.values.EVELAND_NODE).toBe("/opt/eveland/node/bin/node");
+  });
+});
+
 describe("runBootstrapPrepare", () => {
   test("builds the Dashboard when missing and applies migrations with the rendered env", async () => {
     const { deps, commands } = await makeDeps({ webBuildExists: false });

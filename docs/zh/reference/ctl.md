@@ -5,6 +5,18 @@ description: 平台运维工具——appliance 根目录布局、进程监督、
 
 `eveland-ctl` 运维**这台机器**上的平台安装：启停平台进程、体检机器环境，以及(随命令面扩展)安装与升级。它是 agent 作者客户端 `eveland` 的对偶——两个二进制在未知命令上互相指路。与 CLI 一样,它随源码树分发(`packages/ctl`),靠 Node ≥ 24 的 type stripping 直接跑 TypeScript 源码,永不发布到 npm:ctl 永远与它所管理的那棵源码树同版本。在源码 checkout 里用 `pnpm eveland-ctl <command>` 运行。
 
+## 安装
+
+```bash
+curl -fsSL https://eveland.ai/install.sh | bash
+```
+
+一行命令的每个字符都有讲究:`-f` 防止 404 错误页被当脚本执行,`-sS` 静默但保留错误,`-L` 跟随重定向,scheme 显式写 `https://`(裸主机名 curl 默认走明文 http)。脚本本身由静态站 200 直出、短缓存,旁挂 `install.sh.sha256`;`EVELAND_VERSION=vX.Y.Z` 钉版本,`EVELAND_REPO_URL` 重定向 clone 来源(CI 就是这样从本地 checkout 安装的)。
+
+安装脚本刻意保持笨(500 行封顶,有测试强制):探测 OS/arch、解析 Node、blobless clone 最新 release tag、`pnpm install`、落两个 shim、移交 `eveland-ctl start`。聪明逻辑全在 ctl——对已完成的安装重跑脚本只会转发 `eveland-ctl update`。动手前先打印完整 install plan;`--dry-run` 到此为止,`--no-prompt`(或 `/dev/tty` 实际打不开——存在性检查在 `docker build` 里会说谎)全取默认,全程 tee 到 `logs/install.log`。
+
+**Node 解析分三级**,结果一次性固化为 `EVELAND_NODE`(真实二进制的绝对路径——PATH 从此不再参与):(1) PATH 上的 node ≥ 24,但探测前**先 source nvm**——`curl | bash` 的子 shell 看不到 nvm 的 PATH 注入,裸查 PATH 会误判所有 nvm 用户;(2) 存在 nvm 时交互式询问是否 `nvm install 24`(非交互直接跳过,不动用户的 nvm);(3) 校验过 checksum 的官方 tarball 解压到 `EVELAND_HOME/node`——零 sudo、封闭自足。pnpm 走 corepack、版本由仓库 `packageManager` 钉住,corepack 缺席(Node 未来移除)时回落 `npm i -g pnpm@<钉住版>` 装进托管 prefix。shim 是真实文件(非 symlink),verify-then-commit 落位:先在临时副本上探测 `--version`,备份旧 bin,再移入。残破的 source 目录带时间戳移走,永不删除。
+
 ## Appliance 根目录
 
 `EVELAND_HOME` 指向 appliance 根目录:macOS 默认 `~/.eveland`,Linux 默认 `/opt/eveland`,可用环境变量覆盖。布局把"升级会替换的"与"升级必须幸存的"分开:

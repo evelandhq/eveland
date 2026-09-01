@@ -131,10 +131,21 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
     await mkdir(dir, { recursive: true });
   }
 
+  // The installer may pre-seed etc/eveland.env with machine facts (its
+  // pinned EVELAND_NODE) before first boot. A *rendered* configuration is
+  // recognized by its generated APP_SECRET_KEY: with one present the file is
+  // reused verbatim (secrets are minted once); without one the render runs
+  // and every pre-seeded key is preserved.
+  let preSeeded: Record<string, string> = {};
   if (await deps.fileExists(layout.envFilePath)) {
-    io.stdout(`Reusing existing configuration at ${layout.envFilePath} (secrets are minted once).`);
-    const raw = await readFile(layout.envFilePath, "utf8");
-    return { path: layout.envFilePath, values: parseEnvFile(raw) };
+    const existing = parseEnvFile(await readFile(layout.envFilePath, "utf8"));
+    if (existing.APP_SECRET_KEY) {
+      io.stdout(
+        `Reusing existing configuration at ${layout.envFilePath} (secrets are minted once).`,
+      );
+      return { path: layout.envFilePath, values: existing };
+    }
+    preSeeded = existing;
   }
 
   io.stdout("");
@@ -146,6 +157,13 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
     inputs,
     random: deps.random,
   });
+  const preservedKeys = Object.keys(preSeeded).filter((key) => !(key in rendered.values));
+  if (preservedKeys.length > 0) {
+    rendered.content += `\n# Preserved from the installer\n${preservedKeys
+      .map((key) => `${key}=${preSeeded[key]}`)
+      .join("\n")}\n`;
+    for (const key of preservedKeys) rendered.values[key] = preSeeded[key]!;
+  }
   await writeFile(layout.envFilePath, rendered.content, { mode: 0o600 });
   await chmod(layout.envFilePath, 0o600);
   io.stdout(`Wrote ${layout.envFilePath} (0600; all secrets freshly generated).`);

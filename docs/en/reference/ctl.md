@@ -5,6 +5,18 @@ description: The platform operator's tool - appliance root layout, process super
 
 `eveland-ctl` operates the platform installation on **this machine**: starting and stopping the platform processes, checking the machine's health, and (as the surface grows) installing and upgrading. It is the counterpart of `eveland`, the agent author's client — the two binaries cross-reference each other on unknown commands. Like the CLI, it ships with the source tree (`packages/ctl`), runs directly from TypeScript sources under Node ≥ 24's type stripping, and is never published to npm: the ctl always versions with the exact source tree it manages. From a checkout, run it as `pnpm eveland-ctl <command>`.
 
+## Install
+
+```bash
+curl -fsSL https://eveland.ai/install.sh | bash
+```
+
+Every character of the one-liner is deliberate: `-f` keeps an error page from being executed as a script, `-sS` is silent but preserves errors, `-L` follows redirects, and the scheme is explicit `https://` (curl defaults a bare host to plaintext http). The script itself is served 200-direct from the static site with a short cache and a `install.sh.sha256` sidecar; `EVELAND_VERSION=vX.Y.Z` pins a release, `EVELAND_REPO_URL` redirects the clone (CI installs from a local checkout this way).
+
+The installer is deliberately dumb (bounded at 500 lines, enforced by test): detect OS/arch, resolve Node, clone the source blobless at the newest release tag, `pnpm install`, lay down the two shims, hand off to `eveland-ctl start`. Everything smart lives in the ctl — re-running the installer against a completed install just forwards to `eveland-ctl update`. It prints its full install plan before touching anything; `--dry-run` stops there, `--no-prompt` (or a `/dev/tty` that cannot actually be opened — existence checks lie inside `docker build`) takes every default, and the whole run is teed to `logs/install.log`.
+
+**Node resolution is three tiers**, and the result is pinned once as `EVELAND_NODE` (an absolute path to the real binary — PATH never participates again): (1) a PATH `node` ≥ 24, probed **after sourcing nvm** because `curl | bash` runs in a subshell that never saw nvm's PATH injection; (2) with nvm present, an interactive offer to `nvm install 24` (non-interactive runs skip this rather than mutate the user's nvm); (3) a checksummed official tarball unpacked into `EVELAND_HOME/node` — zero sudo, hermetic. pnpm comes from corepack pinned by the repo's `packageManager`, with an `npm i -g pnpm@<pin>` fallback into the managed prefix for the day corepack leaves Node. The shims are real files (not symlinks) installed verify-then-commit: probe `--version` on a temp copy, back up the old bin, then move into place. A broken source dir is moved aside with a timestamp, never deleted.
+
 ## The appliance root
 
 `EVELAND_HOME` names the appliance root: `~/.eveland` on macOS, `/opt/eveland` on Linux, overridable via the environment. Its layout separates what an upgrade replaces from what an upgrade must survive:

@@ -6,3 +6,12 @@
 /api/search
   Content-Type: application/json; charset=utf-8
   Cache-Control: public,max-age=3600
+
+# `curl -fsSL https://eveland.ai/install.sh | bash` must get shell text with a
+# short cache (an installer bug fix must propagate fast), served 200 direct.
+/install.sh
+  Content-Type: text/x-shellscript; charset=utf-8
+  Cache-Control: public,max-age=300
+/install.sh.sha256
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public,max-age=300

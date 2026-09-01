@@ -1,0 +1,110 @@
+name: install smoke
+
+# The one-line installer's real-machine gate: a fresh Ubuntu runner (a full
+# systemd VM, like the systemd-smoke workflow uses) runs install.sh
+# non-interactively from this very checkout, which hands off to
+# `eveland-ctl start` — first-boot bootstrap, migrations, supervision,
+# implicit CLI login, and seeding the built-in agent through the real
+# `eveland deploy` — and must end with `eveland-ctl doctor` green.
+#
+# Runs nightly, on demand, and on PRs that touch the installer surface.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "42 3 * * *"
+  pull_request:
+    paths:
+      - apps/docs/public/install.sh
+      - apps/docs/public/install.sh.sha256
+      - packages/ctl/**
+      - .github/workflows/install-smoke.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # fetch-depth 0: the installer clones from this workspace, and a local
+      # clone of a shallow repository is refused by git.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install sandbox host dependencies
+        run: |
+          sudo apt-get update
+          # Parity with systemd-smoke.yml: the worker's systemd preflight and
+          # the bwrap build sandbox need this toolchain on the host.
+          sudo apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq openssl python-is-python3 python3 python3-pip ripgrep unzip zstd
+          sudo mkdir -p /workspace
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Put the sandbox toolchain on the system PATH
+        run: |
+          # Deployment units run with a plain system PATH (see
+          # systemd-smoke.yml for the rationale).
+          sudo corepack enable
+          sudo corepack install --global pnpm@11.7.0
+          sudo ln -sf "$(command -v node)" /usr/local/bin/node
+          sudo ln -sf "$(command -v npm)" /usr/local/bin/npm
+          sudo -i sh -lc 'command -v node npm pnpm rg jq zstd'
+
+      - name: Provision worker users
+        run: |
+          id -u eveland-build >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
+          id -u eveland-app >/dev/null 2>&1 || sudo useradd --system --home-dir /var/lib/eveland-app --create-home eveland-app
+
+      - name: Run the installer non-interactively
+        run: |
+          # Root installs to /opt/eveland exactly like a real Linux box; the
+          # checkout is cloned locally at this PR's merge commit instead of
+          # the newest release tag. `safe.directory` lets root read the
+          # runner-owned workspace.
+          sudo git config --global --add safe.directory '*'
+          sudo -E env "PATH=$PATH" \
+            EVELAND_REPO_URL="$GITHUB_WORKSPACE" \
+            EVELAND_VERSION="$GITHUB_SHA" \
+            bash apps/docs/public/install.sh --no-prompt
+
+      - name: Doctor must be green
+        run: |
+          sudo -E env "PATH=$PATH" EVELAND_HOME=/opt/eveland /opt/eveland/bin/eveland-ctl doctor
+
+      - name: Status must be healthy
+        run: |
+          sudo -E env "PATH=$PATH" EVELAND_HOME=/opt/eveland /opt/eveland/bin/eveland-ctl status
+
+      - name: Implicit CLI login works
+        run: |
+          sudo -E env "PATH=$PATH" EVELAND_HOME=/opt/eveland /opt/eveland/bin/eveland whoami
+
+      - name: Front door answers
+        run: |
+          curl -fsS http://localhost:17300/health
+          curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:17300/
+
+      - name: Stop cleanly
+        run: |
+          sudo -E env "PATH=$PATH" EVELAND_HOME=/opt/eveland /opt/eveland/bin/eveland-ctl stop
+
+      - name: Surface platform logs on failure
+        if: failure()
+        run: |
+          sudo tail -n 100 /opt/eveland/logs/*.log || true
+          sudo tail -n 50 /opt/eveland/logs/install.log || true
