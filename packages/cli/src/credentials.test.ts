@@ -3,7 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import {
-  credentialsPath,
+  credentialPath,
+  credentialsDir,
+  listCredentialOrigins,
   loadCredential,
   removeCredential,
   resolveToken,
@@ -23,25 +25,29 @@ const CREDENTIAL = {
 };
 
 describe("credentials store", () => {
-  test("saves per origin with user-only permissions", async () => {
+  test("saves one file per origin with user-only permissions", async () => {
     const env = await testEnv();
     const filePath = await saveCredential("http://a.example", CREDENTIAL, env);
-    await saveCredential("http://b.example", { ...CREDENTIAL, accessToken: "token-b" }, env);
+    await saveCredential("http://b.example:17300", { ...CREDENTIAL, accessToken: "token-b" }, env);
 
-    expect(filePath).toBe(credentialsPath(env));
+    expect(filePath).toBe(credentialPath("http://a.example", env));
     const fileMode = (await stat(filePath)).mode & 0o777;
     expect(fileMode).toBe(0o600);
-    const dirMode = (await stat(path.dirname(filePath))).mode & 0o777;
+    const dirMode = (await stat(credentialsDir(env))).mode & 0o777;
     expect(dirMode).toBe(0o700);
 
     await expect(loadCredential("http://a.example", env)).resolves.toEqual(CREDENTIAL);
-    await expect(loadCredential("http://b.example", env)).resolves.toMatchObject({
+    await expect(loadCredential("http://b.example:17300", env)).resolves.toMatchObject({
       accessToken: "token-b",
     });
     await expect(loadCredential("http://c.example", env)).resolves.toBeNull();
+    await expect(listCredentialOrigins(env)).resolves.toEqual([
+      "http://a.example",
+      "http://b.example:17300",
+    ]);
   });
 
-  test("logout removes one origin and deletes the file with the last one", async () => {
+  test("logout removes exactly one origin's file", async () => {
     const env = await testEnv();
     await saveCredential("http://a.example", CREDENTIAL, env);
     await saveCredential("http://b.example", CREDENTIAL, env);
@@ -50,15 +56,11 @@ describe("credentials store", () => {
     await expect(loadCredential("http://b.example", env)).resolves.not.toBeNull();
     await expect(removeCredential("http://a.example", env)).resolves.toBe(false);
     await expect(removeCredential("http://b.example", env)).resolves.toBe(true);
-    await expect(readFile(credentialsPath(env), "utf8")).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+    await expect(listCredentialOrigins(env)).resolves.toEqual([]);
   });
 
-  test("concurrent mutations do not lose each other's origins", async () => {
+  test("concurrent logins to different origins cannot interfere: separate files, no shared state", async () => {
     const env = await testEnv();
-    // Racing read-modify-writes used to let the last writer clobber the
-    // other's origin; the lock serializes them.
     await Promise.all(
       Array.from({ length: 8 }, (_, index) =>
         saveCredential(
@@ -73,13 +75,10 @@ describe("credentials store", () => {
         accessToken: `token-${index}`,
       });
     }
-    // The lock is released after the burst.
-    await expect(
-      readFile(`${credentialsPath(env)}.lock`, "utf8").then(
-        () => "present",
-        () => "absent",
-      ),
-    ).resolves.toBe("absent");
+    // Atomic rename leaves complete JSON behind, never temp-file residue.
+    const contents = await readFile(credentialPath("http://origin-0.example", env), "utf8");
+    expect(JSON.parse(contents).accessToken).toBe("token-0");
+    await expect(listCredentialOrigins(env)).resolves.toHaveLength(8);
   });
 
   test("EVELAND_TOKEN overrides the stored credential", async () => {

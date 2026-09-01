@@ -17,7 +17,7 @@ Every command targets one platform origin:
 
 `eveland login` runs the RFC 8628 device authorization flow: the CLI requests a device code as the seeded `eveland-cli` public OAuth client, prints the user code, opens the Dashboard's `/device` approval page in a browser, and polls the token endpoint (honoring the server's interval and `slow_down`) until the signed-in user approves or denies. Approval yields a **scoped, opaque, revocable access token** — scopes `deploy` and `observe`, never full account power; the API confines token-authenticated requests to the scope map whatever the owning user's role is.
 
-Credentials are stored per origin in `~/.config/eveland/credentials.json` (file `0600`, directory `0700`). The file lives under `~/.config` and never under `~/.eveland`, which is the macOS appliance root owned by `eveland-ctl`.
+Credentials are stored one file per origin under `~/.config/eveland/credentials/` (files `0600`, directory `0700`) — separate files make concurrent logins to different origins structurally conflict-free, and each write lands via an fsynced temp file + atomic rename. The file lives under `~/.config` and never under `~/.eveland`, which is the macOS appliance root owned by `eveland-ctl`.
 
 For headless use (CI), set `EVELAND_TOKEN`: it always overrides the stored credential. Tokens expire after 30 days (no refresh tokens); an expired token means `eveland login` again.
 
