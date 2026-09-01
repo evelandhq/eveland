@@ -31,7 +31,9 @@ const jobPayloadSchemas: {
       reason: z.string().optional(),
     })
     .passthrough(),
-  trigger_schedule: z.object({ scheduleRunId: z.string() }).passthrough(),
+  trigger_schedule: z
+    .object({ scheduleRunId: z.string(), deploymentId: z.string().optional() })
+    .passthrough(),
   ensure_deployment_running: z
     .object({
       deploymentId: z.string(),
@@ -65,6 +67,38 @@ export const HEAVY_JOB_TYPES = ["build_deploy"] as const satisfies readonly JobT
  */
 export const LATENCY_SENSITIVE_JOB_TYPES = [
   "ensure_deployment_running",
+  "trigger_schedule",
+] as const satisfies readonly JobType[];
+
+/**
+ * Job types that mutate the project's source-and-release lane: they write
+ * overlapping project state and source revisions (an import records the
+ * revision a concurrent build would read), so they serialize among themselves
+ * per project. They do not exclude Deployment-scoped work: a build creates a
+ * new Deployment on a freshly allocated host port -- covered by the DB
+ * reserved set plus the in-flight claim -- and never touches an existing
+ * Deployment's process, so activating one during a build is safe (issue
+ * #448). delete_project is not listed because it is exclusive with every job
+ * in its project, not just this lane.
+ */
+export const PROJECT_MUTATION_JOB_TYPES = [
+  "import_source",
+  "build_deploy",
+] as const satisfies readonly JobType[];
+
+/**
+ * Job types whose writes are scoped to the single Deployment named by
+ * payload.deploymentId: stop/start of its process, its status CAS, and its
+ * RuntimeInstances. They serialize per target Deployment. A job of these
+ * types without a deploymentId in its payload -- a restart resolving the
+ * production Deployment at run time, or a trigger_schedule enqueued before
+ * the target was denormalized -- has an unknown target at claim time and is
+ * treated as exclusive with the whole project instead.
+ */
+export const DEPLOYMENT_SCOPED_JOB_TYPES = [
+  "ensure_deployment_running",
+  "restart_deployment",
+  "archive_deployment",
   "trigger_schedule",
 ] as const satisfies readonly JobType[];
 
