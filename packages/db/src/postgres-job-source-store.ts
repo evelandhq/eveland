@@ -446,23 +446,37 @@ export function createPostgresJobSourceStore({
       return row ? projectRowToProject(row) : null;
     },
 
+    // Serialized per project (the appendSessionEventRow pattern): the log
+    // cursor protocol needs seq visible in COMMIT order, but a sequence
+    // assigns in allocation order — two concurrent inserts can commit out of
+    // order, and a follower that advanced past the later seq would never see
+    // the earlier one. Locking the project row holds allocation back until
+    // the previous append's transaction commits, so per project the two
+    // orders coincide.
     async appendLog(input) {
-      const [row] = await db
-        .insert(logs)
-        .values({
-          id: createId("log"),
-          projectId: input.projectId,
-          deploymentId: input.deploymentId ?? null,
-          type: input.type,
-          line: input.line,
-        })
-        .returning();
+      return db.transaction(async (tx) => {
+        await tx
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.id, input.projectId))
+          .for("update");
+        const [row] = await tx
+          .insert(logs)
+          .values({
+            id: createId("log"),
+            projectId: input.projectId,
+            deploymentId: input.deploymentId ?? null,
+            type: input.type,
+            line: input.line,
+          })
+          .returning();
 
-      if (!row) {
-        throw new Error("Failed to append log.");
-      }
+        if (!row) {
+          throw new Error("Failed to append log.");
+        }
 
-      return logRowToLog(row);
+        return logRowToLog(row);
+      });
     },
 
     async recordSourceRevision(input) {

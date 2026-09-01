@@ -681,6 +681,55 @@ describe("SQL Store jobs", () => {
 
     expect(updated).toMatchObject({ id: project.id, status: "imported" });
     await expect(store.listLogs(project.id)).resolves.toEqual([log]);
+
+    // Bounded reads: a tail without `after`, forward pages with it — always
+    // in insertion order.
+    const second = await store.appendLog({
+      projectId: project.id,
+      type: "build",
+      line: "second line",
+    });
+    const third = await store.appendLog({
+      projectId: project.id,
+      type: "build",
+      line: "third line",
+    });
+
+    const tail = await store.listLogsPage(project.id, undefined, { limit: 2 });
+    expect(tail.logs).toEqual([second, third]);
+
+    const fromStart = await store.listLogsPage(project.id, undefined, { limit: 1, after: "0" });
+    expect(fromStart.logs).toEqual([log]);
+    const nextPage = await store.listLogsPage(project.id, undefined, {
+      limit: 10,
+      after: fromStart.cursor,
+    });
+    expect(nextPage.logs).toEqual([second, third]);
+    // Caught up: the cursor stays put and pages come back empty, not replayed.
+    const caughtUp = await store.listLogsPage(project.id, undefined, {
+      limit: 10,
+      after: nextPage.cursor,
+    });
+    expect(caughtUp.logs).toEqual([]);
+    expect(caughtUp.cursor).toBe(nextPage.cursor);
+
+    // EVERY page hands back a usable cursor, including an empty one: a
+    // follower that starts before any log exists gets a watermark, and lines
+    // written afterwards are all visible from it — never silently skipped,
+    // never an unbounded re-read (the review case where more than one page
+    // of lines lands between the empty first poll and the next).
+    const fresh = await store.createProject({ name: "Fresh Agent", importKind: "zip" });
+    const empty = await store.listLogsPage(fresh.id, "build", { limit: 5 });
+    expect(empty.logs).toEqual([]);
+    // Constant 0, not a max(seq) snapshot: a separate watermark query could
+    // race a commit landing between the two reads and skip it forever.
+    expect(empty.cursor).toBe("0");
+    const later = await store.appendLog({ projectId: fresh.id, type: "build", line: "born" });
+    const sinceEmpty = await store.listLogsPage(fresh.id, "build", {
+      limit: 10,
+      after: empty.cursor,
+    });
+    expect(sinceEmpty.logs).toEqual([later]);
   });
 
   test("records current source revision, source files, and schedules", async () => {

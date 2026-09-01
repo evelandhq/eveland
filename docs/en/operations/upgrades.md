@@ -156,6 +156,22 @@ creates new tables — the usual **migrate, then restart** order applies, and a
 rollback is unaffected (old code never touches them). On boot the API seeds and
 re-asserts the `eveland-cli` OAuth client row; do not hand-edit it.
 
+## Log tail/cursor sequence column
+
+Migration `0060` adds a monotonic `seq` column to `logs` backing the bounded
+log-read protocol (`limit` tail, `after` cursor) the CLI uses, replaces the
+old `(project_id, created_at)` index with seq-based ones, and backfills
+historical rows deterministically in `(created_at, id)` order.
+
+**This is a stop-the-world migration for the `logs` table.** The migration
+runs in a single transaction, so the exclusive lock taken by the column add
+is held through the full-table backfill: every log read and write — build
+and runtime log appends included — blocks until it commits, for a duration
+proportional to the log history. Run it in a quiet window, or stop the
+platform components first (the safest order: stop, migrate, restart). The
+staged statements exist for a single write pass and deterministic ordering,
+not to make the migration online.
+
 ## Legacy per-project workflow residue
 
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:

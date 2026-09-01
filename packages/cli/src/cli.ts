@@ -4,8 +4,11 @@ import { ApiError, apiRequest, type FetchLike } from "./api-client.ts";
 import { removeCredential, resolveToken, saveCredential } from "./credentials.ts";
 import { runDeploy } from "./deploy.ts";
 import { runDeviceFlow } from "./device-flow.ts";
+import { listEnv, removeEnv, setEnv } from "./env.ts";
 import { initProject } from "./init.ts";
+import { runLogs } from "./logs.ts";
 import { resolveOrigin } from "./origin.ts";
+import { resolveProject } from "./project.ts";
 
 /**
  * The eveland CLI: platform-relationship verbs only (auth, deploy, logs,
@@ -20,6 +23,8 @@ export type CliIo = {
   fetchImpl?: FetchLike;
   openUrl?: (url: string) => Promise<void>;
   sleep?: (ms: number) => Promise<void>;
+  /** logs --follow stops when this reports true; unset means run until killed. */
+  stopped?: () => boolean;
 };
 
 type Command = {
@@ -131,6 +136,94 @@ const commands: Record<string, Command> = {
       if (result.stableUrl) io.stdout(`Stable:  ${result.stableUrl}`);
       for (const preview of result.previewUrls) io.stdout(`Preview: ${preview}`);
       return 0;
+    },
+  },
+  logs: {
+    description: "Print a project's logs (default: runtime; --follow to keep watching)",
+    run: async (args, io) => {
+      const parsed = parseArgs({
+        args,
+        options: {
+          origin: { type: "string" },
+          name: { type: "string" },
+          type: { type: "string" },
+          follow: { type: "boolean", short: "f" },
+          tail: { type: "string" },
+        },
+        allowPositionals: true,
+      });
+      const type = parsed.values.type ?? "runtime";
+      if (type !== "build" && type !== "deploy" && type !== "runtime") {
+        io.stderr("--type must be build, deploy, or runtime.");
+        return 1;
+      }
+      const origin = await resolveOrigin(parsed.values.origin, io.env);
+      const token = await requireToken(origin, io);
+      const project = await resolveProject({
+        origin,
+        token,
+        name: parsed.values.name,
+        dir: parsed.positionals[0],
+        fetchImpl: io.fetchImpl,
+      });
+      await runLogs({
+        origin,
+        token,
+        projectId: project.id,
+        type,
+        tail: Number(parsed.values.tail ?? 100) || 100,
+        follow: Boolean(parsed.values.follow),
+        io: { fetchImpl: io.fetchImpl, print: io.stdout, sleep: io.sleep, stopped: io.stopped },
+      });
+      return 0;
+    },
+  },
+  env: {
+    description: "Project environment: env list | env set KEY=value [--variable] | env rm KEY",
+    run: async (args, io) => {
+      const parsed = parseArgs({
+        args,
+        options: {
+          origin: { type: "string" },
+          name: { type: "string" },
+          variable: { type: "boolean" },
+        },
+        allowPositionals: true,
+      });
+      const [action, argument] = parsed.positionals;
+      if (action !== "list" && action !== "set" && action !== "rm") {
+        io.stderr("Usage: eveland env <list|set KEY=value|rm KEY> [--name <slug>]");
+        return 1;
+      }
+      const origin = await resolveOrigin(parsed.values.origin, io.env);
+      const token = await requireToken(origin, io);
+      const project = await resolveProject({
+        origin,
+        token,
+        name: parsed.values.name,
+        fetchImpl: io.fetchImpl,
+      });
+      const envIo = { fetchImpl: io.fetchImpl, print: io.stdout };
+      const target = { origin, token, projectId: project.id, io: envIo };
+      if (action === "list") {
+        await listEnv(target);
+        return 0;
+      }
+      if (!argument) {
+        io.stderr(
+          action === "set" ? "Usage: eveland env set KEY=value" : "Usage: eveland env rm KEY",
+        );
+        return 1;
+      }
+      if (action === "set") {
+        await setEnv({
+          ...target,
+          assignment: argument,
+          kind: parsed.values.variable ? "variable" : "secret",
+        });
+        return 0;
+      }
+      return (await removeEnv({ ...target, key: argument })) ? 0 : 1;
     },
   },
   logout: {

@@ -1,5 +1,5 @@
 import type { LogRecord } from "@evelandhq/core/contracts";
-import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import {
   logRowToLog,
   sessionEventRowToSessionEvent,
@@ -23,7 +23,13 @@ type PostgresSessionQueryDomain = Pick<
   | "listModelUsageEvents"
   | "hasRunningSessionsObservedBy"
 > &
-  Pick<LogStore, "listLogs">;
+  Pick<LogStore, "listLogs" | "listLogsPage">;
+
+function logScope(projectId: string, type: LogRecord["type"] | undefined) {
+  return type
+    ? and(eq(logs.projectId, projectId), eq(logs.type, type))
+    : eq(logs.projectId, projectId);
+}
 
 export function createPostgresSessionQueryStore({
   database,
@@ -125,16 +131,46 @@ export function createPostgresSessionQueryStore({
     },
 
     async listLogs(projectId, type?: LogRecord["type"]) {
-      const rows = await db
-        .select()
-        .from(logs)
-        .where(
-          type
-            ? and(eq(logs.projectId, projectId), eq(logs.type, type))
-            : eq(logs.projectId, projectId),
-        )
-        .orderBy(logs.createdAt);
+      const rows = await db.select().from(logs).where(logScope(projectId, type)).orderBy(logs.seq);
       return rows.map(logRowToLog);
+    },
+
+    // The log record grows for the life of the project, so bounded callers
+    // (the CLI's tail/follow, deploy's build-log watcher) page it. Ordering
+    // and the cursor ride the monotonic seq column: createdAt has
+    // millisecond resolution and burst-written lines collide on it, so a
+    // time-anchored cursor could skip same-instant rows (appendLog
+    // serializes per project so seq is also commit-ordered). The cursor is
+    // the last-seen seq as an opaque string, and an EMPTY tail still returns
+    // cursor 0, so a follower that starts before any log exists never needs
+    // an unbounded re-read and never skips the lines that arrive next.
+    async listLogsPage(
+      projectId,
+      type: LogRecord["type"] | undefined,
+      options: { limit: number; after?: string },
+    ) {
+      const scope = logScope(projectId, type);
+      const limit = Math.min(Math.max(1, Math.floor(options.limit)), 1_000);
+      if (options.after !== undefined) {
+        const after = Number(options.after);
+        const rows = await db
+          .select()
+          .from(logs)
+          .where(and(scope, gt(logs.seq, after)))
+          .orderBy(logs.seq)
+          .limit(limit);
+        const cursor = rows.at(-1)?.seq ?? after;
+        return { logs: rows.map(logRowToLog), cursor: String(cursor) };
+      }
+      const rows = await db.select().from(logs).where(scope).orderBy(desc(logs.seq)).limit(limit);
+      rows.reverse();
+      const last = rows.at(-1)?.seq;
+      // An empty scope pins the cursor at 0: logs are never deleted, so
+      // "empty" means nothing committed in scope has ever existed and 0
+      // skips nothing. Reading a separate max(seq) watermark here would race
+      // — a row committing between the two queries would sit inside the
+      // watermark yet never have been returned.
+      return { logs: rows.map(logRowToLog), cursor: String(last ?? 0) };
     },
   };
 }

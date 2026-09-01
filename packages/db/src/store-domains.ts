@@ -870,6 +870,18 @@ export interface LogStore {
     line: string;
   }): Promise<LogRecord>;
   listLogs(projectId: string, type?: LogRecord["type"]): Promise<LogRecord[]>;
+  /**
+   * Bounded log reads. Without `after`, returns the LAST `limit` rows (a
+   * tail); with `after` (an opaque cursor from a previous page), rows
+   * strictly past that position, capped by `limit`. Results are ascending in
+   * insertion order. The returned cursor is always usable — including on an
+   * empty page — so a follower never has to fall back to unbounded reads.
+   */
+  listLogsPage(
+    projectId: string,
+    type: LogRecord["type"] | undefined,
+    options: { limit: number; after?: string },
+  ): Promise<{ logs: LogRecord[]; cursor: string }>;
 }
 
 export interface WorkflowDispatcherStore {

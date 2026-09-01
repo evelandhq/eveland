@@ -2,6 +2,7 @@ import type { PgInstanceConnectionSample } from "@evelandhq/core/instance-health
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  bigserial,
   boolean,
   check,
   doublePrecision,
@@ -1465,11 +1466,20 @@ export const logs = pgTable(
     deploymentId: text("deployment_id"),
     type: text("type").notNull(),
     line: text("line").notNull(),
+    // Monotonic insertion order: createdAt has millisecond resolution and
+    // burst-written lines collide on it, so the tail/cursor protocol orders
+    // and anchors on seq — a cursor must never skip same-instant rows.
+    seq: bigserial("seq", { mode: "number" }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // listLogs is always project-scoped and ordered by time; the optional type
-    // filter stays a residual on top of this.
-    index("logs_project_created_idx").on(table.projectId, table.createdAt),
+    // Every log read is project-scoped and ordered/anchored on seq; the old
+    // (project_id, created_at) index served the created_at ordering that no
+    // query emits any more and is dropped in migration 0060. The typed index
+    // exists because the CLI's default read is type-filtered ("runtime"):
+    // with only the untyped index, a sparse type makes the database walk
+    // arbitrarily many rows of other types to fill a small limit.
+    index("logs_project_seq_idx").on(table.projectId, table.seq),
+    index("logs_project_type_seq_idx").on(table.projectId, table.type, table.seq),
   ],
 );

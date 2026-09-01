@@ -87,7 +87,21 @@ function fakePlatform(options: {
       return json(200, { jobs: [...(options.preexistingJobs ?? []), ...timeline] });
     }
     if (pathname.endsWith("/logs")) {
-      if (!submitted) return json(200, { logs: emittedLogs });
+      // Bounded reads only: the client must always send limit or after, and
+      // every response carries a usable cursor (position in insertion order).
+      expect(searchParams.get("limit") ?? searchParams.get("after")).not.toBeNull();
+      const respond = () => {
+        const after = searchParams.get("after");
+        const limit = Number(searchParams.get("limit") ?? emittedLogs.length);
+        const slice = after !== null ? emittedLogs.slice(Number(after)) : emittedLogs.slice(-limit);
+        const page = slice.slice(0, limit);
+        const cursor =
+          page.length > 0
+            ? String(emittedLogs.indexOf(page.at(-1)!) + 1)
+            : (after ?? String(emittedLogs.length));
+        return json(200, { logs: page, cursor });
+      };
+      if (!submitted) return respond();
       const step = Math.min(polls, logTimeline.length - 1);
       for (const line of logTimeline[step] ?? []) {
         if (!emittedLogs.some((log) => log.line === line)) {
@@ -96,7 +110,7 @@ function fakePlatform(options: {
         }
       }
       polls += 1;
-      return json(200, { logs: emittedLogs });
+      return respond();
     }
     if (pathname.endsWith("/deployments")) {
       return json(200, { deployments: [{ id: "dep_new", status: "running" }] });

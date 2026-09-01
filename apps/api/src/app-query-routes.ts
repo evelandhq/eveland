@@ -163,8 +163,25 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
 
   app.get("/api/projects/:projectId/logs", async (c) => {
     const type = c.req.query("type") as LogRecord["type"] | undefined;
-    return c.json({
-      logs: await store.listLogs(c.req.param("projectId"), type),
-    });
+    const rawLimit = c.req.query("limit");
+    const after = c.req.query("after")?.trim();
+    // Without paging params the full history is returned — the Dashboard's
+    // original contract. With them, reads are bounded and the response
+    // carries an opaque `cursor` (usable even when the page is empty) for
+    // the CLI's tail/follow protocol.
+    if (rawLimit === undefined && after === undefined) {
+      return c.json({
+        logs: await store.listLogs(c.req.param("projectId"), type),
+      });
+    }
+    const limit = Number(rawLimit ?? 1_000);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      return c.json({ error: "Invalid log limit: expected an integer from 1 to 1000." }, 400);
+    }
+    if (after !== undefined && !/^\d+$/.test(after)) {
+      return c.json({ error: "Invalid log cursor." }, 400);
+    }
+    const page = await store.listLogsPage(c.req.param("projectId"), type, { limit, after });
+    return c.json({ logs: page.logs, cursor: page.cursor });
   });
 }
