@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { applianceLayout } from "./home.ts";
 import {
+  claimSupervisorRecord,
   readSupervisorRecord,
   supervisorPidPath,
   verifiedSupervisorPid,
@@ -69,5 +70,50 @@ describe("verifiedSupervisorPid", () => {
       await verifiedSupervisorPid(layout, async () => "node bin.ts _supervise --root /x"),
     ).toBe(4242);
     expect(await verifiedSupervisorPid(layout, async () => "/usr/sbin/cupsd")).toBeNull();
+  });
+});
+
+describe("claimSupervisorRecord", () => {
+  const identityOf = (alive: Set<number>) => async (pid: number) =>
+    alive.has(pid) ? `id-${pid}` : null;
+
+  test("exactly one of two concurrent claims wins; the loser learns the owner", async () => {
+    const layout = await makeLayout();
+    const alive = new Set([100, 200]);
+    const results = await Promise.all([
+      claimSupervisorRecord(layout, { pid: 100, identity: "id-100" }, identityOf(alive)),
+      claimSupervisorRecord(layout, { pid: 200, identity: "id-200" }, identityOf(alive)),
+    ]);
+    const winners = results.filter((result) => result.claimed);
+    const losers = results.filter((result) => !result.claimed);
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    const record = await readSupervisorRecord(layout);
+    expect(record?.pid).toBe(winners[0] === results[0] ? 100 : 200);
+    expect((losers[0] as { ownerPid: number }).ownerPid).toBe(record?.pid);
+  });
+
+  test("a live owner blocks a later claim; a stale (dead or recycled) record is replaced", async () => {
+    const layout = await makeLayout();
+    const alive = new Set([100]);
+    expect(
+      await claimSupervisorRecord(layout, { pid: 100, identity: "id-100" }, identityOf(alive)),
+    ).toEqual({ claimed: true });
+    expect(
+      await claimSupervisorRecord(layout, { pid: 300, identity: "id-300" }, identityOf(alive)),
+    ).toEqual({ claimed: false, ownerPid: 100 });
+    // The owner dies; its record is stale and the next claim takes over.
+    alive.delete(100);
+    alive.add(300);
+    expect(
+      await claimSupervisorRecord(layout, { pid: 300, identity: "id-300" }, identityOf(alive)),
+    ).toEqual({ claimed: true });
+    expect((await readSupervisorRecord(layout))?.pid).toBe(300);
+    // A recycled pid (same number, different identity) is stale too.
+    await writeSupervisorRecord(layout, { pid: 400, identity: "old-identity" });
+    alive.add(400);
+    expect(
+      await claimSupervisorRecord(layout, { pid: 500, identity: "id-500" }, identityOf(alive)),
+    ).toEqual({ claimed: true });
   });
 });

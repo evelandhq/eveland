@@ -33,8 +33,8 @@ import {
   readSupervisorRecord,
   readSupervisorState,
   removeSupervisorFiles,
+  claimSupervisorRecord,
   verifiedSupervisorPid,
-  writeSupervisorRecord,
   writeSupervisorState,
   type ProcessIdentity,
 } from "./state-files.ts";
@@ -647,17 +647,20 @@ export async function runSupervise(args: string[], io: LifecycleIo): Promise<num
   const resolved = resolveLifecycle(
     parsed.values.root ? { ...io, env: { ...io.env, EVELAND_HOME: parsed.values.root } } : io,
   );
-  const existingPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
-  if (existingPid !== null && existingPid !== process.pid) {
-    io.stderr(`Another supervisor is already running (pid ${existingPid}).`);
-    return 1;
-  }
   const envFile = await requirePlatformEnvFile(io, resolved);
   await mkdir(resolved.layout.logsDir, { recursive: true });
-  await writeSupervisorRecord(resolved.layout, {
-    pid: process.pid,
-    identity: await resolved.processIdentity(process.pid),
-  });
+  // Ownership is claimed atomically (O_EXCL on the pid record) BEFORE any
+  // child spawns: two `start`s racing past the liveness check cannot both
+  // end up owning five processes each.
+  const claim = await claimSupervisorRecord(
+    resolved.layout,
+    { pid: process.pid, identity: await resolved.processIdentity(process.pid) },
+    resolved.processIdentity,
+  );
+  if (!claim.claimed) {
+    io.stderr(`Another supervisor is already running (pid ${claim.ownerPid}).`);
+    return 1;
+  }
 
   const children: SupervisedProcess[] = PLATFORM_PROCESSES.map((spec) => ({
     key: spec.key,

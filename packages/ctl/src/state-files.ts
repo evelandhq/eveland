@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, open as openFile, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ApplianceLayout } from "./home.ts";
@@ -51,6 +51,40 @@ export async function writeSupervisorRecord(
 ): Promise<void> {
   await mkdir(layout.runDir, { recursive: true });
   await writeFile(supervisorPidPath(layout), `${JSON.stringify(record)}\n`, "utf8");
+}
+
+/**
+ * Atomically claims supervisor ownership: the pid record is created with
+ * O_EXCL, so two concurrent starts cannot both believe they own the
+ * platform — exactly one create succeeds. An existing record is honoured
+ * only while its verified owner is alive; a stale one (dead or recycled
+ * pid) is removed and the claim retried once. The record is held for the
+ * supervisor's lifetime and removed by stop.
+ */
+export async function claimSupervisorRecord(
+  layout: ApplianceLayout,
+  record: SupervisorRecord,
+  identityOf: ProcessIdentity,
+): Promise<{ claimed: true } | { claimed: false; ownerPid: number }> {
+  await mkdir(layout.runDir, { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const handle = await openFile(supervisorPidPath(layout), "wx");
+      try {
+        await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
+      } finally {
+        await handle.close();
+      }
+      return { claimed: true };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const owner = await verifiedSupervisorPid(layout, identityOf);
+      if (owner !== null && owner !== record.pid) return { claimed: false, ownerPid: owner };
+      // Stale (dead or recycled pid), or our own earlier record: replace it.
+      await rm(supervisorPidPath(layout), { force: true });
+    }
+  }
+  return { claimed: false, ownerPid: -1 };
 }
 
 export async function readSupervisorRecord(
