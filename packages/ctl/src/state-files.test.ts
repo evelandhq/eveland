@@ -93,6 +93,27 @@ describe("claimSupervisorRecord", () => {
     expect((losers[0] as { ownerPid: number }).ownerPid).toBe(record?.pid);
   });
 
+  test("many contenders over a STALE record: exactly one wins, and every record ever visible is complete", async () => {
+    const layout = await makeLayout();
+    const alive = new Set([11, 12, 13, 14, 15, 16]);
+    // A dead previous owner left its record behind.
+    await writeSupervisorRecord(layout, { pid: 9, identity: "id-9" });
+    const results = await Promise.all(
+      [11, 12, 13, 14, 15, 16].map((pid) =>
+        claimSupervisorRecord(layout, { pid, identity: `id-${pid}` }, identityOf(alive)),
+      ),
+    );
+    expect(results.filter((result) => result.claimed)).toHaveLength(1);
+    const record = await readSupervisorRecord(layout);
+    expect(record).not.toBeNull();
+    expect(record!.identity).toBe(`id-${record!.pid}`);
+    // No temp/reclaim files linger.
+    const { readdir } = await import("node:fs/promises");
+    expect(
+      (await readdir(layout.runDir)).filter((name) => name.startsWith("supervisor.pid")),
+    ).toEqual(["supervisor.pid"]);
+  });
+
   test("a live owner blocks a later claim; a stale (dead or recycled) record is replaced", async () => {
     const layout = await makeLayout();
     const alive = new Set([100]);

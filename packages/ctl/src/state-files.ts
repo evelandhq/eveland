@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, open as openFile, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ApplianceLayout } from "./home.ts";
@@ -54,12 +54,15 @@ export async function writeSupervisorRecord(
 }
 
 /**
- * Atomically claims supervisor ownership: the pid record is created with
- * O_EXCL, so two concurrent starts cannot both believe they own the
- * platform — exactly one create succeeds. An existing record is honoured
- * only while its verified owner is alive; a stale one (dead or recycled
- * pid) is removed and the claim retried once. The record is held for the
- * supervisor's lifetime and removed by stop.
+ * Atomically claims supervisor ownership. The record is written COMPLETELY
+ * to a private temp file and published with link(2), so it either exists
+ * fully formed or not at all — a contender can never observe (and unlink) a
+ * half-initialized claim. Exactly one link succeeds; a live verified owner
+ * blocks the claim. A stale record (dead or recycled pid) is reclaimed by
+ * an atomic rename of exactly the inode that was observed stale: if another
+ * contender already replaced it, the observed inode differs and the fresh
+ * record is put back untouched. The record is held for the supervisor's
+ * lifetime and removed by stop.
  */
 export async function claimSupervisorRecord(
   layout: ApplianceLayout,
@@ -67,24 +70,70 @@ export async function claimSupervisorRecord(
   identityOf: ProcessIdentity,
 ): Promise<{ claimed: true } | { claimed: false; ownerPid: number }> {
   await mkdir(layout.runDir, { recursive: true });
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const handle = await openFile(supervisorPidPath(layout), "wx");
+  const pidPath = supervisorPidPath(layout);
+  const tempPath = `${pidPath}.claim-${record.pid}-${process.hrtime.bigint()}`;
+  await writeFile(tempPath, `${JSON.stringify(record)}\n`, { encoding: "utf8", mode: 0o644 });
+  try {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
-      } finally {
-        await handle.close();
+        await link(tempPath, pidPath);
+        return { claimed: true };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       }
-      return { claimed: true };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      // Someone holds the path. Live owner → we lose; stale → reclaim it.
+      let observed: { ino: bigint } | null;
+      try {
+        observed = { ino: (await stat(pidPath, { bigint: true })).ino };
+      } catch {
+        continue; // vanished between link and stat: retry the link
+      }
       const owner = await verifiedSupervisorPid(layout, identityOf);
       if (owner !== null && owner !== record.pid) return { claimed: false, ownerPid: owner };
-      // Stale (dead or recycled pid), or our own earlier record: replace it.
-      await rm(supervisorPidPath(layout), { force: true });
+      const reclaimed = await reclaimStaleRecord(pidPath, observed.ino, record.pid);
+      if (!reclaimed) {
+        // Someone replaced the stale record while we looked; they own it.
+        const current = await verifiedSupervisorPid(layout, identityOf);
+        if (current !== null && current !== record.pid)
+          return { claimed: false, ownerPid: current };
+      }
     }
+    const current = await verifiedSupervisorPid(layout, identityOf);
+    return { claimed: false, ownerPid: current ?? -1 };
+  } finally {
+    await rm(tempPath, { force: true });
   }
-  return { claimed: false, ownerPid: -1 };
+}
+
+/**
+ * Removes the record at pidPath only if it is still the inode observed
+ * stale. rename(2) is atomic, so two reclaimers cannot both take the same
+ * inode; a reclaimer that grabbed a NEWER record (a fresh claim published
+ * after the observation) puts it back with link(2) and reports failure.
+ */
+async function reclaimStaleRecord(
+  pidPath: string,
+  staleIno: bigint,
+  byPid: number,
+): Promise<boolean> {
+  const reclaimPath = `${pidPath}.reclaim-${byPid}-${process.hrtime.bigint()}`;
+  try {
+    await rename(pidPath, reclaimPath);
+  } catch {
+    return false; // already reclaimed (or replaced) by someone else
+  }
+  try {
+    const moved = await stat(reclaimPath, { bigint: true });
+    if (moved.ino !== staleIno) {
+      // Not the record we judged stale: a fresh claim. Restore it; if a
+      // third claim landed meanwhile, the path is taken and ours is moot.
+      await link(reclaimPath, pidPath).catch(() => {});
+      return false;
+    }
+    return true;
+  } finally {
+    await rm(reclaimPath, { force: true });
+  }
 }
 
 export async function readSupervisorRecord(
