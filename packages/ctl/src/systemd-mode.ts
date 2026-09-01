@@ -183,7 +183,11 @@ export function renderDispatcherUnit(options: {
  * into it), and keeps worker/dispatcher out of Compose entirely — they are
  * the two host units.
  */
-export function renderApplianceOverlay(options: { dataDir: string; publicOrigin: string }): string {
+export function renderApplianceOverlay(options: {
+  dataDir: string;
+  publicOrigin: string;
+  envFilePath: string;
+}): string {
   const origin = new URL(options.publicOrigin);
   const scheme = origin.protocol.replace(":", "");
   const publicPort = origin.port === "" ? "0" : origin.port;
@@ -194,6 +198,9 @@ export function renderApplianceOverlay(options: { dataDir: string; publicOrigin:
     "  api:",
     "    volumes: !override",
     "      - .:/workspace",
+    // The prod commands load /workspace/.env at runtime (tsx --env-file);
+    // an appliance keeps its config in etc/, so bind it to that path.
+    `      - ${options.envFilePath}:/workspace/.env:ro`,
     "      - eveland-appliance-api-node-modules:/workspace/node_modules",
     `      - ${options.dataDir}:${options.dataDir}`,
     "    environment:",
@@ -203,6 +210,7 @@ export function renderApplianceOverlay(options: { dataDir: string; publicOrigin:
     "  gateway:",
     "    volumes: !override",
     "      - .:/workspace",
+    `      - ${options.envFilePath}:/workspace/.env:ro`,
     "      - eveland-appliance-gateway-node-modules:/workspace/node_modules",
     "      - eveland-gateway-data-mask:/workspace/.eveland-data",
     "    environment:",
@@ -210,6 +218,7 @@ export function renderApplianceOverlay(options: { dataDir: string; publicOrigin:
     "  web:",
     "    volumes: !override",
     "      - .:/workspace",
+    `      - ${options.envFilePath}:/workspace/.env:ro`,
     "      - eveland-appliance-web-node-modules:/workspace/node_modules",
     "      - eveland-appliance-web-next:/workspace/apps/web/.next",
     "  otel-config-init:",
@@ -261,6 +270,7 @@ export async function installSystemdArtifacts(
     renderApplianceOverlay({
       dataDir: envFile.values.EVELAND_DATA_DIR ?? path.join(layout.root, "data"),
       publicOrigin: envFile.values.EVELAND_PUBLIC_ORIGIN ?? "http://localhost",
+      envFilePath: layout.envFilePath,
     }),
   );
   io.stdout(`Wrote ${overlay}`);

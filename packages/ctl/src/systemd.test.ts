@@ -86,10 +86,14 @@ describe("the appliance Compose overlay", () => {
     const overlay = renderApplianceOverlay({
       dataDir: "/opt/eveland/data",
       publicOrigin: "http://localhost:17300",
+      envFilePath: "/opt/eveland/etc/eveland.env",
     });
     expect(overlay).toContain("- /opt/eveland/data:/opt/eveland/data");
     expect(overlay).toContain("EVELAND_DATA_DIR: /opt/eveland/data");
     expect(overlay).toContain("eveland-appliance-api-node-modules:/workspace/node_modules");
+    // The prod commands read /workspace/.env at runtime; the appliance's
+    // config file is bound there read-only.
+    expect(overlay).toContain("- /opt/eveland/etc/eveland.env:/workspace/.env:ro");
     expect(overlay).toContain("eveland-appliance-gateway-node-modules:/workspace/node_modules");
     expect(overlay).toContain("eveland-appliance-web-node-modules:/workspace/node_modules");
     expect(overlay).toContain("eveland-appliance-web-next:/workspace/apps/web/.next");
@@ -105,6 +109,7 @@ describe("the appliance Compose overlay", () => {
     const overlay = renderApplianceOverlay({
       dataDir: "/opt/eveland/data",
       publicOrigin: "https://eveland.example.com",
+      envFilePath: "/opt/eveland/etc/eveland.env",
     });
     expect(overlay).toContain("EVELAND_GATEWAY_PUBLIC_SCHEME: https");
     expect(overlay).toContain('EVELAND_GATEWAY_PUBLIC_PORT: "0"');

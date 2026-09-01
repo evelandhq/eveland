@@ -80,4 +80,8 @@ jobs:
         run: |
           sudo tail -n 100 /opt/eveland/logs/*.log || true
           sudo tail -n 50 /opt/eveland/logs/install.log || true
-          sudo journalctl -u 'eveland-*' -n 100 --no-pager || true
+          sudo journalctl -u eveland-worker -u eveland-workflow-dispatcher -n 120 --no-pager || true
+          cd /opt/eveland/source || exit 0
+          COMPOSE="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml -f /opt/eveland/etc/compose.appliance.yml --env-file /opt/eveland/etc/eveland.env"
+          $COMPOSE ps || true
+          $COMPOSE logs --tail 80 api gateway web postgres || true
