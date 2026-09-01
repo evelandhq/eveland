@@ -176,12 +176,12 @@ describe("eveland CLI device authorization", () => {
     expect(badScope.status).toBeGreaterThanOrEqual(400);
   });
 
-  test("bounds the device-code table: expired rows are swept, a pending cap answers 429", async () => {
+  test("bounds the device-code table: expired rows swept, oldest unclaimed evicted, claimed exempt", async () => {
     const { app, auth } = await createAuthApp();
     const context = await auth.auth.$context;
 
     // Expired residue (codes nobody ever polled again) is swept by the next
-    // unauthenticated code request instead of accumulating forever.
+    // successful code request instead of accumulating forever.
     await context.adapter.create({
       model: "deviceCode",
       data: {
@@ -198,28 +198,72 @@ describe("eveland CLI device authorization", () => {
     });
     expect(stale).toBeNull();
 
-    // Fill the table to the pending cap; the next request is refused instead
-    // of growing the table (one live code already exists from the request
-    // above).
-    const farFuture = new Date(Date.now() + 60 * 60_000);
-    for (let index = 0; index < 99; index += 1) {
+    // Fill past the cap with unclaimed pending codes; make the second-oldest
+    // one CLAIMED (a session looked at it). New requests keep succeeding —
+    // refusing at the cap would let 100 anonymous requests lock every login
+    // out — and eviction takes the oldest unclaimed codes, never claimed
+    // ones, so an in-flight approval survives a flood.
+    for (let index = 0; index < 100; index += 1) {
       await context.adapter.create({
         model: "deviceCode",
         data: {
           deviceCode: `filler-device-${index}`,
           userCode: `FILLER-${index}`,
-          expiresAt: farFuture,
+          // Uniform TTL in production means expiry order == issuance order;
+          // these fillers expire before the real codes issued in this test,
+          // like an attacker's earlier flood would. Lower index = older.
+          expiresAt: new Date(Date.now() + 60_000 + index * 100),
           status: "pending",
+          ...(index === 1 ? { userId: "user_local_admin" } : {}),
         },
       });
     }
-    const refused = await app.request("/api/auth/device/code", {
+    const admitted = await app.request("/api/auth/device/code", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ client_id: EVELAND_CLI_CLIENT_ID, scope: "deploy observe" }),
     });
-    expect(refused.status).toBe(429);
-    await expect(refused.json()).resolves.toMatchObject({ error: "slow_down" });
+    expect(admitted.status).toBe(200);
+
+    const live = await context.adapter.count({
+      model: "deviceCode",
+      where: [{ field: "expiresAt", operator: "gt", value: new Date() }],
+    });
+    expect(live).toBeLessThanOrEqual(100);
+    // Oldest unclaimed evicted; the claimed one right after it survives.
+    await expect(
+      context.adapter.findOne({
+        model: "deviceCode",
+        where: [{ field: "userCode", value: "FILLER-0" }],
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      context.adapter.findOne({
+        model: "deviceCode",
+        where: [{ field: "userCode", value: "FILLER-1" }],
+      }),
+    ).resolves.not.toBeNull();
+  });
+
+  test("rate-limits unauthenticated code requests per forwarded source", async () => {
+    const { app } = await createAuthApp();
+    const request = (address: string) =>
+      app.request("/api/auth/device/code", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": address,
+        },
+        body: JSON.stringify({ client_id: EVELAND_CLI_CLIENT_ID }),
+      });
+    for (let index = 0; index < 10; index += 1) {
+      expect((await request("203.0.113.9")).status).toBe(200);
+    }
+    const throttled = await request("203.0.113.9");
+    expect(throttled.status).toBe(429);
+    await expect(throttled.json()).resolves.toMatchObject({ error: "slow_down" });
+    // A different source is unaffected.
+    expect((await request("203.0.113.10")).status).toBe(200);
   });
 
   test("keeps the rest of the oauth provider surface unroutable", async () => {

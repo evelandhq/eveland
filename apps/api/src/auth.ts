@@ -116,7 +116,9 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
       // validation and scoped token issuance at /oauth2/token.
       oauthProvider(oauthProviderOptions),
       oauthDeviceAuthorization({
-        expiresIn: "15m",
+        // Short-lived on purpose: the browser opens immediately, and the TTL
+        // is also the exposure window of the unauthenticated code table.
+        expiresIn: "10m",
         verificationUri: `${options.webOrigin}/device`,
       }),
     ],
@@ -194,21 +196,42 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
   // The device/code endpoint is unauthenticated by design (RFC 8628), and
   // better-auth only deletes a device code when it is redeemed or polled
   // after expiry/denial — a code nobody ever polls again would sit in the
-  // table forever. Admission makes the table bounded by construction: sweep
-  // expired rows first, then refuse new codes while too many live ones are
-  // pending. The limit is far above any legitimate concurrent-login count.
-  async function admitDeviceCodeRequest(): Promise<boolean> {
+  // table forever. Enforcement runs AFTER each successful code creation
+  // (post-insert, so there is no check-then-insert race): sweep expired
+  // rows, then evict the oldest UNCLAIMED codes beyond the cap. Refusing at
+  // the cap instead would let 100 anonymous requests lock every CLI login
+  // out; fair eviction keeps new logins possible under flood, and codes a
+  // signed-in session has already claimed (userId set) or approved are never
+  // evicted — an in-flight approval cannot be flushed by an attacker.
+  async function trimDeviceCodes(): Promise<void> {
     const context = await auth.$context;
     const now = new Date();
     await context.adapter.deleteMany({
       model: "deviceCode",
       where: [{ field: "expiresAt", operator: "lt", value: now }],
     });
-    const pending = await context.adapter.count({
+    const live = await context.adapter.count({
       model: "deviceCode",
       where: [{ field: "expiresAt", operator: "gt", value: now }],
     });
-    return pending < DEVICE_CODE_PENDING_LIMIT;
+    const excess = live - DEVICE_CODE_PENDING_LIMIT;
+    if (excess <= 0) return;
+    const oldestPending = await context.adapter.findMany<{ id: string; userId: string | null }>({
+      model: "deviceCode",
+      where: [{ field: "status", value: "pending" }],
+      sortBy: { field: "expiresAt", direction: "asc" },
+      limit: excess + DEVICE_CODE_PENDING_LIMIT,
+    });
+    const evictable = oldestPending
+      .filter((record) => !record.userId)
+      .slice(0, excess)
+      .map((record) => record.id);
+    if (evictable.length > 0) {
+      await context.adapter.deleteMany({
+        model: "deviceCode",
+        where: [{ field: "id", operator: "in", value: evictable }],
+      });
+    }
   }
 
   // Re-applied on every boot: this first-party client's policy (grant types,
@@ -699,7 +722,7 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
     auth,
     bootstrapDefaultAdmin,
     bootstrapCliOAuthClient,
-    admitDeviceCodeRequest,
+    trimDeviceCodes,
     authenticate,
     authenticateAccessToken,
     resolveInternalIdentity,

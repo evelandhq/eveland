@@ -22,8 +22,35 @@ export type ControlPlaneAuthBoundaryPort = Pick<
   | "completePasswordReset"
   | "authenticate"
   | "authenticateAccessToken"
-  | "admitDeviceCodeRequest"
+  | "trimDeviceCodes"
 >;
+
+// Source throttle for the one unauthenticated write endpoint. The Agent
+// Gateway is the only public listener and stamps x-forwarded-for, so the
+// first hop is trustworthy; direct loopback callers (dev) share one bucket.
+// State is per app instance — a restart forgives, which is fine for a
+// throttle whose job is raising the cost of flooding, not perfect fairness.
+const DEVICE_CODE_RATE_LIMIT = { max: 10, windowMs: 10 * 60_000 };
+
+export function createDeviceCodeRateLimiter(now: () => number = Date.now) {
+  const requests = new Map<string, number[]>();
+  return (source: string): boolean => {
+    const cutoff = now() - DEVICE_CODE_RATE_LIMIT.windowMs;
+    const recent = (requests.get(source) ?? []).filter((timestamp) => timestamp > cutoff);
+    if (recent.length >= DEVICE_CODE_RATE_LIMIT.max) {
+      requests.set(source, recent);
+      return false;
+    }
+    recent.push(now());
+    requests.set(source, recent);
+    if (requests.size > 10_000) {
+      for (const [key, timestamps] of requests) {
+        if (!timestamps.some((timestamp) => timestamp > cutoff)) requests.delete(key);
+      }
+    }
+    return true;
+  };
+}
 
 const allowedAuthPaths = new Set([
   "/api/auth/sign-in/email",
@@ -49,20 +76,27 @@ export function registerControlPlaneAuthBoundary(input: {
   // Allowlist, not denylist: Better Auth upgrades must not silently widen the
   // public control-plane surface. Password and team mutations go through
   // Eveland-owned routes that enforce the platform's security invariants.
+  const allowDeviceCodeRequest = createDeviceCodeRateLimiter();
   app.on(["GET", "POST"], "/api/auth/*", async (c) => {
     const path = new URL(c.req.url).pathname;
     if (!allowedAuthPaths.has(path)) return c.notFound();
-    // Unauthenticated code creation is admission-controlled (expired-row
-    // sweep + pending cap) so the device-code table stays bounded.
-    if (path === "/api/auth/device/code" && !(await auth.admitDeviceCodeRequest())) {
-      return c.json(
-        {
-          error: "slow_down",
-          error_description:
-            "Too many pending device authorizations on this instance. Try again shortly.",
-        },
-        429,
-      );
+    if (path === "/api/auth/device/code") {
+      const source = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "direct";
+      if (!allowDeviceCodeRequest(source)) {
+        return c.json(
+          {
+            error: "slow_down",
+            error_description:
+              "Too many device authorization requests from this address. Try again shortly.",
+          },
+          429,
+        );
+      }
+      const response = await auth.handler(c.req.raw);
+      // Post-insert enforcement keeps the code table bounded without a
+      // check-then-insert race; see trimDeviceCodes for the eviction policy.
+      if (response.ok) await auth.trimDeviceCodes();
+      return response;
     }
     return auth.handler(c.req.raw);
   });
