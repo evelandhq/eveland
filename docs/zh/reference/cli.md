@@ -17,7 +17,7 @@ description: Agent 作者的命令行客户端——认证模型、origin 解析
 
 `eveland login` 走 RFC 8628 device authorization：CLI 以预置的 `eveland-cli` public OAuth client 身份申请 device code，打印 user code，打开浏览器到 Dashboard 的 `/device` 审批页，并按服务端的 interval（及 `slow_down`）轮询 token 端点，直到已登录用户批准或拒绝。批准产出**scoped、opaque、可撤销的 access token**——scope 为 `deploy` 与 `observe`，永非全权；无论持有者角色如何，API 都把 token 认证的请求限制在 scope 映射之内。
 
-凭证按 origin 存于 `~/.config/eveland/credentials.json`（文件 `0600`，目录 `0700`）。存放在 `~/.config` 之下，绝不放 `~/.eveland`——那是 `eveland-ctl` 拥有的 macOS appliance root。
+凭证按 origin 一文件存于 `~/.config/eveland/credentials/`（文件 `0600`、目录 `0700`）——分文件让不同 origin 的并发登录在结构上无冲突，每次写入经 fsync 临时文件 + 原子 rename 落盘。存放在 `~/.config` 之下，绝不放 `~/.eveland`——那是 `eveland-ctl` 拥有的 macOS appliance root。
 
 Headless 场景（CI）设置 `EVELAND_TOKEN`：它永远覆盖存储的凭证。token 30 天过期（无 refresh token）；过期即重新 `eveland login`。
 
