@@ -43,6 +43,8 @@ The worker must keep renewing the lease for running jobs and reclaim jobs past t
 
 The project page shows the latest Git import job's queued/running/failed state, auto-refreshing while active, showing the reason and offering retry after failure; a create or sync endpoint returning "enqueued" must not be presented as the source having been fetched successfully.
 
+A zip project's source is replaced by a multipart upload to the same sync endpoint (`POST /api/projects/:id/sync-source`, fields `archive` and optional `deploy`/`promote` — this is `eveland deploy`'s redeploy path). The replacement archive goes through the identical safe extraction, structure scan, and version check as the original import; git projects refuse a zip upload, and zip projects refuse the git re-clone body.
+
 ## Preflight consumption and expiry
 
 Once the user confirms the guessed project name and clicks `Deploy`, the project and the initial import job consume the completed preflight in one database transaction; a naming conflict must not consume the snapshot, and a consumed one must not be consumed again. The same `sourcePath` is recorded directly as the Source Revision — no second clone or re-upload. Unconsumed queued/completed/failed preflights expire after one hour by default and are cleaned by the worker strictly inside `EVELAND_DATA_DIR` containment; running preflights must not be expired away, and consumed records may be deleted at expiry while their project source remains governed by the project lifecycle.

@@ -23,11 +23,16 @@ Headless 场景（CI）设置 `EVELAND_TOKEN`：它永远覆盖存储的凭证�
 
 ## 命令
 
-| 命令                              | 行为                                                |
-| --------------------------------- | --------------------------------------------------- |
-| `eveland init <dir>`              | 从源码树内置模板脚手架新 agent 项目（无需登录）     |
-| `eveland login [--origin <url>]`  | device flow 认证；按 origin 存储凭证                |
-| `eveland logout [--origin <url>]` | 忘掉存储的凭证（已设置的 `EVELAND_TOKEN` 仍然生效） |
-| `eveland whoami [--origin <url>]` | 打印 origin、用户、角色、token scope 与 token 来源  |
+| 命令                                                  | 行为                                                |
+| ----------------------------------------------------- | --------------------------------------------------- |
+| `eveland init <dir>`                                  | 从源码树内置模板脚手架新 agent 项目（无需登录）     |
+| `eveland login [--origin <url>]`                      | device flow 认证；按 origin 存储凭证                |
+| `eveland logout [--origin <url>]`                     | 忘掉存储的凭证（已设置的 `EVELAND_TOKEN` 仍然生效） |
+| `eveland whoami [--origin <url>]`                     | 打印 origin、用户、角色、token scope 与 token 来源  |
+| `eveland deploy [dir] [--name <slug>] [--no-promote]` | 上传 → 服务端构建（日志打到终端）→ promote          |
+
+## Deploy
+
+`eveland deploy` 按 worker 同款忽略规则打包目录，先本地预检——二进制文件（import 会静默丢弃）、单文件与总体积上限、缺失 instructions、eve 依赖对照实例窗口（`GET /api/instance`）——通过后才上传。新 slug 走 multipart `POST /api/projects` 建项目；已有 zip 项目走 multipart `POST /api/projects/:id/sync-source` 替换源码；git 导入的项目会被拒绝（应 push 到其仓库）。构建日志轮询打到终端。**promote 是默认行为**：不 promote 的话路由与 schedule 目标都留在旧 deployment 上；`--no-promote` 显式只部署 preview。
 
 未知命令会提示最近的匹配，包括跨二进制提示：`eveland doctor` 会指向 `eveland-ctl doctor`。

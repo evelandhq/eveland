@@ -43,6 +43,8 @@ worker 必须为 running job 持续续租，回收超过 stale 窗口且没有�
 
 Project 页面展示最近 Git import job 的 queued/running/failed 状态，在活动期间自动刷新，失败后显示原因并允许重试；创建或同步接口返回已入队不能被表述为源码已经拉取成功。
 
+zip 项目通过向同一同步端点上传 multipart（`POST /api/projects/:id/sync-source`，字段 `archive` 及可选 `deploy`/`promote`——即 `eveland deploy` 的重部署路径）替换源码。替换包走与首次导入完全相同的安全解压、结构扫描与版本检查；git 项目拒绝 zip 上传，zip 项目拒绝 git 重新 clone 的 JSON 请求体。
+
 ## Preflight 消费与过期
 
 用户确认自动猜测的项目名称并点击 `Deploy` 后，Project 与初始 import job 在同一数据库事务内消费已完成的 Preflight；命名冲突不得消费快照，成功后不得再次消费。同一 `sourcePath` 直接记录为 Source Revision，不允许第二次 clone 或重新上传。未消费的 queued/completed/failed Preflight 默认一小时过期，由 worker 只在 `EVELAND_DATA_DIR` containment 内清理；running Preflight 不得被过期清理，consumed 记录到期可删除但其 Project source 仍由 Project 生命周期管理。

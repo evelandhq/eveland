@@ -8,6 +8,8 @@ const BOTH = ["deploy", "observe"];
 describe("isRequestAllowedForScopes", () => {
   test("any valid token reads its own identity, nothing else", () => {
     expect(isRequestAllowedForScopes("GET", "/api/members/me", [])).toBe(true);
+    expect(isRequestAllowedForScopes("GET", "/api/instance", [])).toBe(true);
+    expect(isRequestAllowedForScopes("POST", "/api/instance", BOTH)).toBe(false);
     expect(isRequestAllowedForScopes("GET", "/api/members", BOTH)).toBe(false);
     expect(isRequestAllowedForScopes("POST", "/api/members/me", BOTH)).toBe(false);
     expect(isRequestAllowedForScopes("GET", "/api/members/me/extra", BOTH)).toBe(false);
@@ -44,6 +46,12 @@ describe("isRequestAllowedForScopes", () => {
   test("deploy delivers and manages project env", () => {
     expect(isRequestAllowedForScopes("POST", "/api/projects", DEPLOY)).toBe(true);
     expect(isRequestAllowedForScopes("POST", "/api/source-preflights", DEPLOY)).toBe(true);
+    expect(isRequestAllowedForScopes("GET", "/api/source-preflights/pre_abc123", DEPLOY)).toBe(
+      true,
+    );
+    expect(isRequestAllowedForScopes("GET", "/api/source-preflights/pre_abc123", OBSERVE)).toBe(
+      false,
+    );
     expect(isRequestAllowedForScopes("POST", "/api/projects/proj_1/sync-source", DEPLOY)).toBe(
       true,
     );

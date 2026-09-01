@@ -124,6 +124,20 @@ describe("eveland CLI device authorization", () => {
       });
     }
 
+    // Instance policy is readable with any token scope — the deploy
+    // preflight fetches the eve window before uploading anything.
+    const instance = await app.request("/api/instance", {
+      headers: { authorization: `Bearer ${tokens.access_token}` },
+    });
+    expect(instance.status).toBe(200);
+    await expect(instance.json()).resolves.toEqual({
+      eve: {
+        supportedRanges: expect.arrayContaining([expect.stringMatching(/^0\.\d+\.x$/)]),
+        expected: expect.stringContaining("0."),
+        latestVerified: expect.stringMatching(/^0\.\d+\.\d+$/),
+      },
+    });
+
     // A garbage bearer token is unauthenticated, not a scope failure.
     const badToken = await app.request("/api/members/me", {
       headers: { authorization: "Bearer not-a-token" },

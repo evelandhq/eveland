@@ -23,11 +23,16 @@ For headless use (CI), set `EVELAND_TOKEN`: it always overrides the stored crede
 
 ## Commands
 
-| Command                           | Behavior                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------- |
-| `eveland init <dir>`              | Scaffold a new agent project from the in-tree starter template (no login) |
-| `eveland login [--origin <url>]`  | Device-flow authentication; stores the credential for the origin          |
-| `eveland logout [--origin <url>]` | Forgets the stored credential (a set `EVELAND_TOKEN` still authenticates) |
-| `eveland whoami [--origin <url>]` | Prints origin, user, role, token scopes, and token provenance             |
+| Command                                               | Behavior                                                                  |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- |
+| `eveland init <dir>`                                  | Scaffold a new agent project from the in-tree starter template (no login) |
+| `eveland login [--origin <url>]`                      | Device-flow authentication; stores the credential for the origin          |
+| `eveland logout [--origin <url>]`                     | Forgets the stored credential (a set `EVELAND_TOKEN` still authenticates) |
+| `eveland whoami [--origin <url>]`                     | Prints origin, user, role, token scopes, and token provenance             |
+| `eveland deploy [dir] [--name <slug>] [--no-promote]` | Upload → server-side build (logs to the terminal) → promote               |
+
+## Deploy
+
+`eveland deploy` packages the directory (the worker's own ignore rules), runs a local preflight — binary files (silently dropped by imports), per-file and total size caps, missing instructions, and the eve dependency against the instance's window from `GET /api/instance` — and only then uploads. A new slug creates the project (multipart `POST /api/projects`); an existing zip project's source is replaced through multipart `POST /api/projects/:id/sync-source`; a git-imported project is refused (push to its repository instead). Build logs are polled to the terminal. **Promote is the default**: without it, routes and the schedule target stay on the old deployment. `--no-promote` deploys a preview only.
 
 An unknown command suggests the nearest match, including cross-binary hints: `eveland doctor` points to `eveland-ctl doctor`.

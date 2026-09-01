@@ -25,12 +25,16 @@ export async function apiRequest<T>(input: {
   token?: string;
   json?: unknown;
   form?: Record<string, string>;
+  /** FormData body; fetch supplies the multipart boundary header itself. */
+  multipart?: FormData;
   fetchImpl?: FetchLike;
 }): Promise<T> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const headers: Record<string, string> = {};
-  let body: string | undefined;
-  if (input.form) {
+  let body: string | FormData | undefined;
+  if (input.multipart) {
+    body = input.multipart;
+  } else if (input.form) {
     headers["content-type"] = "application/x-www-form-urlencoded";
     body = new URLSearchParams(input.form).toString();
   } else if (input.json !== undefined) {
