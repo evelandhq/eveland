@@ -1,6 +1,7 @@
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import process from "node:process";
 
 /**
  * Credential storage for the eveland CLI, keyed by platform origin.
@@ -46,10 +47,69 @@ async function readCredentialsFile(filePath: string): Promise<CredentialsFile> {
   return parsed;
 }
 
-async function writeCredentialsFile(filePath: string, file: CredentialsFile): Promise<void> {
+// Concurrent logins/logouts must not lose each other's origins, and an
+// interrupted write must never leave a truncated file: every mutation runs
+// under an exclusive lock file, and the content lands via a same-directory
+// temp file that is fsynced and renamed into place.
+const LOCK_RETRY_MS = 50;
+const LOCK_TIMEOUT_MS = 5_000;
+const LOCK_STALE_MS = 30_000;
+
+async function withCredentialsLock<T>(filePath: string, run: () => Promise<T>): Promise<T> {
   await mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
-  await writeFile(filePath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
-  // writeFile's mode only applies on creation; re-assert on every save.
+  const lockPath = `${filePath}.lock`;
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  for (;;) {
+    try {
+      await writeFile(lockPath, `${process.pid}\n`, { flag: "wx", mode: 0o600 });
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      // A crashed process leaves its lock behind; steal it once it is stale.
+      const age = await lockAge(lockPath);
+      if (age !== null && age > LOCK_STALE_MS) {
+        await rm(lockPath, { force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Another eveland process is updating ${filePath} (remove ${lockPath} if it is stale).`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+    }
+  }
+  try {
+    return await run();
+  } finally {
+    await rm(lockPath, { force: true });
+  }
+}
+
+async function lockAge(lockPath: string): Promise<number | null> {
+  try {
+    const handle = await open(lockPath, "r");
+    try {
+      return Date.now() - (await handle.stat()).mtimeMs;
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+async function writeCredentialsFile(filePath: string, file: CredentialsFile): Promise<void> {
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  const handle = await open(tempPath, "wx", 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify(file, null, 2)}\n`);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await rename(tempPath, filePath);
+  // Belt and braces on pre-existing files created by other umasks.
   await chmod(filePath, 0o600);
 }
 
@@ -67,9 +127,11 @@ export async function saveCredential(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string> {
   const filePath = credentialsPath(env);
-  const file = await readCredentialsFile(filePath);
-  file.origins[origin] = credential;
-  await writeCredentialsFile(filePath, file);
+  await withCredentialsLock(filePath, async () => {
+    const file = await readCredentialsFile(filePath);
+    file.origins[origin] = credential;
+    await writeCredentialsFile(filePath, file);
+  });
   return filePath;
 }
 
@@ -79,15 +141,17 @@ export async function removeCredential(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<boolean> {
   const filePath = credentialsPath(env);
-  const file = await readCredentialsFile(filePath);
-  if (!(origin in file.origins)) return false;
-  delete file.origins[origin];
-  if (Object.keys(file.origins).length === 0) {
-    await rm(filePath, { force: true });
-  } else {
-    await writeCredentialsFile(filePath, file);
-  }
-  return true;
+  return withCredentialsLock(filePath, async () => {
+    const file = await readCredentialsFile(filePath);
+    if (!(origin in file.origins)) return false;
+    delete file.origins[origin];
+    if (Object.keys(file.origins).length === 0) {
+      await rm(filePath, { force: true });
+    } else {
+      await writeCredentialsFile(filePath, file);
+    }
+    return true;
+  });
 }
 
 /**

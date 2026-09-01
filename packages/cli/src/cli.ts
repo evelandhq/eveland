@@ -170,8 +170,12 @@ function printHelp(io: CliIo): void {
 }
 
 async function cliVersion(): Promise<string> {
+  // The CLI ships with the source tree and versions with the product: the
+  // root manifest carries the release-please-maintained Eveland version
+  // (the workspace package itself is pinned at 0.0.0 like every private
+  // package and would identify nothing).
   const packageJson = JSON.parse(
-    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+    await readFile(new URL("../../../package.json", import.meta.url), "utf8"),
   ) as { version: string };
   return packageJson.version;
 }
