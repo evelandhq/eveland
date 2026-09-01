@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { closeSync, openSync } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -431,6 +431,14 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
   if (existingPid !== null) {
     io.stdout(`Eveland is already running (supervisor pid ${existingPid}).`);
     io.stdout("Use `eveland-ctl status` for details or `eveland-ctl restart` to restart.");
+    // A pending seed is retried against the running platform too — the
+    // recovery `start` promises must not depend on a restart.
+    const runningEnvFile = await loadPlatformEnvFile({
+      env: io.env,
+      repoRoot: resolved.repoRootDir,
+      platform: resolved.platform,
+    });
+    if (runningEnvFile) await retrySeedIfPending(io, resolved, runningEnvFile);
     return 0;
   }
   if ((await readSupervisorRecord(resolved.layout)) !== null) {
@@ -666,12 +674,19 @@ export async function runSupervise(args: string[], io: LifecycleIo): Promise<num
       // detached: each child leads its own process group, so signals reach
       // the real servers behind the pnpm/tsx/next wrappers, not just the
       // wrapper the supervisor spawned.
-      const handle = spawn(command!, rest, {
-        cwd: child.cwd,
-        env: child.env,
-        detached: true,
-        stdio: ["ignore", fd, fd],
-      });
+      let handle: ReturnType<typeof spawn>;
+      try {
+        handle = spawn(command!, rest, {
+          cwd: child.cwd,
+          env: child.env,
+          detached: true,
+          stdio: ["ignore", fd, fd],
+        });
+      } finally {
+        // The child holds its own duplicate; keeping ours would leak one fd
+        // per restart and end a crash loop in EMFILE for the supervisor.
+        closeSync(fd);
+      }
       return {
         pid: handle.pid,
         onExit: (callback) => handle.once("exit", callback),

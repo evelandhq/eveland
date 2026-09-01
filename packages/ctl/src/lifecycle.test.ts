@@ -310,6 +310,33 @@ describe("runStart first boot", () => {
     expect(streamed.filter((argv) => argv.includes("deploy")).length).toBe(seedCallsSoFar);
   });
 
+  test("pending seeding is retried even when the platform is already running", async () => {
+    const harness = await makeHarness({ env: undefined, webBuild: false });
+    harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
+    harness.io.tcpProbe = async () => true;
+    harness.io.fetchImpl = async (url) =>
+      new URL(url).pathname.startsWith("/api/auth/")
+        ? new Response("{}", { status: 500 })
+        : new Response("{}", { status: 200 });
+    const streamed: string[][] = [];
+    harness.io.streamCommand = async (argv) => {
+      streamed.push(argv);
+      return 0;
+    };
+    expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
+    expect((await readInstallMetadata(harness.layout))?.seedCompleted).toBe(false);
+
+    // The platform is STILL RUNNING (supervisor pid alive). A start that
+    // short-circuits on "already running" must not skip the promised retry.
+    expect(harness.alivePids.has(4242)).toBe(true);
+    harness.io.fetchImpl = deviceFlowFetch();
+    expect(await runStart([], harness.io)).toBe(0);
+    expect(harness.out.join("\n")).toContain("already running");
+    expect(harness.out.join("\n")).toContain("Retrying the built-in agent seeding");
+    expect(streamed.some((argv) => argv.includes("deploy"))).toBe(true);
+    expect((await readInstallMetadata(harness.layout))?.seedCompleted).toBe(true);
+  });
+
   test("a development checkout with its own .env never bootstraps", async () => {
     const harness = await makeHarness({ env: VALID_ENV });
     expect(await runStart([], harness.io)).toBe(0);
