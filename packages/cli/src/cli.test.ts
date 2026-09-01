@@ -127,9 +127,10 @@ describe("eveland env set --stdin", () => {
     const posted: unknown[] = [];
     const fetchImpl: FetchLike = async (url, init) => {
       const method = init?.method ?? "GET";
-      if (url.endsWith("/api/projects?name=stella") || url.includes("/api/projects")) {
-        if (method === "GET")
-          return jsonResponse(200, { projects: [{ id: "proj_1", name: "stella" }] });
+      if (method === "GET" && url.includes("/api/projects")) {
+        return jsonResponse(200, {
+          projects: [{ id: "proj_1", slug: "stella", importKind: "zip" }],
+        });
       }
       if (method === "POST" && url.includes("/secrets")) {
         posted.push(JSON.parse(init!.body as string));
