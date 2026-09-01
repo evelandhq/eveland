@@ -14,6 +14,9 @@ const PACKAGE_DEPENDENCY_MATRIX: Record<string, string[]> = {
   "@evelandhq/session-collector": ["@evelandhq/core", "@evelandhq/db"],
   "@evelandhq/agent-auth": ["@evelandhq/core", "@evelandhq/db"],
   "@evelandhq/identity-broker": ["@evelandhq/core", "@evelandhq/db"],
+  // The CLI is a thin client of the public /api contract: it depends on no
+  // workspace package so it stays runnable anywhere the source tree lands.
+  "@evelandhq/cli": [],
   eveland: [],
 };
 
