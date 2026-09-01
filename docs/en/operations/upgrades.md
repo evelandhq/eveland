@@ -159,9 +159,13 @@ re-asserts the `eveland-cli` OAuth client row; do not hand-edit it.
 ## Log tail/cursor sequence column
 
 Migration `0060` adds a monotonic `seq` column to `logs` backing the bounded
-log-read protocol (`limit` tail, `after` cursor) the CLI uses. Adding a
-`bigserial` column rewrites the table once — on an install with a very large
-log history expect this migration to take noticeably longer than usual.
+log-read protocol (`limit` tail, `after` cursor) the CLI uses, and drops the
+old `(project_id, created_at)` index no query orders by any more. The column
+is staged — added nullable (metadata-only, no table rewrite), backfilled
+deterministically in `(created_at, id)` order, then given its sequence
+default and NOT NULL — so there is no exclusive-lock full-table rewrite; on
+an install with a very large log history the backfill UPDATE still takes
+time proportional to the table.
 
 ## Legacy per-project workflow residue
 

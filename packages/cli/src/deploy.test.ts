@@ -87,16 +87,19 @@ function fakePlatform(options: {
       return json(200, { jobs: [...(options.preexistingJobs ?? []), ...timeline] });
     }
     if (pathname.endsWith("/logs")) {
-      // Bounded reads only: the client must always send limit or after.
+      // Bounded reads only: the client must always send limit or after, and
+      // every response carries a usable cursor (position in insertion order).
       expect(searchParams.get("limit") ?? searchParams.get("after")).not.toBeNull();
       const respond = () => {
         const after = searchParams.get("after");
-        if (after) {
-          const anchor = emittedLogs.findIndex((log) => log.id === after);
-          return json(200, { logs: anchor === -1 ? [] : emittedLogs.slice(anchor + 1) });
-        }
         const limit = Number(searchParams.get("limit") ?? emittedLogs.length);
-        return json(200, { logs: emittedLogs.slice(-limit) });
+        const slice = after !== null ? emittedLogs.slice(Number(after)) : emittedLogs.slice(-limit);
+        const page = slice.slice(0, limit);
+        const cursor =
+          page.length > 0
+            ? String(emittedLogs.indexOf(page.at(-1)!) + 1)
+            : (after ?? String(emittedLogs.length));
+        return json(200, { logs: page, cursor });
       };
       if (!submitted) return respond();
       const step = Math.min(polls, logTimeline.length - 1);

@@ -129,8 +129,10 @@ token）的 `auth_device_codes` 与 `oauth_*` 表。它只创建新表——按�
 ## 日志 tail/cursor 序列列
 
 迁移 `0060` 给 `logs` 表加单调 `seq` 列，支撑 CLI 使用的有界日志读取协议
-（`limit` 取尾、`after` 游标）。新增 `bigserial` 列会重写一次该表——日志历史
-很大的安装上，这条迁移会明显比平常慢。
+（`limit` 取尾、`after` 游标），并删除已无查询使用的旧 `(project_id,
+created_at)` 索引。该列分阶段落地——先以可空列加入（仅元数据、零表重写），
+按 `(created_at, id)` 确定性回填，再补默认序列与 NOT NULL——不存在排他锁的
+全表重写；日志历史很大的安装上，回填 UPDATE 的耗时仍与表大小成正比。
 
 ## 遗留的按 Project Workflow 残余
 

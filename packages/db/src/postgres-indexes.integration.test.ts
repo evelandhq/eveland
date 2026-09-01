@@ -78,12 +78,18 @@ describe.skipIf(!database)("hot-path index usage", () => {
     expect(plan).toContain("session_nodes_root_session_idx");
   });
 
-  test("project log listings use the project/created index", async () => {
-    const plan = await planFor(`
-      select * from logs where project_id = 'proj_probe' order by created_at
+  test("project log reads use the project/seq index for order and cursor anchoring", async () => {
+    // The bounded tail/cursor protocol orders and anchors on seq; created_at
+    // ordering left the query surface with it (its index is dropped in 0060).
+    const orderedPlan = await planFor(`
+      select * from logs where project_id = 'proj_probe' order by seq
     `);
+    expect(orderedPlan).toContain("logs_project_seq_idx");
 
-    expect(plan).toContain("logs_project_created_idx");
+    const cursorPlan = await planFor(`
+      select * from logs where project_id = 'proj_probe' and seq > 42 order by seq limit 500
+    `);
+    expect(cursorPlan).toContain("logs_project_seq_idx");
   });
 });
 

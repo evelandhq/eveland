@@ -1,6 +1,6 @@
 {
-  "id": "7e2f647a-2197-47a3-8a8b-cc8983d3d162",
-  "prevId": "2d44429d-6c75-4c43-9c34-4df74805d3cc",
+  "id": "bae0492e-4c83-45db-a520-7300d886fd76",
+  "prevId": "4b53d486-2b3c-4f1b-a837-7ca0fa2a0cc7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -872,6 +872,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "auth_device_codes_expires_idx": {
+          "name": "auth_device_codes_expires_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2731,27 +2746,6 @@
         }
       },
       "indexes": {
-        "logs_project_created_idx": {
-          "name": "logs_project_created_idx",
-          "columns": [
-            {
-              "expression": "project_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "logs_project_seq_idx": {
           "name": "logs_project_seq_idx",
           "columns": [

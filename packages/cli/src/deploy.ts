@@ -112,9 +112,10 @@ export async function runDeploy(input: {
   const seenJobs = new Set<string>(
     existing ? (await fetchJobs(existing.id)).map((job) => job.id) : [],
   );
-  let logCursor: string | null = existing
-    ? ((await fetchLogs(existing.id, "limit=1")).at(-1)?.id ?? null)
-    : null;
+  // The watermark from a limit=1 read is valid even when the project has no
+  // logs yet, so no later poll ever needs an unbounded read.
+  let logCursor: string | null = null;
+  if (existing) logCursor = (await fetchLogs(existing.id, "limit=1")).cursor;
 
   let projectId: string;
   if (existing) {
@@ -156,12 +157,18 @@ export async function runDeploy(input: {
   for (;;) {
     if (now() >= deadline) throw new Error("Timed out waiting for the build to finish.");
     await sleep(POLL_INTERVAL_MS);
-    const freshLogs = await fetchLogs(
-      projectId,
-      logCursor ? `after=${encodeURIComponent(logCursor)}&limit=500` : "limit=500",
-    );
-    for (const log of freshLogs) io.print(`  ${log.line}`);
-    logCursor = freshLogs.at(-1)?.id ?? logCursor;
+    // Always cursor-anchored (a fresh project starts from position 0 — its
+    // history began with this deploy) and drained to the tip: a full page
+    // means more lines are already waiting.
+    for (;;) {
+      const page = await fetchLogs(
+        projectId,
+        `after=${encodeURIComponent(logCursor ?? "0")}&limit=500`,
+      );
+      for (const log of page.logs) io.print(`  ${log.line}`);
+      logCursor = page.cursor;
+      if (page.logs.length < 500) break;
+    }
     const jobs = (await fetchJobs(projectId)).filter((job) => !seenJobs.has(job.id));
     const failed = jobs.find((job) => job.status === "failed");
     if (failed) {
@@ -229,14 +236,16 @@ export async function runDeploy(input: {
   async function fetchLogs(
     id: string,
     query: string,
-  ): Promise<Array<{ id: string; line: string }>> {
+  ): Promise<{ logs: Array<{ id: string; line: string }>; cursor: string }> {
     try {
-      const { logs } = await request<{ logs: Array<{ id: string; line: string }> }>(
+      return await request<{ logs: Array<{ id: string; line: string }>; cursor: string }>(
         `/api/projects/${id}/logs?type=build&${query}`,
       );
-      return logs;
     } catch (error) {
-      if (error instanceof ApiError && error.status === 404) return [];
+      // A transient 404 must not reset the cursor and replay history later.
+      if (error instanceof ApiError && error.status === 404) {
+        return { logs: [], cursor: logCursor ?? "0" };
+      }
       throw error;
     }
   }

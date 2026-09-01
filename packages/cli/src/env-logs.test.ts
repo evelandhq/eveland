@@ -82,14 +82,16 @@ describe("eveland logs", () => {
           createdAt: "2026-09-01T00:00:06.000Z",
         });
       }
-      // Server-side semantics: after-cursor slice, else tail of `limit`.
+      followPolls += 1;
+      // Server-side semantics: cursor = position in insertion order; every
+      // response (even an empty one) carries a usable cursor.
       const after = params.get("after");
-      if (after) {
-        const anchor = logs.findIndex((log) => log.id === after);
-        return json(200, { logs: anchor === -1 ? [] : logs.slice(anchor + 1) });
-      }
       const limit = Number(params.get("limit"));
-      return json(200, { logs: logs.slice(-limit) });
+      const slice = after !== null ? logs.slice(Number(after)) : logs.slice(-limit);
+      const page = slice.slice(0, limit);
+      const cursor =
+        page.length > 0 ? String(logs.indexOf(page.at(-1)!) + 1) : (after ?? String(logs.length));
+      return json(200, { logs: page, cursor });
     };
 
     const printed: string[] = [];

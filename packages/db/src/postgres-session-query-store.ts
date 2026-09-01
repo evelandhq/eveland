@@ -1,5 +1,5 @@
 import type { LogRecord } from "@evelandhq/core/contracts";
-import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, max, or } from "drizzle-orm";
 import {
   logRowToLog,
   sessionEventRowToSessionEvent,
@@ -23,7 +23,13 @@ type PostgresSessionQueryDomain = Pick<
   | "listModelUsageEvents"
   | "hasRunningSessionsObservedBy"
 > &
-  Pick<LogStore, "listLogs">;
+  Pick<LogStore, "listLogs" | "listLogsPage">;
+
+function logScope(projectId: string, type: LogRecord["type"] | undefined) {
+  return type
+    ? and(eq(logs.projectId, projectId), eq(logs.type, type))
+    : eq(logs.projectId, projectId);
+}
 
 export function createPostgresSessionQueryStore({
   database,
@@ -124,48 +130,50 @@ export function createPostgresSessionQueryStore({
       return rows.map(modelUsageRowToModelUsageEvent);
     },
 
-    // The log record grows for the life of the project, so callers page it:
-    // `limit` alone returns the LAST n rows (a tail), `afterId` returns rows
-    // strictly after that row — the follow cursor — optionally capped by
-    // `limit`. Ordering and anchoring use the monotonic seq column: createdAt
-    // is millisecond-resolution and burst-written lines collide on it, so a
-    // time-ordered cursor could skip same-instant rows. Results are always
-    // ascending; an unknown afterId returns nothing rather than replaying
-    // the whole history.
-    async listLogs(
+    async listLogs(projectId, type?: LogRecord["type"]) {
+      const rows = await db.select().from(logs).where(logScope(projectId, type)).orderBy(logs.seq);
+      return rows.map(logRowToLog);
+    },
+
+    // The log record grows for the life of the project, so bounded callers
+    // (the CLI's tail/follow, deploy's build-log watcher) page it. Ordering
+    // and the cursor ride the monotonic seq column: createdAt has
+    // millisecond resolution and burst-written lines collide on it, so a
+    // time-anchored cursor could skip same-instant rows. The cursor is the
+    // last-seen seq as an opaque string; an EMPTY page still returns a
+    // usable watermark (the scope's current max seq), so a follower that
+    // starts before any log exists never has to re-read unbounded history —
+    // the review case where >limit lines arrive between the empty first
+    // poll and the next one.
+    async listLogsPage(
       projectId,
-      type?: LogRecord["type"],
-      options?: { limit?: number; afterId?: string },
+      type: LogRecord["type"] | undefined,
+      options: { limit: number; after?: string },
     ) {
-      const scope = type
-        ? and(eq(logs.projectId, projectId), eq(logs.type, type))
-        : eq(logs.projectId, projectId);
-      if (options?.afterId) {
-        const [anchor] = await db
-          .select({ seq: logs.seq })
-          .from(logs)
-          .where(and(eq(logs.projectId, projectId), eq(logs.id, options.afterId)));
-        if (!anchor) return [];
-        let query = db
-          .select()
-          .from(logs)
-          .where(and(scope, gt(logs.seq, anchor.seq)))
-          .orderBy(logs.seq)
-          .$dynamic();
-        if (options.limit) query = query.limit(options.limit);
-        return (await query).map(logRowToLog);
-      }
-      if (options?.limit) {
+      const scope = logScope(projectId, type);
+      const limit = Math.min(Math.max(1, Math.floor(options.limit)), 1_000);
+      if (options.after !== undefined) {
+        const after = Number(options.after);
         const rows = await db
           .select()
           .from(logs)
-          .where(scope)
-          .orderBy(desc(logs.seq))
-          .limit(options.limit);
-        return rows.reverse().map(logRowToLog);
+          .where(and(scope, gt(logs.seq, after)))
+          .orderBy(logs.seq)
+          .limit(limit);
+        const cursor = rows.at(-1)?.seq ?? after;
+        return { logs: rows.map(logRowToLog), cursor: String(cursor) };
       }
-      const rows = await db.select().from(logs).where(scope).orderBy(logs.seq);
-      return rows.map(logRowToLog);
+      const rows = await db.select().from(logs).where(scope).orderBy(desc(logs.seq)).limit(limit);
+      rows.reverse();
+      const last = rows.at(-1)?.seq;
+      if (last !== undefined) {
+        return { logs: rows.map(logRowToLog), cursor: String(last) };
+      }
+      const [watermark] = await db
+        .select({ max: max(logs.seq) })
+        .from(logs)
+        .where(scope);
+      return { logs: [], cursor: String(watermark?.max ?? 0) };
     },
   };
 }

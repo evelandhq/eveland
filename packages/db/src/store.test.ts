@@ -682,8 +682,8 @@ describe("SQL Store jobs", () => {
     expect(updated).toMatchObject({ id: project.id, status: "imported" });
     await expect(store.listLogs(project.id)).resolves.toEqual([log]);
 
-    // Bounded reads: `limit` tails, `afterId` is the follow cursor, both
-    // ascending; an unknown cursor returns nothing instead of the history.
+    // Bounded reads: a tail without `after`, forward pages with it — always
+    // in insertion order.
     const second = await store.appendLog({
       projectId: project.id,
       type: "build",
@@ -694,21 +694,39 @@ describe("SQL Store jobs", () => {
       type: "build",
       line: "third line",
     });
-    await expect(store.listLogs(project.id, undefined, { limit: 2 })).resolves.toEqual([
-      second,
-      third,
-    ]);
-    await expect(store.listLogs(project.id, undefined, { afterId: log.id })).resolves.toEqual([
-      second,
-      third,
-    ]);
-    await expect(
-      store.listLogs(project.id, undefined, { afterId: log.id, limit: 1 }),
-    ).resolves.toEqual([second]);
-    await expect(
-      store.listLogs(project.id, undefined, { afterId: "log_unknown" }),
-    ).resolves.toEqual([]);
-    await expect(store.listLogs(project.id, "runtime", { limit: 5 })).resolves.toEqual([]);
+
+    const tail = await store.listLogsPage(project.id, undefined, { limit: 2 });
+    expect(tail.logs).toEqual([second, third]);
+
+    const fromStart = await store.listLogsPage(project.id, undefined, { limit: 1, after: "0" });
+    expect(fromStart.logs).toEqual([log]);
+    const nextPage = await store.listLogsPage(project.id, undefined, {
+      limit: 10,
+      after: fromStart.cursor,
+    });
+    expect(nextPage.logs).toEqual([second, third]);
+    // Caught up: the cursor stays put and pages come back empty, not replayed.
+    const caughtUp = await store.listLogsPage(project.id, undefined, {
+      limit: 10,
+      after: nextPage.cursor,
+    });
+    expect(caughtUp.logs).toEqual([]);
+    expect(caughtUp.cursor).toBe(nextPage.cursor);
+
+    // EVERY page hands back a usable cursor, including an empty one: a
+    // follower that starts before any log exists gets a watermark, and lines
+    // written afterwards are all visible from it — never silently skipped,
+    // never an unbounded re-read (the review case where more than one page
+    // of lines lands between the empty first poll and the next).
+    const fresh = await store.createProject({ name: "Fresh Agent", importKind: "zip" });
+    const empty = await store.listLogsPage(fresh.id, "build", { limit: 5 });
+    expect(empty.logs).toEqual([]);
+    const later = await store.appendLog({ projectId: fresh.id, type: "build", line: "born" });
+    const sinceEmpty = await store.listLogsPage(fresh.id, "build", {
+      limit: 10,
+      after: empty.cursor,
+    });
+    expect(sinceEmpty.logs).toEqual([later]);
   });
 
   test("records current source revision, source files, and schedules", async () => {

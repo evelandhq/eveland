@@ -1473,9 +1473,10 @@ export const logs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // listLogs is always project-scoped and ordered by time; the optional type
-    // filter stays a residual on top of this.
-    index("logs_project_created_idx").on(table.projectId, table.createdAt),
+    // Every log read is project-scoped and ordered/anchored on seq; the
+    // optional type filter stays a residual on top of this. The old
+    // (project_id, created_at) index served the created_at ordering that no
+    // query emits any more and is dropped in migration 0060.
     index("logs_project_seq_idx").on(table.projectId, table.seq),
   ],
 );

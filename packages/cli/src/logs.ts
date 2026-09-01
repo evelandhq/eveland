@@ -1,16 +1,18 @@
 import { apiRequest, type FetchLike } from "./api-client.ts";
 
 /**
- * `eveland logs`: prints a project's log tail and optionally follows. Both
- * modes are bounded server-side — `limit` returns the last N rows, `after`
- * returns only rows past the last one seen — so neither the initial tail nor
- * a long-running follow ever re-downloads the project's full history.
+ * `eveland logs`: prints a project's log tail and optionally follows. Every
+ * request is bounded server-side, and every response — including an empty
+ * one — carries an opaque cursor, so the follower never falls back to an
+ * unbounded read and never skips lines: when a page comes back full it pages
+ * again immediately until it has caught up, then resumes the poll interval.
  */
 
 const FOLLOW_INTERVAL_MS = 2_000;
 const FOLLOW_PAGE_LIMIT = 500;
 
 type LogRecord = { id: string; type: string; line: string; createdAt: string };
+type LogPage = { logs: LogRecord[]; cursor: string };
 
 export async function runLogs(input: {
   origin: string;
@@ -29,34 +31,35 @@ export async function runLogs(input: {
 }): Promise<void> {
   const { io } = input;
   const sleep = io.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const fetchLogs = async (query: string) =>
-    (
-      await apiRequest<{ logs: LogRecord[] }>({
-        origin: input.origin,
-        path: `/api/projects/${input.projectId}/logs?${query}`,
-        token: input.token,
-        fetchImpl: io.fetchImpl,
-      })
-    ).logs;
   const typeQuery = input.type ? `type=${input.type}&` : "";
+  const fetchPage = async (query: string) =>
+    apiRequest<LogPage>({
+      origin: input.origin,
+      path: `/api/projects/${input.projectId}/logs?${typeQuery}${query}`,
+      token: input.token,
+      fetchImpl: io.fetchImpl,
+    });
 
-  const initial = await fetchLogs(`${typeQuery}limit=${Math.max(1, input.tail)}`);
-  if (initial.length === 0 && !input.follow) {
+  const initial = await fetchPage(`limit=${Math.max(1, input.tail)}`);
+  if (initial.logs.length === 0 && !input.follow) {
     io.print("No log lines.");
     return;
   }
-  for (const log of initial) io.print(formatLine(log));
-  let cursor = initial.at(-1)?.id ?? null;
+  for (const log of initial.logs) io.print(formatLine(log));
+  let cursor = initial.cursor;
 
   while (input.follow && !io.stopped?.()) {
     await sleep(FOLLOW_INTERVAL_MS);
-    const fresh = cursor
-      ? await fetchLogs(
-          `${typeQuery}after=${encodeURIComponent(cursor)}&limit=${FOLLOW_PAGE_LIMIT}`,
-        )
-      : await fetchLogs(`${typeQuery}limit=${FOLLOW_PAGE_LIMIT}`);
-    for (const log of fresh) io.print(formatLine(log));
-    cursor = fresh.at(-1)?.id ?? cursor;
+    // Drain to the tip before sleeping again: a full page means more may be
+    // waiting, and stopping early would delay (never lose) lines.
+    for (;;) {
+      const page = await fetchPage(
+        `after=${encodeURIComponent(cursor)}&limit=${FOLLOW_PAGE_LIMIT}`,
+      );
+      for (const log of page.logs) io.print(formatLine(log));
+      cursor = page.cursor;
+      if (page.logs.length < FOLLOW_PAGE_LIMIT) break;
+    }
   }
 }
 
