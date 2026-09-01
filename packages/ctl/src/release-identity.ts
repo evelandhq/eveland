@@ -5,7 +5,8 @@ import type { ExecCommand } from "./io.ts";
  * and refreshed by update. The channel follows the upgrade contract
  * (docs/operations/upgrades): `stable` means an exact vX.Y.Z tag — a bare
  * SHA, a branch, or a pre-release tag must never impersonate a stable
- * release. The revision is always the exact short SHA.
+ * release. The revision is always the exact 12-character short SHA the
+ * upgrade contract documents (`git rev-parse --short=12 HEAD`).
  */
 
 export type ReleaseChannel = "stable" | "prerelease" | "edge";
@@ -30,7 +31,7 @@ export async function deriveReleaseIdentity(
   execCommand: ExecCommand,
   cwd: string,
 ): Promise<ReleaseIdentity | null> {
-  const sha = await execCommand(["git", "rev-parse", "--short", "HEAD"], { cwd });
+  const sha = await execCommand(["git", "rev-parse", "--short=12", "HEAD"], { cwd });
   if (sha.code !== 0 || sha.output.trim() === "") return null;
   const exact = await execCommand(["git", "describe", "--tags", "--exact-match"], { cwd });
   const tag = exact.code === 0 ? (exact.output.trim().split("\n")[0] ?? null) : null;
