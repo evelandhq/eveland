@@ -41,28 +41,42 @@ describe("Eve observer hook compatibility matrix", () => {
       // no-authored-integration arm forks again: when Eve must sanitize its
       // own integration's error content it passes the spread global list
       // explicitly, and otherwise falls back to `void 0` — the AI SDK global
-      // path. Every arm keeps third-party global registrations reachable, and
-      // the sanitizing wrapper substitutes only Eve's own integration by
-      // identity (`telemetryWithoutErrorContent` in ai-sdk-telemetry.js), so
-      // model-capture's integration is never wrapped — re-verified 2026-08-29.
+      // path. 0.47.5 moved the expression wholesale from harness/tool-loop.js
+      // into the new instrumentation/runtime.js (the harness/instrumentation
+      // restructure that shipped alongside the code-mode workflow runtime):
+      // same three arms, but the guard became a `bridgeIntegration` property
+      // access and the spread became a local `integrations()` closure over
+      // `getRegisteredTelemetryIntegrations({sanitizeEveOtelErrors})`. Every
+      // arm keeps third-party global registrations reachable, and the sanitize
+      // path substitutes only Eve's own integration by identity (the `map` in
+      // ai-sdk-telemetry.js compares `e !== eveOtelIntegration`), so
+      // model-capture's integration is never wrapped — re-verified 2026-09-01.
       // If either pinned expression changes shape in a new Eve line, re-verify
       // model-capture.ts against it before bumping the matrix. The minifier is
       // free to rename the locals (0.44.0 emitted `r`, 0.44.3 `i`), so the
       // pins capture identifiers instead of spelling them.
       const evePackageDir = await realpath(evePackage(packageName));
-      const toolLoop = await readFile(
-        path.join(evePackageDir, "dist/src/harness/tool-loop.js"),
-        "utf8",
-      );
       const [, minorText, patchText] = version.split(".");
       const minor = Number(minorText);
       const patch = Number(patchText);
-      expect(toolLoop).toMatch(
-        minor > 47 || (minor === 47 && patch >= 3)
-          ? /integrations:(\w+)===void 0\?\w+\?\[\.\.\.(\w+)\(\)\]:void 0:\[\1,\.\.\.\2\(\)\]/
-          : minor >= 34
-            ? /integrations:(\w+)===void 0\?void 0:\[\1,\.\.\.getRegisteredTelemetryIntegrations\(\)\]/
-            : /integrations:(\w+)===void 0\?void 0:\w+===void 0\?\[\1\]:\[\1,createOtelIntegration\(\)\]/,
+      const movedToInstrumentationRuntime = minor > 47 || (minor === 47 && patch >= 5);
+      const integrationsSource = await readFile(
+        path.join(
+          evePackageDir,
+          movedToInstrumentationRuntime
+            ? "dist/src/instrumentation/runtime.js"
+            : "dist/src/harness/tool-loop.js",
+        ),
+        "utf8",
+      );
+      expect(integrationsSource).toMatch(
+        movedToInstrumentationRuntime
+          ? /integrations:(\w+)\.(\w+)===void 0\?\w+\?\[\.\.\.(\w+)\(\)\]:void 0:\[\1\.\2,\.\.\.\3\(\)\]/
+          : minor === 47 && patch >= 3
+            ? /integrations:(\w+)===void 0\?\w+\?\[\.\.\.(\w+)\(\)\]:void 0:\[\1,\.\.\.\2\(\)\]/
+            : minor >= 34
+              ? /integrations:(\w+)===void 0\?void 0:\[\1,\.\.\.getRegisteredTelemetryIntegrations\(\)\]/
+              : /integrations:(\w+)===void 0\?void 0:\w+===void 0\?\[\1\]:\[\1,createOtelIntegration\(\)\]/,
       );
 
       const aiDist = await readFile(path.join(evePackageDir, "../ai/dist/index.js"), "utf8");

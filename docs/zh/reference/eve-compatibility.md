@@ -3,7 +3,7 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.45.x` 与 `0.47.x`，验证版本为 `0.45.2` 与 `0.47.3`。Eve 0.46 是本窗口被跳过的线；Eve 0.44 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.45.x` 与 `0.47.x`，验证版本为 `0.45.2` 与 `0.47.6`。Eve 0.46 是本窗口被跳过的线；Eve 0.44 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
 项目 `package.json` 中允许的 Eve 依赖声明形式为：受支持线内的精确 Patch、锚定在受支持 Minor Patch 上的 `~`/`^` Range，以及 `0.45` / `0.45.x` / `0.45.*`、`0.47` / `0.47.x` / `0.47.*`。缺少 Eve 依赖、跨 Minor 的宽泛 Range 或任何可能解析到窗口之外的声明都会 Fail Closed。项目 Overview、Source 与 Playground 会显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本与平台要求。
 
@@ -44,7 +44,9 @@ UI 仅将最新支持线 `0.47.x` 标为绿色。Eve 0.45.x 保持可运行，�
 
 **Eve 0.47.3 是不触及 Eveland 托管面的 Patch 滑动。** 全部 Wire 常量与 0.47.2 相同：Message Stream v24、Discovery Manifest v15、Workflow 存储 Spec 与捆绑的 Workflow SDK。本 Patch 的主要新增是面向 Delegated Subagent 的 Activity 子系统：父 Agent 在派发远端子 Agent 时可传入 `activityObserver`，子部署把工作、动作与阻塞的生命周期以带版本的批量 POST 上报到父部署的 `POST /eve/v1/activity/:token`（Sink 必须与 Delegated Callback 同源）。该路由走 Agent Gateway 的普通公共请求路径——会唤醒休眠 Deployment、照常受窗口门禁约束，Gateway 无需任何改动。Instrumentation Provider 的内容投递现在只取决于各 Provider 自己的 `capture` 声明；丢弃 eve Trace 的 `tracePolicy` 不再关停 AI SDK 遥测（仅含元数据的 AI Span 仍会进入环境 Workflow Trace）；Eveland 的 Observer 是生命周期 Hook 而非 Instrumentation Provider，投递路径不变。其余是开发体验：`eve-tui/<version>` User-Agent 标识、`eve dev` 状态栏的重建进度，以及 Slack 审批卡片修复。
 
-对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.47.3`，即便 `^0.47.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行与未知事件类型（Stream v24 新增 `action.input.appended`），且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
+**Eve 0.47.5 与 0.47.6 是不触及 Eveland 托管面的 Patch 滑动。** 全部 Wire 常量与 0.47.3 相同：Message Stream v24、Discovery Manifest v15、Workflow 存储 Spec 与捆绑的 Workflow SDK。0.47.5 往官方 Memory Provider Registry 加入 Supermemory，并把 Eve 内部的 Instrumentation 重构进独立模块树（无行为变化；AI SDK 遥测语义——包括第三方全局 Integration 保持可达——未变，Eveland 的 Observer 兼容矩阵已重新钉住移动后的表达式）。0.47.6 把 `Workflow` 程序执行器换到官方 AI SDK Code-Mode 运行时（QuickJS 引擎支撑），同时保留 Eve 的 Durable Subagent 记账与事件流——变化仅在 Durable Session 内部（按 Turn 的 Subagent 调用记账），对外 Workflow Wire、存储 Spec 与稳定内部 Workflow 集合均未触及。0.47.6 还把 Eve 与新脚手架项目升到 Zod 4.5，新增 Dynamic Connection（编译期 Agent Manifest——构建内部产物，区别于 Discovery Manifest——升到 v45，新增纯加法的 `dynamicConnections` 列表），并新增 Slack Slash-Command Channel Helper。
+
+对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.47.6`，即便 `^0.47.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行与未知事件类型（Stream v24 新增 `action.input.appended`），且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
 
 npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelog 与源码审阅加上完整兼容矩阵之后才会进入；移除旧 Minor 同样是显式的产品变更。
 
