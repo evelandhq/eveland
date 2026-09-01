@@ -163,8 +163,14 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
 
   app.get("/api/projects/:projectId/logs", async (c) => {
     const type = c.req.query("type") as LogRecord["type"] | undefined;
+    // Bounded reads: `limit` tails, `after` is the follow cursor. Without
+    // them the full history is returned (the Dashboard's original contract).
+    const rawLimit = Number(c.req.query("limit"));
+    const limit =
+      Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 1_000) : undefined;
+    const afterId = c.req.query("after")?.trim() || undefined;
     return c.json({
-      logs: await store.listLogs(c.req.param("projectId"), type),
+      logs: await store.listLogs(c.req.param("projectId"), type, { limit, afterId }),
     });
   });
 }

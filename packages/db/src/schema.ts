@@ -2,6 +2,7 @@ import type { PgInstanceConnectionSample } from "@evelandhq/core/instance-health
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  bigserial,
   boolean,
   check,
   doublePrecision,
@@ -1465,11 +1466,16 @@ export const logs = pgTable(
     deploymentId: text("deployment_id"),
     type: text("type").notNull(),
     line: text("line").notNull(),
+    // Monotonic insertion order: createdAt has millisecond resolution and
+    // burst-written lines collide on it, so the tail/cursor protocol orders
+    // and anchors on seq — a cursor must never skip same-instant rows.
+    seq: bigserial("seq", { mode: "number" }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     // listLogs is always project-scoped and ordered by time; the optional type
     // filter stays a residual on top of this.
     index("logs_project_created_idx").on(table.projectId, table.createdAt),
+    index("logs_project_seq_idx").on(table.projectId, table.seq),
   ],
 );

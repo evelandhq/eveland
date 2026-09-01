@@ -681,6 +681,34 @@ describe("SQL Store jobs", () => {
 
     expect(updated).toMatchObject({ id: project.id, status: "imported" });
     await expect(store.listLogs(project.id)).resolves.toEqual([log]);
+
+    // Bounded reads: `limit` tails, `afterId` is the follow cursor, both
+    // ascending; an unknown cursor returns nothing instead of the history.
+    const second = await store.appendLog({
+      projectId: project.id,
+      type: "build",
+      line: "second line",
+    });
+    const third = await store.appendLog({
+      projectId: project.id,
+      type: "build",
+      line: "third line",
+    });
+    await expect(store.listLogs(project.id, undefined, { limit: 2 })).resolves.toEqual([
+      second,
+      third,
+    ]);
+    await expect(store.listLogs(project.id, undefined, { afterId: log.id })).resolves.toEqual([
+      second,
+      third,
+    ]);
+    await expect(
+      store.listLogs(project.id, undefined, { afterId: log.id, limit: 1 }),
+    ).resolves.toEqual([second]);
+    await expect(
+      store.listLogs(project.id, undefined, { afterId: "log_unknown" }),
+    ).resolves.toEqual([]);
+    await expect(store.listLogs(project.id, "runtime", { limit: 5 })).resolves.toEqual([]);
   });
 
   test("records current source revision, source files, and schedules", async () => {

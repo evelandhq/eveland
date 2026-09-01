@@ -107,13 +107,14 @@ export async function runDeploy(input: {
   }
 
   // Jobs already on the record are not ours; only report what this deploy
-  // enqueues.
+  // enqueues. Logs advance through the server-side `after` cursor, so no
+  // poll ever re-downloads the project's history.
   const seenJobs = new Set<string>(
     existing ? (await fetchJobs(existing.id)).map((job) => job.id) : [],
   );
-  const seenLogs = new Set<string>(
-    existing ? (await fetchLogs(existing.id)).map((log) => log.id) : [],
-  );
+  let logCursor: string | null = existing
+    ? ((await fetchLogs(existing.id, "limit=1")).at(-1)?.id ?? null)
+    : null;
 
   let projectId: string;
   if (existing) {
@@ -155,11 +156,12 @@ export async function runDeploy(input: {
   for (;;) {
     if (now() >= deadline) throw new Error("Timed out waiting for the build to finish.");
     await sleep(POLL_INTERVAL_MS);
-    for (const log of await fetchLogs(projectId)) {
-      if (seenLogs.has(log.id)) continue;
-      seenLogs.add(log.id);
-      io.print(`  ${log.line}`);
-    }
+    const freshLogs = await fetchLogs(
+      projectId,
+      logCursor ? `after=${encodeURIComponent(logCursor)}&limit=500` : "limit=500",
+    );
+    for (const log of freshLogs) io.print(`  ${log.line}`);
+    logCursor = freshLogs.at(-1)?.id ?? logCursor;
     const jobs = (await fetchJobs(projectId)).filter((job) => !seenJobs.has(job.id));
     const failed = jobs.find((job) => job.status === "failed");
     if (failed) {
@@ -224,10 +226,13 @@ export async function runDeploy(input: {
     return jobs;
   }
 
-  async function fetchLogs(id: string): Promise<Array<{ id: string; line: string }>> {
+  async function fetchLogs(
+    id: string,
+    query: string,
+  ): Promise<Array<{ id: string; line: string }>> {
     try {
       const { logs } = await request<{ logs: Array<{ id: string; line: string }> }>(
-        `/api/projects/${id}/logs?type=build`,
+        `/api/projects/${id}/logs?type=build&${query}`,
       );
       return logs;
     } catch (error) {

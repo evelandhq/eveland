@@ -50,6 +50,13 @@ export async function setEnv(input: {
   );
   input.io.print(`Set ${key} (${input.kind}).`);
   reportRestarts(input.io, jobs.length);
+  if (input.kind === "variable") {
+    // Variables also participate in Release builds; a restart reuses the
+    // immutable old Release, so build-time reads only change on a redeploy.
+    input.io.print(
+      "Note: a variable read at build time is baked into the Release — run `eveland deploy` for it to take effect there; the restart only covers runtime reads.",
+    );
+  }
 }
 
 export async function removeEnv(input: {

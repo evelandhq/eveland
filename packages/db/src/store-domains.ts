@@ -869,7 +869,11 @@ export interface LogStore {
     type: LogRecord["type"];
     line: string;
   }): Promise<LogRecord>;
-  listLogs(projectId: string, type?: LogRecord["type"]): Promise<LogRecord[]>;
+  listLogs(
+    projectId: string,
+    type?: LogRecord["type"],
+    options?: { limit?: number; afterId?: string },
+  ): Promise<LogRecord[]>;
 }
 
 export interface WorkflowDispatcherStore {

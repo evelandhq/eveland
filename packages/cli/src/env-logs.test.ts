@@ -41,6 +41,14 @@ describe("eveland env", () => {
     // Everything after the first '=' is the value, verbatim.
     expect(post?.body).toEqual({ key: "NEW_KEY", value: "some=value", kind: "secret" });
     expect(printed.join("\n")).toContain("Restarting 1 live deployment");
+    // A secret is runtime-only; no build-time caveat.
+    expect(printed.join("\n")).not.toContain("baked into the Release");
+
+    // Variables also enter Release builds: a restart alone cannot change a
+    // value the agent read at build time, and the CLI says so.
+    await setEnv({ ...target, assignment: "BUILD_FLAG=on", kind: "variable" });
+    expect(printed.join("\n")).toContain("baked into the Release");
+    expect(printed.join("\n")).toContain("run `eveland deploy`");
 
     await expect(setEnv({ ...target, assignment: "novalue", kind: "secret" })).rejects.toThrow(
       /KEY=value/,
@@ -53,7 +61,7 @@ describe("eveland env", () => {
 });
 
 describe("eveland logs", () => {
-  test("tails the history and follows with id-dedupe", async () => {
+  test("tails via server limit and follows via the after cursor — never the full history", async () => {
     const logs = Array.from({ length: 5 }, (_, index) => ({
       id: `log_${index}`,
       type: "runtime",
@@ -62,7 +70,10 @@ describe("eveland logs", () => {
     }));
     let followPolls = 0;
     const fetchImpl: FetchLike = async (url) => {
-      expect(new URL(url).searchParams.get("type")).toBe("runtime");
+      const params = new URL(url).searchParams;
+      expect(params.get("type")).toBe("runtime");
+      // Every request is bounded: either a tail limit or an after cursor.
+      expect(params.get("limit") ?? params.get("after")).not.toBeNull();
       if (followPolls > 0 && logs.length === 5) {
         logs.push({
           id: "log_5",
@@ -71,7 +82,14 @@ describe("eveland logs", () => {
           createdAt: "2026-09-01T00:00:06.000Z",
         });
       }
-      return json(200, { logs });
+      // Server-side semantics: after-cursor slice, else tail of `limit`.
+      const after = params.get("after");
+      if (after) {
+        const anchor = logs.findIndex((log) => log.id === after);
+        return json(200, { logs: anchor === -1 ? [] : logs.slice(anchor + 1) });
+      }
+      const limit = Number(params.get("limit"));
+      return json(200, { logs: logs.slice(-limit) });
     };
 
     const printed: string[] = [];

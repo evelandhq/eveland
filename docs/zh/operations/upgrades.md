@@ -126,6 +126,12 @@ token）的 `auth_device_codes` 与 `oauth_*` 表。它只创建新表——按�
 再重启**即可，回滚不受影响（旧代码不触碰这些表）。API 启动时会播种并重申
 `eveland-cli` OAuth client 行；请勿手工编辑该行。
 
+## 日志 tail/cursor 序列列
+
+迁移 `0060` 给 `logs` 表加单调 `seq` 列，支撑 CLI 使用的有界日志读取协议
+（`limit` 取尾、`after` 游标）。新增 `bigserial` 列会重写一次该表——日志历史
+很大的安装上，这条迁移会明显比平常慢。
+
 ## 遗留的按 Project Workflow 残余
 
 每个 Release 都基于共享、External-only Workflow World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动。带有共享 World 之前历史的安装可能仍保留遗留的按 Project Workflow 配置：

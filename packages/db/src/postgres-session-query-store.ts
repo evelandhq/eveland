@@ -1,5 +1,5 @@
 import type { LogRecord } from "@evelandhq/core/contracts";
-import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import {
   logRowToLog,
   sessionEventRowToSessionEvent,
@@ -124,16 +124,47 @@ export function createPostgresSessionQueryStore({
       return rows.map(modelUsageRowToModelUsageEvent);
     },
 
-    async listLogs(projectId, type?: LogRecord["type"]) {
-      const rows = await db
-        .select()
-        .from(logs)
-        .where(
-          type
-            ? and(eq(logs.projectId, projectId), eq(logs.type, type))
-            : eq(logs.projectId, projectId),
-        )
-        .orderBy(logs.createdAt);
+    // The log record grows for the life of the project, so callers page it:
+    // `limit` alone returns the LAST n rows (a tail), `afterId` returns rows
+    // strictly after that row — the follow cursor — optionally capped by
+    // `limit`. Ordering and anchoring use the monotonic seq column: createdAt
+    // is millisecond-resolution and burst-written lines collide on it, so a
+    // time-ordered cursor could skip same-instant rows. Results are always
+    // ascending; an unknown afterId returns nothing rather than replaying
+    // the whole history.
+    async listLogs(
+      projectId,
+      type?: LogRecord["type"],
+      options?: { limit?: number; afterId?: string },
+    ) {
+      const scope = type
+        ? and(eq(logs.projectId, projectId), eq(logs.type, type))
+        : eq(logs.projectId, projectId);
+      if (options?.afterId) {
+        const [anchor] = await db
+          .select({ seq: logs.seq })
+          .from(logs)
+          .where(and(eq(logs.projectId, projectId), eq(logs.id, options.afterId)));
+        if (!anchor) return [];
+        let query = db
+          .select()
+          .from(logs)
+          .where(and(scope, gt(logs.seq, anchor.seq)))
+          .orderBy(logs.seq)
+          .$dynamic();
+        if (options.limit) query = query.limit(options.limit);
+        return (await query).map(logRowToLog);
+      }
+      if (options?.limit) {
+        const rows = await db
+          .select()
+          .from(logs)
+          .where(scope)
+          .orderBy(desc(logs.seq))
+          .limit(options.limit);
+        return rows.reverse().map(logRowToLog);
+      }
+      const rows = await db.select().from(logs).where(scope).orderBy(logs.seq);
       return rows.map(logRowToLog);
     },
   };

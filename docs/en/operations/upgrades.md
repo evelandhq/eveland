@@ -156,6 +156,13 @@ creates new tables — the usual **migrate, then restart** order applies, and a
 rollback is unaffected (old code never touches them). On boot the API seeds and
 re-asserts the `eveland-cli` OAuth client row; do not hand-edit it.
 
+## Log tail/cursor sequence column
+
+Migration `0060` adds a monotonic `seq` column to `logs` backing the bounded
+log-read protocol (`limit` tail, `after` cursor) the CLI uses. Adding a
+`bigserial` column rewrites the table once — on an install with a very large
+log history expect this migration to take noticeably longer than usual.
+
 ## Legacy per-project workflow residue
 
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:

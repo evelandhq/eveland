@@ -421,6 +421,13 @@
       "when": 1788243793328,
       "tag": "0059_cli_device_authorization",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1788244980196,
+      "tag": "0060_logs_seq_cursor",
+      "breakpoints": true
     }
   ]
 }

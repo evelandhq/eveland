@@ -23,15 +23,15 @@ For headless use (CI), set `EVELAND_TOKEN`: it always overrides the stored crede
 
 ## Commands
 
-| Command                                                                              | Behavior                                                                                                 |
-| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `eveland init <dir>`                                                                 | Scaffold a new agent project from the in-tree starter template (no login)                                |
-| `eveland login [--origin <url>]`                                                     | Device-flow authentication; stores the credential for the origin                                         |
-| `eveland logout [--origin <url>]`                                                    | Forgets the stored credential (a set `EVELAND_TOKEN` still authenticates)                                |
-| `eveland whoami [--origin <url>]`                                                    | Prints origin, user, role, token scopes, and token provenance                                            |
-| `eveland deploy [dir] [--name <slug>] [--no-promote]`                                | Upload → server-side build (logs to the terminal) → promote                                              |
-| `eveland logs [dir] [--name <slug>] [--type build\|deploy\|runtime] [-f] [--tail N]` | Print a project's log tail (default runtime, 100 lines); `-f` follows                                    |
-| `eveland env list\|set KEY=value [--variable]\|rm KEY [--name <slug>]`               | Project environment over the secrets API — values are write-only; every change restarts live deployments |
+| Command                                                                              | Behavior                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eveland init <dir>`                                                                 | Scaffold a new agent project from the in-tree starter template (no login)                                                                                                                                           |
+| `eveland login [--origin <url>]`                                                     | Device-flow authentication; stores the credential for the origin                                                                                                                                                    |
+| `eveland logout [--origin <url>]`                                                    | Forgets the stored credential (a set `EVELAND_TOKEN` still authenticates)                                                                                                                                           |
+| `eveland whoami [--origin <url>]`                                                    | Prints origin, user, role, token scopes, and token provenance                                                                                                                                                       |
+| `eveland deploy [dir] [--name <slug>] [--no-promote]`                                | Upload → server-side build (logs to the terminal) → promote                                                                                                                                                         |
+| `eveland logs [dir] [--name <slug>] [--type build\|deploy\|runtime] [-f] [--tail N]` | Print a project's log tail (default runtime, 100 lines); `-f` follows via the server-side `after` cursor — no poll re-reads the history                                                                             |
+| `eveland env list\|set KEY=value [--variable]\|rm KEY [--name <slug>]`               | Project environment over the secrets API — values are write-only; every change restarts live deployments (a `variable` read at build time is baked into the Release and needs a redeploy, which the CLI points out) |
 
 Commands that target a project (`logs`, `env`) resolve it the way `deploy` picks its slug: `--name` wins, else the working directory's `package.json` name, else the directory basename.
 
