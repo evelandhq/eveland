@@ -10,12 +10,16 @@ import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics"
 import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
 import { writeConfigurationSnapshotFile } from "@evelandhq/core/server/config-diagnostics";
 import { createStoreFromEnv } from "@evelandhq/db/factory";
-import { processNextJob } from "./jobs/process.js";
+import { runClaimedJob } from "./jobs/process.js";
 import {
   cleanupExpiredSourcePreflights,
   processNextSourcePreflight,
 } from "./jobs/process-source-preflight.js";
-import { resolveMaxConcurrentHeavyJobs } from "./runtime/job-concurrency.js";
+import {
+  resolveMaxConcurrentHeavyJobs,
+  resolveWorkerJobConcurrency,
+} from "./runtime/job-concurrency.js";
+import { nonOverlapping, startJobPump } from "./runtime/job-pump.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { assertWorkflowTopologyPreflight } from "./runtime/workflow-topology-preflight.js";
 import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
@@ -60,6 +64,7 @@ const workflowRunReconcileIntervalMs = Number(
 const workerId = workerInstanceId;
 const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
 const maxConcurrentHeavyJobs = resolveMaxConcurrentHeavyJobs(process.env);
+const jobConcurrency = resolveWorkerJobConcurrency(process.env);
 const buildInfo = createBuildInfoFromEnv("worker", process.env);
 const storeFactory = createStoreFromEnv();
 const store = instrumentRuntimeLogStore(storeFactory.store, runtimeObservability);
@@ -147,7 +152,7 @@ await writeConfigurationSnapshotFile(
 ).catch(() => console.warn("Worker configuration diagnostics are unavailable."));
 
 console.log(
-  `${formatBuildInfo(buildInfo)} ready. Poll interval: ${intervalMs}ms. Concurrent build limit: ${maxConcurrentHeavyJobs}${process.env.EVELAND_MAX_CONCURRENT_JOBS ? " (EVELAND_MAX_CONCURRENT_JOBS)" : " (derived from machine spec)"}.`,
+  `${formatBuildInfo(buildInfo)} ready. Poll interval: ${intervalMs}ms. Job concurrency: ${jobConcurrency}${process.env.WORKER_JOB_CONCURRENCY ? " (WORKER_JOB_CONCURRENCY)" : " (derived from machine spec)"}. Concurrent build limit: ${maxConcurrentHeavyJobs}${process.env.EVELAND_MAX_CONCURRENT_JOBS ? " (EVELAND_MAX_CONCURRENT_JOBS)" : " (derived from machine spec)"}.`,
 );
 platformObservability.emitLog({
   severity: "info",
@@ -155,6 +160,7 @@ platformObservability.emitLog({
   body: "Eveland Worker is ready.",
   attributes: {
     "eveland.worker.poll_interval_ms": intervalMs,
+    "eveland.worker.job_concurrency": jobConcurrency,
     "eveland.worker.max_concurrent_heavy_jobs": maxConcurrentHeavyJobs,
   },
 });
@@ -234,10 +240,6 @@ async function tick() {
           ),
           cleanupExpiredSourcePreflights(store),
           processNextSourcePreflight(store, workerId),
-          processNextJob(store, workerId, {
-            tracer: platformObservability.tracer,
-            maxConcurrentHeavyJobs,
-          }),
         ]);
         lastTickError = null;
         span.setStatus({ code: SpanStatusCode.OK });
@@ -262,11 +264,38 @@ async function tick() {
   );
 }
 
-void tick();
+// Job admission lives in its own pump, not the control loop: a queued
+// activation races Eve's fixed 30-second command-hook wait, and one admission
+// per tick caps the whole platform at 12 jobs/minute — a cold-start backlog
+// would push session creates past that budget (issue #425's serial lane).
+// The pump drains back-to-back with a bounded pool; the tick keeps pacing the
+// reconcilers and sweeps only.
+const jobPump = startJobPump({
+  concurrency: jobConcurrency,
+  idleDelayMs: intervalMs,
+  claim: () => store.claimNextJob(workerId, undefined, { maxConcurrentHeavyJobs }),
+  run: (job) =>
+    runClaimedJob(store, job, {
+      tracer: platformObservability.tracer,
+      maxConcurrentHeavyJobs,
+    }),
+  onError: (error) => {
+    platformObservability.emitLog({
+      severity: "error",
+      eventName: "eveland.worker.job_pump.failed",
+      body: "Worker job pump iteration failed.",
+      attributes: {
+        "error.type": error instanceof Error ? error.name : "UnknownError",
+      },
+    });
+    console.error(error);
+  },
+});
+
+const runTick = nonOverlapping(tick, (error) => console.error(error));
+runTick();
 publishTelemetry();
-const timer = setInterval(() => {
-  void tick();
-}, intervalMs);
+const timer = setInterval(runTick, intervalMs);
 const telemetryTimer = setInterval(publishTelemetry, intervalMs);
 
 // Separate cadence from tick(): host process listing is comparatively heavy
@@ -362,6 +391,10 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     if (orphanTimer) clearInterval(orphanTimer);
     if (releaseTimer) clearInterval(releaseTimer);
     if (workflowRunReconcileTimer) clearInterval(workflowRunReconcileTimer);
+    // Blocks new claims and wakes idle loops; in-flight jobs are not awaited
+    // (they die with the process and are later recovered as stale), matching
+    // the pre-pump shutdown behavior.
+    void jobPump.stop();
     void Promise.all([
       storeFactory.close(),
       workflowRetentionScheduler.close(),

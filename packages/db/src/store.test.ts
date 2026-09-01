@@ -398,6 +398,42 @@ describe("SQL Store jobs", () => {
     });
   });
 
+  test("claims latency-sensitive jobs ahead of older queued work from other projects", async () => {
+    const store = createTestStore();
+    const settled = [];
+    for (const name of ["Backlog Agent", "Session Agent", "Schedule Agent"]) {
+      const project = await store.createProject({ name, importKind: "zip" });
+      const importJob = await store.claimNextJob("worker-a");
+      await store.completeJob(importJob!.id);
+      settled.push(project);
+    }
+    const [backlogProject, sessionProject, scheduleProject] = settled;
+    // Oldest first: a build backlog, then the session-critical jobs behind it.
+    await store.enqueueJob(backlogProject!.id, "build_deploy");
+    await store.enqueueJob(sessionProject!.id, "ensure_deployment_running", {
+      deploymentId: "dep_session",
+      runtimeInstanceId: "ri_session",
+    });
+    await store.enqueueJob(scheduleProject!.id, "trigger_schedule", {
+      scheduleRunId: "srun_priority",
+    });
+
+    // Activation and schedule dispatch race Eve's 30-second command-hook wait,
+    // so they jump the created_at queue; among themselves FIFO still holds.
+    await expect(store.claimNextJob("worker-a")).resolves.toMatchObject({
+      projectId: sessionProject!.id,
+      type: "ensure_deployment_running",
+    });
+    await expect(store.claimNextJob("worker-b")).resolves.toMatchObject({
+      projectId: scheduleProject!.id,
+      type: "trigger_schedule",
+    });
+    await expect(store.claimNextJob("worker-c")).resolves.toMatchObject({
+      projectId: backlogProject!.id,
+      type: "build_deploy",
+    });
+  });
+
   test("rejects a non-positive heavy-job cap instead of silently uncapping", async () => {
     const store = createTestStore();
 
