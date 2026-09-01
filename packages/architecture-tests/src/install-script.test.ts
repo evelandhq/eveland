@@ -63,7 +63,7 @@ describe("install.sh publication", () => {
     // The one-line promise: `curl | bash` on a fresh Ubuntu must not exit
     // on "docker is required" — the front door installs the base toolchain
     // itself (only where it can: root + apt), then the hard checks run.
-    const aptIndex = script.indexOf('base_missing="$base_missing docker.io"');
+    const aptIndex = script.indexOf('base_missing="$base_missing docker.io docker-compose-v2"');
     const hardCheckIndex = script.indexOf("command -v git >/dev/null 2>&1 || fail");
     expect(aptIndex).toBeGreaterThan(-1);
     expect(hardCheckIndex).toBeGreaterThan(aptIndex);
@@ -71,7 +71,7 @@ describe("install.sh publication", () => {
   });
 
   test("Compose v2 is installed on the fresh host and hard-checked everywhere (docker.io alone lacks it)", () => {
-    expect(script).toContain('base_missing="$base_missing docker-compose-v2"');
+    expect(script).toContain('base_missing="$base_missing docker.io docker-compose-v2"');
     expect(script).toContain("if ! docker compose version >/dev/null 2>&1; then");
     expect(script).toContain("docker compose (v2) is required");
   });
@@ -87,7 +87,9 @@ describe("install.sh publication", () => {
   });
 
   test("the default target is the newest exact vX.Y.Z tag, never a pre-release that sorts above it", () => {
-    expect(script).toContain("grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -1");
+    // `|| true` keeps the HEAD fallback reachable under pipefail when no
+    // stable tag exists (a no-match grep would otherwise abort the script).
+    expect(script).toContain("grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | head -1 || true)\"");
   });
 
   test("a re-run repairs a dead pinned Node instead of forwarding to a shim that cannot start", () => {
@@ -99,7 +101,54 @@ describe("install.sh publication", () => {
     // The repair re-pins in place and never moves the checkout.
     expect(script).toContain("s|^EVELAND_NODE=.*|EVELAND_NODE=$EVELAND_NODE|");
     expect(script).toContain(
-      'elif [ "$REPAIR_NODE" -eq 1 ]; then\n  TARGET_REV="$(git rev-parse HEAD)"',
+      'if [ "$REPAIR_NODE" -eq 1 ]; then\n  # A repair never moves the checkout',
+    );
+  });
+
+  test("Compose is installed from the SAME package family as Docker; the families never mix", () => {
+    // Ubuntu's docker-compose-v2 depends on docker.io, which conflicts with
+    // Docker CE's containerd.io; CE gets docker-compose-plugin instead.
+    const ce = script.indexOf("dpkg -s docker-ce >/dev/null 2>&1");
+    expect(ce).toBeGreaterThan(-1);
+    expect(script.slice(ce, ce + 200)).toContain(
+      'base_missing="$base_missing docker-compose-plugin"',
+    );
+    const io = script.indexOf("dpkg -s docker.io >/dev/null 2>&1");
+    expect(script.slice(io, io + 200)).toContain('base_missing="$base_missing docker-compose-v2"');
+    // An unknown family fails with matching instructions rather than guessing.
+    expect(script).toContain("its package family is unknown");
+  });
+
+  test("a Node repair never moves the checkout, even with EVELAND_VERSION: the version goes to update afterwards", () => {
+    const repair = script.indexOf(
+      'if [ "$REPAIR_NODE" -eq 1 ]; then\n  # A repair never moves the checkout',
+    );
+    const requested = script.indexOf(
+      'elif [ -n "$REQUESTED_VERSION" ]; then\n  TARGET_REV="$REQUESTED_VERSION"',
+    );
+    expect(repair).toBeGreaterThan(-1);
+    expect(repair).toBeLessThan(requested);
+    // Dependencies are reinstalled only after the platform is stopped, and
+    // the requested version is handed to update; the systemd form is
+    // regenerated (new interpreter path in the units) via install --systemd.
+    const stop = script.indexOf('"$BIN_DIR/eveland-ctl" stop || fail');
+    const deps = script.indexOf("pnpm install --frozen-lockfile", stop);
+    expect(stop).toBeGreaterThan(-1);
+    expect(deps).toBeGreaterThan(stop);
+    expect(script).toContain(
+      '"$BIN_DIR/eveland-ctl" update --no-prompt --version "$REQUESTED_VERSION"',
+    );
+    expect(script).toContain('"$BIN_DIR/eveland-ctl" install --systemd');
+  });
+
+  test("the repin temp copy of the env file is born 0600, swapped in atomically, and cleaned by the trap", () => {
+    expect(script).toContain(
+      '( umask 077; sed "s|^EVELAND_NODE=.*|EVELAND_NODE=$EVELAND_NODE|" "$ETC_DIR/eveland.env" > "$REPIN_TMP" )',
+    );
+    expect(script).toContain('mv -f "$REPIN_TMP" "$ETC_DIR/eveland.env"');
+    expect(script).toMatch(/trap 'status=\$\?; rm -f "\$REPIN_TMP";/);
+    expect(script.indexOf('REPIN_TMP="$ETC_DIR/.eveland.env.repin"')).toBeLessThan(
+      script.indexOf("trap 'status="),
     );
   });
 

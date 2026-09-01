@@ -135,7 +135,8 @@ mkdir -p "$PREFIX" "$LOG_DIR" "$ETC_DIR" "$BIN_DIR" 2>/dev/null \
 # no credential is ever printed, an install log is operational history.
 touch "$LOG_FILE" && chmod 600 "$LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1
-trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "Install failed (exit $status). Full log: $LOG_FILE" >&2; fi' EXIT
+REPIN_TMP="$ETC_DIR/.eveland.env.repin"
+trap 'status=$?; rm -f "$REPIN_TMP"; if [ $status -ne 0 ]; then echo; echo "Install failed (exit $status). Full log: $LOG_FILE" >&2; fi' EXIT
 note "Logging to $LOG_FILE"
 
 # --- Prerequisites -----------------------------------------------------------
@@ -146,10 +147,21 @@ if [ "$OS_KIND" = linux ] && [ "$(id -u)" = 0 ] && command -v apt-get >/dev/null
   base_missing=""
   command -v git >/dev/null 2>&1 || base_missing="$base_missing git"
   command -v curl >/dev/null 2>&1 || base_missing="$base_missing curl"
-  command -v docker >/dev/null 2>&1 || base_missing="$base_missing docker.io"
-  # docker.io does NOT pull in Compose v2 (Ubuntu ships it as the separate,
-  # merely Suggested docker-compose-v2 package) and the ctl needs it at once.
-  docker compose version >/dev/null 2>&1 || base_missing="$base_missing docker-compose-v2"
+  # Compose v2 is a separate package in BOTH families and the ctl needs it
+  # at once. The families must never mix: Ubuntu's docker-compose-v2 depends
+  # on docker.io, which conflicts with Docker CE's containerd.io; Docker CE
+  # ships Compose as docker-compose-plugin from Docker's own apt repo.
+  if ! command -v docker >/dev/null 2>&1; then
+    base_missing="$base_missing docker.io docker-compose-v2"
+  elif ! docker compose version >/dev/null 2>&1; then
+    if dpkg -s docker-ce >/dev/null 2>&1; then
+      base_missing="$base_missing docker-compose-plugin"
+    elif dpkg -s docker.io >/dev/null 2>&1; then
+      base_missing="$base_missing docker-compose-v2"
+    else
+      fail "docker is installed but 'docker compose' is not, and its package family is unknown. Install Compose v2 the way you installed Docker (Docker CE: apt-get install docker-compose-plugin; Ubuntu: apt-get install docker-compose-v2) and re-run."
+    fi
+  fi
   if [ -n "$base_missing" ]; then
     note "Installing base prerequisites via apt:$base_missing"
     # shellcheck disable=SC2086
@@ -242,13 +254,17 @@ fi
 
 cd "$SOURCE_DIR"
 git fetch --tags --quiet || true
-if [ -n "$REQUESTED_VERSION" ]; then
+if [ "$REPAIR_NODE" -eq 1 ]; then
+  # A repair never moves the checkout, requested version or not: moving it is
+  # update's job (backup, stop, forward-only check, migrate, artifacts), and
+  # the requested version is handed to update once the interpreter works.
+  TARGET_REV="$(git rev-parse HEAD)"
+elif [ -n "$REQUESTED_VERSION" ]; then
   TARGET_REV="$REQUESTED_VERSION"
-elif [ "$REPAIR_NODE" -eq 1 ]; then
-  TARGET_REV="$(git rev-parse HEAD)" # a repair never moves the checkout; that is update's job
 else
   # Exact vX.Y.Z only: a pre-release tag sorts above the stable it precedes.
-  TARGET_REV="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
+  # `|| true`: under pipefail a no-match grep would abort before the fallback.
+  TARGET_REV="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
   [ -n "$TARGET_REV" ] || TARGET_REV="$(git rev-parse HEAD)"
 fi
 note "Checking out $TARGET_REV"
@@ -270,14 +286,20 @@ fi
 note "Using pnpm $(pnpm --version)"
 
 # --- Dependencies ------------------------------------------------------------
-note "Installing dependencies (this can take a few minutes)"
-SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile
+if [ "$REPAIR_NODE" -eq 1 ]; then
+  : # deferred: on a repair the platform may still be running under the old interpreter; it is stopped first (below)
+else
+  note "Installing dependencies (this can take a few minutes)"
+  SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile
+fi
 
 # --- Pin the interpreter for eveland-ctl's doctor and the shims --------------
 if [ "$REPAIR_NODE" -eq 1 ]; then
-  # Replace the dead pin in place (0600 preserved: same inode, no recreate).
-  sed "s|^EVELAND_NODE=.*|EVELAND_NODE=$EVELAND_NODE|" "$ETC_DIR/eveland.env" > "$ETC_DIR/.eveland.env.repin" \
-    && cat "$ETC_DIR/.eveland.env.repin" > "$ETC_DIR/eveland.env" && rm -f "$ETC_DIR/.eveland.env.repin"
+  # Replace the dead pin. The temp copy holds every secret in the file, so it
+  # is born 0600 (umask 077), swapped in atomically, and cleaned by the trap.
+  ( umask 077; sed "s|^EVELAND_NODE=.*|EVELAND_NODE=$EVELAND_NODE|" "$ETC_DIR/eveland.env" > "$REPIN_TMP" )
+  chmod 600 "$REPIN_TMP"
+  mv -f "$REPIN_TMP" "$ETC_DIR/eveland.env"
   note "Re-pinned EVELAND_NODE=$EVELAND_NODE"
 elif [ -f "$ETC_DIR/eveland.env" ] && grep -q '^EVELAND_NODE=' "$ETC_DIR/eveland.env"; then
   : # already pinned; eveland-ctl owns this file after first boot
@@ -330,6 +352,29 @@ case ":$PATH:" in
     fi
     ;;
 esac
+
+# --- Repair: the interpreter works again; now finish on a STOPPED platform ---
+if [ "$REPAIR_NODE" -eq 1 ]; then
+  note "Stopping the platform before reinstalling dependencies under the repaired Node"
+  env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" stop || fail "could not stop the platform; not touching node_modules under it."
+  note "Installing dependencies (this can take a few minutes)"
+  SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile
+  if [ -n "$REQUESTED_VERSION" ]; then
+    # The version move goes through update (backup, forward-only, migrate,
+    # artifact regeneration — which also re-links node onto the system PATH).
+    note "Node repaired — handing the requested version to eveland-ctl update"
+    if [ "$INTERACTIVE" -eq 1 ]; then
+      exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update --version "$REQUESTED_VERSION" </dev/tty
+    fi
+    exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update --no-prompt --version "$REQUESTED_VERSION"
+  fi
+  if grep -q '"supervision": "systemd"' "$ETC_DIR/install.json" 2>/dev/null; then
+    # The units bake the interpreter's bin dir in: regenerate them (and the
+    # system-PATH node links) before anything starts.
+    note "Node repaired — regenerating the systemd form for the new interpreter"
+    exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" install --systemd
+  fi
+fi
 
 # --- Hand off to the smart tool ----------------------------------------------
 if [ "$NO_START" -eq 1 ]; then
