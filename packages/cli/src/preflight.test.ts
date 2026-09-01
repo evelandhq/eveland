@@ -56,19 +56,44 @@ describe("deploy preflight", () => {
     expect(result.projectName).toBe("probe");
   });
 
-  test("warns on oversized projection files and committed .env values", async () => {
+  test("warns on oversized projection files", async () => {
     const root = await makeProject();
     await writeFile(
       path.join(root, "agent", "big.md"),
       "x".repeat(SOURCE_PROJECTION_FILE_BYTES + 1),
     );
-    await writeFile(path.join(root, ".env"), "SECRET=real-value");
     const result = await collectProjectFiles(root);
     expect(result.problems).toEqual([]);
     expect(result.warnings.join("\n")).toContain("agent/big.md");
-    expect(result.warnings.join("\n")).toContain(".env is included in the upload");
-    // .env.example carries no values and stays quiet.
-    expect(result.warnings.join("\n")).not.toContain(".env.example");
+  });
+
+  test("fails closed on value-bearing .env files at any depth — no override", async () => {
+    const root = await makeProject();
+    await writeFile(path.join(root, ".env"), "SECRET=real-value");
+    await mkdir(path.join(root, "agent", "config"), { recursive: true });
+    await writeFile(path.join(root, "agent", "config", ".env.local"), "NESTED=value");
+    const result = await collectProjectFiles(root);
+    const problems = result.problems.join("\n");
+    expect(problems).toContain(".env would put its values into the source record");
+    expect(problems).toContain("agent/config/.env.local");
+    expect(problems).toContain("eveland env set");
+    // Value-free conventions stay allowed.
+    expect(problems).not.toContain(".env.example");
+  });
+
+  test("fails closed on credential-bearing .npmrc, allows plain registry config", async () => {
+    const root = await makeProject();
+    await writeFile(
+      path.join(root, ".npmrc"),
+      "registry=https://registry.example.com/\n//registry.example.com/:_authToken=npm_secret\n",
+    );
+    const withToken = await collectProjectFiles(root);
+    expect(withToken.problems.join("\n")).toContain(".npmrc carries registry credentials");
+
+    await writeFile(path.join(root, ".npmrc"), "registry=https://registry.example.com/\n");
+    const plain = await collectProjectFiles(root);
+    expect(plain.problems).toEqual([]);
+    expect(plain.files.some((file) => file.name === ".npmrc")).toBe(true);
   });
 
   test("reads the eve dependency from devDependencies too, like the server", async () => {

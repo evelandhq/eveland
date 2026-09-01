@@ -12,9 +12,18 @@ import path from "node:path";
  * do not remove files from the build. So packaging excludes nothing but
  * `.git` and `node_modules`, and projection-only effects (binaries, oversized
  * files) are warnings, not refusals.
+ *
+ * The one hard line is secrets: the platform's contract is that secret
+ * values never enter the source record or a Release. Files that exist to
+ * carry values (`.env*` at any depth) and credential-bearing `.npmrc` lines
+ * fail the preflight closed — never silently excluded (that would deploy
+ * different code), never a warning (that would ship the secret), and with
+ * no override flag: `eveland env set` is the supported path.
  */
 
 const EXCLUDED_DIRECTORIES = new Set([".git", "node_modules"]);
+const ENV_FILE_EXEMPT = new Set([".env.example", ".env.sample", ".env.template"]);
+const NPMRC_CREDENTIAL_PATTERN = /(^|:)_(auth|authToken|password)\s*=/m;
 /** Mirrors the server's default EVELAND_MAX_UPLOAD_BYTES. */
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 /** Files above this are kept in the build but invisible in the Source page. */
@@ -91,9 +100,14 @@ export async function collectProjectFiles(root: string): Promise<PreflightResult
         `${file.name} is ${Math.round(file.data.length / 1024)} KiB — it deploys, but files over 256 KiB stay invisible in the Source page.`,
       );
     }
-    if (/^\.env(\..+)?$/.test(file.name) && file.name !== ".env.example") {
-      warnings.push(
-        `${file.name} is included in the upload; its values become part of the source record — prefer \`eveland env set\` for real secrets.`,
+    const basename = file.name.split("/").at(-1)!;
+    if (/^\.env(\..+)?$/.test(basename) && !ENV_FILE_EXEMPT.has(basename)) {
+      problems.push(
+        `${file.name} would put its values into the source record and the Release — secrets must never enter builds. Remove it and use \`eveland env set\` instead.`,
+      );
+    } else if (basename === ".npmrc" && NPMRC_CREDENTIAL_PATTERN.test(file.data.toString("utf8"))) {
+      problems.push(
+        `${file.name} carries registry credentials (_auth/_authToken/_password) — they would enter the source record and the Release. Strip them; plain registry configuration is fine.`,
       );
     }
   }
