@@ -4,7 +4,11 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { describe, expect, test } from "vitest";
-import { collectProjectFiles, eveSpecifierProblem, MAX_TEXT_FILE_BYTES } from "./preflight.ts";
+import {
+  collectProjectFiles,
+  eveSpecifierProblem,
+  SOURCE_PROJECTION_FILE_BYTES,
+} from "./preflight.ts";
 import { createZipArchive } from "./zip.ts";
 
 const execFileAsync = promisify(execFile);
@@ -19,39 +23,73 @@ async function makeProject(): Promise<string> {
     JSON.stringify({ name: "probe", dependencies: { eve: "0.47.6" } }),
   );
   await writeFile(path.join(root, "agent", "instructions.md"), "Be helpful.");
-  await writeFile(path.join(root, "node_modules", "junk", "big.js"), "ignored");
+  await writeFile(path.join(root, "node_modules", "junk", "big.js"), "excluded");
   await writeFile(path.join(root, ".env.example"), "MY_KEY=");
-  await writeFile(path.join(root, ".DS_Store"), "junk");
   return root;
 }
 
 describe("deploy preflight", () => {
-  test("collects the importable tree and reads the manifest", async () => {
+  test("packs the tree faithfully: dotfiles, build output, and binaries all ship", async () => {
     const root = await makeProject();
+    // The server's source-browser scanner ignores these for its projection,
+    // but the Release builds from the full uploaded tree — dropping them
+    // would deploy different code than the local directory runs.
+    await writeFile(path.join(root, ".npmrc"), "registry=https://registry.npmjs.org/");
+    await mkdir(path.join(root, "src", "build"), { recursive: true });
+    await writeFile(path.join(root, "src", "build", "generated.ts"), "export const x = 1;");
+    await writeFile(path.join(root, "logo.png"), Buffer.from([0x89, 0x50, 0x00, 0x47]));
+
     const result = await collectProjectFiles(root);
+
     expect(result.files.map((file) => file.name)).toEqual([
       ".env.example",
+      ".npmrc",
       "agent/instructions.md",
+      "logo.png",
       "package.json",
+      "src/build/generated.ts",
     ]);
+    expect(result.problems).toEqual([]);
+    // Projection-only effects warn instead of refusing.
+    expect(result.warnings.join("\n")).toContain("logo.png is binary");
     expect(result.eveSpecifier).toBe("0.47.6");
     expect(result.projectName).toBe("probe");
+  });
+
+  test("warns on oversized projection files and committed .env values", async () => {
+    const root = await makeProject();
+    await writeFile(
+      path.join(root, "agent", "big.md"),
+      "x".repeat(SOURCE_PROJECTION_FILE_BYTES + 1),
+    );
+    await writeFile(path.join(root, ".env"), "SECRET=real-value");
+    const result = await collectProjectFiles(root);
+    expect(result.problems).toEqual([]);
+    expect(result.warnings.join("\n")).toContain("agent/big.md");
+    expect(result.warnings.join("\n")).toContain(".env is included in the upload");
+    // .env.example carries no values and stays quiet.
+    expect(result.warnings.join("\n")).not.toContain(".env.example");
+  });
+
+  test("reads the eve dependency from devDependencies too, like the server", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "eveland-devdep-"));
+    await mkdir(path.join(root, "agent"), { recursive: true });
+    await writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "dev-probe", devDependencies: { eve: "0.47.6" } }),
+    );
+    await writeFile(path.join(root, "agent", "instructions.md"), "Hi.");
+    const result = await collectProjectFiles(root);
+    expect(result.eveSpecifier).toBe("0.47.6");
     expect(result.problems).toEqual([]);
   });
 
-  test("flags binaries, oversized files, and missing instructions", async () => {
-    const root = await makeProject();
-    await writeFile(path.join(root, "logo.png"), Buffer.from([0x89, 0x50, 0x00, 0x47]));
-    await writeFile(path.join(root, "agent", "big.md"), "x".repeat(MAX_TEXT_FILE_BYTES + 1));
-    const result = await collectProjectFiles(root);
-    expect(result.problems.join("\n")).toContain("logo.png is a binary file");
-    expect(result.problems.join("\n")).toContain("agent/big.md");
-
+  test("flags the genuinely fatal problems", async () => {
     const bare = await mkdtemp(path.join(os.tmpdir(), "eveland-bare-"));
     await writeFile(path.join(bare, "package.json"), JSON.stringify({ dependencies: {} }));
-    const bareResult = await collectProjectFiles(bare);
-    expect(bareResult.problems.join("\n")).toContain("Missing instructions");
-    expect(bareResult.problems.join("\n")).toContain('no "eve" dependency');
+    const result = await collectProjectFiles(bare);
+    expect(result.problems.join("\n")).toContain("Missing instructions");
+    expect(result.problems.join("\n")).toContain('no "eve" dependency');
   });
 
   test("skips symlinks the extractor would reject", async () => {

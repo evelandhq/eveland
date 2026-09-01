@@ -31,8 +31,14 @@ function fakePlatform(options: {
     Array<{ id: string; type: string; status: string; lastError: string | null }>
   >;
   logTimeline?: string[][];
+  preflightOutcome?: { status: string; error: string | null };
 }) {
-  const calls: Array<{ method: string; url: string; form: FormData | null }> = [];
+  const calls: Array<{
+    method: string;
+    url: string;
+    form: FormData | null;
+    jsonBody: unknown;
+  }> = [];
   let polls = 0;
   // The baseline jobs/logs snapshot happens before the upload; new activity
   // only appears once the deploy has been submitted.
@@ -45,7 +51,8 @@ function fakePlatform(options: {
   const fetchImpl: FetchLike = async (url, init) => {
     const method = init?.method ?? "GET";
     const form = init?.body instanceof FormData ? init.body : null;
-    calls.push({ method, url, form });
+    const jsonBody = typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : null;
+    calls.push({ method, url, form, jsonBody });
     const { pathname, searchParams } = new URL(url);
 
     if (pathname === "/api/instance") {
@@ -55,6 +62,14 @@ function fakePlatform(options: {
     }
     if (pathname === "/api/projects" && method === "GET") {
       return json(200, { projects: options.projects ?? [] });
+    }
+    if (pathname === "/api/source-preflights" && method === "POST") {
+      return json(202, { preflight: { id: "pre_1", status: "queued" } });
+    }
+    if (pathname.startsWith("/api/source-preflights/")) {
+      return json(200, {
+        preflight: options.preflightOutcome ?? { status: "completed", error: null },
+      });
     }
     if (pathname === "/api/projects" && method === "POST") {
       submitted = true;
@@ -147,14 +162,23 @@ describe("eveland deploy", () => {
       promoted: true,
       stableUrl: "http://tour-guide.agent.localhost:17300",
     });
+    // Preflight-first: the archive goes to the preflight endpoint, and the
+    // project is created from the validated preflight id.
+    const preflight = platform.calls.find(
+      (call) => call.method === "POST" && call.url.endsWith("/api/source-preflights"),
+    );
+    const archiveEntry = preflight?.form?.get("archive");
+    expect(archiveEntry).toBeInstanceOf(File);
+    expect((archiveEntry as File).size).toBeGreaterThan(0);
     const create = platform.calls.find(
       (call) => call.method === "POST" && call.url.endsWith("/api/projects"),
     );
-    expect(create?.form?.get("name")).toBe("tour-guide");
-    expect(create?.form?.get("deployAfterImport")).toBe("true");
-    const archiveEntry = create?.form?.get("archive");
-    expect(archiveEntry).toBeInstanceOf(File);
-    expect((archiveEntry as File).size).toBeGreaterThan(0);
+    expect(create?.form).toBeNull();
+    expect(create?.jsonBody).toEqual({
+      name: "tour-guide",
+      preflightId: "pre_1",
+      deployAfterImport: true,
+    });
     expect(platform.calls.some((call) => call.url.includes("/promote"))).toBe(true);
     const output = printed.join("\n");
     expect(output).toContain("importing source");
@@ -248,6 +272,27 @@ describe("eveland deploy", () => {
     });
     expect(result.promoted).toBe(false);
     expect(preview.calls.some((call) => call.url.includes("/promote"))).toBe(false);
+  });
+
+  test("a failed preflight never creates a project or burns the slug", async () => {
+    const platform = fakePlatform({
+      preflightOutcome: {
+        status: "failed",
+        error: 'Invalid eve project: Unsupported Eve dependency "0.47.99".',
+      },
+    });
+    await expect(
+      runDeploy({
+        origin: "http://localhost:17300",
+        token: "tok",
+        dir: await makeProject(),
+        promote: true,
+        io: io(platform).io,
+      }),
+    ).rejects.toThrow(/Source validation failed: Invalid eve project/);
+    expect(
+      platform.calls.some((call) => call.method === "POST" && call.url.endsWith("/api/projects")),
+    ).toBe(false);
   });
 
   test("derives slugs the platform accepts", () => {

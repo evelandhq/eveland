@@ -84,6 +84,7 @@ export async function runDeploy(input: {
   if (source.problems.length > 0) {
     throw new Error(`The project cannot be deployed:\n  - ${source.problems.join("\n  - ")}`);
   }
+  for (const warning of source.warnings) io.print(`Warning: ${warning}`);
   const instance = await request<{ eve: { supportedRanges: string[] } }>("/api/instance");
   const versionProblem = eveSpecifierProblem(source.eveSpecifier, instance.eve.supportedRanges);
   if (versionProblem) throw new Error(versionProblem);
@@ -125,13 +126,25 @@ export async function runDeploy(input: {
     });
     projectId = existing.id;
   } else {
-    const form = new FormData();
-    form.set("name", slug);
-    form.set("archive", new File([new Uint8Array(archive)], "source.zip"));
-    form.set("deployAfterImport", "true");
-    const created = await request<{ project: { id: string } }>("/api/projects", {
+    // Preflight-first, like the Dashboard: the worker validates the source
+    // BEFORE any project exists, so a failed validation never leaves a
+    // failed project squatting on the slug.
+    const preflightForm = new FormData();
+    preflightForm.set("archive", new File([new Uint8Array(archive)], "source.zip"));
+    const submitted = await request<{ preflight: { id: string } }>("/api/source-preflights", {
       method: "POST",
-      body: form,
+      body: preflightForm,
+    });
+    const preflight = await waitForPreflight(submitted.preflight.id);
+    if (preflight.status !== "completed") {
+      throw new Error(`Source validation failed: ${preflight.error ?? "unknown reason"}`);
+    }
+    const created = await apiRequest<{ project: { id: string } }>({
+      origin,
+      path: "/api/projects",
+      token,
+      fetchImpl: io.fetchImpl,
+      json: { name: slug, preflightId: submitted.preflight.id, deployAfterImport: true },
     });
     projectId = created.project.id;
   }
@@ -187,6 +200,22 @@ export async function runDeploy(input: {
     stableUrl: endpoints.stable,
     previewUrls: endpoints.previews,
   };
+
+  async function waitForPreflight(
+    preflightId: string,
+  ): Promise<{ status: string; error: string | null }> {
+    const preflightDeadline = now() + DEPLOY_TIMEOUT_MS;
+    for (;;) {
+      const { preflight } = await request<{
+        preflight: { status: string; error: string | null };
+      }>(`/api/source-preflights/${preflightId}`);
+      if (preflight.status !== "queued" && preflight.status !== "running") return preflight;
+      if (now() >= preflightDeadline) {
+        throw new Error("Timed out waiting for source validation.");
+      }
+      await sleep(POLL_INTERVAL_MS);
+    }
+  }
 
   async function fetchJobs(id: string): Promise<PublicJob[]> {
     const { jobs } = await request<{ jobs: PublicJob[] }>(
