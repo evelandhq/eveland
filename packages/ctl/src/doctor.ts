@@ -327,10 +327,14 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
   // fine. Ask the Compose container itself for the migration journal.
   const postgresReachable = await deps.tcpProbe("127.0.0.1", POSTGRES_HOST_PORT);
   if (postgresReachable && dockerOk) {
+    // --env-file: compose interpolates the whole file even for one service,
+    // and an appliance's configuration is not a ./.env in the compose cwd.
+    const envFileArgs = deps.envFile ? ["--env-file", deps.envFile.path] : [];
     const result = await deps.execCommand(
       [
         "docker",
         "compose",
+        ...envFileArgs,
         "exec",
         "-T",
         "postgres",

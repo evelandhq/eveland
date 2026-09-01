@@ -155,7 +155,22 @@ async function preflightStart(
   return problems;
 }
 
-async function ensureInfraUp(io: LifecycleIo, resolved: ResolvedLifecycle): Promise<void> {
+/**
+ * Compose interpolates the WHOLE file even when only infra services start,
+ * and the api service's required `${EVELAND_ADMIN_PASSWORD:?}` style
+ * interpolations only auto-resolve from a ./.env in the compose working
+ * directory. An appliance keeps its configuration in etc/eveland.env, so
+ * every compose invocation passes it explicitly.
+ */
+export function composeArgs(envFilePath: string, ...rest: string[]): string[] {
+  return ["docker", "compose", "--env-file", envFilePath, ...rest];
+}
+
+async function ensureInfraUp(
+  io: LifecycleIo,
+  resolved: ResolvedLifecycle,
+  envFilePath: string,
+): Promise<void> {
   const probe = await resolved.execCommand(["docker", "info", "--format", "{{.ServerVersion}}"], {
     cwd: resolved.repoRootDir,
   });
@@ -167,7 +182,7 @@ async function ensureInfraUp(io: LifecycleIo, resolved: ResolvedLifecycle): Prom
   }
   io.stdout("Starting infrastructure (postgres, otel-collector)...");
   const result = await resolved.execCommand(
-    ["docker", "compose", "up", "-d", ...INFRA_COMPOSE_SERVICES],
+    composeArgs(envFilePath, "up", "-d", ...INFRA_COMPOSE_SERVICES),
     { cwd: resolved.repoRootDir },
   );
   if (result.code !== 0) {
@@ -361,7 +376,7 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
       });
     }
     if (!parsed.values["skip-infra"]) {
-      await ensureInfraUp(io, resolved);
+      await ensureInfraUp(io, resolved, envFile.path);
     }
     await runBootstrapPrepare(deps, envFile);
   } else {
@@ -372,7 +387,7 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
       return 1;
     }
     if (!parsed.values["skip-infra"]) {
-      await ensureInfraUp(io, resolved);
+      await ensureInfraUp(io, resolved, envFile.path);
     }
   }
   await mkdir(resolved.layout.logsDir, { recursive: true });

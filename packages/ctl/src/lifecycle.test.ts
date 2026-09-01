@@ -93,9 +93,14 @@ describe("runStart", () => {
   test("starts the daemon, brings infra up, waits for readiness, and prints the origin", async () => {
     const harness = await makeHarness({ env: VALID_ENV });
     expect(await runStart([], harness.io)).toBe(0);
-    expect(harness.execCalls).toContainEqual([
+    const composeUp = harness.execCalls.find((argv) => argv.includes("up"));
+    // The explicit --env-file keeps compose interpolation working when the
+    // configuration is not a ./.env in the compose working directory.
+    expect(composeUp).toEqual([
       "docker",
       "compose",
+      "--env-file",
+      path.join(harness.repo, ".env"),
       "up",
       "-d",
       "postgres",
@@ -221,6 +226,8 @@ describe("runStart first boot", () => {
     expect(harness.execCalls).toContainEqual([
       "docker",
       "compose",
+      "--env-file",
+      harness.layout.envFilePath,
       "up",
       "-d",
       "postgres",
