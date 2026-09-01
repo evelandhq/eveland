@@ -50,8 +50,13 @@ export async function runInstallCommand(args: string[], io: LifecycleIo): Promis
     return 1;
   }
 
-  // The ctl supervisor and the systemd form must never both own processes.
-  await runStop([], io);
+  // The ctl supervisor and the systemd form must never both own processes:
+  // a supervisor that refuses to die means no promotion at all.
+  const stopped = await runStop([], io);
+  if (stopped !== 0) {
+    io.stderr("The running supervisor could not be stopped; not installing the systemd form.");
+    return stopped;
+  }
 
   const context = systemdModeContext(io, resolved);
   const installed = await installSystemdArtifacts(context, envFile);

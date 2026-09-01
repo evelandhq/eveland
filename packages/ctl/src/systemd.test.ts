@@ -8,11 +8,14 @@ import type { LifecycleIo } from "./io.ts";
 import { systemdUnitName } from "./processes.ts";
 import {
   DISPATCHER_ENV_KEYS,
+  GATEWAY_ENV_KEYS,
   renderApplianceOverlay,
   renderDispatcherEnv,
   renderDispatcherUnit,
+  renderServiceEnv,
   renderWorkerUnit,
   SYSTEMD_HOST_UNITS,
+  WEB_ENV_KEYS,
 } from "./systemd-mode.ts";
 import { runInstallCommand } from "./systemd.ts";
 
@@ -81,19 +84,67 @@ describe("the dispatcher's narrowed environment", () => {
   });
 });
 
+describe("the public Gateway's and the Dashboard's narrowed environments", () => {
+  const FULL = {
+    NODE_ENV: "production",
+    DATABASE_URL: "postgres://platform",
+    EVELAND_GATEWAY_SERVICE_TOKEN: "gw-token",
+    EVELAND_GATEWAY_AFFINITY_SECRET: "affinity",
+    EVELAND_AGENT_BASE_DOMAINS: "agent.localhost",
+    API_URL: "http://api",
+    APP_SECRET_KEY: "app-secret-must-not-appear",
+    BETTER_AUTH_SECRET: "auth-secret-must-not-appear",
+    EVELAND_ADMIN_PASSWORD: "admin-pw-must-not-appear",
+    ANTHROPIC_API_KEY: "sk-ant-must-not-appear",
+    EVELAND_SCHEDULER_DISPATCH_SECRET: "dispatch-must-not-appear",
+  };
+
+  test("the gateway file carries its compose-defined variables and nothing secret beyond them", () => {
+    const rendered = renderServiceEnv("gateway", GATEWAY_ENV_KEYS, FULL);
+    expect(rendered).toContain("EVELAND_GATEWAY_SERVICE_TOKEN=gw-token");
+    expect(rendered).toContain("DATABASE_URL=postgres://platform");
+    expect(rendered).not.toContain("must-not-appear");
+    for (const forbidden of [
+      "APP_SECRET_KEY",
+      "BETTER_AUTH_SECRET",
+      "EVELAND_ADMIN_PASSWORD",
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "EVELAND_SCHEDULER_DISPATCH_SECRET",
+      "EVELAND_SCHEDULER_RUNTIME_SECRET",
+    ]) {
+      expect(GATEWAY_ENV_KEYS).not.toContain(forbidden);
+      expect(WEB_ENV_KEYS).not.toContain(forbidden);
+    }
+  });
+
+  test("the dashboard file is tiny: release identity and the API address", () => {
+    const rendered = renderServiceEnv("web", WEB_ENV_KEYS, FULL);
+    expect(rendered).toContain("API_URL=http://api");
+    expect(rendered).not.toContain("DATABASE_URL");
+    expect(rendered).not.toContain("must-not-appear");
+  });
+});
+
 describe("the appliance Compose overlay", () => {
   test("repoints data binds, masks native artifacts, and derives scheme/port from the origin", () => {
     const overlay = renderApplianceOverlay({
       dataDir: "/opt/eveland/data",
       publicOrigin: "http://localhost:17300",
       envFilePath: "/opt/eveland/etc/eveland.env",
+      gatewayEnvFilePath: "/opt/eveland/etc/eveland-gateway.env",
+      webEnvFilePath: "/opt/eveland/etc/eveland-web.env",
     });
     expect(overlay).toContain("- /opt/eveland/data:/opt/eveland/data");
     expect(overlay).toContain("EVELAND_DATA_DIR: /opt/eveland/data");
     expect(overlay).toContain("eveland-appliance-api-node-modules:/workspace/node_modules");
-    // The prod commands read /workspace/.env at runtime; the appliance's
-    // config file is bound there read-only.
+    // The prod commands read /workspace/.env at runtime. Only the API gets
+    // the full configuration; the public Gateway and the Dashboard get their
+    // allowlisted files — the full file must appear exactly once.
     expect(overlay).toContain("- /opt/eveland/etc/eveland.env:/workspace/.env:ro");
+    expect(overlay.split("/opt/eveland/etc/eveland.env:/workspace/.env").length - 1).toBe(1);
+    expect(overlay).toContain("- /opt/eveland/etc/eveland-gateway.env:/workspace/.env:ro");
+    expect(overlay).toContain("- /opt/eveland/etc/eveland-web.env:/workspace/.env:ro");
     expect(overlay).toContain("eveland-appliance-gateway-node-modules:/workspace/node_modules");
     expect(overlay).toContain("eveland-appliance-web-node-modules:/workspace/node_modules");
     expect(overlay).toContain("eveland-appliance-web-next:/workspace/apps/web/.next");
@@ -113,6 +164,8 @@ describe("the appliance Compose overlay", () => {
       dataDir: "/opt/eveland/data",
       publicOrigin: "https://eveland.example.com",
       envFilePath: "/opt/eveland/etc/eveland.env",
+      gatewayEnvFilePath: "/opt/eveland/etc/eveland-gateway.env",
+      webEnvFilePath: "/opt/eveland/etc/eveland-web.env",
     });
     expect(overlay).toContain("EVELAND_GATEWAY_PUBLIC_SCHEME: https");
     expect(overlay).toContain('EVELAND_GATEWAY_PUBLIC_PORT: "0"');
@@ -205,6 +258,21 @@ describe("runInstallCommand", () => {
     expect(harness.err.join("\n")).toContain("eveland-ctl start");
   });
 
+  test("a ctl supervisor that refuses to stop blocks the promotion outright", async () => {
+    const harness = await makeHarness({});
+    // A live supervisor that survives every signal.
+    const { writeSupervisorRecord } = await import("./state-files.ts");
+    await writeSupervisorRecord(harness.layout, { pid: 4242, identity: "id-4242" });
+    harness.io.isAlive = () => true;
+    harness.io.processIdentity = async () => "id-4242";
+    harness.io.sendSignal = () => {};
+    expect(await runInstallCommand(["--systemd"], harness.io)).toBe(1);
+    expect(harness.err.join("\n")).toContain("could not be stopped");
+    // Nothing was written or started: two owners must never coexist.
+    expect(Object.keys(harness.written)).toEqual([]);
+    expect(harness.execCalls.some((argv) => argv[0] === "systemctl")).toBe(false);
+  });
+
   test("promotes: TWO units, dispatcher env, overlay, compose core up, units started", async () => {
     const harness = await makeHarness({});
     expect(await runInstallCommand(["--systemd"], harness.io)).toBe(0);
@@ -230,6 +298,15 @@ describe("runInstallCommand", () => {
     );
     expect(dispatcherEnv).toContain("EVELAND_WORKFLOW_WORLD_URL=postgres://w");
     expect(dispatcherEnv).not.toContain("APP_SECRET_KEY");
+    // The public Gateway's and the Dashboard's files are narrowed too.
+    const gatewayEnv = await readFile(
+      path.join(harness.layout.etcDir, "eveland-gateway.env"),
+      "utf8",
+    );
+    expect(gatewayEnv).not.toContain("APP_SECRET_KEY");
+    const webEnv = await readFile(path.join(harness.layout.etcDir, "eveland-web.env"), "utf8");
+    expect(webEnv).not.toContain("APP_SECRET_KEY");
+    expect(webEnv).not.toContain("WORKFLOW_DISPATCHER_ACTIVATION_TOKEN");
 
     // Compose brings up infra + core services with the three-file stack.
     const composeUp = harness.execCalls.find((argv) => argv.includes("up"));

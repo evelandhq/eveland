@@ -75,6 +75,61 @@ export function dispatcherEnvFilePath(etcDir: string): string {
   return path.join(etcDir, "eveland-workflow-dispatcher.env");
 }
 
+/**
+ * The public Agent Gateway's env allowlist — exactly the variables the
+ * compose service definitions hand it. Never the admin password,
+ * APP_SECRET_KEY, BETTER_AUTH_SECRET, or model API keys: a public proxy's
+ * trust boundary must not contain them.
+ */
+export const GATEWAY_ENV_KEYS = [
+  "NODE_ENV",
+  "EVELAND_RELEASE_CHANNEL",
+  "EVELAND_REVISION",
+  "DATABASE_URL",
+  "EVELAND_AGENT_BASE_DOMAINS",
+  "EVELAND_GATEWAY_SERVICE_TOKEN",
+  "EVELAND_GATEWAY_AFFINITY_SECRET",
+  "EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES",
+  "EVELAND_GATEWAY_PUBLIC_SCHEME",
+  "EVELAND_API_INTERNAL_URL",
+  "EVELAND_WEB_INTERNAL_URL",
+  "EVELAND_OTLP_ENDPOINT",
+  "EVELAND_OTLP_SERVICE_TOKEN",
+  "EVELAND_ACTIVATION_RENEW_INTERVAL_MS",
+  "EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS",
+  "EVELAND_API_SESSION_IDLE_TTL_MS",
+];
+
+/** The Dashboard container's env allowlist (it only talks to the API). */
+export const WEB_ENV_KEYS = ["NODE_ENV", "EVELAND_RELEASE_CHANNEL", "EVELAND_REVISION", "API_URL"];
+
+export function gatewayEnvFilePath(etcDir: string): string {
+  return path.join(etcDir, "eveland-gateway.env");
+}
+
+export function webEnvFilePath(etcDir: string): string {
+  return path.join(etcDir, "eveland-web.env");
+}
+
+export function renderServiceEnv(
+  service: string,
+  keys: readonly string[],
+  values: Record<string, string>,
+): string {
+  const lines = [
+    `# Rendered by eveland-ctl. The ${service} service's OWN environment: the`,
+    "# allowlisted subset of etc/eveland.env its compose definition hands it.",
+    "# Nothing else from the platform configuration reaches this container.",
+    "",
+  ];
+  for (const key of keys) {
+    const value = values[key];
+    if (value !== undefined && value !== "") lines.push(`${key}=${value}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 export function applianceOverlayPath(etcDir: string): string {
   return path.join(etcDir, "compose.appliance.yml");
 }
@@ -191,7 +246,11 @@ export function renderDispatcherUnit(options: {
 export function renderApplianceOverlay(options: {
   dataDir: string;
   publicOrigin: string;
+  /** Full configuration — the API's; it seeds the admin and holds the app secret. */
   envFilePath: string;
+  /** Narrowed files for the public Gateway and the Dashboard. */
+  gatewayEnvFilePath: string;
+  webEnvFilePath: string;
 }): string {
   const origin = new URL(options.publicOrigin);
   const scheme = origin.protocol.replace(":", "");
@@ -218,7 +277,8 @@ export function renderApplianceOverlay(options: {
     "  gateway:",
     "    volumes: !override",
     "      - .:/workspace",
-    `      - ${options.envFilePath}:/workspace/.env:ro`,
+    // The public proxy gets its allowlisted env, never the full config.
+    `      - ${options.gatewayEnvFilePath}:/workspace/.env:ro`,
     "      - eveland-appliance-gateway-node-modules:/workspace/node_modules",
     "      - eveland-gateway-data-mask:/workspace/.eveland-data",
     "    environment:",
@@ -229,7 +289,7 @@ export function renderApplianceOverlay(options: {
     "  web:",
     "    volumes: !override",
     "      - .:/workspace",
-    `      - ${options.envFilePath}:/workspace/.env:ro`,
+    `      - ${options.webEnvFilePath}:/workspace/.env:ro`,
     "      - eveland-appliance-web-node-modules:/workspace/node_modules",
     "      - eveland-appliance-web-next:/workspace/apps/web/.next",
     "  otel-config-init:",
@@ -274,6 +334,14 @@ export async function installSystemdArtifacts(
   await writeTextFile(dispatcherEnv, renderDispatcherEnv(envFile.values));
   await chmod(dispatcherEnv, 0o600).catch(() => {});
   io.stdout(`Wrote ${dispatcherEnv} (dispatcher-only environment)`);
+  const gatewayEnv = gatewayEnvFilePath(layout.etcDir);
+  await writeTextFile(gatewayEnv, renderServiceEnv("gateway", GATEWAY_ENV_KEYS, envFile.values));
+  await chmod(gatewayEnv, 0o600).catch(() => {});
+  io.stdout(`Wrote ${gatewayEnv} (gateway-only environment)`);
+  const webEnv = webEnvFilePath(layout.etcDir);
+  await writeTextFile(webEnv, renderServiceEnv("web", WEB_ENV_KEYS, envFile.values));
+  await chmod(webEnv, 0o600).catch(() => {});
+  io.stdout(`Wrote ${webEnv} (dashboard-only environment)`);
 
   const overlay = applianceOverlayPath(layout.etcDir);
   await writeTextFile(
@@ -282,6 +350,8 @@ export async function installSystemdArtifacts(
       dataDir: envFile.values.EVELAND_DATA_DIR ?? path.join(layout.root, "data"),
       publicOrigin: envFile.values.EVELAND_PUBLIC_ORIGIN ?? "http://localhost",
       envFilePath: layout.envFilePath,
+      gatewayEnvFilePath: gatewayEnv,
+      webEnvFilePath: webEnv,
     }),
   );
   io.stdout(`Wrote ${overlay}`);
