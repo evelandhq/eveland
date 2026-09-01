@@ -54,7 +54,9 @@ export type DoctorDeps = {
 };
 
 const PLACEHOLDER_SECRET_PREFIX = "eveland-dev-";
-const PLACEHOLDER_VALUES = new Set(["eveland_password", "admin@example.com"]);
+// Secrets only: admin@example.com is the documented default admin IDENTITY
+// (the bootstrap itself defaults to it), not a credential.
+const PLACEHOLDER_VALUES = new Set(["eveland_password"]);
 const REQUIRED_ENV_KEYS = [
   "DATABASE_URL",
   "APP_SECRET_KEY",
