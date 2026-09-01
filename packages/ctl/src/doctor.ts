@@ -18,7 +18,7 @@ import {
   type FetchLike,
   type LifecycleIo,
 } from "./lifecycle.ts";
-import { isProcessAlive, readSupervisorPid } from "./state-files.ts";
+import { verifiedSupervisorPid } from "./state-files.ts";
 import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
 
 /**
@@ -438,14 +438,14 @@ export async function runDoctor(
     repoRoot: resolved.repoRootDir,
     platform: resolved.platform,
   });
-  const supervisorPid = await readSupervisorPid(resolved.layout);
+  const supervisorPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
   const deps: DoctorDeps = {
     env: io.env,
     platform: resolved.platform,
     nodeVersion: process.version,
     repoRootDir: resolved.repoRootDir,
     envFile,
-    supervisorRunning: supervisorPid !== null && isProcessAlive(supervisorPid),
+    supervisorRunning: supervisorPid !== null,
     execCommand: resolved.execCommand,
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
     fetchImpl: resolved.fetchImpl,

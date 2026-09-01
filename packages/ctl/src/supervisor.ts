@@ -43,6 +43,10 @@ export type SupervisorDeps = {
   log: (line: string) => void;
   publishState: (state: SupervisorState) => Promise<void>;
   supervisorPid: number;
+  /** True while the child's PROCESS GROUP still has members (kill(-pid, 0)). */
+  groupAlive: (pid: number) => boolean;
+  /** Signal the child's whole process group (kill(-pid, signal)). */
+  killGroup: (pid: number, signal: NodeJS.Signals) => void;
 };
 
 export const RESTART_BACKOFF_BASE_MS = 1_000;
@@ -65,6 +69,8 @@ type Entry = {
   spawnedAtMs: number;
   restarts: number;
   lastExit: string | null;
+  /** The last spawned pid — the process-group id for the shutdown sweep. */
+  lastPid: number | null;
 };
 
 export class Supervisor {
@@ -84,6 +90,7 @@ export class Supervisor {
       spawnedAtMs: 0,
       restarts: 0,
       lastExit: null,
+      lastPid: null,
     }));
   }
 
@@ -123,7 +130,51 @@ export class Supervisor {
       }
     }
     await this.waitForAllStopped(STOP_KILL_GRACE_MS);
+    // The direct children are pnpm/tsx/next wrappers: their exit does not
+    // prove the real servers exited. Sweep each child's process group until
+    // it is actually empty, escalating once.
+    await this.sweepProcessGroups();
     await this.publish();
+  }
+
+  private lingeringGroups(): Entry[] {
+    return this.entries.filter(
+      (entry) => entry.lastPid !== null && this.deps.groupAlive(entry.lastPid),
+    );
+  }
+
+  private async sweepProcessGroups(): Promise<void> {
+    if (this.lingeringGroups().length === 0) return;
+    for (const entry of this.lingeringGroups()) {
+      this.deps.log(
+        `${entry.spec.key} left processes in its group; SIGTERM to group ${entry.lastPid}`,
+      );
+      this.deps.killGroup(entry.lastPid!, "SIGTERM");
+    }
+    const pollMs = 100;
+    for (
+      let waited = 0;
+      waited < STOP_TERM_GRACE_MS && this.lingeringGroups().length > 0;
+      waited += pollMs
+    ) {
+      await this.deps.sleep(pollMs);
+    }
+    for (const entry of this.lingeringGroups()) {
+      this.deps.log(`group ${entry.lastPid} (${entry.spec.key}) ignored SIGTERM; sending SIGKILL`);
+      this.deps.killGroup(entry.lastPid!, "SIGKILL");
+    }
+    for (
+      let waited = 0;
+      waited < STOP_KILL_GRACE_MS && this.lingeringGroups().length > 0;
+      waited += pollMs
+    ) {
+      await this.deps.sleep(pollMs);
+    }
+    for (const entry of this.lingeringGroups()) {
+      this.deps.log(
+        `group ${entry.lastPid} (${entry.spec.key}) survived SIGKILL; inspect manually`,
+      );
+    }
   }
 
   allStopped(): boolean {
@@ -140,6 +191,7 @@ export class Supervisor {
   private spawn(entry: Entry): void {
     entry.handle = this.deps.spawnChild(entry.spec);
     entry.status = "running";
+    entry.lastPid = entry.handle.pid ?? null;
     entry.spawnedAtMs = this.deps.now().getTime();
     this.deps.log(`started ${entry.spec.key} (pid ${entry.handle.pid ?? "?"})`);
     entry.handle.onExit((code, signal) => {

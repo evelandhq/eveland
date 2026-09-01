@@ -6,7 +6,7 @@ import { writeInstallMetadata } from "./bootstrap.ts";
 import { applianceLayout } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
-import { writeSupervisorPid, writeSupervisorState } from "./state-files.ts";
+import { writeSupervisorRecord, writeSupervisorState } from "./state-files.ts";
 import { runUpdate, type PgDump } from "./update.ts";
 import type { Prompter } from "./prompt.ts";
 
@@ -100,11 +100,12 @@ async function makeHarness(
     sleep: async () => {},
     prompter,
     isAlive: (pid) => alivePids.has(pid),
+    processIdentity: async (pid) => (alivePids.has(pid) ? "id-" + pid : null),
     sendSignal: (pid) => alivePids.delete(pid),
     fetchImpl: async () => new Response("{}", { status: 200 }),
     tcpProbe: async () => true,
     spawnDaemon: async () => {
-      await writeSupervisorPid(layout, 4242);
+      await writeSupervisorRecord(layout, { pid: 4242, identity: "id-4242" });
       alivePids.add(4242);
       await writeSupervisorState(layout, {
         pid: 4242,

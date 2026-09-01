@@ -9,7 +9,7 @@ import {
 } from "./lifecycle.ts";
 import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
 import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
-import { readSupervisorPid, readSupervisorState } from "./state-files.ts";
+import { readSupervisorState, verifiedSupervisorPid } from "./state-files.ts";
 
 /**
  * `eveland-ctl status`: the supervisor's process view joined with live health
@@ -59,8 +59,8 @@ export async function runStatus(
       io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
     }
   } else {
-    const supervisorPid = await readSupervisorPid(resolved.layout);
-    const supervisorAlive = supervisorPid !== null && resolved.isAlive(supervisorPid);
+    const supervisorPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
+    const supervisorAlive = supervisorPid !== null;
     const state = await readSupervisorState(resolved.layout);
 
     if (!supervisorAlive) {

@@ -16,15 +16,30 @@ type FakeChild = {
   pid: number;
 };
 
-function makeHarness(options: { autoExitOnTerm?: boolean } = {}) {
+function makeHarness(
+  options: { autoExitOnTerm?: boolean; lingeringGroups?: Map<number, number> } = {},
+) {
   const spawned: Record<string, FakeChild[]> = {};
   let nextPid = 100;
   let nowMs = 0;
   const sleeps: number[] = [];
   const logs: string[] = [];
   const states: string[] = [];
+  const groupKills: Array<{ pid: number; signal: string }> = [];
+  // pid -> how many groupAlive checks the group survives after its wrapper died.
+  const lingeringGroups = options.lingeringGroups ?? new Map<number, number>();
 
   const deps: SupervisorDeps = {
+    groupAlive: (pid) => {
+      const remaining = lingeringGroups.get(pid) ?? 0;
+      if (remaining <= 0) return false;
+      lingeringGroups.set(pid, remaining - 1);
+      return true;
+    },
+    killGroup: (pid, signal) => {
+      groupKills.push({ pid, signal });
+      if (signal === "SIGKILL") lingeringGroups.set(pid, 0);
+    },
     spawnChild: (spec) => {
       const pid = nextPid++;
       const callbacks: Array<(code: number | null, signal: string | null) => void> = [];
@@ -69,6 +84,8 @@ function makeHarness(options: { autoExitOnTerm?: boolean } = {}) {
     spawned,
     sleeps,
     logs,
+    groupKills,
+    lingeringGroups,
     advance: (ms: number) => {
       nowMs += ms;
     },
@@ -168,6 +185,33 @@ describe("Supervisor", () => {
     expect(alpha.kills).toContain("SIGTERM");
     expect(alpha.kills).toContain("SIGKILL");
     expect(supervisor.allStopped()).toBe(true);
+  });
+
+  test("a wrapper that exits while its process group lives gets the group swept, escalating to SIGKILL", async () => {
+    const harness = makeHarness({ autoExitOnTerm: true });
+    const supervisor = new Supervisor(harness.processes, harness.deps);
+    await supervisor.start();
+    const alphaPid = harness.spawned.alpha![0]!.pid;
+    // The wrapper (pnpm/tsx) exits on SIGTERM, but the real server it spawned
+    // survives in the group indefinitely until SIGKILLed.
+    harness.lingeringGroups.set(alphaPid, Number.MAX_SAFE_INTEGER);
+    await supervisor.stop();
+    const signalsForAlpha = harness.groupKills
+      .filter((kill) => kill.pid === alphaPid)
+      .map((kill) => kill.signal);
+    expect(signalsForAlpha).toEqual(["SIGTERM", "SIGKILL"]);
+    // Beta's group was empty; it never got a group signal.
+    expect(harness.groupKills.some((kill) => kill.pid === harness.spawned.beta![0]!.pid)).toBe(
+      false,
+    );
+  });
+
+  test("an already-empty process group needs no sweep at all", async () => {
+    const harness = makeHarness({ autoExitOnTerm: true });
+    const supervisor = new Supervisor(harness.processes, harness.deps);
+    await supervisor.start();
+    await supervisor.stop();
+    expect(harness.groupKills).toEqual([]);
   });
 
   test("a crash during shutdown is recorded as stopped, not restarted", async () => {

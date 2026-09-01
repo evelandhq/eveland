@@ -32,12 +32,15 @@ import {
   systemdUnitName,
 } from "./processes.ts";
 import {
+  defaultProcessIdentity,
   isProcessAlive,
-  readSupervisorPid,
+  readSupervisorRecord,
   readSupervisorState,
   removeSupervisorFiles,
-  writeSupervisorPid,
+  verifiedSupervisorPid,
+  writeSupervisorRecord,
   writeSupervisorState,
+  type ProcessIdentity,
 } from "./state-files.ts";
 import { Supervisor, type SupervisedProcess } from "./supervisor.ts";
 
@@ -96,6 +99,7 @@ type ResolvedLifecycle = {
   spawnDaemon: SpawnDaemon;
   fileExists: (filePath: string) => Promise<boolean>;
   isAlive: (pid: number) => boolean;
+  processIdentity: ProcessIdentity;
   sendSignal: (pid: number, signal: NodeJS.Signals) => void;
 };
 
@@ -111,6 +115,7 @@ export function resolveLifecycle(io: LifecycleIo): ResolvedLifecycle {
     spawnDaemon: io.spawnDaemon ?? defaultSpawnDaemon(),
     fileExists: io.fileExists ?? defaultFileExists,
     isAlive: io.isAlive ?? ((pid) => isProcessAlive(pid)),
+    processIdentity: io.processIdentity ?? defaultProcessIdentity(),
     sendSignal: io.sendSignal ?? ((pid, signal) => process.kill(pid, signal)),
   };
 }
@@ -414,13 +419,14 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
   if (await systemdSupervised(resolved)) {
     return startViaSystemd(io, resolved, Boolean(parsed.values["skip-infra"]));
   }
-  const existingPid = await readSupervisorPid(resolved.layout);
-  if (existingPid !== null && resolved.isAlive(existingPid)) {
+  const existingPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
+  if (existingPid !== null) {
     io.stdout(`Eveland is already running (supervisor pid ${existingPid}).`);
     io.stdout("Use `eveland-ctl status` for details or `eveland-ctl restart` to restart.");
     return 0;
   }
-  if (existingPid !== null) {
+  if ((await readSupervisorRecord(resolved.layout)) !== null) {
+    // A record whose pid is gone or recycled: stale, clean it up.
     await removeSupervisorFiles(resolved.layout);
   }
 
@@ -507,9 +513,13 @@ export async function runStop(_args: string[], io: LifecycleIo): Promise<number>
     }
     return failed ? 1 : 0;
   }
-  const pid = await readSupervisorPid(resolved.layout);
-  if (pid === null || !resolved.isAlive(pid)) {
-    if (pid !== null) await removeSupervisorFiles(resolved.layout);
+  // Verified against the recorded start-time identity: a recycled pid must
+  // never receive our SIGTERM/SIGKILL — especially not as root.
+  const pid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
+  if (pid === null) {
+    if ((await readSupervisorRecord(resolved.layout)) !== null) {
+      await removeSupervisorFiles(resolved.layout);
+    }
     io.stdout("Eveland is not running.");
     return 0;
   }
@@ -557,14 +567,17 @@ export async function runSupervise(args: string[], io: LifecycleIo): Promise<num
   const resolved = resolveLifecycle(
     parsed.values.root ? { ...io, env: { ...io.env, EVELAND_HOME: parsed.values.root } } : io,
   );
-  const existingPid = await readSupervisorPid(resolved.layout);
-  if (existingPid !== null && existingPid !== process.pid && resolved.isAlive(existingPid)) {
+  const existingPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
+  if (existingPid !== null && existingPid !== process.pid) {
     io.stderr(`Another supervisor is already running (pid ${existingPid}).`);
     return 1;
   }
   const envFile = await requirePlatformEnvFile(io, resolved);
   await mkdir(resolved.layout.logsDir, { recursive: true });
-  await writeSupervisorPid(resolved.layout, process.pid);
+  await writeSupervisorRecord(resolved.layout, {
+    pid: process.pid,
+    identity: await resolved.processIdentity(process.pid),
+  });
 
   const children: SupervisedProcess[] = PLATFORM_PROCESSES.map((spec) => ({
     key: spec.key,
@@ -578,15 +591,29 @@ export async function runSupervise(args: string[], io: LifecycleIo): Promise<num
     spawnChild: (child) => {
       const fd = openSync(path.join(resolved.layout.logsDir, `${child.key}.log`), "a");
       const [command, ...rest] = child.argv;
+      // detached: each child leads its own process group, so signals reach
+      // the real servers behind the pnpm/tsx/next wrappers, not just the
+      // wrapper the supervisor spawned.
       const handle = spawn(command!, rest, {
         cwd: child.cwd,
         env: child.env,
+        detached: true,
         stdio: ["ignore", fd, fd],
       });
       return {
         pid: handle.pid,
         onExit: (callback) => handle.once("exit", callback),
-        kill: (signal) => void handle.kill(signal),
+        kill: (signal) => {
+          if (handle.pid !== undefined) {
+            try {
+              process.kill(-handle.pid, signal);
+              return;
+            } catch {
+              // Group already gone; fall through to the direct child.
+            }
+          }
+          handle.kill(signal);
+        },
       };
     },
     sleep: resolved.sleep,
@@ -594,6 +621,14 @@ export async function runSupervise(args: string[], io: LifecycleIo): Promise<num
     log: (line) => io.stdout(`[supervisor] ${line}`),
     publishState: (state) => writeSupervisorState(resolved.layout, state),
     supervisorPid: process.pid,
+    groupAlive: (pid) => isProcessAlive(-pid),
+    killGroup: (pid, signal) => {
+      try {
+        process.kill(-pid, signal);
+      } catch {
+        // Empty group: nothing left to signal.
+      }
+    },
   });
 
   await supervisor.start();

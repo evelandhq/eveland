@@ -8,11 +8,17 @@ import { applianceLayout, readInstallMetadata, resolveApplianceRoot } from "./ho
 import { runStart, runStop, type LifecycleIo } from "./lifecycle.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
 import {
-  readSupervisorPid,
+  readSupervisorRecord,
   removeSupervisorFiles,
-  writeSupervisorPid,
+  writeSupervisorRecord,
   writeSupervisorState,
 } from "./state-files.ts";
+
+// The fake identity convention shared by every harness: an alive pid has a
+// stable ps-style identity; a dead one reads null.
+function fakeIdentity(pid: number): string {
+  return `Mon Sep  1 00:00:00 2026 node bin.ts _supervise (pid ${pid})`;
+}
 
 async function makeCheckout(options: { env?: string; nodeModules?: boolean; webBuild?: boolean }) {
   const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-repo-"));
@@ -63,8 +69,8 @@ async function makeHarness(options: HarnessOptions = {}) {
     spawnDaemon: async () => {
       await (options.daemon?.(layout) ??
         (async () => {
-          await writeSupervisorPid(layout, 4242);
           alivePids.add(4242);
+          await writeSupervisorRecord(layout, { pid: 4242, identity: fakeIdentity(4242) });
           await writeSupervisorState(layout, {
             pid: 4242,
             startedAt: "2026-09-01T00:00:00.000Z",
@@ -79,6 +85,7 @@ async function makeHarness(options: HarnessOptions = {}) {
       return 4242;
     },
     isAlive: (pid) => alivePids.has(pid),
+    processIdentity: async (pid) => (alivePids.has(pid) ? fakeIdentity(pid) : null),
     sendSignal: (pid, signal) => {
       signals.push({ pid, signal });
       if (signal === "SIGTERM" || signal === "SIGKILL") alivePids.delete(pid);
@@ -111,7 +118,7 @@ describe("runStart", () => {
 
   test("is idempotent: a live supervisor short-circuits with exit 0", async () => {
     const harness = await makeHarness({ env: VALID_ENV, alivePids: new Set([777]) });
-    await writeSupervisorPid(harness.layout, 777);
+    await writeSupervisorRecord(harness.layout, { pid: 777, identity: fakeIdentity(777) });
     expect(await runStart([], harness.io)).toBe(0);
     expect(harness.out.join("\n")).toContain("already running (supervisor pid 777)");
     expect(harness.execCalls).toEqual([]);
@@ -145,7 +152,7 @@ describe("runStart", () => {
       env: VALID_ENV,
       daemon: async (layout) => {
         // The daemon "crashes": pidfile written but the pid is never alive.
-        await writeSupervisorPid(layout, 9999);
+        await writeSupervisorRecord(layout, { pid: 9999, identity: fakeIdentity(9999) });
         await mkdir(layout.logsDir, { recursive: true });
         await writeFile(path.join(layout.logsDir, "supervisor.log"), "boom: bad config\n", "utf8");
       },
@@ -339,24 +346,24 @@ describe("systemd supervision mode", () => {
 describe("runStop", () => {
   test("not running is a calm no-op that cleans stale files", async () => {
     const harness = await makeHarness({ env: VALID_ENV });
-    await writeSupervisorPid(harness.layout, 4141); // stale: never alive
+    await writeSupervisorRecord(harness.layout, { pid: 4141, identity: fakeIdentity(4141) }); // stale: never alive
     expect(await runStop([], harness.io)).toBe(0);
     expect(harness.out.join("\n")).toContain("not running");
-    expect(await readSupervisorPid(harness.layout)).toBeNull();
+    expect(await readSupervisorRecord(harness.layout)).toBeNull();
   });
 
   test("SIGTERMs a live supervisor and confirms it exited", async () => {
     const harness = await makeHarness({ env: VALID_ENV, alivePids: new Set([4242]) });
-    await writeSupervisorPid(harness.layout, 4242);
+    await writeSupervisorRecord(harness.layout, { pid: 4242, identity: fakeIdentity(4242) });
     expect(await runStop([], harness.io)).toBe(0);
     expect(harness.signals).toEqual([{ pid: 4242, signal: "SIGTERM" }]);
-    expect(await readSupervisorPid(harness.layout)).toBeNull();
+    expect(await readSupervisorRecord(harness.layout)).toBeNull();
     expect(harness.out.join("\n")).toContain("Stopped.");
   });
 
   test("escalates to SIGKILL when SIGTERM is ignored", async () => {
     const harness = await makeHarness({ env: VALID_ENV, alivePids: new Set([4242]) });
-    await writeSupervisorPid(harness.layout, 4242);
+    await writeSupervisorRecord(harness.layout, { pid: 4242, identity: fakeIdentity(4242) });
     harness.io.sendSignal = (pid, signal) => {
       harness.signals.push({ pid, signal });
       if (signal === "SIGKILL") harness.alivePids.delete(pid);

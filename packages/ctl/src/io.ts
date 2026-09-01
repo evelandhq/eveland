@@ -37,6 +37,8 @@ export type LifecycleIo = {
   spawnDaemon?: SpawnDaemon;
   fileExists?: (filePath: string) => Promise<boolean>;
   isAlive?: (pid: number) => boolean;
+  /** Start-time identity of a pid (ps lstart + command); null when gone. */
+  processIdentity?: (pid: number) => Promise<string | null>;
   sendSignal?: (pid: number, signal: NodeJS.Signals) => void;
   repoRootDir?: string;
   /** First-boot seams (real implementations are wired by default). */

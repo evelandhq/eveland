@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { applianceLayout } from "./home.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
-import { writeSupervisorPid, writeSupervisorState } from "./state-files.ts";
+import { writeSupervisorRecord, writeSupervisorState } from "./state-files.ts";
 import { runStatus } from "./status.ts";
 import type { LifecycleIo } from "./lifecycle.ts";
 import type { TcpProbe } from "./status.ts";
@@ -22,7 +22,7 @@ async function makeHarness(options: {
   const alivePids = new Set<number>();
   if (options.supervisorAlive) {
     alivePids.add(4242);
-    await writeSupervisorPid(layout, 4242);
+    await writeSupervisorRecord(layout, { pid: 4242, identity: "id-4242" });
     await writeSupervisorState(layout, {
       pid: 4242,
       startedAt: "2026-09-01T00:00:00.000Z",
@@ -44,6 +44,7 @@ async function makeHarness(options: {
     repoRootDir: repo,
     sleep: async () => {},
     isAlive: (pid) => alivePids.has(pid),
+    processIdentity: async (pid) => (alivePids.has(pid) ? "id-" + pid : null),
     fetchImpl: async () =>
       (options.healthOk ?? true)
         ? new Response("{}", { status: 200 })
