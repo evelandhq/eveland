@@ -187,6 +187,27 @@ export async function runUpdate(
     }
   }
 
+  // Stop the WHOLE platform before the working tree moves: replacing sources,
+  // node_modules, and the .next build under running processes would let the
+  // supervisor restart children from a half-updated tree, and overwrite the
+  // artifacts the running Dashboard is serving.
+  io.stdout("Stopping the platform before the update...");
+  const stopCode = await runStop([], io);
+  if (stopCode !== 0) return stopCode;
+
+  // From here on a failure leaves the platform DOWN on purpose (a half-built
+  // tree must not run); every failure prints this exact recovery.
+  const backupNote = parsed.values["skip-backup"]
+    ? "no database backup was taken (--skip-backup)"
+    : `the database backup is in ${resolved.layout.backupsDir}`;
+  const recovery = (failedStep: string) =>
+    [
+      `${failedStep} — the platform is left STOPPED so a half-updated tree cannot run.`,
+      "To retry:    fix the cause and re-run `eveland-ctl update`.",
+      `To roll back: git -C ${repo} checkout v${currentVersion} && (cd ${repo} && SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile) && eveland-ctl start`,
+      `Note: ${backupNote}; migrations already applied are forward-compatible by contract.`,
+    ].join("\n");
+
   // The eve window before the checkout moves.
   const templatePath = path.join(repo, "templates/starter-agent/package.json");
   const evePinBefore = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
@@ -215,6 +236,7 @@ export async function runUpdate(
   const checkout = await git(["checkout", "--quiet", target]);
   if (checkout.code !== 0) {
     io.stderr(`git checkout ${target} failed:\n${checkout.output.trim()}`);
+    io.stderr(recovery("The checkout failed"));
     return 1;
   }
 
@@ -239,7 +261,7 @@ export async function runUpdate(
     env: { ...io.env, SHARP_IGNORE_GLOBAL_LIBVIPS: "1" },
   });
   if (install !== 0) {
-    io.stderr("pnpm install failed; the checkout is on the new tag but not runnable yet.");
+    io.stderr(recovery("pnpm install failed"));
     return 1;
   }
 
@@ -249,7 +271,7 @@ export async function runUpdate(
     env: childEnv,
   });
   if (build !== 0) {
-    io.stderr("The Dashboard build failed; see the output above.");
+    io.stderr(recovery("The Dashboard build failed"));
     return 1;
   }
 
@@ -259,13 +281,11 @@ export async function runUpdate(
     env: childEnv,
   });
   if (migrate !== 0) {
-    io.stderr("Database migration failed; see the output above.");
+    io.stderr(recovery("Database migration failed"));
     return 1;
   }
 
-  io.stdout("Restarting the platform...");
-  const stopCode = await runStop([], io);
-  if (stopCode !== 0) return stopCode;
+  io.stdout("Starting the updated platform...");
   const startCode = await runStart([], io);
   if (startCode !== 0) return startCode;
 

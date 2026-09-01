@@ -82,8 +82,12 @@ async function makeHarness(
   const gitCalls: string[][] = [];
   const streamed: string[][] = [];
   const pgDumps: string[] = [];
+  const timeline: string[] = [];
   const confirmQueue = [...(options.confirmAnswers ?? [])];
   const alivePids = new Set<number>();
+  // The platform is RUNNING when an update begins.
+  alivePids.add(4242);
+  await writeSupervisorRecord(layout, { pid: 4242, identity: "id-4242" });
 
   const prompter: Prompter = {
     interactive: true,
@@ -101,10 +105,14 @@ async function makeHarness(
     prompter,
     isAlive: (pid) => alivePids.has(pid),
     processIdentity: async (pid) => (alivePids.has(pid) ? "id-" + pid : null),
-    sendSignal: (pid) => alivePids.delete(pid),
+    sendSignal: (pid) => {
+      timeline.push("stop-signal");
+      alivePids.delete(pid);
+    },
     fetchImpl: async () => new Response("{}", { status: 200 }),
     tcpProbe: async () => true,
     spawnDaemon: async () => {
+      timeline.push("start-daemon");
       await writeSupervisorRecord(layout, { pid: 4242, identity: "id-4242" });
       alivePids.add(4242);
       await writeSupervisorState(layout, {
@@ -141,6 +149,7 @@ async function makeHarness(
         if (sub === "describe") return { code: 0, output: "v0.49.0\n" };
         if (sub === "status") return { code: 0, output: options.dirty ? " M src/app.ts\n" : "" };
         if (sub === "checkout") {
+          timeline.push("checkout");
           if (options.evePinAfter) {
             await writeFile(
               path.join(repo, "templates/starter-agent/package.json"),
@@ -166,7 +175,7 @@ async function makeHarness(
       return 0;
     },
   };
-  return { io, out, err, gitCalls, streamed, pgDumps, layout, repo };
+  return { io, out, err, gitCalls, streamed, pgDumps, timeline, layout, repo };
 }
 
 function gitSubcommands(harness: Harness): string[] {
@@ -200,6 +209,32 @@ describe("runUpdate", () => {
     const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
     expect(onDisk.EVELAND_REVISION).toBe("v0.49.0");
     expect(onDisk.APP_SECRET_KEY).toBe("k");
+  });
+
+  test("the platform stops BEFORE the working tree moves, and starts only after migrate", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    expect(await runUpdate([], harness.io)).toBe(0);
+    const stopIndex = harness.timeline.indexOf("stop-signal");
+    const checkoutIndex = harness.timeline.indexOf("checkout");
+    const startIndex = harness.timeline.indexOf("start-daemon");
+    expect(stopIndex).toBeGreaterThanOrEqual(0);
+    expect(stopIndex).toBeLessThan(checkoutIndex);
+    expect(checkoutIndex).toBeLessThan(startIndex);
+  });
+
+  test("a failed migration leaves the platform stopped, with the explicit recovery plan", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    harness.io.streamCommand = async (argv) => {
+      harness.streamed.push(argv);
+      return argv.includes("db:migrate") ? 1 : 0;
+    };
+    expect(await runUpdate([], harness.io)).toBe(1);
+    const stderr = harness.err.join("\n");
+    expect(stderr).toContain("left STOPPED");
+    expect(stderr).toContain("checkout v0.48.0");
+    expect(stderr).toContain("eveland-ctl start");
+    expect(harness.timeline).toContain("stop-signal");
+    expect(harness.timeline).not.toContain("start-daemon");
   });
 
   test("breaking changes are shown and an unconfirmed update aborts before any backup or checkout", async () => {
