@@ -21,6 +21,8 @@ description: Agent 作者的命令行客户端——认证模型、origin 解析
 
 Headless 场景（CI）设置 `EVELAND_TOKEN`：它永远覆盖存储的凭证。token 30 天过期（无 refresh token）；过期即重新 `eveland login`。
 
+交互式批准有一个刻意的例外:`eveland-ctl` 首次引导期间,bootstrap——它刚刚种下 admin 账号、手里就握着其凭证——在回环 API 上无头批准自己发起的 device 请求,让本机 CLI 无需登录墙即可用。变的只是"谁点了批准",信任模型不变:操作者本就持有 admin 凭证,协议的每一步(先 claim 后 approve、scope 限制、过期、可吊销)都是标准流程,得到的也是一枚普通的 scoped device-flow token,与其他 token 一样可见、可吊销。
+
 ## 命令
 
 | 命令                                                                                 | 行为                                                                                                                                                        |

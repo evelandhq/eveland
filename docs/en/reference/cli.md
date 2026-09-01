@@ -21,6 +21,8 @@ Credentials are stored one file per origin under `~/.config/eveland/credentials/
 
 For headless use (CI), set `EVELAND_TOKEN`: it always overrides the stored credential. Tokens expire after 30 days (no refresh tokens); an expired token means `eveland login` again.
 
+One deliberate exception to the interactive approval exists: during `eveland-ctl` first boot, the bootstrap — which just seeded the admin account and holds its credentials — approves its own device request headlessly over the loopback API, so the machine's CLI works without a login wall. Who clicks approve changes; the trust model does not: the actor already holds admin credentials, every protocol step (claim before approve, scope confinement, expiry, revocability) is the standard flow, and the resulting token is an ordinary scoped device-flow token, visible and revocable like any other.
+
 ## Commands
 
 | Command                                                                              | Behavior                                                                                                                                                                                                            |
