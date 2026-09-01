@@ -46,8 +46,11 @@ async function makeDeps(options: HarnessOptions = {}) {
     stderr: (line) => err.push(line),
     execCommand: async (argv) => {
       execCalls.push(argv);
-      if (argv[0] === "sh" && argv[1] === "-c") {
-        const probed = argv[2]!.replace("command -v ", "");
+      // Plain probes and fixed-system-PATH probes both resolve against the
+      // same fake command set.
+      const shIndex = argv.indexOf("sh");
+      if (shIndex >= 0 && argv[shIndex + 1] === "-c") {
+        const probed = argv[shIndex + 2]!.replace("command -v ", "");
         return { code: commands.has(probed) ? 0 : 1, output: "" };
       }
       if (argv[0] === "id") return { code: users.has(argv[2]!) ? 0 : 1, output: "" };

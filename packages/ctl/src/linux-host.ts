@@ -92,6 +92,27 @@ async function commandExists(deps: LinuxHostDeps, command: string): Promise<bool
   return result.code === 0;
 }
 
+/**
+ * Probes with a FIXED system PATH: the provisioner's own PATH carries the
+ * installer's node bin dir, so an inherited-PATH probe would see pnpm there
+ * and skip the system-wide install that deployment units and bwrap
+ * sandboxes (which run with a plain system PATH) actually need.
+ */
+async function commandExistsOnSystemPath(deps: LinuxHostDeps, command: string): Promise<boolean> {
+  const result = await deps.execCommand(
+    [
+      "env",
+      "-i",
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "sh",
+      "-c",
+      `command -v ${command}`,
+    ],
+    { cwd: deps.repoRootDir },
+  );
+  return result.code === 0;
+}
+
 async function userExists(deps: LinuxHostDeps, user: string): Promise<boolean> {
   const result = await deps.execCommand(["id", "-u", user], { cwd: deps.repoRootDir });
   return result.code === 0;
@@ -218,7 +239,7 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
       }
     }
   }
-  if (!(await commandExists(deps, "pnpm"))) {
+  if (!(await commandExistsOnSystemPath(deps, "pnpm"))) {
     const pin = await pinnedPnpmVersion(deps.repoRootDir);
     deps.stdout(`Installing pnpm@${pin} onto the system PATH via corepack...`);
     const corepack = path.join(deps.nodeBinDir, "corepack");

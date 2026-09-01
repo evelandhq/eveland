@@ -39,6 +39,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Free runner disk
+        run: |
+          # Runner-image housekeeping, not product logic: the preloaded
+          # toolchains leave too little disk for a full appliance (host
+          # install + three container installs + images + agent builds).
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost || true
+          df -h / | tail -1
+
       - name: Run the installer non-interactively
         run: |
           # Root installs to /opt/eveland exactly like a real Linux box; the
