@@ -23,6 +23,7 @@ import {
 } from "./home.ts";
 import { runImplicitLogin } from "./implicit-login.ts";
 import { defaultTcpProbe } from "./net-probe.ts";
+import { runSeedAgent } from "./seed-agent.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
 import { absoluteProcessDir, childEnvironment, PLATFORM_PROCESSES } from "./processes.ts";
 import {
@@ -275,7 +276,7 @@ async function finishBootstrap(
   const adminPassword = envFile.values.EVELAND_ADMIN_PASSWORD;
   if (adminEmail && adminPassword) {
     try {
-      await runImplicitLogin({
+      const login = await runImplicitLogin({
         apiBaseUrl: API_INTERNAL_URL_FALLBACK,
         publicOrigin: origin,
         adminEmail,
@@ -285,6 +286,21 @@ async function finishBootstrap(
         env: io.env,
         print: io.stdout,
       });
+      try {
+        await runSeedAgent({
+          repoRootDir: resolved.repoRootDir,
+          publicOrigin: origin,
+          accessToken: login.accessToken,
+          envValues: envFile.values,
+          parentEnv: io.env,
+          streamCommand: io.streamCommand ?? defaultStreamCommand(io.stdout),
+          print: io.stdout,
+        });
+      } catch (error) {
+        // The platform is fully usable without the built-in agent; the error
+        // text carries the manual `eveland deploy` recovery.
+        io.stderr(error instanceof Error ? error.message : String(error));
+      }
     } catch (error) {
       // Login is a convenience, not a gate: the platform is up either way and
       // `eveland login` recovers it interactively.

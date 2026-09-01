@@ -208,11 +208,16 @@ describe("runStart first boot", () => {
     expect(rendered.NODE_ENV).toBe("production");
     expect(rendered.APP_SECRET_KEY).toBeTruthy();
 
-    // The Dashboard build and migrations ran; infra came up.
-    expect(streamed).toEqual([
+    // The Dashboard build and migrations ran; infra came up; the built-in
+    // agent was seeded through the real eveland CLI with the minted token.
+    expect(streamed.slice(0, 2)).toEqual([
       ["pnpm", "--filter", "@evelandhq/web", "build"],
       ["pnpm", "--filter", "@evelandhq/api", "db:migrate"],
     ]);
+    expect(streamed).toHaveLength(3);
+    expect(streamed[2]).toContain("deploy");
+    expect(streamed[2]!.join(" ")).toContain("templates/starter-agent");
+    expect(streamed[2]!.join(" ")).toContain("--name stella");
     expect(harness.execCalls).toContainEqual([
       "docker",
       "compose",

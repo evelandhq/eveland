@@ -36,6 +36,8 @@ export type ImplicitLoginOptions = {
 export type ImplicitLoginResult = {
   credentialPath: string;
   scopes: string[];
+  /** For the bootstrap's own follow-up CLI calls (seeding); never logged. */
+  accessToken: string;
 };
 
 class LoginStepError extends Error {
@@ -162,7 +164,7 @@ export async function runImplicitLogin(
       options.print(
         `CLI login ready: this machine's \`eveland\` is authenticated (${scopes.join(", ")}).`,
       );
-      return { credentialPath, scopes };
+      return { credentialPath, scopes, accessToken: token.access_token };
     }
     const error = (() => {
       try {

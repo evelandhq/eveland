@@ -40,7 +40,9 @@ description: 平台运维工具——appliance 根目录布局、进程监督、
 
 引导只问 decide-per-install 的问题——公开 origin(默认 `http://localhost:17300`)、admin 邮箱、admin 密码(留空则生成强密码并打印一次)——并探测 shell 里现成的 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`,询问是否给内置 agent 使用。其余一切要么生成(`APP_SECRET_KEY`、`BETTER_AUTH_SECRET`、gateway/OTLP/scheduler secrets——全部 CSPRNG,两个 scheduler secret 相互独立,worker preflight 有此要求),要么按 OS 派生(macOS 用 `host.docker.internal` 形态的部署地址,Linux 用回环;`EVELAND_RUNTIME` docker vs systemd)。dispatcher 激活 token 渲染为与 gateway service token 同值——因为 API 校验激活请求用的正是这个凭证。渲染出的 `etc/eveland.env` 权限 `0600` 且**只写一次**——中断后重跑会原样复用,secrets 恰好铸造一次。`--no-prompt`(或无 TTY)全取默认值;`NODE_ENV=production` 意味着占位 secrets 永远不可能生效。
 
-渲染之后,引导按需构建 Dashboard、拉起 infra 容器、等待 Postgres、应用迁移、启动平台(admin 账号由 API 启动时依 `EVELAND_ADMIN_*` 自行种下)。进程就绪后执行**隐式 CLI login**:与 `eveland login` 完全相同的 RFC 8628 device flow——同一个种子客户端、同样的 `deploy observe` scope、一枚正常可吊销的 token——只是批准环节用引导刚种下的 admin 会话在回环 API 上无头驱动,凭证写进 CLI 自己的存储(`~/.config/eveland/credentials/`)。黄金路径 `eveland init` → `eveland deploy` 因此不会碰到登录墙。login 失败只是警告而非启动失败(`eveland login` 可补救)。最后在平台 origin 上打开浏览器(headless 安装只打印 URL)。
+渲染之后,引导按需构建 Dashboard、拉起 infra 容器、等待 Postgres、应用迁移、启动平台(admin 账号由 API 启动时依 `EVELAND_ADMIN_*` 自行种下)。进程就绪后执行**隐式 CLI login**:与 `eveland login` 完全相同的 RFC 8628 device flow——同一个种子客户端、同样的 `deploy observe` scope、一枚正常可吊销的 token——只是批准环节用引导刚种下的 admin 会话在回环 API 上无头驱动,凭证写进 CLI 自己的存储(`~/.config/eveland/credentials/`)。黄金路径 `eveland init` → `eveland deploy` 因此不会碰到登录墙。login 失败只是警告而非启动失败(`eveland login` 可补救)。
+
+拿到 token 后,引导接着种下**内置 agent**(`stella`):以子进程调用真正的 `eveland` CLI——`eveland deploy templates/starter-agent --name stella`——种子流程走的就是用户首次 deploy 的那条黄金路径(preflight、上传、流式构建日志、promote),不可能与之悄悄分叉。此前收集的模型 key 随后经 `eveland env set` 落进该 agent 的项目环境。种子失败只警告并打印手工补救命令;没有内置 agent 平台也完全可用。最后在平台 origin 上打开浏览器(headless 安装只打印 URL)。
 
 ## 监督
 
