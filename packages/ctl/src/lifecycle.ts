@@ -212,12 +212,19 @@ async function waitForReadiness(
   io: LifecycleIo,
   resolved: ResolvedLifecycle,
   supervisorLog: string,
+  daemonPid: number | undefined,
 ): Promise<boolean> {
+  // Liveness is checked against the daemon pid the spawn just returned — the
+  // pidfile appears only once the supervisor has booted, so reading it here
+  // would race a healthy startup into a false "supervisor exited".
+  if (daemonPid === undefined) {
+    io.stderr("The supervisor process could not be spawned.");
+    return false;
+  }
   const ready = new Set<string>();
   const deadline = READINESS_DEADLINE_MS;
   for (let waited = 0; waited <= deadline; waited += READINESS_POLL_MS) {
-    const pid = await readSupervisorPid(resolved.layout);
-    if (pid === null || !resolved.isAlive(pid)) {
+    if (!resolved.isAlive(daemonPid)) {
       io.stderr("The supervisor exited during startup. Last supervisor log lines:");
       io.stderr(await tailFile(supervisorLog, 20));
       return false;
@@ -406,7 +413,7 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
     logFile: supervisorLog,
   });
   io.stdout(`Starting Eveland (config: ${envFile.path}, supervisor pid ${pid ?? "?"})...`);
-  const ok = await waitForReadiness(io, resolved, supervisorLog);
+  const ok = await waitForReadiness(io, resolved, supervisorLog, pid);
   if (!ok) return 1;
   if (bootstrapping) {
     await finishBootstrap(io, resolved, envFile);
