@@ -30,6 +30,29 @@ test("composes the exact public auth surface before the protected control plane"
   app.get("/protected-probe", (c) => c.json({ email: c.get("principal").email }));
 
   expect((await app.request("/api/auth/get-session")).status).toBe(200);
+  // The device-authorization family is routable (better-auth answers 400 for
+  // the missing parameters, not the allowlist's 404).
+  for (const routable of [
+    { path: "/api/auth/device", init: undefined },
+    {
+      path: "/api/auth/device/code",
+      init: {
+        method: "POST" as const,
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      },
+    },
+    {
+      path: "/api/auth/oauth2/token",
+      init: {
+        method: "POST" as const,
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "",
+      },
+    },
+  ]) {
+    expect((await app.request(routable.path, routable.init)).status, routable.path).not.toBe(404);
+  }
   expect(
     (
       await app.request("/api/invitations/accept", {

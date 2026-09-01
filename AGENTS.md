@@ -194,6 +194,11 @@ corresponding tests and docs are updated.
 - Except for explicitly public health and invitation-acceptance paths,
   platform APIs require a valid Team member session. Do not weaken this
   boundary when adding routes.
+- The `eveland` CLI authenticates with scoped OAuth access tokens from the
+  RFC 8628 device flow (`Authorization: Bearer`). Token principals are
+  confined to the deny-by-default scope map in `apps/api/src/cli-auth.ts` —
+  never full session power, never member administration or the operator
+  surface. Extend that map deliberately, with its tests.
 - Preserve the `admin`/`member` role boundary, last-admin protection,
   single-use seven-day invitation behavior, and immediate session revocation
   when a member is removed.
