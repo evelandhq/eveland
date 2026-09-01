@@ -121,3 +121,56 @@ describe("eveland CLI", () => {
     expect(err.join("\n")).toContain("Run `eveland login`");
   });
 });
+
+describe("eveland env set --stdin", () => {
+  test("reads the value from stdin so it never appears in argv; the name stays positional", async () => {
+    const posted: unknown[] = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/api/projects?name=stella") || url.includes("/api/projects")) {
+        if (method === "GET")
+          return jsonResponse(200, { projects: [{ id: "proj_1", name: "stella" }] });
+      }
+      if (method === "POST" && url.includes("/secrets")) {
+        posted.push(JSON.parse(init!.body as string));
+        return jsonResponse(201, { secret: { id: "sec_1" }, jobs: [] });
+      }
+      return jsonResponse(200, {});
+    };
+    const { io, out, err } = await makeIo(fetchImpl, { EVELAND_TOKEN: "tok" });
+    const code = await runCli(
+      [
+        "env",
+        "set",
+        "ANTHROPIC_API_KEY",
+        "--stdin",
+        "--origin",
+        "http://localhost:17300",
+        "--name",
+        "stella",
+      ],
+      { ...io, readStdin: async () => "sk-ant-secret\n" },
+    );
+    expect(code, err.join("\n")).toBe(0);
+    expect(posted).toEqual([{ key: "ANTHROPIC_API_KEY", value: "sk-ant-secret", kind: "secret" }]);
+    expect(out.join("\n")).toContain("Set ANTHROPIC_API_KEY");
+  });
+
+  test("--stdin with KEY=value or an empty stdin is a usage error, not a silent empty secret", async () => {
+    const { io, err } = await makeIo(async () => jsonResponse(200, {}), { EVELAND_TOKEN: "tok" });
+    expect(
+      await runCli(["env", "set", "K=v", "--stdin", "--origin", "http://localhost:17300"], {
+        ...io,
+        readStdin: async () => "x",
+      }),
+    ).toBe(1);
+    expect(err.join("\n")).toContain("KEY --stdin");
+    expect(
+      await runCli(["env", "set", "K", "--stdin", "--origin", "http://localhost:17300"], {
+        ...io,
+        readStdin: async () => "\n",
+      }),
+    ).toBe(1);
+    expect(err.join("\n")).toContain("no value was read from stdin");
+  });
+});

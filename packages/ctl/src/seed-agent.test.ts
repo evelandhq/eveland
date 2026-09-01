@@ -4,12 +4,15 @@ import { repoRoot } from "./home.ts";
 import { BUILT_IN_AGENT_NAME, cliBinPath, runSeedAgent, starterTemplateDir } from "./seed-agent.ts";
 
 function makeRunner(exitCodes: Array<number | null> = []) {
-  const calls: Array<{ argv: string[]; env: NodeJS.ProcessEnv }> = [];
+  const calls: Array<{ argv: string[]; env: NodeJS.ProcessEnv; input?: string }> = [];
   const queue = [...exitCodes];
   return {
     calls,
-    streamCommand: async (argv: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) => {
-      calls.push({ argv, env: options.env });
+    streamCommand: async (
+      argv: string[],
+      options: { cwd: string; env: NodeJS.ProcessEnv; input?: string },
+    ) => {
+      calls.push({ argv, env: options.env, input: options.input });
       return queue.shift() ?? 0;
     },
   };
@@ -51,12 +54,22 @@ describe("runSeedAgent", () => {
       streamCommand: runner.streamCommand,
     });
     expect(runner.calls.map((call) => call.argv[2])).toEqual(["deploy", "env", "env"]);
-    expect(runner.calls[1]!.argv).toContain("ANTHROPIC_API_KEY=sk-ant-x");
-    expect(runner.calls[2]!.argv).toContain("OPENAI_API_KEY=sk-oai-y");
+    // The key NAME rides in argv; the VALUE only ever crosses stdin — argv
+    // is world-readable through ps/proc while the request runs.
+    expect(runner.calls[1]!.argv.slice(2, 6)).toEqual([
+      "env",
+      "set",
+      "ANTHROPIC_API_KEY",
+      "--stdin",
+    ]);
+    expect(runner.calls[1]!.input).toBe("sk-ant-x\n");
+    expect(runner.calls[2]!.argv.slice(2, 6)).toEqual(["env", "set", "OPENAI_API_KEY", "--stdin"]);
+    expect(runner.calls[2]!.input).toBe("sk-oai-y\n");
     for (const call of runner.calls.slice(1)) {
       expect(call.argv).toContain("--name");
       expect(call.argv).toContain(BUILT_IN_AGENT_NAME);
       expect(call.argv.join(" ")).not.toContain("UNRELATED");
+      expect(call.argv.join(" ")).not.toContain("sk-");
     }
   });
 
@@ -75,7 +88,7 @@ describe("runSeedAgent", () => {
         envValues: { ANTHROPIC_API_KEY: "sk-ant-x" },
         streamCommand: runner.streamCommand,
       }),
-    ).rejects.toThrow(/eveland env set ANTHROPIC_API_KEY=/);
+    ).rejects.toThrow(/eveland env set ANTHROPIC_API_KEY --stdin/);
   });
 
   test("the CLI bin and starter template actually exist where seeding points", async () => {

@@ -31,8 +31,9 @@ export function defaultStreamCommand(print: (line: string) => void): StreamComma
       const child = spawn(command!, rest, {
         cwd: options.cwd,
         env: options.env,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
       });
+      if (options.input !== undefined) child.stdin!.end(options.input);
       let buffer = "";
       const emit = (chunk: Buffer) => {
         buffer += chunk.toString();
@@ -40,8 +41,8 @@ export function defaultStreamCommand(print: (line: string) => void): StreamComma
         buffer = lines.pop() ?? "";
         for (const line of lines) print(`  ${line}`);
       };
-      child.stdout.on("data", emit);
-      child.stderr.on("data", emit);
+      child.stdout!.on("data", emit);
+      child.stderr!.on("data", emit);
       child.on("error", () => resolve(null));
       child.on("close", (code) => {
         if (buffer) print(`  ${buffer}`);

@@ -11,7 +11,8 @@ export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 export type StreamCommand = (
   argv: string[],
-  options: { cwd: string; env: NodeJS.ProcessEnv },
+  /** `input`, when given, is written to the child's stdin (for values that must not appear in argv). */
+  options: { cwd: string; env: NodeJS.ProcessEnv; input?: string },
 ) => Promise<number | null>;
 
 export type ExecCommand = (

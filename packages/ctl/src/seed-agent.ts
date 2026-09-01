@@ -70,24 +70,27 @@ export async function runSeedAgent(options: SeedAgentOptions): Promise<void> {
   for (const key of MODEL_KEY_NAMES) {
     const value = options.envValues[key];
     if (!value) continue;
+    // The key travels on stdin, never in argv: command lines are readable
+    // by every local user through ps/proc while the request runs.
     const set = await options.streamCommand(
       [
         node,
         cli,
         "env",
         "set",
-        `${key}=${value}`,
+        key,
+        "--stdin",
         "--origin",
         options.publicOrigin,
         "--name",
         BUILT_IN_AGENT_NAME,
       ],
-      { cwd: options.repoRootDir, env: childEnv },
+      { cwd: options.repoRootDir, env: childEnv, input: `${value}\n` },
     );
     if (set !== 0) {
       throw new Error(
         `Setting ${key} on the built-in agent failed (eveland env set exited ${set ?? "abnormally"}). ` +
-          `Set it yourself with \`eveland env set ${key}=... --name ${BUILT_IN_AGENT_NAME}\`.`,
+          `Set it yourself with \`eveland env set ${key} --stdin --name ${BUILT_IN_AGENT_NAME}\`.`,
       );
     }
   }

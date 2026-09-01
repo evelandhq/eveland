@@ -25,7 +25,15 @@ export type CliIo = {
   sleep?: (ms: number) => Promise<void>;
   /** logs --follow stops when this reports true; unset means run until killed. */
   stopped?: () => boolean;
+  /** `env set KEY --stdin` reads the value here; unset means process.stdin. */
+  readStdin?: () => Promise<string>;
 };
+
+async function readAllStdin(): Promise<string> {
+  let data = "";
+  for await (const chunk of process.stdin) data += chunk;
+  return data;
+}
 
 type Command = {
   description: string;
@@ -187,13 +195,29 @@ const commands: Record<string, Command> = {
           origin: { type: "string" },
           name: { type: "string" },
           variable: { type: "boolean" },
+          stdin: { type: "boolean" },
         },
         allowPositionals: true,
       });
       const [action, argument] = parsed.positionals;
       if (action !== "list" && action !== "set" && action !== "rm") {
-        io.stderr("Usage: eveland env <list|set KEY=value|rm KEY> [--name <slug>]");
+        io.stderr("Usage: eveland env <list|set KEY=value|set KEY --stdin|rm KEY> [--name <slug>]");
         return 1;
+      }
+      // `--stdin` keeps the value out of argv: command lines are readable by
+      // every local user through ps/proc while the request runs.
+      let assignment = argument;
+      if (action === "set" && parsed.values.stdin) {
+        if (!argument || argument.includes("=")) {
+          io.stderr("Usage: eveland env set KEY --stdin  (the value is read from stdin)");
+          return 1;
+        }
+        const value = (await (io.readStdin ?? readAllStdin)()).replace(/\r?\n$/, "");
+        if (value === "") {
+          io.stderr("eveland env set --stdin: no value was read from stdin.");
+          return 1;
+        }
+        assignment = `${argument}=${value}`;
       }
       const origin = await resolveOrigin(parsed.values.origin, io.env);
       const token = await requireToken(origin, io);
@@ -209,21 +233,23 @@ const commands: Record<string, Command> = {
         await listEnv(target);
         return 0;
       }
-      if (!argument) {
+      if (!assignment) {
         io.stderr(
-          action === "set" ? "Usage: eveland env set KEY=value" : "Usage: eveland env rm KEY",
+          action === "set"
+            ? "Usage: eveland env set KEY=value  |  eveland env set KEY --stdin"
+            : "Usage: eveland env rm KEY",
         );
         return 1;
       }
       if (action === "set") {
         await setEnv({
           ...target,
-          assignment: argument,
+          assignment,
           kind: parsed.values.variable ? "variable" : "secret",
         });
         return 0;
       }
-      return (await removeEnv({ ...target, key: argument })) ? 0 : 1;
+      return (await removeEnv({ ...target, key: assignment })) ? 0 : 1;
     },
   },
   logout: {
