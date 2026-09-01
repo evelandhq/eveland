@@ -109,20 +109,27 @@ function defaultSleep(ms: number): Promise<void> {
 /**
  * Wraps an async task for use in a fixed-rate timer: invocations that arrive
  * while the previous run is still in flight are skipped, so a slow run cannot
- * stack concurrent executions behind itself.
+ * stack concurrent executions behind itself. Skipping means a slow run
+ * silently pauses everything sharing the timer — pass `slow` to surface any
+ * run that outlasted its interval instead of finding out from the pause.
  */
 export function nonOverlapping(
   fn: () => Promise<unknown>,
   onError: (error: unknown) => void = () => {},
+  slow?: { thresholdMs: number; onSlow: (durationMs: number) => void },
 ): () => void {
   let inFlight = false;
   return () => {
     if (inFlight) return;
     inFlight = true;
+    const startedAt = Date.now();
     void fn()
       .catch(onError)
       .finally(() => {
         inFlight = false;
+        if (!slow) return;
+        const durationMs = Date.now() - startedAt;
+        if (durationMs > slow.thresholdMs) slow.onSlow(durationMs);
       });
   };
 }
