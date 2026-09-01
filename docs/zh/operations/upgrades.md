@@ -119,6 +119,13 @@ Issuer 锚定的公开端点从 origin 根迁入 `/api` 命名空间，不设过
 psql "$DATABASE_URL" -c "SELECT count(*) FROM auth_accounts WHERE provider_id='credential' AND account_id<>user_id"
 ```
 
+## CLI device authorization 表
+
+迁移 `0059` 创建支撑 `eveland login`（RFC 8628 device flow + scoped OAuth access
+token）的 `auth_device_codes` 与 `oauth_*` 表。它只创建新表——按常规顺序**先迁移、
+再重启**即可，回滚不受影响（旧代码不触碰这些表）。API 启动时会播种并重申
+`eveland-cli` OAuth client 行；请勿手工编辑该行。
+
 ## 遗留的按 Project Workflow 残余
 
 每个 Release 都基于共享、External-only Workflow World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动。带有共享 World 之前历史的安装可能仍保留遗留的按 Project Workflow 配置：

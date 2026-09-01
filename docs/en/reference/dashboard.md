@@ -36,7 +36,11 @@ Personal settings support: changing the name; uploading, replacing, or removing 
 
 Every absolute date and time in the dashboard — lists, details, Logs, session timelines, ScheduleRuns, Usage, and Instance Health chart axes and tooltips — renders in the current user's display timezone, never decided by the Next.js Server Component's runtime default timezone. A schedule's raw cron and its declared `UTC` timezone still render with source semantics; actual instants such as `nextRunAt` and due/start/complete times use the personal timezone.
 
-Profile updates reuse the Better Auth user record. Better Auth's HTTP surface is exposed by allowlist: only `sign-in/email`, `sign-out`, and `get-session` are publicly routable, and every other endpoint (including `update-user`, `change-password`, sign-up, the organization and admin families, and anything future versions add) is a 404 — password changes must go through Eveland's `/profile/password` (forcing revocation of other sessions), and invitations and member management go through Eveland-owned endpoints.
+Profile updates reuse the Better Auth user record. Better Auth's HTTP surface is exposed by allowlist: only `sign-in/email`, `sign-out`, `get-session`, and the CLI device-authorization family (`device/code`, `device`, `device/approve`, `device/deny`, `oauth2/token`) are publicly routable, and every other endpoint (including `update-user`, `change-password`, sign-up, the organization and admin families, the rest of the OAuth provider surface, and anything future versions add) is a 404 — password changes must go through Eveland's `/profile/password` (forcing revocation of other sessions), and invitations and member management go through Eveland-owned endpoints.
+
+## Device authorization (/device)
+
+`eveland login` runs the RFC 8628 device flow: the CLI shows a user code and opens `/device` in the browser. The page requires a signed-in session, previews the request (client and requested scopes — `deploy` and `observe`; never full account power), and requires an explicit Authorize or Deny. Approval lets the CLI redeem a scoped, revocable access token; the token can never reach member administration or the operator surface, whatever the approving user's role.
 
 ## Git credentials (/settings/git-credentials)
 

@@ -1,8 +1,16 @@
 import {
   authAccounts,
+  authDeviceCodes,
   authSessions,
   authVerifications,
   invitations,
+  oauthAccessTokens,
+  oauthClientAssertions,
+  oauthClientResources,
+  oauthClients,
+  oauthConsents,
+  oauthRefreshTokens,
+  oauthResources,
   teamMemberships,
   teams,
   users,
@@ -27,6 +35,14 @@ export async function createAuthTestContext() {
         organization: teams,
         member: teamMemberships,
         invitation: invitations,
+        deviceCode: authDeviceCodes,
+        oauthClient: oauthClients,
+        oauthResource: oauthResources,
+        oauthClientResource: oauthClientResources,
+        oauthAccessToken: oauthAccessTokens,
+        oauthRefreshToken: oauthRefreshTokens,
+        oauthConsent: oauthConsents,
+        oauthClientAssertion: oauthClientAssertions,
       },
     }),
     baseURL: "http://localhost:4000",
@@ -38,6 +54,7 @@ export async function createAuthTestContext() {
     name: "Admin",
     password: "admin-password",
   });
+  await auth.bootstrapCliOAuthClient();
   return { auth, store: database.store };
 }
 
@@ -50,6 +67,7 @@ export async function createAuthApp() {
       configurationDiagnostics: async () => ({ components: [] }),
     }),
     store,
+    auth,
   };
 }
 

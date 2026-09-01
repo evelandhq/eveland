@@ -148,6 +148,14 @@ repaired rows):
 psql "$DATABASE_URL" -c "SELECT count(*) FROM auth_accounts WHERE provider_id='credential' AND account_id<>user_id"
 ```
 
+## CLI device authorization tables
+
+Migration `0059` creates the `auth_device_codes` and `oauth_*` tables backing
+`eveland login` (RFC 8628 device flow with scoped OAuth access tokens). It only
+creates new tables — the usual **migrate, then restart** order applies, and a
+rollback is unaffected (old code never touches them). On boot the API seeds and
+re-asserts the `eveland-cli` OAuth client row; do not hand-edit it.
+
 ## Legacy per-project workflow residue
 
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:

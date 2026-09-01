@@ -2,9 +2,12 @@ import { getTableColumns } from "drizzle-orm";
 import { describe, expect, test } from "vitest";
 import {
   authAccounts,
+  authDeviceCodes,
   authSessions,
   authVerifications,
   invitations,
+  oauthAccessTokens,
+  oauthClients,
   projects,
   teamMemberships,
   teams,
@@ -75,5 +78,50 @@ describe("Better Auth team schema", () => {
 
   test("stores the semantic project slug", () => {
     expect(Object.keys(getTableColumns(projects))).toContain("slug");
+  });
+
+  test("maps the device-authorization and oauth-provider plugin models", () => {
+    expect(Object.keys(getTableColumns(authDeviceCodes))).toEqual(
+      expect.arrayContaining([
+        "id",
+        "deviceCode",
+        "userCode",
+        "userId",
+        "expiresAt",
+        "status",
+        "lastPolledAt",
+        "pollingInterval",
+        "clientId",
+        "scope",
+        // Grant-owned fields from the oauth-provider device grant.
+        "resources",
+        "oauthClientId",
+      ]),
+    );
+    expect(Object.keys(getTableColumns(oauthClients))).toEqual(
+      expect.arrayContaining([
+        "id",
+        "clientId",
+        "clientSecret",
+        "scopes",
+        "grantTypes",
+        "tokenEndpointAuthMethod",
+        "redirectUris",
+        "skipConsent",
+        "disabled",
+      ]),
+    );
+    expect(Object.keys(getTableColumns(oauthAccessTokens))).toEqual(
+      expect.arrayContaining([
+        "id",
+        "token",
+        "clientId",
+        "userId",
+        "sessionId",
+        "expiresAt",
+        "revoked",
+        "scopes",
+      ]),
+    );
   });
 });

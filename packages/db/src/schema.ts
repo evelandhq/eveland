@@ -152,6 +152,205 @@ export const authVerifications = pgTable(
   (table) => [index("auth_verifications_identifier_idx").on(table.identifier)],
 );
 
+// RFC 8628 device codes for `eveland login` (better-auth device-authorization
+// plugin, combined with the oauth-provider device grant). TS keys follow the
+// plugin's model field names; the drizzle adapter maps them onto these tables.
+export const authDeviceCodes = pgTable(
+  "auth_device_codes",
+  {
+    id: text("id").primaryKey(),
+    deviceCode: text("device_code").notNull(),
+    userCode: text("user_code").notNull(),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull(),
+    lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
+    pollingInterval: integer("polling_interval"),
+    clientId: text("client_id"),
+    scope: text("scope"),
+    // Grant-owned fields persisted by the oauth-provider device grant.
+    resources: text("resources").array(),
+    oauthClientId: text("oauth_client_id"),
+  },
+  (table) => [
+    uniqueIndex("auth_device_codes_device_code_idx").on(table.deviceCode),
+    uniqueIndex("auth_device_codes_user_code_idx").on(table.userCode),
+  ],
+);
+
+// OAuth clients registered with the provider. Rows are seeded at bootstrap
+// (the eveland CLI public client); dynamic registration stays disabled, so
+// this is operator-owned data. Client references from token/consent tables
+// store the OAuth client_id string, not this row id, so those columns are
+// indexed but carry no DB-level FK.
+export const oauthClients = pgTable(
+  "oauth_clients",
+  {
+    id: text("id").primaryKey(),
+    clientId: text("client_id").notNull(),
+    clientSecret: text("client_secret"),
+    clientDiscoveryId: text("client_discovery_id"),
+    disabled: boolean("disabled"),
+    skipConsent: boolean("skip_consent"),
+    enableEndSession: boolean("enable_end_session"),
+    subjectType: text("subject_type"),
+    scopes: text("scopes").array(),
+    clientCredentialsScopes: text("client_credentials_scopes").array(),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+    name: text("name"),
+    uri: text("uri"),
+    icon: text("icon"),
+    contacts: text("contacts").array(),
+    tos: text("tos"),
+    policy: text("policy"),
+    softwareId: text("software_id"),
+    softwareVersion: text("software_version"),
+    softwareStatement: text("software_statement"),
+    redirectUris: text("redirect_uris").array().notNull(),
+    postLogoutRedirectUris: text("post_logout_redirect_uris").array(),
+    backchannelLogoutUri: text("backchannel_logout_uri"),
+    backchannelLogoutSessionRequired: boolean("backchannel_logout_session_required"),
+    tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
+    applicationType: text("application_type"),
+    jwks: text("jwks"),
+    jwksUri: text("jwks_uri"),
+    grantTypes: text("grant_types").array(),
+    responseTypes: text("response_types").array(),
+    requirePKCE: boolean("require_pkce"),
+    dpopBoundAccessTokens: boolean("dpop_bound_access_tokens").default(false),
+    referenceId: text("reference_id"),
+    metadata: jsonb("metadata"),
+  },
+  (table) => [uniqueIndex("oauth_clients_client_id_idx").on(table.clientId)],
+);
+
+export const oauthResources = pgTable(
+  "oauth_resources",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    name: text("name").notNull(),
+    accessTokenTtl: integer("access_token_ttl"),
+    refreshTokenTtl: integer("refresh_token_ttl"),
+    signingAlgorithm: text("signing_algorithm"),
+    signingKeyId: text("signing_key_id"),
+    allowedScopes: text("allowed_scopes").array(),
+    customClaims: jsonb("custom_claims"),
+    dpopBoundAccessTokensRequired: boolean("dpop_bound_access_tokens_required").default(false),
+    disabled: boolean("disabled").default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+    policyVersion: integer("policy_version").default(1),
+    metadata: jsonb("metadata"),
+  },
+  (table) => [uniqueIndex("oauth_resources_identifier_idx").on(table.identifier)],
+);
+
+export const oauthClientResources = pgTable(
+  "oauth_client_resources",
+  {
+    id: text("id").primaryKey(),
+    clientId: text("client_id").notNull(),
+    resourceId: text("resource_id").notNull(),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("oauth_client_resources_client_idx").on(table.clientId),
+    index("oauth_client_resources_resource_idx").on(table.resourceId),
+    uniqueIndex("oauth_client_resources_client_resource_idx").on(table.clientId, table.resourceId),
+  ],
+);
+
+export const oauthRefreshTokens = pgTable(
+  "oauth_refresh_tokens",
+  {
+    id: text("id").primaryKey(),
+    token: text("token").notNull(),
+    clientId: text("client_id").notNull(),
+    sessionId: text("session_id").references(() => authSessions.id, { onDelete: "set null" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    authorizationCodeId: text("authorization_code_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }),
+    revoked: timestamp("revoked", { withTimezone: true }),
+    rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+    rotationReplayResponse: text("rotation_replay_response"),
+    rotationReplayExpiresAt: timestamp("rotation_replay_expires_at", { withTimezone: true }),
+    authTime: timestamp("auth_time", { withTimezone: true }),
+    confirmation: jsonb("confirmation"),
+    scopes: text("scopes").array().notNull(),
+  },
+  (table) => [
+    uniqueIndex("oauth_refresh_tokens_token_idx").on(table.token),
+    index("oauth_refresh_tokens_client_idx").on(table.clientId),
+    index("oauth_refresh_tokens_session_idx").on(table.sessionId),
+    index("oauth_refresh_tokens_user_idx").on(table.userId),
+    index("oauth_refresh_tokens_authorization_code_idx").on(table.authorizationCodeId),
+  ],
+);
+
+export const oauthAccessTokens = pgTable(
+  "oauth_access_tokens",
+  {
+    id: text("id").primaryKey(),
+    token: text("token"),
+    clientId: text("client_id").notNull(),
+    sessionId: text("session_id").references(() => authSessions.id, { onDelete: "set null" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    authorizationCodeId: text("authorization_code_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    refreshId: text("refresh_id"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }),
+    revoked: timestamp("revoked", { withTimezone: true }),
+    confirmation: jsonb("confirmation"),
+    scopes: text("scopes").array().notNull(),
+  },
+  (table) => [
+    uniqueIndex("oauth_access_tokens_token_idx").on(table.token),
+    index("oauth_access_tokens_client_idx").on(table.clientId),
+    index("oauth_access_tokens_session_idx").on(table.sessionId),
+    index("oauth_access_tokens_user_idx").on(table.userId),
+    index("oauth_access_tokens_authorization_code_idx").on(table.authorizationCodeId),
+    index("oauth_access_tokens_refresh_idx").on(table.refreshId),
+  ],
+);
+
+export const oauthConsents = pgTable(
+  "oauth_consents",
+  {
+    id: text("id").primaryKey(),
+    clientId: text("client_id").notNull(),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    scopes: text("scopes").array().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("oauth_consents_client_idx").on(table.clientId),
+    index("oauth_consents_user_idx").on(table.userId),
+  ],
+);
+
+// Single-use jti replay tombstones for client-assertion authentication.
+export const oauthClientAssertions = pgTable("oauth_client_assertions", {
+  id: text("id").primaryKey(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
 export const projects = pgTable(
   "projects",
   {

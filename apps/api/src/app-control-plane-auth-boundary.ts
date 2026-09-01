@@ -9,6 +9,7 @@ import {
   previewInvitationSchema,
 } from "./app-schemas.js";
 import { authErrorResponse, getSetCookies } from "./app-support.js";
+import { isRequestAllowedForScopes } from "./cli-auth.js";
 
 type BetterAuthRuntime = ReturnType<typeof createBetterAuthRuntime>;
 
@@ -20,12 +21,22 @@ export type ControlPlaneAuthBoundaryPort = Pick<
   | "previewPasswordReset"
   | "completePasswordReset"
   | "authenticate"
+  | "authenticateAccessToken"
 >;
 
 const allowedAuthPaths = new Set([
   "/api/auth/sign-in/email",
   "/api/auth/sign-out",
   "/api/auth/get-session",
+  // RFC 8628 device authorization for `eveland login`. The CLI requests a
+  // code, the Dashboard's /device page previews and approves/denies it (the
+  // approve/deny endpoints require the browser session), and the CLI redeems
+  // the approved code for a scoped OAuth access token at the token endpoint.
+  "/api/auth/device/code",
+  "/api/auth/device",
+  "/api/auth/device/approve",
+  "/api/auth/device/deny",
+  "/api/auth/oauth2/token",
 ]);
 
 export function registerControlPlaneAuthBoundary(input: {
@@ -128,10 +139,20 @@ export function registerControlPlaneAuthBoundary(input: {
 
   // Hono applies middleware only to routes registered after it. Keeping this
   // gate in the same registrar as the public entries makes their order atomic.
+  // An Authorization header selects the CLI token path exclusively: an
+  // explicit credential is never silently downgraded to the cookie session.
   app.use("*", async (c, next) => {
-    const principal = await auth.authenticate(c.req.raw);
+    const principal = c.req.raw.headers.get("authorization")
+      ? await auth.authenticateAccessToken(c.req.raw)
+      : await auth.authenticate(c.req.raw);
     if (!principal) {
       return c.json({ error: "Authentication required" }, 401);
+    }
+    if (
+      principal.tokenScopes &&
+      !isRequestAllowedForScopes(c.req.method, new URL(c.req.url).pathname, principal.tokenScopes)
+    ) {
+      return c.json({ error: "Token scope does not allow this request" }, 403);
     }
     c.set("principal", principal);
     await next();
