@@ -25,6 +25,7 @@ Headless 场景（CI）设置 `EVELAND_TOKEN`：它永远覆盖存储的凭证�
 
 | 命令                              | 行为                                                |
 | --------------------------------- | --------------------------------------------------- |
+| `eveland init <dir>`              | 从源码树内置模板脚手架新 agent 项目（无需登录）     |
 | `eveland login [--origin <url>]`  | device flow 认证；按 origin 存储凭证                |
 | `eveland logout [--origin <url>]` | 忘掉存储的凭证（已设置的 `EVELAND_TOKEN` 仍然生效） |
 | `eveland whoami [--origin <url>]` | 打印 origin、用户、角色、token scope 与 token 来源  |
