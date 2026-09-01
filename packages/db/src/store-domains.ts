@@ -508,11 +508,13 @@ export interface JobStore {
     staleAfterMs?: number,
   ): Promise<Job>;
   /**
-   * Claims the oldest claimable queued job. At most one job runs per project;
-   * when `maxConcurrentHeavyJobs` is set, a HEAVY_JOB_TYPES candidate is
-   * additionally claimable only while fewer heavy jobs than the cap are
-   * running — light jobs skip past capped-out builds. Omitting the option
-   * leaves heavy jobs uncapped.
+   * Claims the oldest claimable queued job, except that
+   * LATENCY_SENSITIVE_JOB_TYPES candidates (activations, schedule dispatches
+   * racing Eve's 30-second command-hook wait) claim ahead of everything else.
+   * At most one job runs per project; when `maxConcurrentHeavyJobs` is set, a
+   * HEAVY_JOB_TYPES candidate is additionally claimable only while fewer heavy
+   * jobs than the cap are running — light jobs skip past capped-out builds.
+   * Omitting the option leaves heavy jobs uncapped.
    */
   claimNextJob(
     workerId: string,

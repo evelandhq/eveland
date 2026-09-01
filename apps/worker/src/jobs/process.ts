@@ -24,7 +24,16 @@ export async function processNextJob(
   if (!job) {
     return false;
   }
+  await runClaimedJob(store, job, options);
+  return true;
+}
 
+/** Executes a job this worker already claimed, settling the row either way. */
+export async function runClaimedJob(
+  store: Store,
+  job: Job,
+  options: ProcessJobOptions = {},
+): Promise<void> {
   const tracer = options.tracer ?? trace.getTracer("@eveland/worker-jobs");
   return tracer.startActiveSpan(
     `eveland.job ${job.type}`,
@@ -50,14 +59,13 @@ export async function processNextJob(
         await clearTemporaryGitCredential(store, job);
         await store.completeJob(job.id, job.attempts);
         span.setStatus({ code: SpanStatusCode.OK });
-        return true;
       } catch (error) {
         const message = errorMessage(error);
         span.recordException(error instanceof Error ? error : new Error(message));
         span.setStatus({ code: SpanStatusCode.ERROR, message });
         await clearTemporaryGitCredential(store, job);
         const failed = await store.failJob(job.id, message, job.attempts);
-        if (!failed) return true;
+        if (!failed) return;
         // What a failed job family means for the project lives with the
         // handlers; only claiming, fencing, and logging stay here.
         await settleJobFailure(store, job, message);
@@ -66,7 +74,6 @@ export async function processNextJob(
           type: "runtime",
           line: `Job ${job.id} failed: ${message}`,
         });
-        return true;
       } finally {
         span.end();
       }

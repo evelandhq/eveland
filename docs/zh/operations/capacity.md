@@ -14,7 +14,7 @@ Eveland 在一台机器上运行一组 Agent，因此实际问题是机器规格
 ## 并发治理
 
 - **运行中 Agent**：没有硬上限。Idle Reaper 会停止五分钟内没有 ActivationLease 的 Agent（`EVELAND_ACTIVATION_IDLE_TTL_MS`），因此稳态数量跟随真实流量，而不是 Project 数量。
-- **Build**：每个 Project 至多一个运行中 Job，另加一个全局并发 Build 上限。Worker 启动时按机器推导上限——`max(1, min(⌊RAM / 4 GiB⌋, cores − 2))`，与下方参考表一致——并在启动日志中打印；`EVELAND_MAX_CONCURRENT_JOBS` 可覆盖。超出上限的 Build 留在队列中，而轻量 Job（Restart、Archive、Delete、Import）继续流动；准入始终是每个 Worker Tick 一个新 Job（`WORKER_POLL_INTERVAL_MS`，默认 5 秒）。**Settings → Instance health** 的 Workload 区域以 "Running builds N/cap" 显示当前用量。
+- **Build**：每个 Project 至多一个运行中 Job，另加一个全局并发 Build 上限。Worker 启动时按机器推导上限——`max(1, min(⌊RAM / 4 GiB⌋, cores − 2))`，与下方参考表一致——并在启动日志中打印；`EVELAND_MAX_CONCURRENT_JOBS` 可覆盖。超出上限的 Build 留在队列中，而轻量 Job（Restart、Archive、Delete、Import）继续流动。Worker 通过有界 Pump 准入 Job：至多 `WORKER_JOB_CONCURRENCY` 个已 Claim Job 同时执行（派生值 `max(1, min(cores − 1, 3))`），队列非空时连续 Claim，仅在队列排空后暂停 `WORKER_POLL_INTERVAL_MS`（默认 5 秒）。延迟敏感型 Job——Deployment 激活与 Schedule 派发，它们在与 Eve 固定 30 秒的 Command-hook 等待赛跑——优先于排队中的 Build 与 Import 被 Claim。**Settings → Instance health** 的 Workload 区域以 "Running builds N/cap" 显示当前用量。
 
 ## Postgres 连接预算
 

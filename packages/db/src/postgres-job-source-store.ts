@@ -1,5 +1,9 @@
 import { createId } from "@evelandhq/core/ids";
-import { HEAVY_JOB_TYPES, decodeJobPayload } from "@evelandhq/core/jobs";
+import {
+  HEAVY_JOB_TYPES,
+  LATENCY_SENSITIVE_JOB_TYPES,
+  decodeJobPayload,
+} from "@evelandhq/core/jobs";
 import type { Job, JobType } from "@evelandhq/core/contracts";
 import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import {
@@ -224,9 +228,14 @@ export function createPostgresJobSourceStore({
         HEAVY_JOB_TYPES.map((type) => sql`${type}`),
         sql`, `,
       );
+      const latencySensitiveTypes = sql.join(
+        LATENCY_SENSITIVE_JOB_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      );
       // Concurrent claims each count committed running heavy jobs, so two
-      // simultaneous claims can momentarily overshoot the cap by one; with a
-      // single worker admitting one job per tick that window is negligible.
+      // simultaneous claims can momentarily overshoot the cap by one; the
+      // single worker serializes claims (its job pump admits single-file even
+      // though claimed jobs run concurrently), so that window is negligible.
       const heavyCapClause =
         heavyCap === undefined
           ? sql``
@@ -271,7 +280,9 @@ export function createPostgresJobSourceStore({
                     project.deletion_status is distinct from 'deleting'
                     or candidate.type = 'delete_project'
                   )${heavyCapClause}
-                order by candidate.created_at asc, candidate.sequence asc
+                order by
+                  case when candidate.type in (${latencySensitiveTypes}) then 0 else 1 end asc,
+                  candidate.created_at asc, candidate.sequence asc
                 limit 1
                 for update skip locked
               )`,

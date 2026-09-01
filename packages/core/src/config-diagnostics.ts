@@ -817,8 +817,13 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   entry(
     "WORKER_POLL_INTERVAL_MS",
     ["worker"],
-    "Delay between Worker job-queue polling attempts.",
+    "Delay before an idle Worker job-pump loop polls the queue again.",
     "5000",
+  ),
+  entry(
+    "WORKER_JOB_CONCURRENCY",
+    ["worker"],
+    "How many claimed jobs the Worker pump executes at once. Overrides the default derived from machine cores.",
   ),
   entry(
     "WORKER_JOB_HEARTBEAT_INTERVAL_MS",

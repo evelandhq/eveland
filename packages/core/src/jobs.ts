@@ -56,6 +56,18 @@ const jobPayloadSchemas: {
  */
 export const HEAVY_JOB_TYPES = ["build_deploy"] as const satisfies readonly JobType[];
 
+/**
+ * Job types on the session-critical path: a queued activation or schedule
+ * dispatch is racing Eve's fixed 30-second command-hook wait (a session create
+ * fails with HTTP 500 when its run is not dispatched in time), so claiming
+ * lets them jump ahead of operator-paced work (imports, builds, restarts) and
+ * cleanup. Among themselves, and within every other type, FIFO order holds.
+ */
+export const LATENCY_SENSITIVE_JOB_TYPES = [
+  "ensure_deployment_running",
+  "trigger_schedule",
+] as const satisfies readonly JobType[];
+
 const jobTypeSet = new Set<JobType>(Object.keys(jobPayloadSchemas) as JobType[]);
 const jobStatusSet = new Set<JobStatus>(["queued", "running", "completed", "failed"]);
 
