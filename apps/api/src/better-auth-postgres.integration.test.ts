@@ -16,18 +16,15 @@ import {
   teams,
   users,
 } from "@evelandhq/db/schema";
+import { resolvePostgresTestUrl } from "@evelandhq/db/postgres-test-support";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { afterAll, describe, expect, test } from "vitest";
 import { createBetterAuthRuntime } from "./auth.js";
 
-const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
-// Local runs may skip; CI must never silently lose this file to a renamed
-// env var (same fail-fast as packages/db's postgres-integration support).
-if (process.env.CI && !databaseUrl) {
-  throw new Error(
-    "CI is set but EVELAND_POSTGRES_TEST_URL is not: the Better Auth Postgres integration test would silently skip.",
-  );
-}
+// The support module's import-time fail-fast covers CI here too: it throws
+// when CI is set without EVELAND_POSTGRES_TEST_URL, so this file can never
+// silently skip in CI.
+const databaseUrl = resolvePostgresTestUrl();
 const database = databaseUrl ? createDatabase(databaseUrl) : null;
 
 afterAll(async () => database?.close());

@@ -3,7 +3,7 @@ title: eveland CLI
 description: Agent 作者的命令行客户端——认证模型、origin 解析、凭证存储与命令面。
 ---
 
-`eveland` 是平台面向 agent 作者的命令行客户端。它只走公开 `/api` 契约——与浏览器 Dashboard 同一契约——只承载平台关系动词：今天是认证，随着命令面扩展会有 deploy/logs/env。框架动词（build、test、dev）属于 `eve` 工具链；运维平台本身（start、stop、doctor、update）属于 `eveland-ctl`。CLI 随源码树住在 `packages/cli`，不发布到 npm。
+`eveland` 是平台面向 agent 作者的命令行客户端。它只走公开 `/api` 契约——与浏览器 Dashboard 同一契约——只承载平台关系动词：今天是认证，随着命令面扩展会有 deploy/logs/env。框架动词（build、test、dev）属于 `eve` 工具链；运维平台本身（start、stop、doctor、update）属于 `eveland-ctl`。CLI 随源码树住在 `packages/cli`，不发布到 npm。在源码 checkout 里用 `pnpm eveland <command>` 运行（根目录脚本；入口靠 Node ≥ 24 的 type stripping 直接跑源码，无需构建）。
 
 ## Origin 解析
 

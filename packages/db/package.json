@@ -9,6 +9,7 @@
     "./client": "./src/client.ts",
     "./factory": "./src/store-factory.ts",
     "./schema": "./src/schema.ts",
+    "./postgres-test-support": "./src/postgres-integration.test-support.ts",
     "./test": "./src/test-store.ts",
     "./vitest": "./src/vitest-store.ts",
     "./workflow-world-health": "./src/workflow-world-health.ts",

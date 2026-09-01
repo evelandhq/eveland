@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   createIsolatedPostgresDatabase,
+  resolvePostgresTestUrl,
   type IsolatedPostgresDatabase,
 } from "./postgres-integration.test-support.js";
 import { listenForQueuedJobs } from "./job-queue-listener.js";
 import { createPostgresStore } from "./postgres-store.js";
 
-const databaseUrl = process.env.EVELAND_POSTGRES_TEST_URL;
+const databaseUrl = resolvePostgresTestUrl();
 
 // Claims and recovers from the global job queue, so it needs its own
 // database; see postgres-integration.test-support.ts.

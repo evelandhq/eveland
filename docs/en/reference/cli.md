@@ -3,7 +3,7 @@ title: eveland CLI
 description: The agent author's command-line client - authentication model, origin resolution, credential storage, and the command surface.
 ---
 
-`eveland` is the platform's command-line client for agent authors. It speaks only the public `/api` contract — the same one the browser Dashboard uses — and carries platform-relationship verbs: authentication today, deploy/logs/env as the surface grows. Framework verbs (build, test, dev) belong to the `eve` toolchain; operating the platform itself (start, stop, doctor, update) belongs to `eveland-ctl`. The CLI ships with the source tree at `packages/cli` and is not published to npm.
+`eveland` is the platform's command-line client for agent authors. It speaks only the public `/api` contract — the same one the browser Dashboard uses — and carries platform-relationship verbs: authentication today, deploy/logs/env as the surface grows. Framework verbs (build, test, dev) belong to the `eve` toolchain; operating the platform itself (start, stop, doctor, update) belongs to `eveland-ctl`. The CLI ships with the source tree at `packages/cli` and is not published to npm. From a checkout, run it as `pnpm eveland <command>` (a root script; the entry runs directly from source under Node ≥ 24's type stripping, no build step).
 
 ## Origin resolution
 
