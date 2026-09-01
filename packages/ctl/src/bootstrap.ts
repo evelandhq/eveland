@@ -185,6 +185,7 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
 export async function runBootstrapPrepare(
   deps: BootstrapDeps,
   envFile: PlatformEnvFile,
+  options: { buildWeb: boolean } = { buildWeb: true },
 ): Promise<void> {
   const { io } = deps;
 
@@ -201,7 +202,12 @@ export async function runBootstrapPrepare(
 
   const childEnv = { ...io.env, ...envFile.values };
 
-  if (!(await deps.fileExists(path.join(deps.repoRootDir, "apps/web/.next/BUILD_ID")))) {
+  // The systemd production form builds the Dashboard inside its own
+  // container; only the ctl-supervised form needs a host build.
+  if (
+    options.buildWeb &&
+    !(await deps.fileExists(path.join(deps.repoRootDir, "apps/web/.next/BUILD_ID")))
+  ) {
     io.stdout("Building the Dashboard (first boot only; a few minutes)...");
     const code = await deps.streamCommand(["pnpm", "--filter", "@evelandhq/web", "build"], {
       cwd: deps.repoRootDir,

@@ -26,12 +26,7 @@ import { provisionLinuxHost } from "./linux-host.ts";
 import { defaultTcpProbe } from "./net-probe.ts";
 import { runSeedAgent } from "./seed-agent.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
-import {
-  absoluteProcessDir,
-  childEnvironment,
-  PLATFORM_PROCESSES,
-  systemdUnitName,
-} from "./processes.ts";
+import { absoluteProcessDir, childEnvironment, PLATFORM_PROCESSES } from "./processes.ts";
 import {
   defaultProcessIdentity,
   isProcessAlive,
@@ -44,6 +39,13 @@ import {
   type ProcessIdentity,
 } from "./state-files.ts";
 import { Supervisor, type SupervisedProcess } from "./supervisor.ts";
+import {
+  applianceComposeArgs,
+  installSystemdArtifacts,
+  startViaSystemd,
+  stopViaSystemd,
+  type SystemdModeContext,
+} from "./systemd-mode.ts";
 
 export type { ExecCommand, FetchLike, LifecycleIo, SpawnDaemon } from "./io.ts";
 
@@ -180,7 +182,7 @@ export function composeArgs(envFilePath: string, ...rest: string[]): string[] {
 async function ensureInfraUp(
   io: LifecycleIo,
   resolved: ResolvedLifecycle,
-  envFilePath: string,
+  upArgs: string[],
 ): Promise<void> {
   const probe = await resolved.execCommand(["docker", "info", "--format", "{{.ServerVersion}}"], {
     cwd: resolved.repoRootDir,
@@ -192,10 +194,7 @@ async function ensureInfraUp(
     );
   }
   io.stdout("Starting infrastructure (postgres, otel-collector)...");
-  const result = await resolved.execCommand(
-    composeArgs(envFilePath, "up", "-d", ...INFRA_COMPOSE_SERVICES),
-    { cwd: resolved.repoRootDir },
-  );
+  const result = await resolved.execCommand(upArgs, { cwd: resolved.repoRootDir });
   if (result.code !== 0) {
     throw new Error(`docker compose up failed:\n${result.output.trim()}`);
   }
@@ -269,62 +268,25 @@ async function waitForReadiness(
  * development checkout (its own .env, no appliance config) is never
  * bootstrapped: it is already configured by hand.
  */
-/** After `install --systemd`, systemctl owns the processes, not the ctl supervisor. */
+/** After systemd promotion, systemctl+Compose own the processes, not the ctl supervisor. */
 export async function systemdSupervised(resolved: ResolvedLifecycle): Promise<boolean> {
   const metadata = await readInstallMetadata(resolved.layout);
   return metadata?.supervision === "systemd";
 }
 
-async function startViaSystemd(
+/** The narrow context the systemd-mode machinery needs (also used by `install --systemd`). */
+export function systemdModeContext(
   io: LifecycleIo,
   resolved: ResolvedLifecycle,
-  skipInfra: boolean,
-): Promise<number> {
-  const envFile = await requirePlatformEnvFile(io, resolved);
-  if (!skipInfra) {
-    await ensureInfraUp(io, resolved, envFile.path);
-  }
-  for (const spec of PLATFORM_PROCESSES) {
-    const result = await resolved.execCommand(["systemctl", "start", systemdUnitName(spec.key)], {
-      cwd: resolved.repoRootDir,
-    });
-    if (result.code !== 0) {
-      io.stderr(`systemctl start ${systemdUnitName(spec.key)} failed:\n${result.output.trim()}`);
-      return 1;
-    }
-  }
-  const ready = new Set<string>();
-  for (let waited = 0; waited <= READINESS_DEADLINE_MS; waited += READINESS_POLL_MS) {
-    for (const spec of PLATFORM_PROCESSES) {
-      if (ready.has(spec.key)) continue;
-      if (spec.readinessUrl) {
-        if (await probeReady(resolved.fetchImpl, spec.readinessUrl)) {
-          ready.add(spec.key);
-          io.stdout(`  ${spec.label} is ready`);
-        }
-      } else {
-        const active = await resolved.execCommand(
-          ["systemctl", "is-active", systemdUnitName(spec.key)],
-          { cwd: resolved.repoRootDir },
-        );
-        if (active.output.trim() === "active") {
-          ready.add(spec.key);
-          io.stdout(`  ${spec.label} is running`);
-        }
-      }
-    }
-    if (ready.size === PLATFORM_PROCESSES.length) {
-      io.stdout("");
-      io.stdout(`Eveland is running at ${publicOrigin(envFile)}`);
-      return 0;
-    }
-    await resolved.sleep(READINESS_POLL_MS);
-  }
-  const missing = PLATFORM_PROCESSES.filter((spec) => !ready.has(spec.key)).map((s) => s.label);
-  io.stderr(
-    `Timed out waiting for: ${missing.join(", ")}. Check \`systemctl status 'eveland-*'\` and \`journalctl -u eveland-<name>\`.`,
-  );
-  return 1;
+): SystemdModeContext {
+  return {
+    io,
+    layout: resolved.layout,
+    repoRootDir: resolved.repoRootDir,
+    execCommand: resolved.execCommand,
+    fetchImpl: resolved.fetchImpl,
+    sleep: resolved.sleep,
+  };
 }
 
 async function detectBootstrapNeeded(resolved: ResolvedLifecycle): Promise<boolean> {
@@ -455,7 +417,15 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
   });
   const resolved = resolveLifecycle(io);
   if (await systemdSupervised(resolved)) {
-    return startViaSystemd(io, resolved, Boolean(parsed.values["skip-infra"]));
+    const envFile = await requirePlatformEnvFile(io, resolved);
+    const code = await startViaSystemd(systemdModeContext(io, resolved), {
+      skipInfra: Boolean(parsed.values["skip-infra"]),
+    });
+    if (code !== 0) return code;
+    await retrySeedIfPending(io, resolved, envFile);
+    io.stdout("");
+    io.stdout(`Eveland is running at ${publicOrigin(envFile)}`);
+    return 0;
   }
   const existingPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
   if (existingPid !== null) {
@@ -476,10 +446,6 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
     if (problems.length > 0) {
       for (const problem of problems) io.stderr(problem);
       return 1;
-    }
-    if (parsed.values.foreground) {
-      io.stdout("First boot always runs the supervisor in the background;");
-      io.stdout("use `eveland-ctl stop` and `start --foreground` afterwards.");
     }
     envFile = await runBootstrapConfig(deps);
     const existingMetadata = await readInstallMetadata(resolved.layout);
@@ -513,10 +479,42 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
         getuid: io.getuid ?? process.getuid ?? (() => -1),
       });
     }
-    if (!parsed.values["skip-infra"]) {
-      await ensureInfraUp(io, resolved, envFile.path);
+    // Linux first boot lands DIRECTLY on the production form (systemd
+    // units + Compose core services) — the plan's "day-one production" —
+    // unless --foreground explicitly opts into the ctl supervisor.
+    const linuxProductionForm =
+      deps.platform === "linux" &&
+      !parsed.values.foreground &&
+      (io.getuid ?? process.getuid ?? (() => -1))() === 0;
+    const context = systemdModeContext(io, resolved);
+    if (linuxProductionForm) {
+      const installed = await installSystemdArtifacts(context, envFile);
+      if (installed !== 0) return installed;
+      if (!parsed.values["skip-infra"]) {
+        await ensureInfraUp(
+          io,
+          resolved,
+          applianceComposeArgs(resolved.layout, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+        );
+      }
+      // The Dashboard builds inside its own container in this form.
+      await runBootstrapPrepare(deps, envFile, { buildWeb: false });
+      await mkdir(resolved.layout.logsDir, { recursive: true });
+      const started = await startViaSystemd(context, { skipInfra: true });
+      if (started !== 0) return started;
+      await finishBootstrap(io, resolved, envFile);
+      io.stdout("");
+      io.stdout(`Eveland is running at ${publicOrigin(envFile)}`);
+      return 0;
     }
-    await runBootstrapPrepare(deps, envFile);
+    if (!parsed.values["skip-infra"]) {
+      await ensureInfraUp(
+        io,
+        resolved,
+        composeArgs(envFile.path, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+      );
+    }
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
   } else {
     envFile = await requirePlatformEnvFile(io, resolved);
     const problems = await preflightStart(resolved, { requireWebBuild: true });
@@ -525,7 +523,11 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
       return 1;
     }
     if (!parsed.values["skip-infra"]) {
-      await ensureInfraUp(io, resolved, envFile.path);
+      await ensureInfraUp(
+        io,
+        resolved,
+        composeArgs(envFile.path, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+      );
     }
   }
   await mkdir(resolved.layout.logsDir, { recursive: true });
@@ -559,20 +561,7 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
 export async function runStop(_args: string[], io: LifecycleIo): Promise<number> {
   const resolved = resolveLifecycle(io);
   if (await systemdSupervised(resolved)) {
-    let failed = false;
-    for (const spec of PLATFORM_PROCESSES) {
-      const result = await resolved.execCommand(["systemctl", "stop", systemdUnitName(spec.key)], {
-        cwd: resolved.repoRootDir,
-      });
-      if (result.code !== 0) {
-        io.stderr(`systemctl stop ${systemdUnitName(spec.key)} failed:\n${result.output.trim()}`);
-        failed = true;
-      }
-    }
-    if (!failed) {
-      io.stdout("Stopped the systemd services. Infrastructure containers keep running.");
-    }
-    return failed ? 1 : 0;
+    return stopViaSystemd(systemdModeContext(io, resolved));
   }
   // Verified against the recorded start-time identity: a recycled pid must
   // never receive our SIGTERM/SIGKILL — especially not as root.

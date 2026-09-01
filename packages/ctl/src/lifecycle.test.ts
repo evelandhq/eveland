@@ -317,6 +317,56 @@ describe("runStart first boot", () => {
     await expect(readFile(harness.layout.envFilePath, "utf8")).rejects.toThrow();
   });
 
+  test("Linux root first boot lands directly on the production form (systemd + compose core)", async () => {
+    const harness = await makeHarness({ env: undefined, webBuild: false });
+    const configHome = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
+    const unitDir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-units-"));
+    harness.io.platform = "linux";
+    harness.io.env.XDG_CONFIG_HOME = configHome;
+    harness.io.fetchImpl = deviceFlowFetch();
+    harness.io.tcpProbe = async () => true;
+    harness.io.streamCommand = async () => 0;
+    const io = harness.io as typeof harness.io & {
+      getuid: () => number;
+      systemdUnitDir: string;
+      writeTextFile: (p: string, c: string) => Promise<void>;
+    };
+    io.getuid = () => 0;
+    io.systemdUnitDir = unitDir;
+    const written: Record<string, string> = {};
+    io.writeTextFile = async (filePath, content) => {
+      written[filePath] = content;
+      await writeFile(filePath, content, "utf8");
+    };
+    // Host provisioning probes: every command exists, users exist, apt is
+    // present (its update/install go through the recorded streamCommand).
+    io.execCommand = async (argv) => {
+      harness.execCalls.push(argv);
+      if (argv[0] === "systemctl" && argv[1] === "is-active")
+        return { code: 0, output: "active\n" };
+      if (argv[0] === "sh" && argv[1] === "-c") return { code: 0, output: "/usr/bin/x" };
+      return { code: 0, output: "" };
+    };
+
+    expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
+
+    // The production form, not the ctl supervisor: no daemon, two units.
+    expect(Object.keys(written).some((p) => p.startsWith(unitDir))).toBe(true);
+    expect(written[path.join(unitDir, "eveland-worker.service")]).toContain("User=root");
+    expect(written[path.join(unitDir, "eveland-workflow-dispatcher.service")]).toContain(
+      "DynamicUser=yes",
+    );
+    const metadata = await readInstallMetadata(harness.layout);
+    expect(metadata?.supervision).toBe("systemd");
+    expect(metadata?.bootstrapCompleted).toBe(true);
+    expect(metadata?.seedCompleted).toBe(true);
+    // Core services came up through the appliance compose stack.
+    const composeUp = harness.execCalls.find(
+      (argv) => argv[0] === "docker" && argv.includes("up") && argv.includes("api"),
+    );
+    expect(composeUp!.join(" ")).toContain("compose.appliance.yml");
+  });
+
   test("an interrupted bootstrap resumes without re-rendering secrets", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
@@ -360,7 +410,7 @@ describe("systemd supervision mode", () => {
     return harness;
   }
 
-  test("start delegates to systemctl and never spawns the ctl supervisor", async () => {
+  test("start delegates to compose (core) + systemctl (host units), never the ctl supervisor", async () => {
     const harness = await makeSystemdHarness();
     let daemonSpawned = false;
     harness.io.spawnDaemon = async () => {
@@ -369,19 +419,39 @@ describe("systemd supervision mode", () => {
     };
     expect(await runStart([], harness.io)).toBe(0);
     expect(daemonSpawned).toBe(false);
-    for (const key of ["gateway", "api", "web", "worker", "workflow-dispatcher"]) {
+    const composeUp = harness.execCalls.find((argv) => argv.includes("up"));
+    expect(composeUp!.join(" ")).toContain("docker-compose.prod.yml");
+    for (const service of ["api", "gateway", "web"]) {
+      expect(composeUp).toContain(service);
+    }
+    // Only the two host units are systemctl-managed; core services are not.
+    for (const key of ["worker", "workflow-dispatcher"]) {
       expect(harness.execCalls).toContainEqual(["systemctl", "start", `eveland-${key}.service`]);
+    }
+    for (const key of ["gateway", "api", "web"]) {
+      expect(harness.execCalls).not.toContainEqual([
+        "systemctl",
+        "start",
+        `eveland-${key}.service`,
+      ]);
     }
     expect(harness.out.join("\n")).toContain("Eveland is running at http://localhost:17300");
   });
 
-  test("stop delegates to systemctl stop for every unit", async () => {
+  test("stop delegates to systemctl for the host units and compose stop for the core", async () => {
     const harness = await makeSystemdHarness();
     expect(await runStop([], harness.io)).toBe(0);
-    for (const key of ["gateway", "api", "web", "worker", "workflow-dispatcher"]) {
+    for (const key of ["worker", "workflow-dispatcher"]) {
       expect(harness.execCalls).toContainEqual(["systemctl", "stop", `eveland-${key}.service`]);
     }
-    expect(harness.out.join("\n")).toContain("Stopped the systemd services");
+    const composeStop = harness.execCalls.find(
+      (argv) => argv.includes("stop") && argv[0] === "docker",
+    );
+    expect(composeStop).toBeDefined();
+    for (const service of ["api", "gateway", "web"]) {
+      expect(composeStop).toContain(service);
+    }
+    expect(harness.out.join("\n")).toContain("Stopped the platform");
   });
 });
 

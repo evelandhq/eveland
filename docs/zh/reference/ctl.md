@@ -50,11 +50,11 @@ curl -fsSL https://eveland.ai/install.sh | bash
 
 `start` 的幂等还包括更大的一层:在没有完成安装的机器上(没有 `etc/eveland.env`,或 `etc/install.json` 未标记完成),它会先走首次引导再启动。带自己 `.env` 的开发 checkout 永远不会被引导。
 
-引导只问 decide-per-install 的问题——公开 origin(默认 `http://localhost:17300`)、admin 邮箱、admin 密码(留空则生成强密码并打印一次)——并探测 shell 里现成的 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`,询问是否给内置 agent 使用。其余一切要么生成(`APP_SECRET_KEY`、`BETTER_AUTH_SECRET`、gateway/OTLP/scheduler secrets——全部 CSPRNG,两个 scheduler secret 相互独立,worker preflight 有此要求),要么按 OS 派生(macOS 用 `host.docker.internal` 形态的部署地址,Linux 用回环;`EVELAND_RUNTIME` docker vs systemd)。dispatcher 激活 token 渲染为与 gateway service token 同值——因为 API 校验激活请求用的正是这个凭证。渲染出的 `etc/eveland.env` 权限 `0600` 且**只写一次**——中断后重跑会原样复用,secrets 恰好铸造一次。`--no-prompt`(或无 TTY)全取默认值;`NODE_ENV=production` 意味着占位 secrets 永远不可能生效。
+引导只问 decide-per-install 的问题——公开 origin(默认 `http://localhost:17300`)与 admin 邮箱——并探测 shell 里现成的 `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`,询问是否给内置 agent 使用。admin 密码从不询问、也从不打印(两者都会落进被 tee 的安装日志):它总是生成的——或取自环境里已有的 `EVELAND_ADMIN_PASSWORD`——只存在于 `0600` 的 `etc/eveland.env` 中,引导输出只给出指向该文件的读取命令。其余一切要么生成(`APP_SECRET_KEY`、`BETTER_AUTH_SECRET`、gateway/OTLP/scheduler secrets——全部 CSPRNG,两个 scheduler secret 相互独立,worker preflight 有此要求),要么按 OS 派生(macOS 用 `host.docker.internal` 形态的部署地址,Linux 用回环;`EVELAND_RUNTIME` docker vs systemd)。dispatcher 激活 token 渲染为与 gateway service token 同值——因为 API 校验激活请求用的正是这个凭证。渲染出的 `etc/eveland.env` 权限 `0600` 且**只写一次**——中断后重跑会原样复用,secrets 恰好铸造一次。`--no-prompt`(或无 TTY)全取默认值;`NODE_ENV=production` 意味着占位 secrets 永远不可能生效。
 
-渲染之后,引导按需构建 Dashboard、拉起 infra 容器、等待 Postgres、应用迁移、启动平台(admin 账号由 API 启动时依 `EVELAND_ADMIN_*` 自行种下)。进程就绪后执行**隐式 CLI login**:与 `eveland login` 完全相同的 RFC 8628 device flow——同一个种子客户端、同样的 `deploy observe` scope、一枚正常可吊销的 token——只是批准环节用引导刚种下的 admin 会话在回环 API 上无头驱动,凭证写进 CLI 自己的存储(`~/.config/eveland/credentials/`)。黄金路径 `eveland init` → `eveland deploy` 因此不会碰到登录墙。login 失败只是警告而非启动失败(`eveland login` 可补救)。
+渲染之后,引导准备并启动平台(admin 账号由 API 启动时依 `EVELAND_ADMIN_*` 自行种下)。在 **Linux root** 上,它先亲自预配文档化的宿主契约——apt 安装沙箱工具链、bwrap AppArmor profile、`/workspace`、`eveland-app`/`eveland-build` 服务用户、固化 node/pnpm 上系统 PATH——然后**直接落在下文"systemd 生产形态"**上:第一天即生产,没有中间监督器阶段。macOS(以及 Linux `--foreground`)则按需构建 Dashboard、拉起 infra 容器、等待 Postgres、应用迁移、启动 ctl 监督器。进程就绪后执行**隐式 CLI login**:与 `eveland login` 完全相同的 RFC 8628 device flow——同一个种子客户端、同样的 `deploy observe` scope、一枚正常可吊销的 token——只是批准环节用引导刚种下的 admin 会话在回环 API 上无头驱动,凭证写进 CLI 自己的存储(`~/.config/eveland/credentials/`)。黄金路径 `eveland init` → `eveland deploy` 因此不会碰到登录墙。login 失败只是警告而非启动失败(`eveland login` 可补救)。
 
-拿到 token 后,引导接着种下**内置 agent**(`stella`):以子进程调用真正的 `eveland` CLI——`eveland deploy templates/starter-agent --name stella`——种子流程走的就是用户首次 deploy 的那条黄金路径(preflight、上传、流式构建日志、promote),不可能与之悄悄分叉。此前收集的模型 key 随后经 `eveland env set` 落进该 agent 的项目环境。种子失败只警告并打印手工补救命令;没有内置 agent 平台也完全可用。最后在平台 origin 上打开浏览器(headless 安装只打印 URL)。
+拿到 token 后,引导接着种下**内置 agent**(`stella`):以子进程调用真正的 `eveland` CLI——`eveland deploy templates/starter-agent --name stella`——种子流程走的就是用户首次 deploy 的那条黄金路径(preflight、上传、流式构建日志、promote),不可能与之悄悄分叉。此前收集的模型 key 随后经 `eveland env set` 落进该 agent 的项目环境。种子(或 login)失败只警告,并在 `install.json` 记下 `seedCompleted: false`——下一次 `eveland-ctl start` 会自动重试直到成功;其间没有内置 agent 平台也完全可用。最后在平台 origin 上打开浏览器(headless 安装只打印 URL)。
 
 ## 监督
 
@@ -68,16 +68,22 @@ macOS 没有 systemd,所以 `start` 把一个监督进程 daemon 化,由它拥�
 
 1. **breaking 先行**:用 `git show` 读**目标版本**的 `CHANGELOG.md`(运行中的 checkout 根本没听说过新版本),抽出沿途每个 `⚠ BREAKING CHANGES` 段落,要求操作者确认(`--yes` 非交互接受;未确认则在任何东西移动之前中止)。
 2. **备份**:`pg_dump` 落进 `backups/`,文件名带着它保护的版本号。dump 失败拒绝继续(`--skip-backup` 是逃生口)。
-3. **脏树处理**:unmerged index 先 reset(stash 会被它噎住);真实的本地改动进**带名** stash(`eveland-ctl-update-<ts>`),更新完成后交互式询问是否恢复。ignored 文件不受影响。
-4. checkout → `pnpm install --frozen-lockfile` → Dashboard 构建 → `db:migrate` → stop + start(带常规就绪门)。
-5. **eve 窗口检测**:若本次更新移动了受支持的 eve 窗口(经 starter 模板的 pin 观测),ctl 大声警告:按旧窗口构建的 Release 会 attest 为 unknown、其 schedule 进死信,直到每个项目 rebuild 并 promote。
-6. 重启后探测固化的 `EVELAND_NODE`——被 `nvm uninstall` 无声移除的解释器会得到明确的"重跑安装脚本"指引,而不是一个谜。
+3. **先停再动**:整个平台在 checkout 之前停止——在运行中的进程脚下替换源码、`node_modules` 和 Dashboard 构建,会让它们从半更新的树重启。此后任何一步失败都刻意让平台保持停止,并打印一份明确的恢复方案(重试,或回滚到旧 tag 再 start),附上备份位置。
+4. **脏树处理**:unmerged index 先 reset(stash 会被它噎住);真实的本地改动进**带名** stash(`eveland-ctl-update-<ts>`),更新完成后交互式询问是否恢复。ignored 文件不受影响。
+5. checkout → 刷新固化的 `EVELAND_REVISION` → `pnpm install --frozen-lockfile` → Dashboard 构建 → `db:migrate` → start(带常规就绪门)。
+6. **eve 窗口检测**:若本次更新移动了受支持的 eve 窗口(经 starter 模板的 pin 观测),ctl 大声警告:按旧窗口构建的 Release 会 attest 为 unknown、其 schedule 进死信,直到每个项目 rebuild 并 promote。
+7. 重启后探测固化的 `EVELAND_NODE`——被 `nvm uninstall` 无声移除的解释器会得到明确的"重跑安装脚本"指引,而不是一个谜。
 
 对已完成安装重跑公开安装脚本会转发到这里。
 
-## systemd 转正
+## systemd 生产形态
 
-`eveland-ctl install --systemd`(Linux、root、首次引导完成后)把安装从 ctl 自带监督器转正为 systemd 系统服务——生产默认形态。它先停掉 ctl 监督器,向 `/etc/systemd/system` 写入每个平台进程一个 unit(命名与文档已久的 `eveland-worker.service` / `eveland-workflow-dispatcher.service` 收敛),都读取同一份 `etc/eveland.env` 且 PATH 带上固化 Node 的 bin 目录,然后 `daemon-reload` + `enable --now`。此后 `start`/`stop`/`restart`/`status` 委托 systemctl,`logs` 读 journald(`-f` 直接指向 `journalctl -f`)。平台从此随机器重启。
+Linux 上平台运行在**文档化的生产拓扑**里,由 ctl 代为编排——root 首次引导即默认落此形态,`eveland-ctl install --systemd` 用于把更早的或 `--foreground` 的安装转正:
+
+- **核心服务留在 Compose 隔离边界内**:API、Agent Gateway、Dashboard 经 `docker-compose.prod.yml` 加一份渲染的 appliance overlay(`etc/compose.appliance.yml`)运行——overlay 把数据 bind 指向 appliance 数据目录、从配置的 origin 派生公开 scheme/port、并用 named volume 遮蔽 `node_modules`/`.next`,让 alpine 容器永远写不进宿主的原生 checkout。没有任何面向公网的进程以宿主 root 运行,也没有任何一个能越过显式 bind 读到源码树或数据目录。
+- **恰好两个 systemd unit**,与文档已久的两个收敛:`eveland-worker.service`(刻意 `User=root`——它驱动 `systemd-run`/`systemctl`/`chown`;每个部署的 Agent 仍有自己的非特权 `DynamicUser`)读取完整 `etc/eveland.env`;`eveland-workflow-dispatcher.service`(`DynamicUser=yes`,带 crash-loop 上限)读取**收窄的** `etc/eveland-workflow-dispatcher.env`——只含其文档化 env.example 携带的变量,永远见不到 admin 密码、`APP_SECRET_KEY` 或平台 `DATABASE_URL`。
+
+此后 `start`/`stop`/`restart`/`status` 一并管理 Compose 与两个 unit,`logs` 对 unit 读 journald、对核心服务读 `docker compose logs`(`-f` 直接指向这两个工具)。平台随机器重启。
 
 ## Doctor
 

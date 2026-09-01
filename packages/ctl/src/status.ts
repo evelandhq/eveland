@@ -9,6 +9,7 @@ import {
 } from "./lifecycle.ts";
 import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
 import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
+import { SYSTEMD_HOST_UNITS } from "./systemd-mode.ts";
 import { readSupervisorState, verifiedSupervisorPid } from "./state-files.ts";
 
 /**
@@ -42,21 +43,28 @@ export async function runStatus(
 
   let healthy = true;
   if (await systemdSupervised(resolved)) {
-    io.stdout("Supervision: systemd (installed via `eveland-ctl install --systemd`)");
+    io.stdout("Supervision: systemd production form (core services in Compose)");
     io.stdout("");
     io.stdout("Processes:");
+    const hostUnits = new Set<string>(SYSTEMD_HOST_UNITS);
     for (const spec of PLATFORM_PROCESSES) {
-      const active = await resolved.execCommand(
-        ["systemctl", "is-active", systemdUnitName(spec.key)],
-        { cwd: resolved.repoRootDir },
-      );
-      const unitState = active.output.trim() || "unknown";
-      const ready = spec.readinessUrl ? await probe(resolved.fetchImpl, spec.readinessUrl) : null;
-      const ok = unitState === "active" && ready !== false;
-      if (!ok) healthy = false;
-      const parts = [unitState];
-      if (ready !== null) parts.push(ready ? "health ok" : "health FAILED");
-      io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
+      if (hostUnits.has(spec.key)) {
+        const active = await resolved.execCommand(
+          ["systemctl", "is-active", systemdUnitName(spec.key)],
+          { cwd: resolved.repoRootDir },
+        );
+        const unitState = active.output.trim() || "unknown";
+        const ok = unitState === "active";
+        if (!ok) healthy = false;
+        io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${unitState} (systemd)`);
+      } else {
+        const ready = spec.readinessUrl ? await probe(resolved.fetchImpl, spec.readinessUrl) : null;
+        const ok = ready !== false;
+        if (!ok) healthy = false;
+        io.stdout(
+          `  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${ready === false ? "health FAILED" : "health ok"} (compose)`,
+        );
+      }
     }
   } else {
     const supervisorPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
