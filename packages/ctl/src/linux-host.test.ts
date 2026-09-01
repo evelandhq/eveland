@@ -113,6 +113,19 @@ describe("provisionLinuxHost", () => {
     ]);
   });
 
+  test("docker.io installs only when no docker exists — a Docker CE host must not get the conflicting package", async () => {
+    const withDocker = await makeDeps({ existingCommands: ["docker", "pnpm"] });
+    await provisionLinuxHost(withDocker.deps);
+    expect(withDocker.streamCalls.some((argv) => argv.includes("docker.io"))).toBe(false);
+    expect(
+      withDocker.streamCalls.find((argv) => argv[1] === "install")!.includes("docker.io"),
+    ).toBe(false);
+
+    const withoutDocker = await makeDeps({ existingCommands: ["pnpm"] });
+    await provisionLinuxHost(withoutDocker.deps);
+    expect(withoutDocker.streamCalls).toContainEqual(["apt-get", "install", "-y", "docker.io"]);
+  });
+
   test("existing users and an existing profile are left alone", async () => {
     const harness = await makeDeps({
       existingUsers: ["eveland-app", "eveland-build"],

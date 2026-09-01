@@ -11,14 +11,15 @@ import type { ExecCommand, StreamCommand } from "./io.ts";
  * Idempotent: every step checks before it changes.
  */
 
-// docs/en/production/prerequisites.md's apt list, verbatim.
+// docs/en/production/prerequisites.md's apt list — minus docker.io, which
+// is installed separately and only when no docker exists: on a host that
+// already runs Docker CE, docker.io conflicts with containerd.io.
 export const HOST_APT_PACKAGES = [
   "apparmor",
   "bash",
   "bubblewrap",
   "ca-certificates",
   "curl",
-  "docker.io",
   "findutils",
   "git",
   "grep",
@@ -119,6 +120,16 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
     });
     if (install !== 0) {
       throw new Error("apt-get install of the sandbox toolchain failed; see the output above.");
+    }
+    if (!(await commandExists(deps, "docker"))) {
+      deps.stdout("Installing docker.io (no Docker found on this host)...");
+      const dockerInstall = await deps.streamCommand(["apt-get", "install", "-y", "docker.io"], {
+        cwd: deps.repoRootDir,
+        env: aptEnv,
+      });
+      if (dockerInstall !== 0) {
+        throw new Error("apt-get install docker.io failed; install Docker and re-run.");
+      }
     }
   } else {
     const missing: string[] = [];
