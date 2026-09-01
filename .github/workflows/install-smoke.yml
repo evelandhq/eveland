@@ -47,6 +47,16 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost || true
           df -h / | tail -1
 
+      - name: Make the runner a genuinely fresh host
+        run: |
+          # The image ships Docker CE; a fresh Ubuntu does not. Remove it so
+          # the installer's own base-prerequisite step (git/curl/docker.io)
+          # is exercised for real, not skipped because Docker was pre-baked.
+          sudo systemctl stop docker docker.socket containerd 2>/dev/null || true
+          sudo apt-get remove -y -qq docker-ce docker-ce-cli docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin containerd.io moby-engine moby-cli moby-compose moby-containerd 2>/dev/null || true
+          sudo rm -f /usr/bin/docker /usr/local/bin/docker
+          if command -v docker >/dev/null 2>&1; then echo "docker still present: $(command -v docker)"; exit 1; fi
+
       - name: Run the installer non-interactively
         run: |
           # Root installs to /opt/eveland exactly like a real Linux box; the

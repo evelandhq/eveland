@@ -128,6 +128,22 @@ trap 'status=$?; if [ $status -ne 0 ]; then echo; echo "Install failed (exit $st
 note "Logging to $LOG_FILE"
 
 # --- Prerequisites -----------------------------------------------------------
+# A fresh Linux box (root, apt) gets the bare minimum installed here so the
+# one-liner really is one line: git to clone, curl for downloads, and Docker
+# for the infra containers. Everything else is eveland-ctl's job.
+if [ "$OS_KIND" = linux ] && [ "$(id -u)" = 0 ] && command -v apt-get >/dev/null 2>&1; then
+  base_missing=""
+  command -v git >/dev/null 2>&1 || base_missing="$base_missing git"
+  command -v curl >/dev/null 2>&1 || base_missing="$base_missing curl"
+  command -v docker >/dev/null 2>&1 || base_missing="$base_missing docker.io"
+  if [ -n "$base_missing" ]; then
+    note "Installing base prerequisites via apt:$base_missing"
+    # shellcheck disable=SC2086
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $base_missing
+    case "$base_missing" in *docker.io*) systemctl enable --now docker >/dev/null 2>&1 || true ;; esac
+  fi
+fi
 command -v git >/dev/null 2>&1 || fail "git is required. Install it (macOS: xcode-select --install; Debian/Ubuntu: apt-get install git) and re-run."
 command -v curl >/dev/null 2>&1 || fail "curl is required."
 if ! command -v docker >/dev/null 2>&1; then

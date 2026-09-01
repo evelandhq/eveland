@@ -59,6 +59,17 @@ describe("install.sh publication", () => {
     expect(script).toContain("curl -fsSL https://eveland.ai/install.sh | bash");
   });
 
+  test("a fresh Linux root host gets git/curl/docker from apt BEFORE the hard prerequisite checks", () => {
+    // The one-line promise: `curl | bash` on a fresh Ubuntu must not exit
+    // on "docker is required" — the front door installs the base toolchain
+    // itself (only where it can: root + apt), then the hard checks run.
+    const aptIndex = script.indexOf('base_missing="$base_missing docker.io"');
+    const hardCheckIndex = script.indexOf("command -v git >/dev/null 2>&1 || fail");
+    expect(aptIndex).toBeGreaterThan(-1);
+    expect(hardCheckIndex).toBeGreaterThan(aptIndex);
+    expect(script).toContain("systemctl enable --now docker");
+  });
+
   test("the shims execute the two real bin entrypoints", () => {
     expect(script).toContain("packages/cli/src/bin.ts");
     expect(script).toContain("packages/ctl/src/bin.ts");
