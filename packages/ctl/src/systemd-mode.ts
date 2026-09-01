@@ -35,7 +35,10 @@ export const SYSTEMD_HOST_UNITS = ["worker", "workflow-dispatcher"] as const;
 /** Core services managed through Compose in the systemd form. */
 export const COMPOSE_CORE_SERVICES = ["api", "gateway", "web"] as const;
 
-export const SYSTEMD_READINESS_DEADLINE_MS = 300_000;
+// Generous on purpose: the first `compose up` of this form runs each core
+// service's in-container pnpm install, and the Dashboard container also
+// builds .next before listening.
+export const SYSTEMD_READINESS_DEADLINE_MS = 900_000;
 export const SYSTEMD_READINESS_POLL_MS = 500;
 
 export type SystemdModeContext = {

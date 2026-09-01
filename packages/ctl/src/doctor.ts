@@ -12,6 +12,7 @@ import {
   WEB_PORT,
 } from "@evelandhq/core/ports";
 import { loadPlatformEnvFile, type PlatformEnvFile } from "./env-file.ts";
+import { readInstallMetadata } from "./home.ts";
 import {
   resolveLifecycle,
   type ExecCommand,
@@ -439,13 +440,16 @@ export async function runDoctor(
     platform: resolved.platform,
   });
   const supervisorPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
+  // "Running" means either supervision form: the ctl supervisor, or the
+  // systemd production form (Compose core + host units).
+  const metadata = await readInstallMetadata(resolved.layout);
   const deps: DoctorDeps = {
     env: io.env,
     platform: resolved.platform,
     nodeVersion: process.version,
     repoRootDir: resolved.repoRootDir,
     envFile,
-    supervisorRunning: supervisorPid !== null,
+    supervisorRunning: supervisorPid !== null || metadata?.supervision === "systemd",
     execCommand: resolved.execCommand,
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
     fetchImpl: resolved.fetchImpl,
