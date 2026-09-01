@@ -55,6 +55,33 @@ describe("credentials store", () => {
     });
   });
 
+  test("concurrent mutations do not lose each other's origins", async () => {
+    const env = await testEnv();
+    // Racing read-modify-writes used to let the last writer clobber the
+    // other's origin; the lock serializes them.
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        saveCredential(
+          `http://origin-${index}.example`,
+          { ...CREDENTIAL, accessToken: `token-${index}` },
+          env,
+        ),
+      ),
+    );
+    for (let index = 0; index < 8; index += 1) {
+      await expect(loadCredential(`http://origin-${index}.example`, env)).resolves.toMatchObject({
+        accessToken: `token-${index}`,
+      });
+    }
+    // The lock is released after the burst.
+    await expect(
+      readFile(`${credentialsPath(env)}.lock`, "utf8").then(
+        () => "present",
+        () => "absent",
+      ),
+    ).resolves.toBe("absent");
+  });
+
   test("EVELAND_TOKEN overrides the stored credential", async () => {
     const env = await testEnv();
     await saveCredential("http://a.example", CREDENTIAL, env);
