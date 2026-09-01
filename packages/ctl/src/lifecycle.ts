@@ -498,7 +498,18 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
         );
       }
       // The Dashboard builds inside its own container in this form.
-      await runBootstrapPrepare(deps, envFile, { buildWeb: false });
+      await runBootstrapPrepare(deps, envFile, {
+        buildWeb: false,
+        pgReadyCommand: applianceComposeArgs(
+          resolved.layout,
+          "exec",
+          "-T",
+          "postgres",
+          "pg_isready",
+          "-U",
+          "eveland",
+        ),
+      });
       await mkdir(resolved.layout.logsDir, { recursive: true });
       const started = await startViaSystemd(context, { skipInfra: true });
       if (started !== 0) return started;
@@ -514,7 +525,18 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
         composeArgs(envFile.path, "up", "-d", ...INFRA_COMPOSE_SERVICES),
       );
     }
-    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
+    await runBootstrapPrepare(deps, envFile, {
+      buildWeb: true,
+      pgReadyCommand: composeArgs(
+        envFile.path,
+        "exec",
+        "-T",
+        "postgres",
+        "pg_isready",
+        "-U",
+        "eveland",
+      ),
+    });
   } else {
     envFile = await requirePlatformEnvFile(io, resolved);
     const problems = await preflightStart(resolved, { requireWebBuild: true });

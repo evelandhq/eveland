@@ -185,7 +185,11 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
 export async function runBootstrapPrepare(
   deps: BootstrapDeps,
   envFile: PlatformEnvFile,
-  options: { buildWeb: boolean } = { buildWeb: true },
+  options: {
+    buildWeb: boolean;
+    /** Full argv whose exit 0 means Postgres actually accepts connections. */
+    pgReadyCommand: string[];
+  },
 ): Promise<void> {
   const { io } = deps;
 
@@ -216,26 +220,41 @@ export async function runBootstrapPrepare(
     if (code !== 0) throw new Error("The Dashboard build failed; see the output above.");
   }
 
+  // A bare TCP probe is a FALSE ready signal here: Docker's port proxy
+  // accepts connections before postgres inside finishes starting, and the
+  // migration then dies on "the database system is starting up". Ask
+  // postgres itself.
   io.stdout("Waiting for Postgres...");
-  const deadlineMs = 60_000;
+  const deadlineMs = 120_000;
   let up = false;
-  for (let waited = 0; waited < deadlineMs; waited += 1_000) {
-    if (await deps.tcpProbe("127.0.0.1", POSTGRES_HOST_PORT)) {
+  for (let waited = 0; waited < deadlineMs; waited += 2_000) {
+    const ready = await deps.execCommand(options.pgReadyCommand, { cwd: deps.repoRootDir });
+    if (ready.code === 0) {
       up = true;
       break;
     }
-    await deps.sleep(1_000);
+    await deps.sleep(2_000);
   }
   if (!up) {
     throw new Error(
-      `Postgres did not come up on 127.0.0.1:${POSTGRES_HOST_PORT}. Check \`docker compose ps\` in ${deps.repoRootDir}.`,
+      `Postgres did not become ready on 127.0.0.1:${POSTGRES_HOST_PORT}. Check \`docker compose ps\` and \`docker compose logs postgres\` in ${deps.repoRootDir}.`,
     );
   }
 
   io.stdout("Applying database migrations...");
-  const migrate = await deps.streamCommand(["pnpm", "--filter", "@evelandhq/api", "db:migrate"], {
-    cwd: deps.repoRootDir,
-    env: childEnv,
-  });
+  let migrate: number | null = 1;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    migrate = await deps.streamCommand(["pnpm", "--filter", "@evelandhq/api", "db:migrate"], {
+      cwd: deps.repoRootDir,
+      env: childEnv,
+    });
+    if (migrate === 0) break;
+    if (attempt < 3) {
+      io.stdout(
+        "Migration attempt failed; retrying in 3s (fresh Postgres may still be settling)...",
+      );
+      await deps.sleep(3_000);
+    }
+  }
   if (migrate !== 0) throw new Error("Database migration failed; see the output above.");
 }

@@ -59,6 +59,9 @@ async function makeDeps(options: {
       if (argv[0] === "git" && argv[1] === "describe") {
         return { code: 0, output: "v0.48.0\n" };
       }
+      if (argv.includes("pg_isready")) {
+        return { code: (options.postgresUp ?? true) ? 0 : 1, output: "" };
+      }
       return { code: 0, output: "" };
     },
     tcpProbe: async () => options.postgresUp ?? true,
@@ -185,7 +188,7 @@ describe("runBootstrapPrepare", () => {
   test("builds the Dashboard when missing and applies migrations with the rendered env", async () => {
     const { deps, commands } = await makeDeps({ webBuildExists: false });
     const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile);
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
     expect(commands).toEqual([
       ["pnpm", "--filter", "@evelandhq/web", "build"],
       ["pnpm", "--filter", "@evelandhq/api", "db:migrate"],
@@ -195,14 +198,14 @@ describe("runBootstrapPrepare", () => {
   test("skips the Dashboard build when one exists", async () => {
     const { deps, commands } = await makeDeps({ webBuildExists: true });
     const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile);
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
     expect(commands).toEqual([["pnpm", "--filter", "@evelandhq/api", "db:migrate"]]);
   });
 
   test("pins the checkout revision into the env file for release identity", async () => {
     const { deps, layout } = await makeDeps({ webBuildExists: true });
     const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile);
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
     expect(envFile.values.EVELAND_REVISION).toBe("v0.48.0");
     expect(envFile.values.EVELAND_RELEASE_CHANNEL).toBe("stable");
     const onDisk = parseEnvFile(await readFile(layout.envFilePath, "utf8"));
@@ -214,13 +217,17 @@ describe("runBootstrapPrepare", () => {
   test("an unreachable Postgres fails with a compose hint instead of a migrate stack trace", async () => {
     const { deps } = await makeDeps({ webBuildExists: true, postgresUp: false });
     const envFile = await runBootstrapConfig(deps);
-    await expect(runBootstrapPrepare(deps, envFile)).rejects.toThrow(/docker compose ps/);
+    await expect(
+      runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] }),
+    ).rejects.toThrow(/docker compose ps/);
   });
 
   test("a failing migration is a clear error", async () => {
     const { deps } = await makeDeps({ webBuildExists: true, commandExit: 1 });
     const envFile = await runBootstrapConfig(deps);
-    await expect(runBootstrapPrepare(deps, envFile)).rejects.toThrow(/migration failed/);
+    await expect(
+      runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] }),
+    ).rejects.toThrow(/migration failed/);
   });
 });
 
