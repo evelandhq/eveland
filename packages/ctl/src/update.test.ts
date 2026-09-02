@@ -51,6 +51,8 @@ async function makeHarness(
     confirmAnswers?: boolean[];
     /** What `git describe --tags --exact-match` answers after the checkout. */
     tagAfter?: string | null;
+    /** `git rev-parse refs/stash` fails (the sha could not be recorded). */
+    stashRefUnknown?: boolean;
   } = {},
 ) {
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-update-"));
@@ -104,6 +106,7 @@ async function makeHarness(
   const confirmQueue = [...(options.confirmAnswers ?? [])];
   const alivePids = new Set<number>();
   let checkedOut = false;
+  let pushedStashName = "eveland-ctl-update-unknown";
   // The platform is RUNNING when an update begins.
   alivePids.add(4242);
   await writeSupervisorRecord(layout, { pid: 4242, identity: "id-4242" });
@@ -184,9 +187,17 @@ async function makeHarness(
         }
         if (sub === "status") return { code: 0, output: options.dirty ? " M src/app.ts\n" : "" };
         if (sub === "rev-parse" && argv[2] === "refs/stash")
-          return { code: 0, output: "5745a5h\n" };
+          return options.stashRefUnknown
+            ? { code: 128, output: "fatal: ambiguous argument 'refs/stash'" }
+            : { code: 0, output: "5745a5h\n" };
+        if (sub === "stash" && argv[2] === "push") pushedStashName = argv[argv.length - 1]!;
         if (sub === "stash" && argv[2] === "list")
-          return { code: 0, output: "0ther000 stash@{0}\n5745a5h stash@{1}\n" };
+          return {
+            code: 0,
+            output:
+              "0ther000 stash@{0} On main: the operator's own later stash\n" +
+              `5745a5h stash@{1} On main: ${pushedStashName}\n`,
+          };
         if (sub === "checkout") {
           timeline.push("checkout");
           checkedOut = true;
@@ -540,6 +551,19 @@ describe("runUpdate (phase 1, the old code)", () => {
     expect(dirty.gitCalls).toContainEqual(["git", "stash", "apply", "5745a5h"]);
     expect(dirty.gitCalls).toContainEqual(["git", "stash", "drop", "stash@{1}"]);
     expect(dirty.gitCalls.some((argv) => argv[1] === "stash" && argv[2] === "pop")).toBe(false);
+  });
+
+  test("when the stash sha could not be recorded, the stash is found by its NAME — never a bare pop", async () => {
+    const dirty = await makeHarness({
+      dirty: true,
+      stashRefUnknown: true,
+      confirmAnswers: [true, true],
+    });
+    expect(await runUpdate([], dirty.io)).toBe(0);
+    expect(dirty.gitCalls).toContainEqual(["git", "stash", "apply", "5745a5h"]);
+    expect(dirty.gitCalls).toContainEqual(["git", "stash", "drop", "stash@{1}"]);
+    expect(dirty.gitCalls.some((argv) => argv[1] === "stash" && argv[2] === "pop")).toBe(false);
+    expect(dirty.out.join("\n")).toContain("Stash restored.");
   });
 
   test("an eve-window move warns loudly about rebuild+promote", async () => {

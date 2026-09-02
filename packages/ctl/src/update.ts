@@ -370,23 +370,38 @@ export async function runUpdate(
   return completeUpdate(context, pendingRecord);
 }
 
-/** Apply the recorded stash commit by sha, then drop that exact entry (never "the newest"). */
+/**
+ * Restore exactly the stash this update created: by its recorded commit,
+ * or — when the sha could not be recorded — by its unique name in the
+ * stash list. Never a bare `pop`: that takes whatever the operator stashed
+ * most recently while fixing a failed attempt.
+ */
 async function restoreStash(
   git: UpdateContext["git"],
   stashRef: string | null,
+  stashName: string,
 ): Promise<{ ok: boolean; detail: string }> {
-  if (!stashRef) {
-    const pop = await git(["stash", "pop"]);
-    return { ok: pop.code === 0, detail: pop.output.trim() };
-  }
-  const apply = await git(["stash", "apply", stashRef]);
-  if (apply.code !== 0) return { ok: false, detail: apply.output.trim() };
-  const list = await git(["stash", "list", "--format=%H %gd"]);
-  const entry = list.output
+  const list = await git(["stash", "list", "--format=%H %gd %gs"]);
+  const entries = list.output
     .split("\n")
-    .map((line) => line.trim().split(" "))
-    .find(([sha]) => sha === stashRef)?.[1];
-  if (entry) await git(["stash", "drop", entry]);
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [sha, index, ...subject] = line.split(" ");
+      return { sha: sha ?? "", index: index ?? "", subject: subject.join(" ") };
+    });
+  const entry = stashRef
+    ? entries.find((candidate) => candidate.sha === stashRef)
+    : entries.find((candidate) => candidate.subject.includes(stashName));
+  if (!entry) {
+    return {
+      ok: false,
+      detail: `stash '${stashName}' was not found in git stash list; restore it by hand if it still exists.`,
+    };
+  }
+  const apply = await git(["stash", "apply", entry.sha]);
+  if (apply.code !== 0) return { ok: false, detail: apply.output.trim() };
+  await git(["stash", "drop", entry.index]);
   return { ok: true, detail: "" };
 }
 
@@ -461,7 +476,7 @@ async function completeUpdate(context: UpdateContext, pending: PendingUpdate): P
       // Exactly the recorded stash commit: an operator may have stashed
       // other work while fixing a failed attempt, and `pop` would take
       // whichever entry is newest.
-      const restored = await restoreStash(git, stashRef);
+      const restored = await restoreStash(git, stashRef, stashName);
       io.stdout(restored.ok ? "Stash restored." : `Stash restore failed:\n${restored.detail}`);
     } else {
       io.stdout(`Local changes remain stashed as '${stashName}' (git stash list).`);
