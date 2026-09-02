@@ -23,6 +23,12 @@ export type SupervisorRecord = {
 };
 
 /** Reads a process's start-time + command identity; null when the pid is gone. */
+/**
+ * Resolves the identity, or null when the process DEFINITIVELY does not
+ * exist. A probe that could not run (`ps` missing, killed, out of memory)
+ * throws instead: "unknown" must never read as "exited" — every caller
+ * that would break a lock or reclaim a record on null stays conservative.
+ */
 export type ProcessIdentity = (pid: number) => Promise<string | null>;
 
 export function defaultProcessIdentity(): ProcessIdentity {
@@ -31,8 +37,15 @@ export function defaultProcessIdentity(): ProcessIdentity {
       const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart=,command="]);
       const line = stdout.trim();
       return line === "" ? null : line;
-    } catch {
-      return null;
+    } catch (error) {
+      // ps exits 1 with no output for a pid that does not exist — the only
+      // failure that means "gone". Anything else is a broken probe.
+      const failure = error as { code?: number | string; stdout?: string; message?: string };
+      if (failure.code === 1 && String(failure.stdout ?? "").trim() === "") return null;
+      throw new Error(
+        `Could not determine whether pid ${pid} is running (ps failed: ${failure.message}). ` +
+          "Refusing to treat it as exited.",
+      );
     }
   };
 }
@@ -155,7 +168,12 @@ async function acquireClaimMutex(
     const holder = parseMutexOwner(raw);
     if (!holder) return true; // unparseable owner: not a live protocol participant
     if (holder.identity !== null) {
-      const current = await identityOf(holder.pid);
+      let current: string | null;
+      try {
+        current = await identityOf(holder.pid);
+      } catch {
+        return false; // the probe failed: unknown is not dead — keep waiting
+      }
       return current === null || current !== holder.identity;
     }
     return !isAlive(holder.pid);

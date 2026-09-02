@@ -209,6 +209,41 @@ describe("claimSupervisorRecord", () => {
     ).toEqual({ claimed: true });
   });
 
+  test("a FAILED identity probe never reads as 'exited': the mutex is waited on, the record is not reclaimed", async () => {
+    const layout = await makeLayout();
+    await mkdir(layout.runDir, { recursive: true });
+    const mutex = supervisorClaimMutexPath(layout);
+    await mkdir(mutex);
+    await writeFile(
+      path.join(mutex, "owner"),
+      `${JSON.stringify({ pid: 9, identity: "id-9", nonce: "1" })}\n`,
+      "utf8",
+    );
+    const probeBroken = async () => {
+      throw new Error("ps failed");
+    };
+    let waits = 0;
+    const result = await claimSupervisorRecord(
+      layout,
+      { pid: 100, identity: "id-100" },
+      // Our own identity is looked up first; make that succeed and only the
+      // holder's probe fail.
+      async (pid) => (pid === 100 ? "id-100" : probeBroken()),
+      {
+        isAlive: () => false, // even a dead-looking pid does not override a broken probe
+        sleep: async () => {
+          waits += 1;
+          if (waits === 3) await rm(mutex, { recursive: true, force: true });
+        },
+      },
+    );
+    expect(waits).toBe(3);
+    expect(result).toEqual({ claimed: true });
+    // And a record whose owner cannot be probed is not "not running".
+    await writeSupervisorRecord(layout, { pid: 9, identity: "id-9" });
+    await expect(verifiedSupervisorPid(layout, probeBroken)).rejects.toThrow(/ps failed/);
+  });
+
   test("an owner-less mutex is 'initializing' and waited on, unless it is an old crash remnant", async () => {
     const layout = await makeLayout();
     const alive = new Set([100]);
