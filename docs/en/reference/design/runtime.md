@@ -43,9 +43,13 @@ Local development — `docker-compose.yml` pins `EVELAND_RUNTIME: docker` so
 macOS development works unchanged — and the macOS appliance, where
 `eveland-ctl` runs the stack on Docker Desktop and systemd does not exist.
 Linux production supports the systemd runtime only; there is no Docker Agent
-runtime to opt into there. Core platform services (Postgres, the OTel
-Collector) stay containerized in production; it is the _Agent_ runtime that
-moved to the host.
+runtime to opt into there. Linux native development keeps the Collector
+bridged because the Docker runtime attaches it to each Agent's private telemetry
+network. The host API therefore adds a second listener on Docker's private bridge
+address, restricted to health, Collector Observation, Agent JWKS, and Scheduler
+Channel paths; its control plane remains loopback-only. Core platform services
+(Postgres, the OTel Collector) stay containerized in production; it is the
+_Agent_ runtime that moved to the host.
 
 ## Mixed runtimes: visible, not supported
 

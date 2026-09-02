@@ -196,6 +196,26 @@ group by 1, 2
 having count(*) > 1;
 ```
 
+## API off host networking
+
+This release moves the API off host networking. In the production overlay it
+runs on the Compose network, publishes only `127.0.0.1:17301`, and the managed
+Collector addresses it as `http://api:17301`. A host-network API can satisfy the
+loopback-only port contract or the Collector's reach, never both — the
+Observation path stayed silently disconnected as long as it tried. Agent
+Gateway and the Dashboard keep host networking, because the front door still
+dials Deployments on the host's loopback ports.
+
+For an existing installation:
+
+1. Recreate the containers rather than restarting them — a network mode and a
+   published port only change on recreate:
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
+2. Nothing in `.env` changes. The host Worker, the workflow dispatcher, and the
+   front door keep reaching the API at `http://127.0.0.1:17301`.
+3. Confirm the Observation path afterwards: a Session that records events and
+   token usage proves the Collector reaches the API again.
+
 ## Docker Agent runtime retired on Linux
 
 The `docker-worker` Compose profile is gone, and Linux production supports the

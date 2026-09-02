@@ -460,6 +460,12 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "Interface the API binds. Loopback by default; a containerized API sets 0.0.0.0.",
     "127.0.0.1",
   ),
+  {
+    name: "EVELAND_API_DOCKER_BRIDGE_HOST",
+    components: ["api"],
+    purpose:
+      "Optional private Docker bridge address for Linux-native container-to-API runtime paths.",
+  },
   entry(
     "EVELAND_ACTIVATION_LEASE_TTL_MS",
     ["api"],

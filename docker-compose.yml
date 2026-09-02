@@ -34,8 +34,8 @@ services:
       otel-config-init:
         condition: service_completed_successfully
     environment:
-      EVELAND_BUILTIN_OTLP_ENDPOINT: http://host.docker.internal:4000/internal/otel
-      EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT: http://host.docker.internal:4000/internal/observability/destinations
+      EVELAND_BUILTIN_OTLP_ENDPOINT: http://api:17301/internal/otel
+      EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT: http://api:17301/internal/observability/destinations
       EVELAND_OTLP_SERVICE_TOKEN: ${EVELAND_OTLP_SERVICE_TOKEN:-eveland-dev-otlp-service-token}
     extra_hosts:
       - host.docker.internal:host-gateway

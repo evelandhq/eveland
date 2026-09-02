@@ -270,9 +270,6 @@ export function renderApplianceOverlay(options: {
     `      - ${options.dataDir}:${options.dataDir}`,
     "    environment:",
     `      EVELAND_DATA_DIR: ${options.dataDir}`,
-    // Host networking makes the base file's 0.0.0.0 bind a real exposure:
-    // the API must stay loopback-only behind the front door.
-    "      EVELAND_API_BIND_HOST: 127.0.0.1",
     `      EVELAND_GATEWAY_PUBLIC_SCHEME: ${scheme}`,
     `      EVELAND_GATEWAY_PUBLIC_PORT: "${publicPort}"`,
     "  gateway:",

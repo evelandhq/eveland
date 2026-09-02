@@ -39,7 +39,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 Overlay 完全不启动 Worker。生产 Agent 以加固的 systemd unit 运行在[安装宿主机 Worker](/zh/docs/production/worker) 所装的宿主机 Worker 之下，而基础文件中的开发 Worker 被门控在一个此命令永不启用的 Profile 之后——合并后的生产配置因此不可能启动第二个 Runtime 控制器。
 
-API、Agent Gateway 与 Dashboard 使用 Host Networking 运行，以便通过宿主机 Loopback 端口访问 Deployment；Postgres 保持桥接并向宿主机发布 `17310`。API 容器以完全相同的绝对路径 Bind Mount `/var/lib/eveland`，与宿主机 Worker 的 `EVELAND_DATA_DIR` 一致——参见[共享数据契约](/zh/docs/production)。
+Agent Gateway 与 Dashboard 使用 Host Networking 运行，以便前门能通过宿主机 Loopback 端口访问 Deployment。API 与 Postgres 留在 Compose 网络中：API 不访问任何 Deployment 端口，而 Collector 必须能访问它才能投递每一条 Agent 事件，这只有共享网络才做得到。两者各自只向宿主机发布一个仅回环的端口——API 是 `17301`，Postgres 是 `17310`——供宿主机 Worker、Workflow Dispatcher 与前门访问。API 容器以完全相同的绝对路径 Bind Mount `/var/lib/eveland`，与宿主机 Worker 的 `EVELAND_DATA_DIR` 一致——参见[共享数据契约](/zh/docs/production)。
 
 **发布到宿主机的 `17310` 绝不能从宿主机之外访问。** 它的存在是为了让宿主机服务——Worker、Workflow Dispatcher 以及每个已部署的 Agent 进程——通过 Loopback 访问数据库，而它携带的是众所周知的默认凭据。必须在宿主机防火墙上阻断所有非本地网络对它的访问——参见[网络](/zh/docs/production/networking)。
 

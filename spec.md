@@ -206,7 +206,9 @@ missing Collector must not block Agent startup or cold activation; observability
 settings changes restart only the Collector, never Agent Deployments. External
 delivery goes only through the service-authenticated API egress proxy under a
 fail-closed SSRF policy; credentials are stored encrypted and never returned to the
-browser.
+browser. Collector-to-API delivery must not require the platform API to bind a public
+interface: containerized forms use their private Compose network, while supported Linux
+native development uses a path-restricted listener bound only to Docker's private bridge.
 
 The collection-pipeline topology, destination behavior, projection and
 out-of-order rules, and the retention table live in

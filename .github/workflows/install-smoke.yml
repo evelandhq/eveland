@@ -18,6 +18,9 @@ on:
     paths:
       - apps/docs/public/install.sh
       - apps/docs/public/install.sh.sha256
+      - docker-compose.yml
+      - docker-compose.prod.yml
+      - infra/otel/collector.yaml
       - packages/ctl/**
       - .github/workflows/install-smoke.yml
 
@@ -95,6 +98,11 @@ jobs:
           curl -fsS http://localhost:17300/health
           curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:17300/
 
+      - name: Collector can reach the API
+        run: |
+          sudo docker run --rm --network container:eveland-otel-collector \
+            curlimages/curl:8.11.1 -fsS -o /dev/null http://api:17301/health
+
       - name: Stop cleanly
         run: |
           sudo -E env "PATH=$PATH" EVELAND_HOME=/opt/eveland /opt/eveland/bin/eveland-ctl stop
@@ -108,4 +116,4 @@ jobs:
           cd /opt/eveland/source || exit 0
           COMPOSE="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml -f /opt/eveland/etc/compose.appliance.yml --env-file /opt/eveland/etc/eveland.env"
           $COMPOSE ps || true
-          $COMPOSE logs --tail 80 api gateway web postgres || true
+          $COMPOSE logs --tail 80 api gateway web postgres otel-collector || true

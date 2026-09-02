@@ -159,6 +159,24 @@ group by 1, 2
 having count(*) > 1;
 ```
 
+## API 离开 Host Networking
+
+本次 Release 把 API 移出 Host Networking。在生产 Overlay 中它运行在 Compose
+网络上，只发布 `127.0.0.1:17301`，托管 Collector 以 `http://api:17301`
+寻址它。Host Networking 的 API 只能满足"仅回环端口"契约或 Collector 的可达性
+之一，不可能两者兼顾——只要还在尝试，Observation 路径就一直静默断开。Agent
+Gateway 与 Dashboard 保持 Host Networking，因为前门仍要通过宿主机 Loopback
+端口访问 Deployment。
+
+对已有安装：
+
+1. 重建容器而不是重启——Network Mode 与已发布端口只有重建才会生效：
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`。
+2. `.env` 无需任何改动。宿主机 Worker、Workflow Dispatcher 与前门仍在
+   `http://127.0.0.1:17301` 访问 API。
+3. 之后确认 Observation 路径：一个能记录事件与 Token 用量的 Session 即可证明
+   Collector 重新访问得到 API。
+
 ## Linux 上的 Docker Agent Runtime 已下线
 
 `docker-worker` Compose Profile 已移除，Linux 生产只支持 systemd Agent
