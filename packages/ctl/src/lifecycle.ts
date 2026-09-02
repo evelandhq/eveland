@@ -34,6 +34,7 @@ import {
   readSupervisorState,
   removeSupervisorFiles,
   claimSupervisorRecord,
+  readPendingUpdate,
   verifiedSupervisorPid,
   writeSupervisorState,
   type ProcessIdentity,
@@ -412,10 +413,21 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
       foreground: { type: "boolean" },
       "skip-infra": { type: "boolean" },
       "no-prompt": { type: "boolean" },
+      /** (internal) set by update's phase 2, which starts while its pending record still exists. */
+      "from-update": { type: "boolean" },
     },
     allowPositionals: false,
   });
   const resolved = resolveLifecycle(io);
+  // A half-updated tree must not be started around an interrupted update:
+  // the update state machine owns the platform until its record is cleared.
+  if (!parsed.values["from-update"] && (await readPendingUpdate(resolved.layout))) {
+    io.stderr(
+      "An interrupted update is recorded (run/update-pending.json): re-run `eveland-ctl update` " +
+        "to resume it. Starting a half-updated tree is refused.",
+    );
+    return 1;
+  }
   // The systemd fast path is for a COMPLETED install only: a first boot
   // interrupted after the units were installed but before login/seed
   // finished still carries `supervision: "systemd"`, and must resume the
@@ -435,13 +447,25 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
   if (existingPid !== null) {
     io.stdout(`Eveland is already running (supervisor pid ${existingPid}).`);
     io.stdout("Use `eveland-ctl status` for details or `eveland-ctl restart` to restart.");
-    // A pending seed is retried against the running platform too — the
-    // recovery `start` promises must not depend on a restart.
     const runningEnvFile = await loadPlatformEnvFile({
       env: io.env,
       repoRoot: resolved.repoRootDir,
       platform: resolved.platform,
     });
+    if (runningEnvFile && (await detectBootstrapNeeded(resolved))) {
+      // The supervisor came up, then the bootstrap died before login/seed
+      // (or before recording completion): finish it against the running
+      // platform instead of declaring "already running" and walking away.
+      io.stdout("The first boot was interrupted after the platform started; finishing it now...");
+      const supervisorLog = path.join(resolved.layout.logsDir, "supervisor.log");
+      if (!(await waitForReadiness(io, resolved, supervisorLog, existingPid))) return 1;
+      await finishBootstrap(io, resolved, runningEnvFile);
+      io.stdout("");
+      io.stdout(`Eveland is running at ${publicOrigin(runningEnvFile)}`);
+      return 0;
+    }
+    // A pending seed is retried against the running platform too — the
+    // recovery `start` promises must not depend on a restart.
     if (runningEnvFile) await retrySeedIfPending(io, resolved, runningEnvFile);
     return 0;
   }

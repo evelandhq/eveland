@@ -310,6 +310,38 @@ describe("runStart first boot", () => {
     expect(streamed.filter((argv) => argv.includes("deploy")).length).toBe(seedCallsSoFar);
   });
 
+  test("a bootstrap interrupted after the supervisor came up is FINISHED by the next start, not swallowed by 'already running'", async () => {
+    const harness = await makeHarness({ env: undefined, webBuild: false });
+    harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
+    harness.io.tcpProbe = async () => true;
+    const streamed: string[][] = [];
+    harness.io.streamCommand = async (argv) => {
+      streamed.push(argv);
+      return 0;
+    };
+    // First boot: config rendered, migrated, daemon up — then the process
+    // died before login/seed/completion (metadata still incomplete).
+    harness.io.fetchImpl = async (url) =>
+      new URL(url).pathname.startsWith("/api/auth/")
+        ? new Response("{}", { status: 500 })
+        : new Response("{}", { status: 200 });
+    expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
+    const partial = await readInstallMetadata(harness.layout);
+    await writeInstallMetadata(harness.layout, { ...partial!, bootstrapCompleted: false });
+    expect(harness.alivePids.has(4242)).toBe(true); // the supervisor is still up
+
+    harness.io.fetchImpl = deviceFlowFetch();
+    expect(await runStart([], harness.io)).toBe(0);
+    expect(harness.out.join("\n")).toContain(
+      "first boot was interrupted after the platform started",
+    );
+    const metadata = await readInstallMetadata(harness.layout);
+    expect(metadata?.bootstrapCompleted).toBe(true);
+    expect(metadata?.seedCompleted).toBe(true);
+    expect(streamed.some((argv) => argv.includes("deploy"))).toBe(true);
+    expect(harness.out.join("\n")).toContain("Eveland is running at");
+  });
+
   test("pending seeding is retried even when the platform is already running", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
