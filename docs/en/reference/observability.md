@@ -334,7 +334,16 @@ also builds no local view of the Collector's delivery volume or queue pressure.
 - Agent operation end, policy revision switches, and shutdown use a bounded
   flush/shutdown of at most two seconds.
 - Delivery after Collector receipt is at-least-once; Built-in projection and usage
-  aggregation must be idempotent.
+  aggregation must be idempotent. That includes creation: batches carrying the first
+  events of one Eve session routinely overlap, and the loser of the race to create
+  its SessionNode re-reads the winner's row instead of failing.
+- The Collector's OTLP/HTTP exporter retries only 429/502/503/504 and treats any
+  other status, 500 included, as permanent — the batch leaves the persistent queue
+  and is lost. Built-in therefore answers a projection failure on a well-formed
+  batch with 503, never 500: the replay is safe because projection is idempotent,
+  and a persistent failure shows up as Collector queue pressure instead of silent
+  loss. Only malformed requests and per-item rejections in `partial_success` are
+  final.
 - Input and output (including reasoning) are trimmed per policy at the Agent producer.
 - A model call's input is the conversation Eveland reconstructs from the Eve event
   stream, not the prompt the model received: it contains no system prompt, resolved

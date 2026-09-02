@@ -445,6 +445,39 @@ describe("Built-in OTLP ingest", () => {
     await expect(store.listSessions(project.id)).resolves.toEqual([]);
   });
 
+  test("answers 503 when projection fails on a well-formed batch so the Collector retries it", async () => {
+    const store = createTestStore();
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const app = createApp(
+        {
+          ...store,
+          ingestAgentEvent: async () => {
+            throw new Error("connection reset by peer");
+          },
+        },
+        { otlpServiceToken: "collector-service-token" },
+      );
+
+      const response = await app.request("/internal/otel/v1/logs", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(agentLogBatch("dep_flaky")),
+      });
+
+      // 500 would be final for the Collector's OTLP/HTTP exporter -- it retries
+      // only 429/502/503/504 -- and the batch would leave its persistent queue.
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: expect.stringContaining("retry") });
+      expect(errorLog).toHaveBeenCalledWith(expect.stringContaining("connection reset by peer"));
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
   test("reports valid Agent events rejected when their Deployment is unmanaged", async () => {
     const app = createApp(createTestStore(), {
       otlpServiceToken: "collector-service-token",

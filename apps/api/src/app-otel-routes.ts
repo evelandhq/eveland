@@ -78,36 +78,52 @@ export function registerOtlpRoutes(input: {
     return runWithPlatformTracingSuppressed(async () => {
       const receivedItems = countOtlpSignalItems(signal, payload);
       let acceptedItems = 0;
-      // Built-in projects rather than stores. Every projection below still runs in
-      // full: the `partial_success` rejection count is derived from how many items
-      // pass projection, which is a protocol obligation independent of storage.
-      await store.ingestOtlpBatch({ signal, payload });
-      if (signal === "traces") {
-        // Traces have no Built-in read model: platform spans go to external
-        // destinations only. Validation runs solely for the rejection count.
-        acceptedItems = countValidOtlpSpans(payload);
-      }
-      if (signal === "logs") {
-        for (const observation of projectAgentEventItemsFromOtlpLogs(payload, {
-          resolveDeploymentId,
-        })) {
-          if (!observation) continue;
-          try {
-            await store.ingestAgentEvent(observation);
-            acceptedItems += 1;
-          } catch (error) {
-            if (error instanceof UnmanagedTelemetryResourceError) continue;
-            throw error;
+      // The request is well-formed from here on, so any failure below is the
+      // platform's, not the Collector's. The Collector's OTLP/HTTP exporter
+      // retries only 429/502/503/504 and treats every other status -- 500
+      // included -- as permanent, dropping the batch from its persistent queue.
+      // Delivery is at-least-once and every projection is idempotent (batch
+      // receipts, event ids, fingerprints), so a replay of a partially projected
+      // batch is safe and 503 turns silent loss into a retry.
+      try {
+        // Built-in projects rather than stores. Every projection below still runs in
+        // full: the `partial_success` rejection count is derived from how many items
+        // pass projection, which is a protocol obligation independent of storage.
+        await store.ingestOtlpBatch({ signal, payload });
+        if (signal === "traces") {
+          // Traces have no Built-in read model: platform spans go to external
+          // destinations only. Validation runs solely for the rejection count.
+          acceptedItems = countValidOtlpSpans(payload);
+        }
+        if (signal === "logs") {
+          for (const observation of projectAgentEventItemsFromOtlpLogs(payload, {
+            resolveDeploymentId,
+          })) {
+            if (!observation) continue;
+            try {
+              await store.ingestAgentEvent(observation);
+              acceptedItems += 1;
+            } catch (error) {
+              if (error instanceof UnmanagedTelemetryResourceError) continue;
+              throw error;
+            }
           }
         }
-      }
-      if (signal === "metrics") {
-        const projection = projectInstanceTelemetryFromOtlpMetrics(payload);
-        await Promise.all([
-          ...projection.heartbeats.map((heartbeat) => store.upsertWorkerHeartbeat(heartbeat)),
-          ...projection.hostMetrics.map((sample) => store.recordHostMetric(sample)),
-        ]);
-        acceptedItems = projection.acceptedDataPoints;
+        if (signal === "metrics") {
+          const projection = projectInstanceTelemetryFromOtlpMetrics(payload);
+          await Promise.all([
+            ...projection.heartbeats.map((heartbeat) => store.upsertWorkerHeartbeat(heartbeat)),
+            ...projection.hostMetrics.map((sample) => store.recordHostMetric(sample)),
+          ]);
+          acceptedItems = projection.acceptedDataPoints;
+        }
+      } catch (error) {
+        console.error(
+          `OTLP ${signal} projection failed after accepting ${acceptedItems}/${receivedItems} items; answering 503 so the Collector retries: ${
+            error instanceof Error ? (error.stack ?? error.message) : String(error)
+          }`,
+        );
+        return c.json({ error: "Telemetry projection failed; retry the batch" }, 503);
       }
       const response = createOtlpPartialSuccessResponse(
         signal,
