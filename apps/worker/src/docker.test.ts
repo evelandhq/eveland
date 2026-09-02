@@ -34,7 +34,7 @@ vi.mock("execa", () => ({
 
 vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
-    eveVersion: "0.45.2",
+    eveVersion: "0.47.7",
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),
@@ -407,8 +407,8 @@ describe("createDockerAdapter", () => {
       .mockResolvedValueOnce({
         exitCode: 0,
         stdout: JSON.stringify({
-          manifest: { kind: "eve-agent-discovery-manifest", version: 14 },
-          resolvedEveVersion: "0.45.2",
+          manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
+          resolvedEveVersion: "0.47.7",
           schedulerDefinitions: [
             {
               key: "crm__sync",
@@ -448,8 +448,8 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("Injected eve sandbox modules: agent/sandbox.js");
     expect(result.log).toContain("Docker sandbox self-check passed");
     expect(result.discovery).toEqual({
-      manifest: { kind: "eve-agent-discovery-manifest", version: 14 },
-      resolvedEveVersion: "0.45.2",
+      manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
+      resolvedEveVersion: "0.47.7",
       schedulerDefinitions: [
         {
           key: "crm__sync",
@@ -537,7 +537,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "0.45.2",
+          resolvedEveVersion: "0.47.7",
           schedulerDefinitions: [],
         }),
       } as never);
@@ -571,7 +571,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "0.45.2",
+          resolvedEveVersion: "0.47.7",
           schedulerDefinitions: [],
         }),
       } as never);
@@ -970,8 +970,8 @@ describe("readImageDiscovery", () => {
     vi.mocked(execa).mockResolvedValueOnce({
       exitCode: 0,
       stdout: JSON.stringify({
-        manifest: { kind: "eve-agent-discovery-manifest", version: 14 },
-        resolvedEveVersion: "0.45.2",
+        manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
+        resolvedEveVersion: "0.47.7",
       }),
     } as never);
 

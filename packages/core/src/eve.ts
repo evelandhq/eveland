@@ -255,6 +255,21 @@ export function isWorkflowQueueNamespace(pathname: string): boolean {
   );
 }
 
+/**
+ * The one route inside that namespace that IS meant to be reached from the
+ * outside. From eve 0.48, a tool whose `execute` is a Workflow body can mint
+ * `createWebhook()` URLs, and eve serves them at
+ * `/.well-known/workflow/v1/webhook/:token` on every method (GET, POST, PUT,
+ * PATCH, DELETE). The token is the only credential and an unknown or spent one
+ * answers 404 — the same trust model as `POST /eve/v1/task-input/:token` — so
+ * the Gateway forwards exactly this shape as an ordinary public request
+ * (activating a dormant Deployment, window-gated) while `flow`, `step`, and
+ * everything else in the namespace stay refused.
+ */
+export function isWorkflowWebhookRoute(pathname: string): boolean {
+  return /^\/\.well-known\/workflow\/v1\/webhook\/[^/]+$/.test(pathname);
+}
+
 export function parseStepUsageEvent(type: string, payload: unknown): ModelStepUsage | null {
   if (type !== "step.completed" || !isEveRecord(payload)) {
     return null;

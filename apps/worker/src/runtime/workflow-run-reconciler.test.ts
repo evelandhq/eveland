@@ -32,7 +32,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41960,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "0.47.6" },
+      summary: { eveVersionResolved: "0.48.0" },
     });
     // Stopped by the idle reaper — the acceptance case that must NOT settle:
     // a sleeping timer or a session inbox hook on this Deployment is live
@@ -47,7 +47,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41961,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "0.47.6" },
+      summary: { eveVersionResolved: "0.48.0" },
     });
     await store.updateDeploymentStatus(crashed.id, "failed");
 
@@ -59,7 +59,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41962,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "0.47.6" },
+      summary: { eveVersionResolved: "0.48.0" },
     });
     await store.updateDeploymentStatus(archived.id, "archived");
 
@@ -135,7 +135,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41964,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "0.47.6" },
+      summary: { eveVersionResolved: "0.48.0" },
     });
     await store.updateDeploymentStatus(deployment.id, "archived");
 
@@ -161,7 +161,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41965,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "0.47.6" },
+      summary: { eveVersionResolved: "0.48.0" },
     });
     await store.updateDeploymentStatus(archived.id, "archived");
 

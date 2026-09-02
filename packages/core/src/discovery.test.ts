@@ -7,7 +7,7 @@ import { projectDiscoveryManifest } from "./discovery.js";
 // this projection on manifests generated live by each pinned eve binary.
 const nestedManifest = {
   kind: "eve-agent-discovery-manifest",
-  version: 14,
+  version: 15,
   agentId: "eveland-observer-coverage-fixture",
   agentRoot: "/srv/app/agent",
   appRoot: "/srv/app",
@@ -88,7 +88,7 @@ describe("projectDiscoveryManifest", () => {
   test("projects role-bearing instruction modules (schema shape unchanged since 0.35)", () => {
     const projection = projectDiscoveryManifest({
       ...nestedManifest,
-      version: 14,
+      version: 15,
       instructions: [
         {
           sourceKind: "module",
@@ -100,32 +100,28 @@ describe("projectDiscoveryManifest", () => {
     });
 
     expect(projection).toMatchObject({
-      manifestVersion: 14,
+      manifestVersion: 15,
       instructions: ["agent/instructions/context.ts"],
     });
   });
 
-  test("projects the Eve 0.45+ v14 manifest, ignoring the added instrumentation module", () => {
-    // v14 only adds an optional single-file instrumentation module reference;
-    // every entity list the projection consumes is unchanged from v13.
-    const projection = projectDiscoveryManifest({
-      ...nestedManifest,
-      version: 14,
-      instrumentation: {
-        sourceKind: "module",
-        logicalPath: "instrumentation.ts",
-        sourceId: "instrumentation.ts",
-      },
-    });
-
-    expect(projection).toMatchObject({
-      manifestVersion: 14,
-      instructions: ["agent/instructions.md"],
-      hooks: ["agent/hooks/root-observer.ts"],
-    });
+  test("rejects the v14 manifest now that the 0.45 line has left the window", () => {
+    // v14 (eve 0.45.0 only) differed from v15 by lacking `memories`; every
+    // supported line now emits v15, so v14 fails closed like v13 before it.
+    expect(
+      projectDiscoveryManifest({
+        ...nestedManifest,
+        version: 14,
+        instrumentation: {
+          sourceKind: "module",
+          logicalPath: "instrumentation.ts",
+          sourceId: "instrumentation.ts",
+        },
+      }),
+    ).toBeNull();
   });
 
-  test("projects the Eve 0.45.1+ v15 manifest, ignoring the added memories list", () => {
+  test("projects the v15 manifest (0.45.1+, every supported line), ignoring the added memories list", () => {
     // v15 adds `memories` (memory-provider modules, ModuleSourceRef + slot)
     // for the new eve/memory feature; every entity list the projection
     // consumes is unchanged from v14.
@@ -220,9 +216,11 @@ describe("projectDiscoveryManifest", () => {
   test("fails closed on an unknown schema version instead of becoming authoritative emptiness", () => {
     expect(projectDiscoveryManifest({ ...nestedManifest, version: 99 })).toBeNull();
     // v12 (eve <= 0.34) left the whitelist when the window floor moved to 0.38,
-    // and v13 (eve 0.44) left it when the floor moved to 0.45.
+    // v13 (eve 0.44) when it moved to 0.45, and v14 (eve 0.45.0) when it
+    // moved to 0.47.
     expect(projectDiscoveryManifest({ ...nestedManifest, version: 12 })).toBeNull();
     expect(projectDiscoveryManifest({ ...nestedManifest, version: 13 })).toBeNull();
+    expect(projectDiscoveryManifest({ ...nestedManifest, version: 14 })).toBeNull();
   });
 
   test("fails closed on invalid Extension namespaces and unsupported schedule modules", () => {
@@ -234,7 +232,7 @@ describe("projectDiscoveryManifest", () => {
     };
     const withMount = (namespace: string, manifest = extensionManifest) => ({
       ...nestedManifest,
-      version: 14,
+      version: 15,
       extensions: [{ logicalPath: "extensions/crm.ts" }],
       resolvedExtensions: [{ namespace, manifest }],
     });
@@ -248,7 +246,7 @@ describe("projectDiscoveryManifest", () => {
     expect(
       projectDiscoveryManifest({
         kind: "eve-agent-discovery-manifest",
-        version: 14,
+        version: 15,
         agentRoot: "/srv/app/agent",
         appRoot: "/srv/app",
       }),
