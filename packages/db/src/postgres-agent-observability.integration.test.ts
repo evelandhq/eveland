@@ -207,7 +207,151 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       await store.deleteProject(project.id);
     }
   }, 30_000);
+
+  test("lets concurrent first events of one Eve session share the node the winner created", async () => {
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({
+      name: `Observer create race ${Date.now()}`,
+      importKind: "zip",
+    });
+    const hold = holdSessionNodeInserts();
+    try {
+      const deployment = await recordTestDeployment(store, project.id, 41997);
+      await hold.held;
+
+      const racers = [1, 2].map((sequence) =>
+        store.ingestAgentEvent(
+          envelope(deployment.id, {
+            telemetryEventId: `race-${sequence}`,
+            eventFingerprint: `race-${sequence}-fingerprint`,
+            eveSessionId: "eve_race",
+            sourceSequence: sequence,
+          }),
+        ),
+      );
+      // Both transactions must be parked on the node insert -- having each read
+      // "no node yet" -- before the lock is released, so releasing it makes them
+      // collide on `session_nodes_project_eve_idx` rather than merely run in turn.
+      await expect(Promise.race([...racers, settled(300)])).resolves.toBe("still held");
+      hold.release();
+
+      const [first, second] = await Promise.all(racers);
+      expect(first!.duplicate).toBe(false);
+      expect(second!.duplicate).toBe(false);
+      expect(second!.node.id).toBe(first!.node.id);
+      expect(second!.session.id).toBe(first!.session.id);
+      // The loser's own placeholder Session rolled back with its transaction.
+      await expect(store.listSessions(project.id)).resolves.toEqual([
+        expect.objectContaining({ id: first!.session.id, eveSessionId: "eve_race" }),
+      ]);
+      await expect(store.listSessionNodes(first!.session.id)).resolves.toHaveLength(1);
+      await expect(store.listSessionEvents(first!.session.id)).resolves.toHaveLength(2);
+    } finally {
+      hold.release();
+      await hold.finished;
+      await store.deleteProject(project.id);
+    }
+  }, 30_000);
+
+  test("lets concurrent children of one unseen parent share the parent placeholder", async () => {
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({
+      name: `Observer parent race ${Date.now()}`,
+      importKind: "zip",
+    });
+    const hold = holdSessionNodeInserts();
+    try {
+      const deployment = await recordTestDeployment(store, project.id, 41996);
+      await hold.held;
+
+      const racers = [1, 2].map((child) =>
+        store.ingestAgentEvent(
+          envelope(deployment.id, {
+            telemetryEventId: `child-race-${child}`,
+            eventFingerprint: `child-race-${child}-fingerprint`,
+            eveSessionId: `eve_child_race_${child}`,
+            parentEveSessionId: "eve_parent_race",
+          }),
+        ),
+      );
+      await expect(Promise.race([...racers, settled(300)])).resolves.toBe("still held");
+      hold.release();
+
+      const [first, second] = await Promise.all(racers);
+      expect(second!.session.id).toBe(first!.session.id);
+      expect(second!.node.id).not.toBe(first!.node.id);
+      await expect(store.listSessions(project.id)).resolves.toEqual([
+        expect.objectContaining({ id: first!.session.id, eveSessionId: "eve_parent_race" }),
+      ]);
+      const nodes = await store.listSessionNodes(first!.session.id);
+      const parent = nodes.find((node) => node.eveSessionId === "eve_parent_race");
+      expect(parent).toMatchObject({ resolutionStatus: "unresolved", parentNodeId: null });
+      expect(
+        nodes.filter((node) => node.parentNodeId === parent!.id).map((node) => node.id),
+      ).toEqual(expect.arrayContaining([first!.node.id, second!.node.id]));
+      expect(nodes).toHaveLength(3);
+    } finally {
+      hold.release();
+      await hold.finished;
+      await store.deleteProject(project.id);
+    }
+  }, 30_000);
 });
+
+/**
+ * Parks every `session_nodes` insert until released while leaving reads
+ * unblocked: EXCLUSIVE conflicts with the ROW EXCLUSIVE an INSERT takes but not
+ * with the ACCESS SHARE a plain SELECT takes. Ingests started meanwhile all read
+ * "no node yet" and queue on the insert, which is the shape of the Collector
+ * draining one session's first batches with several consumers.
+ */
+function holdSessionNodeInserts() {
+  let release = () => {};
+  let markHeld = () => {};
+  const held = new Promise<void>((resolve) => {
+    markHeld = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const finished = database!.db
+    .transaction(async (tx) => {
+      await tx.execute(sql`lock table session_nodes in exclusive mode`);
+      markHeld();
+      await released;
+    })
+    .catch(() => undefined);
+  return { held, release, finished };
+}
+
+function settled(ms: number): Promise<"still held"> {
+  return new Promise((resolve) => setTimeout(() => resolve("still held"), ms));
+}
+
+async function recordTestDeployment(
+  store: ReturnType<typeof createPostgresStore>,
+  projectId: string,
+  hostPort: number,
+) {
+  const revision = await store.recordSourceRevision({
+    projectId,
+    kind: "zip",
+    sourcePath: `/tmp/observer-race-${hostPort}`,
+    summary: {},
+    envVars: [],
+    files: [],
+    schedules: [],
+  });
+  return store.recordDeployment({
+    projectId,
+    sourceRevisionId: revision.id,
+    imageTag: `observer-race-${hostPort}`,
+    containerName: `observer-race-${hostPort}-${Date.now()}`,
+    internalPort: 3000,
+    hostPort,
+    runtimeKind: "docker",
+  });
+}
 
 function envelope(
   deploymentId: string,

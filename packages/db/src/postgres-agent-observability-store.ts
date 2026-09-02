@@ -15,6 +15,7 @@ import type { SessionTrigger } from "@evelandhq/core/contracts";
 import type { StoreDatabase } from "./client.js";
 import {
   appendSessionEventRow,
+  isUniqueConstraint,
   mergeSessionRows,
   moveSessionEventsForMerge,
   sanitizeStoredErrorText,
@@ -45,7 +46,37 @@ function nonRunning(
   return status === "running" ? null : status;
 }
 
+/**
+ * The unique index that arbitrates concurrent creation of one Eve session's node.
+ * The Collector drains its queue with several consumers, so the first events of
+ * a session routinely arrive in overlapping batches; each reads "no node yet"
+ * and races to insert one. Only the create path can collide -- the update path
+ * already serializes on the Session row -- and the whole ingest runs in one
+ * transaction, so the loser's placeholder Session rolls back with it. Re-running
+ * the transaction finds the winner's node and takes the update path, exactly as
+ * if the event had arrived second. Postgres holds the losing insert until the
+ * winner commits, so the retry always sees the committed row; a second collision
+ * therefore means something else is wrong and is surfaced rather than masked.
+ */
+const nodeCreationArbiter = "session_nodes_project_eve_idx";
+const maxNodeCreationAttempts = 2;
+
 export async function ingestPostgresAgentEvent(
+  database: StoreDatabase,
+  observation: AgentEventObservation,
+) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await ingestPostgresAgentEventOnce(database, observation);
+    } catch (error) {
+      if (attempt >= maxNodeCreationAttempts || !isUniqueConstraint(error, nodeCreationArbiter)) {
+        throw error;
+      }
+    }
+  }
+}
+
+async function ingestPostgresAgentEventOnce(
   database: StoreDatabase,
   observation: AgentEventObservation,
 ) {

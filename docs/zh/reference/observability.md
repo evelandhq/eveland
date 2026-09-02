@@ -302,7 +302,13 @@ queue 压力建立本地视图。
 - Agent operation 结束、policy revision 切换和 shutdown 使用最多两秒的 bounded
   flush/shutdown。
 - Collector 接收后的 delivery 是 at-least-once；Built-in projection 和 usage
-  aggregation 必须幂等。
+  aggregation 必须幂等。创建也包括在内：同一个 Eve session 最初几条事件所在的 batch
+  经常重叠，竞争创建其 SessionNode 的输家会重新读取赢家的行，而不是失败。
+- Collector 的 OTLP/HTTP exporter 只重试 429/502/503/504，其他状态码（包括 500）一律
+  视为永久失败——batch 离开持久化队列，数据丢失。因此 Built-in 对格式正确的 batch
+  在 projection 阶段失败时回答 503 而非 500：projection 幂等，重放是安全的；持续失败
+  会表现为 Collector 队列积压，而不是静默丢失。只有畸形请求和 `partial_success`
+  中的逐项拒绝才是最终结果。
 - input 和 output（含 reasoning）在 Agent producer 处按 policy 裁剪。
 - Model call 的 input 是 Eveland 从 Eve event stream 重建的会话，不是模型收到的
   prompt：不含 system prompt、resolved instructions 和 tool schema，只覆盖当前
