@@ -34,7 +34,9 @@ import {
   readSupervisorState,
   removeSupervisorFiles,
   claimSupervisorRecord,
+  readMutexHolder,
   readPendingUpdate,
+  updateMutexPath,
   verifiedSupervisorPid,
   writeSupervisorState,
   type ProcessIdentity,
@@ -421,12 +423,28 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
   const resolved = resolveLifecycle(io);
   // A half-updated tree must not be started around an interrupted update:
   // the update state machine owns the platform until its record is cleared.
-  if (!parsed.values["from-update"] && (await readPendingUpdate(resolved.layout))) {
-    io.stderr(
-      "An interrupted update is recorded (run/update-pending.json): re-run `eveland-ctl update` " +
-        "to resume it. Starting a half-updated tree is refused.",
+  if (!parsed.values["from-update"]) {
+    // The lock covers the window the record does not: backup, stop and
+    // stash happen under the lock BEFORE the record is written.
+    const updateHolder = await readMutexHolder(
+      updateMutexPath(resolved.layout),
+      resolved.processIdentity,
+      resolved.isAlive,
     );
-    return 1;
+    if (updateHolder?.alive) {
+      io.stderr(
+        `An update is running (eveland-ctl update, pid ${updateHolder.pid}); ` +
+          "it restarts the platform itself when done. Starting now is refused.",
+      );
+      return 1;
+    }
+    if (await readPendingUpdate(resolved.layout)) {
+      io.stderr(
+        "An interrupted update is recorded (run/update-pending.json): re-run `eveland-ctl update` " +
+          "to resume it. Starting a half-updated tree is refused.",
+      );
+      return 1;
+    }
   }
   // The systemd fast path is for a COMPLETED install only: a first boot
   // interrupted after the units were installed but before login/seed

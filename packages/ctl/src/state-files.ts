@@ -383,8 +383,42 @@ export type PendingUpdate = {
   stashRef: string | null;
   /** The starter template's eve pin BEFORE the checkout moved: the window comparison survives a resume. */
   evePinBefore: string | null;
+  /** Set once the stash was applied (and dropped): a resume must not look for it again. */
+  stashRestored?: boolean;
   startedAt: string;
 };
+
+/** The update state machine's lock: one `update` at a time, phase 1 through completion. */
+export function updateMutexPath(layout: { runDir: string }): string {
+  return path.join(layout.runDir, "update.lock");
+}
+
+/**
+ * Who holds a mutex right now: the recorded holder and whether it is
+ * alive (by identity, exactly as the breaking rules judge it; a failed
+ * probe reads as alive — unknown is never "gone"). null when unheld.
+ */
+export async function readMutexHolder(
+  mutexPath: string,
+  identityOf: ProcessIdentity,
+  isAlive: (pid: number) => boolean = isProcessAlive,
+): Promise<{ pid: number; alive: boolean } | null> {
+  let raw: string;
+  try {
+    raw = (await readFile(path.join(mutexPath, "owner"), "utf8")).trim();
+  } catch {
+    return null;
+  }
+  const holder = parseMutexOwner(raw);
+  if (!holder) return null;
+  if (holder.identity === null) return { pid: holder.pid, alive: isAlive(holder.pid) };
+  try {
+    const current = await identityOf(holder.pid);
+    return { pid: holder.pid, alive: current !== null && current === holder.identity };
+  } catch {
+    return { pid: holder.pid, alive: true };
+  }
+}
 
 export function pendingUpdatePath(layout: { runDir: string }): string {
   return path.join(layout.runDir, "update-pending.json");
