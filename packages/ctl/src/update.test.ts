@@ -195,6 +195,7 @@ async function makeHarness(
             ? { code: 128, output: "fatal: ambiguous argument 'refs/stash'" }
             : { code: 0, output: "5745a5h\n" };
         if (sub === "stash" && argv[2] === "push") pushedStashName = argv[argv.length - 1]!;
+        if (sub === "stash" && argv[2] === "apply") timeline.push("stash-apply");
         if (sub === "stash" && argv[2] === "list")
           return {
             code: 0,
@@ -454,6 +455,44 @@ describe("runUpdate (phase 1, the old code)", () => {
     // Phase 2 (the new checkout's ctl) starts with the record still present.
     expect(await runFinishUpdate(["--from", "0.48.0"], harness.io)).toBe(0);
     expect(harness.timeline).toContain("start-daemon");
+  });
+
+  test("the stash goes back into the updated tree BEFORE phase 2 starts anything, and is not re-applied on a resume", async () => {
+    const dirty = await makeHarness({ dirty: true, confirmAnswers: [true, true] });
+    let failFinish = true;
+    dirty.io.streamCommand = async (argv) => {
+      dirty.streamed.push(argv);
+      if (argv.includes("_finish-update")) dirty.timeline.push("finish-update");
+      return failFinish && argv.includes("_finish-update") ? 1 : 0;
+    };
+    expect(await runUpdate([], dirty.io)).toBe(1);
+    const applyIndex = dirty.timeline.indexOf("stash-apply");
+    const finishIndex = dirty.timeline.indexOf("finish-update");
+    expect(applyIndex).toBeGreaterThan(-1);
+    expect(applyIndex).toBeLessThan(finishIndex);
+    expect((await readPendingUpdate(dirty.layout))?.stashRestored).toBe(true);
+    // Resume: no second apply, no "stash not found" noise, record cleared at the end.
+    failFinish = false;
+    expect(await runUpdate([], dirty.io)).toBe(0);
+    expect(dirty.timeline.filter((t) => t === "stash-apply")).toHaveLength(1);
+    expect(dirty.out.join("\n")).not.toContain("Stash restore failed");
+    expect(await readPendingUpdate(dirty.layout)).toBeNull();
+  });
+
+  test("start is refused while an update HOLDS THE LOCK, even before the pending record exists", async () => {
+    const harness = await makeHarness({});
+    await mkdir(harness.layout.runDir, { recursive: true });
+    const held = await acquireMutex(updateMutexPath(harness.layout), 777, async (pid) =>
+      pid === 777 ? "id-777" : null,
+    );
+    harness.io.processIdentity = async (pid) => (pid === 777 ? "id-777" : null);
+    harness.io.sendSignal!(4242, "SIGTERM"); // the update stopped the platform...
+    expect(await runStart([], harness.io)).toBe(1);
+    expect(harness.err.join("\n")).toContain("An update is running (eveland-ctl update, pid 777)");
+    expect(harness.timeline).not.toContain("start-daemon");
+    // ...but the update's own phase 2 may start it.
+    expect(await runStart(["--from-update"], harness.io)).toBe(0);
+    await held.release();
   });
 
   test("the pending record lives under run/, next to the supervisor files", async () => {

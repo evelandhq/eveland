@@ -14,6 +14,7 @@ import {
   MutexBusyError,
   pendingUpdatePath,
   readPendingUpdate,
+  updateMutexPath,
   writePendingUpdate,
   type PendingUpdate,
 } from "./state-files.ts";
@@ -174,7 +175,12 @@ export function recoveryPlan(options: {
   ].join("\n");
 }
 
-export { pendingUpdatePath, readPendingUpdate, type PendingUpdate } from "./state-files.ts";
+export {
+  pendingUpdatePath,
+  readPendingUpdate,
+  type PendingUpdate,
+  updateMutexPath,
+} from "./state-files.ts";
 
 /** The newest exact vX.Y.Z tag: a pre-release sorts above the stable it precedes and is never a default target. */
 export function newestStableTag(tagListOutput: string): string | undefined {
@@ -192,11 +198,6 @@ type UpdateContext = {
   streamCommand: NonNullable<LifecycleIo["streamCommand"]>;
   prompter: { confirm: (question: string, defaultValue: boolean) => Promise<boolean> };
 };
-
-/** The update state machine's lock: one `update` at a time, phase 1 through completion. */
-export function updateMutexPath(layout: { runDir: string }): string {
-  return path.join(layout.runDir, "update.lock");
-}
 
 export async function runUpdate(
   args: string[],
@@ -472,7 +473,11 @@ async function restoreStash(
  * handover to the new checkout's ctl, then the record is cleared. Shared by
  * a fresh update and a resumed one (every step is idempotent).
  */
-async function completeUpdate(context: UpdateContext, pending: PendingUpdate): Promise<number> {
+async function completeUpdate(
+  context: UpdateContext,
+  initialPending: PendingUpdate,
+): Promise<number> {
+  let pending = initialPending;
   const { io, repo, git, streamCommand, prompter } = context;
   const { target, backupPath, stashName, stashRef, evePinBefore } = pending;
   const recovery = (failedStep: string) =>
@@ -497,6 +502,30 @@ async function completeUpdate(context: UpdateContext, pending: PendingUpdate): P
     return 1;
   }
 
+  // Local changes go back BEFORE anything runs from this tree: applying a
+  // stash under a started platform would edit sources beneath live
+  // processes. The record remembers a restored stash so a resume after a
+  // later failure never looks for it again.
+  if (stashName && !pending.stashRestored) {
+    const restore = await prompter.confirm(
+      `Restore the stashed local changes ('${stashName}') into the updated tree before it starts?`,
+      false,
+    );
+    if (restore) {
+      // Exactly the recorded stash commit: an operator may have stashed
+      // other work while fixing a failed attempt, and `pop` would take
+      // whichever entry is newest.
+      const restored = await restoreStash(git, stashRef, stashName);
+      io.stdout(restored.ok ? "Stash restored." : `Stash restore failed:\n${restored.detail}`);
+      if (restored.ok) {
+        pending = { ...pending, stashRestored: true };
+        await writePendingUpdate(context.layout, pending);
+      }
+    } else {
+      io.stdout(`Local changes remain stashed as '${stashName}' (git stash list).`);
+    }
+  }
+
   // Phase 2 runs from the NEW checkout: this process still executes the old
   // code and must not decide the new version's artifacts or start sequence.
   io.stdout("Handing over to the updated eveland-ctl...");
@@ -518,7 +547,6 @@ async function completeUpdate(context: UpdateContext, pending: PendingUpdate): P
     );
     return 1;
   }
-  await rm(pendingUpdatePath(context.layout), { force: true });
 
   const evePinAfter = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
   if (evePinBefore && evePinAfter && evePinBefore !== evePinAfter) {
@@ -529,21 +557,9 @@ async function completeUpdate(context: UpdateContext, pending: PendingUpdate): P
     io.stdout("(`eveland deploy` per project, or the Dashboard's rebuild).");
   }
 
-  if (stashName) {
-    const restore = await prompter.confirm(
-      `Restore the stashed local changes ('${stashName}')?`,
-      false,
-    );
-    if (restore) {
-      // Exactly the recorded stash commit: an operator may have stashed
-      // other work while fixing a failed attempt, and `pop` would take
-      // whichever entry is newest.
-      const restored = await restoreStash(git, stashRef, stashName);
-      io.stdout(restored.ok ? "Stash restored." : `Stash restore failed:\n${restored.detail}`);
-    } else {
-      io.stdout(`Local changes remain stashed as '${stashName}' (git stash list).`);
-    }
-  }
+  // The record goes last: every recovery action above has happened, so
+  // nothing an interrupted run still owed can be lost with it.
+  await rm(pendingUpdatePath(context.layout), { force: true });
 
   io.stdout("");
   io.stdout(`Updated to ${target}.`);
