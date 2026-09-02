@@ -30,7 +30,11 @@ describe("Compose controller security boundaries", () => {
     expect(serviceBlock(productionCompose, "gateway")).not.toContain("/var/run/docker.sock");
 
     expect(serviceBlock(developmentCompose, "worker")).toContain("/var/run/docker.sock");
-    expect(serviceBlock(productionCompose, "worker")).toContain("/var/run/docker.sock");
+
+    // Production holds no Docker controller privilege at all: Agents are
+    // systemd units driven by the host Worker, so no container in the overlay
+    // may carry the daemon socket -- not even a Worker.
+    expect(productionCompose).not.toContain("/var/run/docker.sock");
   });
 
   it("masks deployment source and secret data from the Gateway", () => {
@@ -66,6 +70,20 @@ describe("Compose production runtime environment", () => {
 
     // The base file stays profile-free so plain `docker compose up` runs it in dev.
     expect(serviceBlock(developmentCompose, "workflow-dispatcher")).not.toContain("profiles:");
+  });
+
+  it("gates the development Worker out of the production stack", () => {
+    // The host systemd Worker is production's only runtime controller. The base
+    // file's Worker carries no profile, so the overlay must reduce it to a
+    // profile gate rather than delete the block: deleting it would let the
+    // merged production configuration start a second, Docker-runtime one.
+    const worker = serviceBlock(productionCompose, "worker");
+
+    expect(worker).toContain('profiles: ["dev-worker"]');
+    expect(worker).not.toContain("EVELAND_RUNTIME");
+
+    // The base file stays profile-free so plain `docker compose up` runs it in dev.
+    expect(serviceBlock(developmentCompose, "worker")).not.toContain("profiles:");
   });
 
   it("runs the production web build and server under NODE_ENV=production", () => {

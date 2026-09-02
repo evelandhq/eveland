@@ -9,7 +9,7 @@ Eveland's production boundary is intentionally different from its local developm
 
 ## Core services
 
-The Dashboard, API, Agent Gateway, Postgres, the managed OpenTelemetry Collector, and a containerized workflow dispatcher run in Docker Compose with the production overlay. API owns authenticated team workflows and persistence. The Agent Gateway is the only public Agent data plane and has neither the Docker socket nor access to sources, Releases, secrets, or Collector configuration; the Compose stack masks the data directory from it. The overlay does not start a containerized Worker — that container exists only behind `--profile docker-worker` for legacy Docker-runtime installs.
+The Dashboard, API, Agent Gateway, Postgres, and the managed OpenTelemetry Collector run in Docker Compose with the production overlay. API owns authenticated team workflows and persistence. The Agent Gateway is the only public Agent data plane and has neither the Docker socket nor access to sources, Releases, secrets, or Collector configuration; the Compose stack masks the data directory from it. The overlay starts neither a Worker nor a workflow dispatcher: both are host units, described in the next section and in [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
 
 ## Host runtime controller
 

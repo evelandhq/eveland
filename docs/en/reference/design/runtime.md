@@ -40,8 +40,10 @@ Secondary reasons recorded at decision time:
 ## What Docker remains for
 
 Local development — `docker-compose.yml` pins `EVELAND_RUNTIME: docker` so
-macOS development works unchanged — and legacy installations via the
-`docker-worker` Compose profile. Core platform services (Postgres, the OTel
+macOS development works unchanged — and the macOS appliance, where
+`eveland-ctl` runs the stack on Docker Desktop and systemd does not exist.
+Linux production supports the systemd runtime only; there is no Docker Agent
+runtime to opt into there. Core platform services (Postgres, the OTel
 Collector) stay containerized in production; it is the _Agent_ runtime that
 moved to the host.
 

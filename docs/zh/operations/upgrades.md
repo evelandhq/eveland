@@ -159,6 +159,27 @@ group by 1, 2
 having count(*) > 1;
 ```
 
+## Linux 上的 Docker Agent Runtime 已下线
+
+`docker-worker` Compose Profile 已移除，Linux 生产只支持 systemd Agent
+Runtime。`EVELAND_RUNTIME=docker` 仍然是开发环境与 macOS Appliance 的
+Runtime——只有 Linux 生产形态不再支持它。
+
+仍在 Linux 上运行 Docker Runtime Agent 的安装必须在升级**之前**完成迁移：
+
+1. 排空并停止每一个 Docker Deployment。每个 Deployment 都记录着创建它的
+   `runtimeKind`，生命周期操作按该记录值解析适配器，因此遗留在 systemd 宿主机
+   上的 Docker Deployment 会以一次记录在案的 Job 失败大声报错——混合宿主机是
+   可见的，但从不是受支持的拓扑。
+2. 按[安装宿主机 Worker](/zh/docs/production/worker) 与
+   [安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher) 安装宿主机
+   Worker 和 Workflow Dispatcher。
+3. 重新部署每个 Project，让它的 Deployment 在 systemd Runtime 下重建。
+
+生产 Overlay 现在把基础文件中的开发 Worker 门控在一个生产命令永不启用的
+Profile 之后（与 Workflow Dispatcher 一致），因此合并后的配置不可能启动第二个
+Runtime 控制器。
+
 ## 遗留的按 Project Workflow 残余
 
 每个 Release 都基于共享、External-only Workflow World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动。带有共享 World 之前历史的安装可能仍保留遗留的按 Project Workflow 配置：

@@ -196,6 +196,31 @@ group by 1, 2
 having count(*) > 1;
 ```
 
+## Docker Agent runtime retired on Linux
+
+The `docker-worker` Compose profile is gone, and Linux production supports the
+systemd Agent runtime only. `EVELAND_RUNTIME=docker` remains the development
+runtime and the macOS appliance's — only the Linux production form dropped it.
+
+An installation still running Docker-runtime Agents on Linux must migrate
+**before** upgrading:
+
+1. Drain and stop every Docker Deployment. Each Deployment records the
+   `runtimeKind` that created it and lifecycle operations resolve their adapter
+   from that recorded value, so a Docker Deployment left behind on a systemd
+   host fails loudly as a logged job failure — mixed hosts are visible, never a
+   supported topology.
+2. Install the host Worker and the workflow dispatcher per
+   [Install the host Worker](/docs/production/worker) and
+   [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
+3. Redeploy each Project so its Deployments are recreated under the systemd
+   runtime.
+
+The production overlay now gates the base file's development Worker behind a
+profile the production command never enables, mirroring the workflow
+dispatcher, so the merged configuration cannot start a second runtime
+controller.
+
 ## Legacy per-project workflow residue
 
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:
