@@ -33,11 +33,13 @@ import {
   readSupervisorRecord,
   readSupervisorState,
   removeSupervisorFiles,
+  acquireMutex,
   claimSupervisorRecord,
-  readMutexHolder,
+  MutexBusyError,
   readPendingUpdate,
   updateMutexPath,
   verifiedSupervisorPid,
+  type HeldMutex,
   writeSupervisorState,
   type ProcessIdentity,
 } from "./state-files.ts";
@@ -423,21 +425,41 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
   const resolved = resolveLifecycle(io);
   // A half-updated tree must not be started around an interrupted update:
   // the update state machine owns the platform until its record is cleared.
-  if (!parsed.values["from-update"]) {
-    // The lock covers the window the record does not: backup, stop and
-    // stash happen under the lock BEFORE the record is written.
-    const updateHolder = await readMutexHolder(
+  if (parsed.values["from-update"]) {
+    // update's phase 2: the parent phase 1 holds the update lock.
+    return runStartUnlocked(parsed.values, io, resolved);
+  }
+  // start and update exclude each other through the SAME lock, held for
+  // the whole start (a snapshot of the holder would leave a window for an
+  // update to take the lock right after the look). The lock also covers
+  // the backup/stop/stash window before update's record exists.
+  await mkdir(resolved.layout.runDir, { recursive: true });
+  let lock: HeldMutex;
+  try {
+    lock = await acquireMutex(
       updateMutexPath(resolved.layout),
+      process.pid,
       resolved.processIdentity,
-      resolved.isAlive,
+      { onLiveHolder: "fail", isAlive: resolved.isAlive, sleep: resolved.sleep },
     );
-    if (updateHolder?.alive) {
+  } catch (error) {
+    if (error instanceof MutexBusyError) {
       io.stderr(
-        `An update is running (eveland-ctl update, pid ${updateHolder.pid}); ` +
+        `An update is running (eveland-ctl update, pid ${error.holderPid}); ` +
           "it restarts the platform itself when done. Starting now is refused.",
       );
       return 1;
     }
+    throw error;
+  }
+  let released = false;
+  const release = async () => {
+    if (!released) {
+      released = true;
+      await lock.release();
+    }
+  };
+  try {
     if (await readPendingUpdate(resolved.layout)) {
       io.stderr(
         "An interrupted update is recorded (run/update-pending.json): re-run `eveland-ctl update` " +
@@ -445,7 +467,26 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
       );
       return 1;
     }
+    return await runStartUnlocked(parsed.values, io, resolved, release);
+  } finally {
+    await release();
   }
+}
+
+type StartValues = {
+  foreground?: boolean;
+  "skip-infra"?: boolean;
+  "no-prompt"?: boolean;
+  "from-update"?: boolean;
+};
+
+async function runStartUnlocked(
+  values: StartValues,
+  io: LifecycleIo,
+  resolved: ResolvedLifecycle,
+  releaseUpdateLock: () => Promise<void> = async () => {},
+): Promise<number> {
+  const parsed = { values };
   // The systemd fast path is for a COMPLETED install only: a first boot
   // interrupted after the units were installed but before login/seed
   // finished still carries `supervision: "systemd"`, and must resume the
@@ -610,6 +651,10 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
 
   if (!bootstrapping && parsed.values.foreground) {
     io.stdout(`Starting Eveland in the foreground (config: ${envFile.path}). Ctrl-C stops it.`);
+    // The supervisor claim protects the processes from here on; holding
+    // the update lock for the supervisor's whole lifetime would only make
+    // a later update impossible without a manual stop.
+    await releaseUpdateLock();
     return runSupervise(["--root", resolved.layout.root], io);
   }
 
