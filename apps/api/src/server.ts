@@ -27,11 +27,13 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createBetterAuthRuntime } from "./auth.js";
 import { resolveAdminConfig, resolveBetterAuthConfig } from "./auth-config.js";
 import { collectSystemConfigurationDiagnostics } from "./config-diagnostics.js";
+import { createDockerBridgeIngress, resolveDockerBridgeBindHost } from "./docker-bridge-ingress.js";
 
 const port = Number(process.env.PORT ?? API_PORT);
 // Loopback by default: the front door is the only public listener. A
 // containerized API (Compose) overrides this to 0.0.0.0.
 const bindHost = process.env.EVELAND_API_BIND_HOST ?? "127.0.0.1";
+const dockerBridgeBindHost = resolveDockerBridgeBindHost(process.env);
 const buildInfo = createBuildInfoFromEnv("api", process.env);
 const storeFactory = createStoreFromEnv();
 const betterAuthConfig = resolveBetterAuthConfig(process.env);
@@ -59,20 +61,31 @@ const auth = createBetterAuthRuntime({ database: authDatabase, ...betterAuthConf
 await auth.bootstrapDefaultAdmin(resolveAdminConfig(process.env));
 await auth.bootstrapCliOAuthClient();
 
+const app = createApp(storeFactory.store, {
+  auth,
+  buildInfo,
+  configurationDiagnostics: () => collectSystemConfigurationDiagnostics(process.env),
+  gatewayServiceToken: resolveSecretWithDevFallback(
+    process.env,
+    process.env.EVELAND_GATEWAY_SERVICE_TOKEN,
+    "eveland-dev-gateway-token",
+  ),
+});
+
 serve({
-  fetch: createApp(storeFactory.store, {
-    auth,
-    buildInfo,
-    configurationDiagnostics: () => collectSystemConfigurationDiagnostics(process.env),
-    gatewayServiceToken: resolveSecretWithDevFallback(
-      process.env,
-      process.env.EVELAND_GATEWAY_SERVICE_TOKEN,
-      "eveland-dev-gateway-token",
-    ),
-  }).fetch,
+  fetch: app.fetch,
   port,
   hostname: bindHost,
 });
+
+if (dockerBridgeBindHost) {
+  serve({
+    fetch: createDockerBridgeIngress((request) => app.fetch(request)),
+    port,
+    hostname: dockerBridgeBindHost,
+  });
+  console.log(`Docker bridge runtime ingress listening on http://${dockerBridgeBindHost}:${port}`);
+}
 
 console.log(`${formatBuildInfo(buildInfo)} listening on http://localhost:${port}`);
 platformObservability.emitLog({

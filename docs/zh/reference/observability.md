@@ -84,6 +84,13 @@ flowchart LR
 Managed Collector 是唯一 fan-out 组件。Agent、API、Agent Gateway 和 Worker
 只向平台管理的 receiver 发送，不持有外部产品凭据，也不知道启用了哪些外部目的地。
 
+在所有受支持的开发与生产形态中，Collector 到 API 的投递都保持私有。容器化形态通过
+Compose 网络访问 API。Linux Native 开发让 Collector 保持桥接以服务 Docker Agent
+Telemetry，并让宿主机 API 在 Docker 私有 Bridge 地址上增加第二个 Listener；该
+Listener 只接受 `/health`、Built-in OTLP Ingest、外部 Destination Egress Proxy、
+Agent JWKS 与 Scheduler Channel 路径。Control Plane 仍然只能通过 API 的 Loopback
+Listener 与前门访问。
+
 ## Provider 所有权
 
 ### Agent

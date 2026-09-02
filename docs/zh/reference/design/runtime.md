@@ -36,9 +36,13 @@ Agent 的边际成本趋近于零，同样配置的机器在 systemd 上能跑�
 ## Docker 还负责什么
 
 本地开发——`docker-compose.yml` 固定 `EVELAND_RUNTIME: docker`，macOS
-开发不受影响——以及通过 `docker-worker` Compose profile 保留的遗留安装。
-生产环境的核心平台服务（Postgres、OTel Collector）仍然容器化；搬到宿主
-机上的是 _Agent_ 运行时。
+开发不受影响——以及 macOS Appliance：`eveland-ctl` 在 Docker Desktop 上运行
+整套栈，那里没有 systemd。Linux 生产只支持 systemd Runtime，不存在可切换的
+Docker Agent Runtime。Linux Native 开发让 Collector 保持桥接，因为 Docker Runtime 会把它接入每个
+Agent 的私有 Telemetry 网络。因此宿主机 API 在 Docker 私有 Bridge 地址上增加
+第二个 Listener，只允许 Health、Collector Observation、Agent JWKS 与 Scheduler
+Channel 路径；Control Plane 仍然只绑定 Loopback。生产环境的核心平台服务
+（Postgres、OTel Collector）仍然容器化；搬到宿主机上的是 _Agent_ 运行时。
 
 ## 混合运行时：可见，但不受支持
 

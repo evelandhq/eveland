@@ -40,9 +40,23 @@ local development and contribution.
 corepack enable
 pnpm install --frozen-lockfile
 cp .env.example .env                  # set BETTER_AUTH_SECRET and EVELAND_ADMIN_PASSWORD
-docker compose up -d postgres otel-collector # database and platform OTLP receiver
 pnpm --filter @evelandhq/api db:migrate  # required on first run and after schema changes
+```
+
+On macOS, start the database and Collector with the base Compose file:
+
+```bash
+docker compose up -d postgres otel-collector
 pnpm dev                               # start all six dev processes
+```
+
+On Linux, keep the Collector bridged for Docker Agent telemetry and give the
+host API a runtime-only listener on Docker's private bridge address:
+
+```bash
+export EVELAND_API_DOCKER_BRIDGE_HOST="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')"
+docker compose -f docker-compose.yml -f docker-compose.native-linux.yml up -d postgres otel-collector
+pnpm dev
 ```
 
 Open the Dashboard at `http://localhost:17300` and the public documentation site at
@@ -57,6 +71,10 @@ Open the Dashboard at `http://localhost:17300` and the public documentation site
   API, Playground/public Agent traffic goes through Agent Gateway, imports, builds,
   and deploys are executed by the worker's job polling, and durable workflow wake
   and continuation need exactly one workflow dispatcher.
+- Linux native development requires `EVELAND_API_DOCKER_BRIDGE_HOST` to be the
+  private gateway reported by Docker's built-in `bridge` network. That listener
+  accepts only health, Collector Observation, Agent JWKS, and Scheduler Channel
+  paths; the platform control plane remains loopback-only.
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`,
   `pnpm dev:workflow-dispatcher`, and `pnpm dev:docs` in separate terminals when
   isolated logs are more useful. `dev:worker` does not start the dispatcher.

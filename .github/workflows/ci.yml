@@ -144,6 +144,94 @@ jobs:
           node -e "import('eveland/auth').then((m) => { if (typeof m.evelandIdentity !== 'function') throw new Error('evelandIdentity export missing'); console.log('sdk auth import ok'); })"
           node -e "import('eveland/memory').then((m) => { if (typeof m.evelandMemoryBackend !== 'function') throw new Error('evelandMemoryBackend export missing'); console.log('sdk memory import ok'); })"
 
+  native-linux-observation:
+    name: Linux native Observation path
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: eveland
+          POSTGRES_PASSWORD: eveland
+          POSTGRES_DB: eveland_native
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eveland"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NODE_ENV: development
+      DATABASE_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland_native
+      # Exactly 32 bytes: assertValidSecretKey rejects any other length.
+      APP_SECRET_KEY: eveland-native-smoke-secret-0000
+      BETTER_AUTH_SECRET: eveland-native-smoke-better-auth-secret
+      EVELAND_ADMIN_PASSWORD: eveland_native_password
+      EVELAND_OTLP_SERVICE_TOKEN: eveland-native-smoke-otlp-token
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply database migrations
+        run: pnpm --filter @evelandhq/db db:migrate
+
+      - name: Prove the bridged Collector reaches the host API
+        run: |
+          bridge_host="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')"
+          export EVELAND_API_DOCKER_BRIDGE_HOST="$bridge_host"
+          compose=(docker compose -f docker-compose.yml -f docker-compose.native-linux.yml)
+          api_log="$RUNNER_TEMP/eveland-native-api.log"
+          api_pid=""
+          cleanup() {
+            if [ -n "$api_pid" ]; then kill "$api_pid" 2>/dev/null || true; fi
+            "${compose[@]}" down --volumes 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          "${compose[@]}" up -d otel-collector
+          pnpm --filter @evelandhq/api exec tsx src/server.ts >"$api_log" 2>&1 &
+          api_pid="$!"
+
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:17301/health >/dev/null; then break; fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then cat "$api_log"; exit 1; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:17301/health >/dev/null
+
+          collector_network="$(docker inspect eveland-otel-collector \
+            --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}')"
+          docker run --rm --network "$collector_network" \
+            --add-host host.docker.internal:host-gateway \
+            curlimages/curl:8.11.1 -fsS \
+            -H "Authorization: Bearer $EVELAND_OTLP_SERVICE_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{"resourceLogs":[]}' \
+            http://host.docker.internal:17301/internal/otel/v1/logs >/dev/null
+
+          docker run --rm --network "$collector_network" \
+            --add-host host.docker.internal:host-gateway \
+            curlimages/curl:8.11.1 -fsS \
+            http://host.docker.internal:17301/.well-known/jwks.json >/dev/null
+
+          status="$(docker run --rm --network "$collector_network" \
+            --add-host host.docker.internal:host-gateway \
+            curlimages/curl:8.11.1 -sS -o /dev/null -w '%{http_code}' \
+            http://host.docker.internal:17301/api/projects)"
+          test "$status" = "404"
+
   build:
     runs-on: ubuntu-latest
     steps:

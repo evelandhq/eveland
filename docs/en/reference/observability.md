@@ -90,6 +90,14 @@ The managed Collector is the only fan-out component. Agents, API, Agent Gateway,
 Worker send only to the platform-managed receivers; they hold no external product
 credentials and do not know which external destinations are enabled.
 
+Collector-to-API delivery stays private in every supported development and production
+form. Containerized forms address the API over their Compose network. Linux native
+development keeps the Collector bridged for Docker Agent telemetry and gives the host
+API a second listener on Docker's private bridge address; that listener accepts only
+`/health`, Built-in OTLP ingest, the external-destination egress proxy, Agent JWKS, and
+Scheduler Channel paths. The control plane remains available only through the API's
+loopback listener and front door.
+
 ## Provider ownership
 
 ### Agent

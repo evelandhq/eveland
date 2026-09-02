@@ -9,7 +9,7 @@ Eveland 的生产边界刻意不同于本地开发栈。生产 Eve Deployment �
 
 ## 核心服务
 
-Dashboard、API、Agent Gateway、Postgres、托管 OpenTelemetry Collector 与一个容器化 Workflow Dispatcher 通过生产 Compose Overlay 运行。API 负责需要团队认证的操作和持久化。Agent Gateway 是唯一公开的 Agent 数据面，既不持有 Docker Socket，也不能访问 Source、Release、Secrets 或 Collector 配置；Compose 栈对它屏蔽了数据目录。Overlay 不启动容器化 Worker——该容器只存在于 `--profile docker-worker` 之后，仅供尚未迁移的遗留 Docker Runtime 安装使用。
+Dashboard、API、Agent Gateway、Postgres 与托管 OpenTelemetry Collector 通过生产 Compose Overlay 运行。API 负责需要团队认证的操作和持久化。Agent Gateway 是唯一公开的 Agent 数据面，既不持有 Docker Socket，也不能访问 Source、Release、Secrets 或 Collector 配置；Compose 栈对它屏蔽了数据目录。Overlay 既不启动 Worker 也不启动 Workflow Dispatcher：两者都是宿主机 unit，见下一节与[安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)。
 
 ## 宿主机运行控制器
 

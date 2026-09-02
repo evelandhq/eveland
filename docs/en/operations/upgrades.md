@@ -196,6 +196,51 @@ group by 1, 2
 having count(*) > 1;
 ```
 
+## API off host networking
+
+This release moves the API off host networking. In the production overlay it
+runs on the Compose network, publishes only `127.0.0.1:17301`, and the managed
+Collector addresses it as `http://api:17301`. A host-network API can satisfy the
+loopback-only port contract or the Collector's reach, never both — the
+Observation path stayed silently disconnected as long as it tried. Agent
+Gateway and the Dashboard keep host networking, because the front door still
+dials Deployments on the host's loopback ports.
+
+For an existing installation:
+
+1. Recreate the containers rather than restarting them — a network mode and a
+   published port only change on recreate:
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
+2. Nothing in `.env` changes. The host Worker, the workflow dispatcher, and the
+   front door keep reaching the API at `http://127.0.0.1:17301`.
+3. Confirm the Observation path afterwards: a Session that records events and
+   token usage proves the Collector reaches the API again.
+
+## Docker Agent runtime retired on Linux
+
+The `docker-worker` Compose profile is gone, and Linux production supports the
+systemd Agent runtime only. `EVELAND_RUNTIME=docker` remains the development
+runtime and the macOS appliance's — only the Linux production form dropped it.
+
+An installation still running Docker-runtime Agents on Linux must migrate
+**before** upgrading:
+
+1. Drain and stop every Docker Deployment. Each Deployment records the
+   `runtimeKind` that created it and lifecycle operations resolve their adapter
+   from that recorded value, so a Docker Deployment left behind on a systemd
+   host fails loudly as a logged job failure — mixed hosts are visible, never a
+   supported topology.
+2. Install the host Worker and the workflow dispatcher per
+   [Install the host Worker](/docs/production/worker) and
+   [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
+3. Redeploy each Project so its Deployments are recreated under the systemd
+   runtime.
+
+The production overlay now gates the base file's development Worker behind a
+profile the production command never enables, mirroring the workflow
+dispatcher, so the merged configuration cannot start a second runtime
+controller.
+
 ## Legacy per-project workflow residue
 
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:
