@@ -42,9 +42,13 @@ listed in the README's Verification section and are not required for most PRs.
 ## Pull requests
 
 - **Conventional Commit titles are required** (`fix:`, `feat:`, `feat!:`,
-  `chore:`, …). Releases are automated by Release Please, and the PR title
-  becomes the squashed commit message: non-conventional titles never appear in
-  the changelog and do not influence versioning.
+  `feat(scope)!:`, `chore:`, …). Releases are automated by Release Please, and
+  the PR title becomes the squashed commit message: non-conventional titles
+  never appear in the changelog and do not influence versioning, and Release
+  Please reports neither — it skips the commit and still succeeds. The
+  `Commit messages` CI job re-runs Release Please's own parser to catch that,
+  on the PR and again on the push to `main`. Note the `!` belongs after the
+  scope: `feat(api)!:`, never `feat!(api):`.
 - Keep PRs focused. Refactors, behavior changes, and formatting churn belong
   in separate PRs.
 - **Behavior, topology, environment, public URL, or operational-limit changes

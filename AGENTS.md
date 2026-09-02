@@ -78,14 +78,31 @@ message and PR title in Conventional Commits format:
 
 - `feat: ...` for user-facing features (minor bump).
 - `fix: ...` for bug fixes (patch bump).
-- `feat!: ...` or a `BREAKING CHANGE:` footer for breaking changes (major
-  bump).
+- `feat!: ...`, `feat(scope)!: ...`, or a `BREAKING CHANGE:` footer for
+  breaking changes. The `!` goes **after** the scope — `feat!(scope):` is a
+  syntax error, not a variant. While the platform is `0.x` a breaking change
+  bumps the minor, not the major.
 - `chore: ...`, `docs: ...`, `refactor: ...`, `test: ...`, `ci: ...` for
   everything else; these do not affect the version.
 
 Non-conventional messages are silently skipped by release-please: they never
-appear in the changelog and do not influence the version. Prefer squash-merging
-PRs with a conventional title so `main` history stays parseable.
+appear in the changelog and do not influence the version. The skip is silent in
+the strongest sense — the Release workflow logs the parse error and still exits
+0 — so a `Commit messages` CI job re-runs release-please's own parser on every
+PR and on every push to `main` to make it loud. Check a message by hand with:
+
+```bash
+pnpm check:commits --file <path>   # or --range <base>..<head>
+```
+
+One non-obvious way to trip the parser: empty parens. A `fileMemory()` written
+in a commit **body** has aborted the parse and dropped a whole feature from a
+release. Write `fileMemory`.
+
+Prefer squash-merging PRs with a conventional title so `main` history stays
+parseable. GitHub's merge dialog lets you rewrite that title at the last
+moment, after CI has passed — whatever is typed there is unchecked until it is
+already on `main`.
 
 Merging a normal PR to `main` never publishes a release; it only updates the
 pending `chore(main): release X.Y.Z` PR. Merging that release PR is the

@@ -10,6 +10,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  commit-messages:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # `--range` walks the pushed commits; a shallow clone may not have them.
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Advisory: the squash message is composed at merge time and the merge
+      # dialog can still edit it. Titles reach the script through the
+      # environment, never through shell interpolation.
+      - name: Check the pull request title and description
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/check-commit-messages.mjs --pull-request
+
+      # Authoritative: these are the messages Release Please will read.
+      - name: Check the commits pushed to main
+        if: github.event_name == 'push'
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: node scripts/check-commit-messages.mjs --range "$PUSH_BEFORE..$PUSH_AFTER"
+
   lint:
     runs-on: ubuntu-latest
     steps:
