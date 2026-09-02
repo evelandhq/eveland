@@ -123,6 +123,17 @@ export function defaultPgDump(options: { argv?: string[] } = {}): PgDump {
   };
 }
 
+const STARTER_TEMPLATE_MANIFEST = "templates/starter-agent/package.json";
+
+/** The starter template's eve pin at a git revision — the committed one, immune to local edits. */
+async function evePinAtRevision(
+  git: (gitArgs: string[]) => Promise<{ code: number | null; output: string }>,
+  revision: string,
+): Promise<string | null> {
+  const shown = await git(["show", `${revision}:${STARTER_TEMPLATE_MANIFEST}`]);
+  return shown.code === 0 ? templateEvePin(shown.output) : null;
+}
+
 function templateEvePin(packageJsonRaw: string | null): string | null {
   if (!packageJsonRaw) return null;
   try {
@@ -413,10 +424,10 @@ async function runUpdateLocked(
     stashRef = ref.code === 0 ? ref.output.trim().split("\n")[0] || null : null;
   }
 
-  // The eve window BEFORE the checkout moves, persisted with the record: a
-  // resumed run reads the target tree and could not detect the move itself.
-  const templatePath = path.join(repo, "templates/starter-agent/package.json");
-  const evePinBefore = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
+  // The eve window BEFORE the checkout moves, read from the COMMIT (never
+  // the working tree, which local changes could have edited) and persisted
+  // with the record: a resumed run could not detect the move itself.
+  const evePinBefore = await evePinAtRevision(git, "HEAD");
 
   // From here the checkout may report the target version: record the
   // in-flight update so a failed step is resumed, never mistaken for done.
@@ -483,13 +494,45 @@ async function completeUpdate(
   const recovery = (failedStep: string) =>
     recoveryPlan({ failedStep, fromVersion: pending.from, backupPath, repo }) +
     "\n              (This update is recorded as in progress: re-running `eveland-ctl update` resumes it.)";
-  const templatePath = path.join(repo, "templates/starter-agent/package.json");
-
   const checkout = await git(["checkout", "--quiet", target]);
   if (checkout.code !== 0) {
     io.stderr(`git checkout ${target} failed:\n${checkout.output.trim()}`);
     io.stderr(recovery("The checkout failed"));
     return 1;
+  }
+
+  // Local changes go back BEFORE dependencies are installed and before
+  // anything runs from this tree: they may touch the manifests pnpm reads,
+  // and applying them under a started platform would edit sources beneath
+  // live processes. A restore that does not apply cleanly is a failure
+  // gate — the update must not continue on a half-restored tree. The
+  // record remembers a restored stash so a resume never looks for it again.
+  if (stashName && !pending.stashRestored) {
+    const restore = await prompter.confirm(
+      `Restore the stashed local changes ('${stashName}') into the updated tree before it is built?`,
+      false,
+    );
+    if (restore) {
+      // Exactly the recorded stash commit: an operator may have stashed
+      // other work while fixing a failed attempt, and `pop` would take
+      // whichever entry is newest.
+      const restored = await restoreStash(git, stashRef, stashName);
+      if (!restored.ok) {
+        io.stderr(`Restoring the stash failed:\n${restored.detail}`);
+        io.stderr(
+          `The stash '${stashName}' is kept. Resolve the conflicts (or discard them with ` +
+            `\`git -C ${repo} checkout -- .\`) and re-run \`eveland-ctl update\`, which resumes here ` +
+            "and offers the stash again.",
+        );
+        io.stderr(recovery("Restoring local changes failed"));
+        return 1;
+      }
+      io.stdout("Stash restored.");
+      pending = { ...pending, stashRestored: true };
+      await writePendingUpdate(context.layout, pending);
+    } else {
+      io.stdout(`Local changes remain stashed as '${stashName}' (git stash list).`);
+    }
   }
 
   io.stdout("Installing dependencies...");
@@ -500,30 +543,6 @@ async function completeUpdate(
   if (install !== 0) {
     io.stderr(recovery("pnpm install failed"));
     return 1;
-  }
-
-  // Local changes go back BEFORE anything runs from this tree: applying a
-  // stash under a started platform would edit sources beneath live
-  // processes. The record remembers a restored stash so a resume after a
-  // later failure never looks for it again.
-  if (stashName && !pending.stashRestored) {
-    const restore = await prompter.confirm(
-      `Restore the stashed local changes ('${stashName}') into the updated tree before it starts?`,
-      false,
-    );
-    if (restore) {
-      // Exactly the recorded stash commit: an operator may have stashed
-      // other work while fixing a failed attempt, and `pop` would take
-      // whichever entry is newest.
-      const restored = await restoreStash(git, stashRef, stashName);
-      io.stdout(restored.ok ? "Stash restored." : `Stash restore failed:\n${restored.detail}`);
-      if (restored.ok) {
-        pending = { ...pending, stashRestored: true };
-        await writePendingUpdate(context.layout, pending);
-      }
-    } else {
-      io.stdout(`Local changes remain stashed as '${stashName}' (git stash list).`);
-    }
   }
 
   // Phase 2 runs from the NEW checkout: this process still executes the old
@@ -548,7 +567,9 @@ async function completeUpdate(
     return 1;
   }
 
-  const evePinAfter = templateEvePin(await readFile(templatePath, "utf8").catch(() => null));
+  // The window AFTER, from the target COMMIT: a restored stash may have
+  // edited the working-tree template, which must not mask or fake a move.
+  const evePinAfter = await evePinAtRevision(git, target);
   if (evePinBefore && evePinAfter && evePinBefore !== evePinAfter) {
     io.stdout("");
     io.stdout("*** The supported eve window moved with this update. ***");

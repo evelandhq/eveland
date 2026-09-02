@@ -57,6 +57,8 @@ async function makeHarness(
     tagAfter?: string | null;
     /** `git rev-parse refs/stash` fails (the sha could not be recorded). */
     stashRefUnknown?: boolean;
+    /** `git stash apply` conflicts. */
+    stashApplyFails?: boolean;
   } = {},
 ) {
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-update-"));
@@ -167,6 +169,7 @@ async function makeHarness(
     streamCommand: async (argv) => {
       streamed.push(argv);
       if (argv.includes("_finish-update")) timeline.push("finish-update");
+      if (argv[1] === "install") timeline.push("pnpm-install");
       return 0;
     },
     execCommand: async (argv) => {
@@ -176,6 +179,13 @@ async function makeHarness(
         if (sub === "tag") return { code: 0, output: "v0.50.0-rc.1\nv0.49.0\nv0.48.0\nv0.47.0\n" };
         if (sub === "rev-parse" && argv[2] !== "refs/stash")
           return { code: 0, output: checkedOut ? "beef049\n" : "abc0480\n" };
+        if (sub === "show" && String(argv[2]).endsWith("templates/starter-agent/package.json")) {
+          const revision = String(argv[2]).split(":")[0];
+          const pin = revision === "HEAD" ? "0.47.6" : (options.evePinAfter ?? "0.47.6");
+          return { code: 0, output: JSON.stringify({ dependencies: { eve: pin } }) };
+        }
+        if (sub === "stash" && argv[2] === "apply" && options.stashApplyFails)
+          return { code: 1, output: "CONFLICT (content): Merge conflict in src/app.ts" };
         if (sub === "show") {
           return options.breaking === false
             ? {
@@ -206,13 +216,13 @@ async function makeHarness(
         if (sub === "checkout") {
           timeline.push("checkout");
           checkedOut = true;
-          if (options.evePinAfter) {
-            await writeFile(
-              path.join(repo, "templates/starter-agent/package.json"),
-              JSON.stringify({ dependencies: { eve: options.evePinAfter } }),
-              "utf8",
-            );
-          }
+          // The working tree is never the source of truth for the window:
+          // a restored stash could have edited it. Plant a bogus pin.
+          await writeFile(
+            path.join(repo, "templates/starter-agent/package.json"),
+            JSON.stringify({ dependencies: { eve: "9.9.9-working-tree-noise" } }),
+            "utf8",
+          );
           await writeFile(
             path.join(repo, "package.json"),
             JSON.stringify({ version: "0.49.0" }),
@@ -457,26 +467,63 @@ describe("runUpdate (phase 1, the old code)", () => {
     expect(harness.timeline).toContain("start-daemon");
   });
 
-  test("the stash goes back into the updated tree BEFORE phase 2 starts anything, and is not re-applied on a resume", async () => {
+  test("the stash goes back BEFORE pnpm install (it may touch the manifests) and is not re-applied on a resume", async () => {
     const dirty = await makeHarness({ dirty: true, confirmAnswers: [true, true] });
     let failFinish = true;
     dirty.io.streamCommand = async (argv) => {
       dirty.streamed.push(argv);
       if (argv.includes("_finish-update")) dirty.timeline.push("finish-update");
+      if (argv[1] === "install") dirty.timeline.push("pnpm-install");
       return failFinish && argv.includes("_finish-update") ? 1 : 0;
     };
     expect(await runUpdate([], dirty.io)).toBe(1);
     const applyIndex = dirty.timeline.indexOf("stash-apply");
-    const finishIndex = dirty.timeline.indexOf("finish-update");
-    expect(applyIndex).toBeGreaterThan(-1);
-    expect(applyIndex).toBeLessThan(finishIndex);
+    expect(applyIndex).toBeGreaterThan(dirty.timeline.indexOf("checkout"));
+    expect(applyIndex).toBeLessThan(dirty.timeline.indexOf("pnpm-install"));
+    expect(applyIndex).toBeLessThan(dirty.timeline.indexOf("finish-update"));
     expect((await readPendingUpdate(dirty.layout))?.stashRestored).toBe(true);
     // Resume: no second apply, no "stash not found" noise, record cleared at the end.
     failFinish = false;
     expect(await runUpdate([], dirty.io)).toBe(0);
     expect(dirty.timeline.filter((t) => t === "stash-apply")).toHaveLength(1);
-    expect(dirty.out.join("\n")).not.toContain("Stash restore failed");
+    expect(dirty.out.join("\n")).not.toContain("Restoring the stash failed");
     expect(await readPendingUpdate(dirty.layout)).toBeNull();
+  });
+
+  test("a stash that does not apply cleanly is a FAILURE GATE: no install, no phase 2, stash kept, resumable", async () => {
+    const dirty = await makeHarness({
+      dirty: true,
+      stashApplyFails: true,
+      confirmAnswers: [true, true],
+    });
+    expect(await runUpdate([], dirty.io)).toBe(1);
+    const stderr = dirty.err.join("\n");
+    expect(stderr).toContain("Restoring the stash failed");
+    expect(stderr).toContain("CONFLICT");
+    expect(stderr).toContain("is kept");
+    expect(stderr).toContain("left STOPPED");
+    expect(dirty.timeline).not.toContain("pnpm-install");
+    expect(dirty.timeline).not.toContain("finish-update");
+    expect(dirty.gitCalls.some((argv) => argv[1] === "stash" && argv[2] === "drop")).toBe(false);
+    const pending = await readPendingUpdate(dirty.layout);
+    expect(pending?.stashRestored).toBeUndefined();
+    expect(pending?.stashRef).toBe("5745a5h");
+  });
+
+  test("the eve window is compared between COMMITS, never read from a working tree a stash may have edited", async () => {
+    // Moved pin between the commits, bogus pin planted in the working tree.
+    const moved = await makeHarness({ evePinAfter: "0.48.0", confirmAnswers: [true, false] });
+    expect(await runUpdate([], moved.io)).toBe(0);
+    expect(moved.out.join("\n")).toContain("eve window moved");
+    // Same pin in both commits: the working-tree noise must not fake a move.
+    const same = await makeHarness({ confirmAnswers: [true] });
+    expect(await runUpdate([], same.io)).toBe(0);
+    expect(same.out.join("\n")).not.toContain("eve window moved");
+    expect(same.gitCalls).toContainEqual([
+      "git",
+      "show",
+      "v0.49.0:templates/starter-agent/package.json",
+    ]);
   });
 
   test("start is refused while an update HOLDS THE LOCK, even before the pending record exists", async () => {
@@ -493,6 +540,14 @@ describe("runUpdate (phase 1, the old code)", () => {
     // ...but the update's own phase 2 may start it.
     expect(await runStart(["--from-update"], harness.io)).toBe(0);
     await held.release();
+    // A plain start takes the lock itself and releases it when done: an
+    // update cannot slip in between the look and the start, and nothing
+    // lingers afterwards.
+    harness.io.sendSignal!(4242, "SIGTERM");
+    harness.io.processIdentity = async (pid) => (pid === 4242 || pid === 5000 ? `id-${pid}` : null);
+    expect(await runStart([], harness.io)).toBe(0);
+    const { stat } = await import("node:fs/promises");
+    await expect(stat(updateMutexPath(harness.layout))).rejects.toThrow();
   });
 
   test("the pending record lives under run/, next to the supervisor files", async () => {
