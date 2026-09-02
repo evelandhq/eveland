@@ -416,7 +416,11 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
     allowPositionals: false,
   });
   const resolved = resolveLifecycle(io);
-  if (await systemdSupervised(resolved)) {
+  // The systemd fast path is for a COMPLETED install only: a first boot
+  // interrupted after the units were installed but before login/seed
+  // finished still carries `supervision: "systemd"`, and must resume the
+  // bootstrap (idempotent all the way) rather than be swallowed here.
+  if ((await systemdSupervised(resolved)) && !(await detectBootstrapNeeded(resolved))) {
     const envFile = await requirePlatformEnvFile(io, resolved);
     const code = await startViaSystemd(systemdModeContext(io, resolved), {
       skipInfra: Boolean(parsed.values["skip-infra"]),

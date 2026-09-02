@@ -344,6 +344,58 @@ describe("runStart first boot", () => {
     await expect(readFile(harness.layout.envFilePath, "utf8")).rejects.toThrow();
   });
 
+  test("a Linux bootstrap interrupted AFTER the units were installed resumes on the next start instead of taking the systemd fast path", async () => {
+    const harness = await makeHarness({ env: undefined, webBuild: false });
+    const configHome = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
+    const unitDir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-units-"));
+    harness.io.platform = "linux";
+    harness.io.env.XDG_CONFIG_HOME = configHome;
+    harness.io.fetchImpl = deviceFlowFetch();
+    harness.io.tcpProbe = async () => true;
+    harness.io.streamCommand = async () => 0;
+    const io = harness.io as typeof harness.io & {
+      getuid: () => number;
+      systemdUnitDir: string;
+      writeTextFile: (p: string, c: string) => Promise<void>;
+    };
+    io.getuid = () => 0;
+    io.systemdUnitDir = unitDir;
+    const written: Record<string, string> = {};
+    io.writeTextFile = async (filePath, content) => {
+      written[filePath] = content;
+      if (filePath.startsWith(unitDir) || filePath.startsWith(harness.layout.root)) {
+        await writeFile(filePath, content, "utf8");
+      }
+    };
+    io.execCommand = async (argv) => {
+      harness.execCalls.push(argv);
+      if (argv[0] === "systemctl" && argv[1] === "is-active")
+        return { code: 0, output: "active\n" };
+      if (argv[0] === "sh" && argv[1] === "-c") return { code: 0, output: "/usr/bin/x" };
+      return { code: 0, output: "" };
+    };
+    // The previous attempt got as far as installing the systemd form
+    // (metadata already says systemd) and died before login/seed.
+    await writeInstallMetadata(harness.layout, {
+      version: 1,
+      installedAt: "2026-09-01T00:00:00.000Z",
+      method: "install.sh",
+      osMode: "linux",
+      bootstrapCompleted: false,
+      supervision: "systemd",
+    });
+
+    expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
+    const metadata = await readInstallMetadata(harness.layout);
+    expect(metadata?.bootstrapCompleted).toBe(true);
+    expect(metadata?.seedCompleted).toBe(true);
+    expect(metadata?.supervision).toBe("systemd");
+    // The bootstrap actually ran (units re-rendered, migrate issued), rather
+    // than the fast path merely starting whatever was there.
+    expect(Object.keys(written).some((p) => p.startsWith(unitDir))).toBe(true);
+    expect(harness.out.join("\n")).toContain("Eveland is running at");
+  });
+
   test("Linux root first boot lands directly on the production form (systemd + compose core)", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     const configHome = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
