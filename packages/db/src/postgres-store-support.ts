@@ -287,6 +287,51 @@ export function isUniqueConstraint(error: unknown, constraint: string): boolean 
   return isUniqueConstraint(record.cause, constraint);
 }
 
+/**
+ * The unique indexes that arbitrate Eve session identity. Both are
+ * project-scoped `(project_id, eve_session_id)` pairs: one live Session and
+ * one SessionNode per Eve session. Every writer that resolves an Eve session
+ * reads "no row yet" before it inserts or assigns the id, so two of them
+ * racing for the same session collide here, and the schema -- not merge
+ * logic after the fact -- decides the winner.
+ */
+export const sessionIdentityArbiter = "sessions_project_eve_session_idx";
+export const sessionNodeIdentityArbiter = "session_nodes_project_eve_idx";
+
+/**
+ * Re-runs a whole transaction once when it lost an identity race.
+ *
+ * The Collector drains its queue with several consumers, the Playground learns
+ * an Eve session id while ingest may already hold an observed placeholder, and
+ * a ScheduleRun completes while the run's first events are being projected:
+ * each of these transactions reads "no row yet" and races to write the pair.
+ * Postgres holds the losing write until the winner commits, so the loser's
+ * transaction fails with a unique violation on one of the arbiters, rolls back
+ * completely (its own placeholder rows included), and the retry sees the
+ * committed row and takes the existing-row path exactly as if it had run
+ * second. A second collision therefore means something else is wrong and is
+ * surfaced rather than masked.
+ */
+export async function retryOnIdentityRace<T>(
+  run: () => Promise<T>,
+  options: { arbiters?: readonly string[]; maxAttempts?: number } = {},
+): Promise<T> {
+  const arbiters = options.arbiters ?? [sessionIdentityArbiter, sessionNodeIdentityArbiter];
+  const maxAttempts = options.maxAttempts ?? 2;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      if (
+        attempt >= maxAttempts ||
+        !arbiters.some((arbiter) => isUniqueConstraint(error, arbiter))
+      ) {
+        throw error;
+      }
+    }
+  }
+}
+
 export type SessionEventInsert = Omit<typeof sessionEvents.$inferInsert, "index">;
 
 /**

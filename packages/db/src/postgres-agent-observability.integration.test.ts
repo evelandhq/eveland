@@ -214,9 +214,9 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       name: `Observer create race ${Date.now()}`,
       importKind: "zip",
     });
-    const hold = holdSessionNodeInserts();
+    const hold = holdWrites("session_nodes");
     try {
-      const deployment = await recordTestDeployment(store, project.id, 41997);
+      const { deployment } = await recordTestDeployment(store, project.id, 41997);
       await hold.held;
 
       const racers = [1, 2].map((sequence) =>
@@ -259,9 +259,9 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       name: `Observer parent race ${Date.now()}`,
       importKind: "zip",
     });
-    const hold = holdSessionNodeInserts();
+    const hold = holdWrites("session_nodes");
     try {
-      const deployment = await recordTestDeployment(store, project.id, 41996);
+      const { deployment } = await recordTestDeployment(store, project.id, 41996);
       await hold.held;
 
       const racers = [1, 2].map((child) =>
@@ -296,16 +296,144 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       await store.deleteProject(project.id);
     }
   }, 30_000);
+
+  test("the Playground learning an Eve session id concurrently with its first observed event keeps one Session", async () => {
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({
+      name: `Observer playground race ${Date.now()}`,
+      importKind: "zip",
+    });
+    let hold: ReturnType<typeof holdWrites> | undefined;
+    try {
+      const { deployment } = await recordTestDeployment(store, project.id, 41995);
+      const gatewaySession = await store.createSession({
+        projectId: project.id,
+        deploymentId: deployment.id,
+        trigger: "playground",
+      });
+      await store.appendSessionEvent(gatewaySession.id, "message", { role: "user" });
+      hold = holdWrites("sessions");
+      await hold.held;
+
+      const completion = store.completeSession(gatewaySession.id, {
+        status: "completed",
+        eveSessionId: "eve_playground_race",
+      });
+      const ingest = store.ingestAgentEvent(
+        envelope(deployment.id, {
+          telemetryEventId: "playground-race",
+          eventFingerprint: "playground-race-fingerprint",
+          eveSessionId: "eve_playground_race",
+        }),
+      );
+      // Both must be parked on their first `sessions` write -- the completion on
+      // its UPDATE that assigns the id, the ingest on its placeholder INSERT --
+      // having each read "no row with this id yet". Releasing the lock makes
+      // them collide on `sessions_project_eve_session_idx`; the loser re-runs and
+      // finds the winner's row instead of leaving a second one.
+      await expect(Promise.race([completion, ingest, settled(300)])).resolves.toBe("still held");
+      hold.release();
+
+      // Either order is legitimate: when the ingest commits first its returned
+      // Session is the placeholder the completion's retry then folds away; when
+      // the completion commits first the ingest's retry attaches its node to
+      // the Playground Session. The durable outcome is the same single row.
+      const [completed, observed] = await Promise.all([completion, ingest]);
+      expect(completed?.id).toBe(gatewaySession.id);
+      await expect(store.listSessions(project.id)).resolves.toEqual([
+        expect.objectContaining({
+          id: gatewaySession.id,
+          eveSessionId: "eve_playground_race",
+          trigger: "playground",
+          rootNodeId: observed.node.id,
+        }),
+      ]);
+      await expect(store.listSessionNodes(gatewaySession.id)).resolves.toHaveLength(1);
+      const events = await store.listSessionEvents(gatewaySession.id);
+      expect(events.map((event) => event.index)).toEqual([0, 1]);
+    } finally {
+      hold?.release();
+      await hold?.finished;
+      await store.deleteProject(project.id);
+    }
+  }, 30_000);
+
+  test("a ScheduleRun completing concurrently with its Session's first observed event keeps one Session", async () => {
+    const store = createPostgresStore(database!);
+    const project = await store.createProject({
+      name: `Observer schedule race ${Date.now()}`,
+      importKind: "zip",
+    });
+    let hold: ReturnType<typeof holdWrites> | undefined;
+    try {
+      const { deployment, revisionId } = await recordTestDeployment(store, project.id, 41994);
+      const [entry] = await store.recordScheduleVersions({
+        projectId: project.id,
+        sourceRevisionId: revisionId,
+        definitions: [
+          {
+            key: "race/minute",
+            kind: "handler",
+            cron: "* * * * *",
+            sourcePath: "agent/schedules/race/minute.ts",
+            definitionHash: "b".repeat(64),
+          },
+        ],
+      });
+      await store.setProjectSchedulerTarget(project.id, deployment.id);
+      const run = await store.createManualScheduleRun(project.id, entry!.schedule.id, new Date());
+      hold = holdWrites("sessions");
+      await hold.held;
+
+      const completion = store.completeScheduleRun(run.id, {
+        status: "succeeded",
+        eveSessionIds: ["eve_schedule_race"],
+      });
+      const ingest = store.ingestAgentEvent(
+        envelope(deployment.id, {
+          telemetryEventId: "schedule-race",
+          eventFingerprint: "schedule-race-fingerprint",
+          eveSessionId: "eve_schedule_race",
+          channelKind: "schedule",
+        }),
+      );
+      await expect(Promise.race([completion, ingest, settled(300)])).resolves.toBe("still held");
+      hold.release();
+
+      const [completed, observed] = await Promise.all([completion, ingest]);
+      expect(completed?.id).toBe(run.id);
+      await expect(store.listSessions(project.id)).resolves.toEqual([
+        expect.objectContaining({
+          id: observed.session.id,
+          eveSessionId: "eve_schedule_race",
+          scheduleId: run.scheduleId,
+          scheduleRunId: run.id,
+          trigger: "manual",
+          rootNodeId: observed.node.id,
+        }),
+      ]);
+      await expect(store.listSessionNodes(observed.session.id)).resolves.toHaveLength(1);
+      await expect(store.getScheduleRunDetail(run.id)).resolves.toMatchObject({
+        sessions: [expect.objectContaining({ id: observed.session.id })],
+      });
+    } finally {
+      hold?.release();
+      await hold?.finished;
+      await store.deleteProject(project.id);
+    }
+  }, 30_000);
 });
 
 /**
- * Parks every `session_nodes` insert until released while leaving reads
- * unblocked: EXCLUSIVE conflicts with the ROW EXCLUSIVE an INSERT takes but not
- * with the ACCESS SHARE a plain SELECT takes. Ingests started meanwhile all read
- * "no node yet" and queue on the insert, which is the shape of the Collector
- * draining one session's first batches with several consumers.
+ * Parks every write to one table until released while leaving reads unblocked:
+ * EXCLUSIVE conflicts with the ROW EXCLUSIVE an INSERT or UPDATE takes but not
+ * with the ACCESS SHARE a plain SELECT takes. Transactions started meanwhile
+ * all read "no row yet" and queue on their first write, which is the shape of
+ * the Collector draining one session's first batches with several consumers,
+ * or of the Playground and a ScheduleRun learning an Eve session id while its
+ * first events are being projected.
  */
-function holdSessionNodeInserts() {
+function holdWrites(table: "sessions" | "session_nodes") {
   let release = () => {};
   let markHeld = () => {};
   const held = new Promise<void>((resolve) => {
@@ -316,7 +444,7 @@ function holdSessionNodeInserts() {
   });
   const finished = database!.db
     .transaction(async (tx) => {
-      await tx.execute(sql`lock table session_nodes in exclusive mode`);
+      await tx.execute(sql.raw(`lock table ${table} in exclusive mode`));
       markHeld();
       await released;
     })
@@ -342,7 +470,7 @@ async function recordTestDeployment(
     files: [],
     schedules: [],
   });
-  return store.recordDeployment({
+  const deployment = await store.recordDeployment({
     projectId,
     sourceRevisionId: revision.id,
     imageTag: `observer-race-${hostPort}`,
@@ -351,6 +479,7 @@ async function recordTestDeployment(
     hostPort,
     runtimeKind: "docker",
   });
+  return { deployment, revisionId: revision.id };
 }
 
 function envelope(

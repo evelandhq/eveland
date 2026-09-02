@@ -428,6 +428,13 @@
       "when": 1788249834218,
       "tag": "0060_logs_seq_cursor",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1788320578135,
+      "tag": "0061_session_identity_unique",
+      "breakpoints": true
     }
   ]
 }

@@ -41,7 +41,9 @@ import {
   appendSessionEventRow,
   applySchedulerTargetTx,
   insertJobRowTx,
+  retryOnIdentityRace,
   sanitizeStoredErrorText,
+  sessionIdentityArbiter,
 } from "./postgres-store-support.js";
 
 export function createPostgresScheduleStore({ db }: PostgresStoreContext): ScheduleStore {
@@ -569,151 +571,157 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
       // The reported error originates in the deployment runtime and can carry
       // bytes Postgres text refuses (NUL from a dumped binary payload).
       const reportedError = sanitizeStoredErrorText(input.error ?? null);
-      return db.transaction(async (tx) => {
-        const [run] = await tx
-          .select()
-          .from(scheduleRuns)
-          .where(eq(scheduleRuns.id, scheduleRunId))
-          .limit(1)
-          .for("update");
-        if (!run) return null;
-        const [schedule] = await tx
-          .select()
-          .from(projectSchedules)
-          .where(eq(projectSchedules.id, run.scheduleId))
-          .limit(1);
-        if (!schedule) throw new Error("ScheduleRun references an unknown ProjectSchedule.");
-
-        const trigger = run.trigger === "cron" ? "cron" : "manual";
-        const dispatchedSessionIds = new Set(input.eveSessionIds ?? []);
-        for (const eveSessionId of dispatchedSessionIds) {
-          const [existing] = await tx
-            .select({
-              id: sessions.id,
-              rootNodeId: sessions.rootNodeId,
-              status: sessions.status,
-            })
-            .from(sessions)
-            .where(
-              and(
-                eq(sessions.projectId, schedule.projectId),
-                eq(sessions.eveSessionId, eveSessionId),
-              ),
-            )
+      // Linking a dispatched Eve session creates its Session when none exists
+      // yet, which claims `sessions(project_id, eve_session_id)`. Ingest may
+      // create the observed row for the same session at the same moment; the
+      // loser re-runs and takes the existing-row path.
+      const attempt = () =>
+        db.transaction(async (tx) => {
+          const [run] = await tx
+            .select()
+            .from(scheduleRuns)
+            .where(eq(scheduleRuns.id, scheduleRunId))
+            .limit(1)
+            .for("update");
+          if (!run) return null;
+          const [schedule] = await tx
+            .select()
+            .from(projectSchedules)
+            .where(eq(projectSchedules.id, run.scheduleId))
             .limit(1);
-          let sessionId = existing?.id;
-          let executionStatus: "running" | "succeeded" | "failed" | "parked" =
-            input.status === "succeeded" ? "running" : "failed";
-          let executionError = input.status === "succeeded" ? null : reportedError;
-          if (existing) {
-            await tx
-              .update(sessions)
-              .set({
-                deploymentId: run.deploymentId,
-                trigger,
-                scheduleId: run.scheduleId,
-                scheduleRunId: run.id,
-              })
-              .where(eq(sessions.id, existing.id));
-            if (input.status === "succeeded" && existing.rootNodeId) {
-              const [boundary] = await tx
-                .select({
-                  type: sessionEvents.type,
-                  payload: sessionEvents.payload,
-                })
-                .from(sessionEvents)
-                .where(
-                  and(
-                    eq(sessionEvents.sessionId, existing.id),
-                    eq(sessionEvents.sessionNodeId, existing.rootNodeId),
-                    gte(sessionEvents.createdAt, run.startedAt ?? run.createdAt),
-                    inArray(sessionEvents.type, [...EVE_SESSION_BOUNDARY_EVENT_TYPES]),
-                  ),
-                )
-                .orderBy(desc(sessionEvents.index))
-                .limit(1);
-              executionStatus = scheduleExecutionStatusFromEveEvent(
-                boundary?.type,
-                existing.status,
-              );
-              executionError =
-                executionStatus === "failed"
-                  ? sanitizeStoredErrorText(
-                      scheduleExecutionErrorFromEveEvent(boundary?.type, boundary?.payload),
-                    )
-                  : null;
-            }
-          } else {
-            const [created] = await tx
-              .insert(sessions)
-              .values({
-                id: createId("sess"),
-                projectId: schedule.projectId,
-                deploymentId: run.deploymentId,
-                eveSessionId,
-                trigger,
-                scheduleId: run.scheduleId,
-                scheduleRunId: run.id,
-                status: "running",
-              })
-              .returning({ id: sessions.id });
-            sessionId = created?.id;
-          }
-          if (!sessionId) throw new Error("Failed to link a scheduled Session.");
-          await tx
-            .insert(scheduleRunSessions)
-            .values({
-              scheduleRunId: run.id,
-              sessionId,
-              status: executionStatus,
-              completedAt: executionStatus === "running" ? null : new Date(),
-              error: executionError,
-            })
-            .onConflictDoNothing();
-        }
+          if (!schedule) throw new Error("ScheduleRun references an unknown ProjectSchedule.");
 
-        const now = new Date();
-        const executions =
-          dispatchedSessionIds.size > 0
-            ? await tx
-                .select({
-                  status: scheduleRunSessions.status,
-                  error: scheduleRunSessions.error,
+          const trigger = run.trigger === "cron" ? "cron" : "manual";
+          const dispatchedSessionIds = new Set(input.eveSessionIds ?? []);
+          for (const eveSessionId of dispatchedSessionIds) {
+            const [existing] = await tx
+              .select({
+                id: sessions.id,
+                rootNodeId: sessions.rootNodeId,
+                status: sessions.status,
+              })
+              .from(sessions)
+              .where(
+                and(
+                  eq(sessions.projectId, schedule.projectId),
+                  eq(sessions.eveSessionId, eveSessionId),
+                ),
+              )
+              .limit(1);
+            let sessionId = existing?.id;
+            let executionStatus: "running" | "succeeded" | "failed" | "parked" =
+              input.status === "succeeded" ? "running" : "failed";
+            let executionError = input.status === "succeeded" ? null : reportedError;
+            if (existing) {
+              await tx
+                .update(sessions)
+                .set({
+                  deploymentId: run.deploymentId,
+                  trigger,
+                  scheduleId: run.scheduleId,
+                  scheduleRunId: run.id,
                 })
-                .from(scheduleRunSessions)
-                .where(eq(scheduleRunSessions.scheduleRunId, run.id))
-            : [];
-        const executionFailure = executions.find((execution) => execution.status === "failed");
-        const remainsRunning =
-          input.status === "succeeded" &&
-          dispatchedSessionIds.size > 0 &&
-          executions.some((execution) => execution.status === "running");
-        const terminalStatus =
-          input.status === "succeeded" && executionFailure ? "failed" : input.status;
-        const [completed] = await tx
-          .update(scheduleRuns)
-          .set({
-            status: remainsRunning ? "running" : terminalStatus,
-            error: executionFailure?.error ?? reportedError,
-            completedAt: remainsRunning ? null : now,
-            updatedAt: now,
-          })
-          .where(eq(scheduleRuns.id, scheduleRunId))
-          .returning();
-        if (!remainsRunning) {
-          await tx
-            .update(activationLeases)
-            .set({ releasedAt: now })
-            .where(
-              and(
-                eq(activationLeases.kind, "schedule_run"),
-                eq(activationLeases.ownerId, scheduleRunId),
-                isNull(activationLeases.releasedAt),
-              ),
-            );
-        }
-        return completed ? scheduleRunRowToScheduleRun(completed) : null;
-      });
+                .where(eq(sessions.id, existing.id));
+              if (input.status === "succeeded" && existing.rootNodeId) {
+                const [boundary] = await tx
+                  .select({
+                    type: sessionEvents.type,
+                    payload: sessionEvents.payload,
+                  })
+                  .from(sessionEvents)
+                  .where(
+                    and(
+                      eq(sessionEvents.sessionId, existing.id),
+                      eq(sessionEvents.sessionNodeId, existing.rootNodeId),
+                      gte(sessionEvents.createdAt, run.startedAt ?? run.createdAt),
+                      inArray(sessionEvents.type, [...EVE_SESSION_BOUNDARY_EVENT_TYPES]),
+                    ),
+                  )
+                  .orderBy(desc(sessionEvents.index))
+                  .limit(1);
+                executionStatus = scheduleExecutionStatusFromEveEvent(
+                  boundary?.type,
+                  existing.status,
+                );
+                executionError =
+                  executionStatus === "failed"
+                    ? sanitizeStoredErrorText(
+                        scheduleExecutionErrorFromEveEvent(boundary?.type, boundary?.payload),
+                      )
+                    : null;
+              }
+            } else {
+              const [created] = await tx
+                .insert(sessions)
+                .values({
+                  id: createId("sess"),
+                  projectId: schedule.projectId,
+                  deploymentId: run.deploymentId,
+                  eveSessionId,
+                  trigger,
+                  scheduleId: run.scheduleId,
+                  scheduleRunId: run.id,
+                  status: "running",
+                })
+                .returning({ id: sessions.id });
+              sessionId = created?.id;
+            }
+            if (!sessionId) throw new Error("Failed to link a scheduled Session.");
+            await tx
+              .insert(scheduleRunSessions)
+              .values({
+                scheduleRunId: run.id,
+                sessionId,
+                status: executionStatus,
+                completedAt: executionStatus === "running" ? null : new Date(),
+                error: executionError,
+              })
+              .onConflictDoNothing();
+          }
+
+          const now = new Date();
+          const executions =
+            dispatchedSessionIds.size > 0
+              ? await tx
+                  .select({
+                    status: scheduleRunSessions.status,
+                    error: scheduleRunSessions.error,
+                  })
+                  .from(scheduleRunSessions)
+                  .where(eq(scheduleRunSessions.scheduleRunId, run.id))
+              : [];
+          const executionFailure = executions.find((execution) => execution.status === "failed");
+          const remainsRunning =
+            input.status === "succeeded" &&
+            dispatchedSessionIds.size > 0 &&
+            executions.some((execution) => execution.status === "running");
+          const terminalStatus =
+            input.status === "succeeded" && executionFailure ? "failed" : input.status;
+          const [completed] = await tx
+            .update(scheduleRuns)
+            .set({
+              status: remainsRunning ? "running" : terminalStatus,
+              error: executionFailure?.error ?? reportedError,
+              completedAt: remainsRunning ? null : now,
+              updatedAt: now,
+            })
+            .where(eq(scheduleRuns.id, scheduleRunId))
+            .returning();
+          if (!remainsRunning) {
+            await tx
+              .update(activationLeases)
+              .set({ releasedAt: now })
+              .where(
+                and(
+                  eq(activationLeases.kind, "schedule_run"),
+                  eq(activationLeases.ownerId, scheduleRunId),
+                  isNull(activationLeases.releasedAt),
+                ),
+              );
+          }
+          return completed ? scheduleRunRowToScheduleRun(completed) : null;
+        });
+      return retryOnIdentityRace(attempt, { arbiters: [sessionIdentityArbiter] });
     },
 
     async failScheduleExecutionsForRuntimeInstance(runtimeInstanceId, reason, now = new Date()) {

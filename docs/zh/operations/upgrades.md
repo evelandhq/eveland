@@ -138,6 +138,27 @@ created_at)` 索引，并按 `(created_at, id)` 对历史行做确定性回填�
 或先停平台组件（最稳妥的顺序：停止 → migrate → 重启）。分阶段语句的目的是
 单遍写入与确定性排序，不是让迁移变成在线操作。
 
+## Session 身份唯一索引
+
+迁移 `0061` 让 `sessions(project_id, eve_session_id)` 成为唯一索引，由 schema
+保证每次 OTLP ingest 和每次 continuation 都据以解析的 Session 身份。此前的安装
+可能存有重复键对（Playground 完成或 ScheduleRun 完成与 ingest 竞争所致）；迁移
+会先按平台自身 placeholder 合并的规则折叠它们，再建索引：较老的行存活，较新行的
+node、event（重新编号排在存活行之后）、usage 行和 ScheduleRun 链接迁到存活行上，
+usage 计数求和，元数据空缺由被吸收的行补齐。
+
+当两行携带同一个 model usage step 时迁移会拒绝执行（hint 中给出列出问题行的
+查询），因为折叠会重复计数。删掉较新 Session 重复的 usage 行（或该 Session）后
+重新执行。升级前可先检查是否存在重复：
+
+```sql
+select project_id, eve_session_id, count(*)
+from sessions
+where eve_session_id is not null
+group by 1, 2
+having count(*) > 1;
+```
+
 ## 遗留的按 Project Workflow 残余
 
 每个 Release 都基于共享、External-only Workflow World 构建，生产 Worker 缺少 `EVELAND_WORKFLOW_WORLD_URL` 时拒绝启动。带有共享 World 之前历史的安装可能仍保留遗留的按 Project Workflow 配置：

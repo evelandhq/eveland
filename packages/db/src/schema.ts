@@ -1299,8 +1299,12 @@ export const sessions = pgTable(
     index("sessions_schedule_run_idx").on(table.scheduleRunId),
     index("sessions_project_started_idx").on(table.projectId, table.startedAt),
     // Durable Eve session identity is project-scoped: every OTLP ingest and
-    // every continuation resolves a Session through this pair.
-    index("sessions_project_eve_session_idx").on(table.projectId, table.eveSessionId),
+    // every continuation resolves a Session through this pair, and the schema
+    // enforces it -- one live Session per (project, Eve session). NULL stays
+    // multi-valued: a Playground Session that has not learned its Eve id yet
+    // may coexist with an observed placeholder until completeSession folds
+    // the two (mergeSessionRows) inside the transaction that writes the id.
+    uniqueIndex("sessions_project_eve_session_idx").on(table.projectId, table.eveSessionId),
   ],
 );
 
