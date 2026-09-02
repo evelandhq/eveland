@@ -7,8 +7,11 @@ import {
   acquireMutex,
   claimSupervisorRecord,
   MutexBusyError,
+  pendingUpdatePath,
+  readPendingUpdate,
   readSupervisorRecord,
   supervisorClaimMutexPath,
+  writePendingUpdate,
   supervisorPidPath,
   verifiedSupervisorPid,
   writeSupervisorRecord,
@@ -334,5 +337,30 @@ describe("acquireMutex", () => {
     expect(await reclaimed.stillHeld()).toBe(true);
     await reclaimed.release();
     expect(new MutexBusyError("/x", 1)).toBeInstanceOf(Error);
+  });
+});
+
+describe("pending update record", () => {
+  test("is replaced atomically: a reader never sees a truncated record, and no temp file lingers", async () => {
+    const layout = await makeLayout();
+    const record = {
+      from: "0.48.0",
+      target: "v0.49.0",
+      backupPath: null,
+      stashName: null,
+      stashRef: null,
+      evePinBefore: "0.47.6",
+      startedAt: "2026-09-02T00:00:00.000Z",
+    };
+    await writePendingUpdate(layout, record);
+    await writePendingUpdate(layout, { ...record, stashRestored: true });
+    expect(await readPendingUpdate(layout)).toMatchObject({
+      target: "v0.49.0",
+      stashRestored: true,
+    });
+    const { readdir } = await import("node:fs/promises");
+    expect(
+      (await readdir(layout.runDir)).filter((name) => name.startsWith("update-pending")),
+    ).toEqual([path.basename(pendingUpdatePath(layout))]);
   });
 });

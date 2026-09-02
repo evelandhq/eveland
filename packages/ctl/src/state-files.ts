@@ -433,7 +433,15 @@ export async function readPendingUpdate(layout: { runDir: string }): Promise<Pen
   }
 }
 
+/**
+ * Written to a temp file and renamed into place: a crash mid-write must
+ * never leave a truncated record — an unreadable record would make the
+ * next run forget the update and let `start` bring up a half-updated tree.
+ */
 export async function writePendingUpdate(layout: { runDir: string }, record: PendingUpdate) {
   await mkdir(layout.runDir, { recursive: true });
-  await writeFile(pendingUpdatePath(layout), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  const finalPath = pendingUpdatePath(layout);
+  const tempPath = `${finalPath}.tmp-${process.pid}`;
+  await writeFile(tempPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  await rename(tempPath, finalPath);
 }
