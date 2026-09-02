@@ -337,6 +337,15 @@ also builds no local view of the Collector's delivery volume or queue pressure.
   aggregation must be idempotent. That includes creation: batches carrying the first
   events of one Eve session routinely overlap, and the loser of the race to create
   its SessionNode re-reads the winner's row instead of failing.
+- Session identity is enforced by the schema, not by merge logic after the fact:
+  `sessions(project_id, eve_session_id)` is unique, like the SessionNode pair, so
+  two live Sessions can never claim one Eve session. The one legitimate overlap — a
+  Playground Session that has not learned its Eve id yet while ingest already holds
+  an observed placeholder — is resolved inside the transaction that writes the id,
+  which folds the placeholder into the Playground Session first. Every writer that
+  can lose the race for the pair (Playground completion, ScheduleRun completion,
+  ingest) re-runs its transaction once and takes the existing-row path; a Session
+  with no Eve id yet stays unconstrained.
 - The Collector's OTLP/HTTP exporter retries only 429/502/503/504 and treats any
   other status, 500 included, as permanent — the batch leaves the persistent queue
   and is lost. Built-in therefore answers a projection failure on a well-formed

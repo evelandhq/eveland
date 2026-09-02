@@ -18,7 +18,9 @@ import {
   appendSessionEventRow,
   mergeSessionRows,
   modelUsageRowToModelUsageEvent,
+  retryOnIdentityRace,
   sanitizeStoredErrorText,
+  sessionIdentityArbiter,
 } from "./postgres-store-support.js";
 
 type PostgresSessionMutationDomain = Pick<
@@ -167,80 +169,92 @@ export function createPostgresSessionStore({
     },
 
     async completeSession(sessionId, input) {
-      return db.transaction(async (tx) => {
-        let [current] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
-        if (!current) return null;
-
-        if (input.eveSessionId) {
-          const [observed] = await tx
+      // Writing the Eve session id claims `sessions(project_id, eve_session_id)`.
+      // An observed placeholder for the same Eve session may already hold it:
+      // one that committed before this transaction started is folded below,
+      // inside the transaction that writes the id, so the pair is never live
+      // twice. One that commits while this transaction runs makes the update
+      // lose on the unique index; the retry then sees it and folds it too.
+      const attempt = () =>
+        db.transaction(async (tx) => {
+          let [current] = await tx
             .select()
             .from(sessions)
-            .where(
-              and(
-                eq(sessions.projectId, current.projectId),
-                eq(sessions.eveSessionId, input.eveSessionId),
-                sql`${sessions.id} <> ${sessionId}`,
-              ),
-            )
+            .where(eq(sessions.id, sessionId))
             .limit(1);
-          if (observed) {
-            current =
-              (await mergeSessionRows(tx, observed, sessionId, {
-                rootNodeId: current.rootNodeId ?? observed.rootNodeId,
-                deploymentId: current.deploymentId ?? observed.deploymentId,
-                routeId: current.routeId ?? observed.routeId,
-                experimentId: current.experimentId ?? observed.experimentId,
-                variantName: current.variantName ?? observed.variantName,
-              })) ?? current;
-          }
-        }
+          if (!current) return null;
 
-        const [binding] = input.eveSessionId
-          ? await tx
+          if (input.eveSessionId) {
+            const [observed] = await tx
               .select()
-              .from(sessionBindings)
+              .from(sessions)
               .where(
                 and(
-                  eq(sessionBindings.projectId, current!.projectId),
-                  eq(sessionBindings.eveSessionId, input.eveSessionId),
+                  eq(sessions.projectId, current.projectId),
+                  eq(sessions.eveSessionId, input.eveSessionId),
+                  sql`${sessions.id} <> ${sessionId}`,
                 ),
               )
-              .limit(1)
-          : [];
+              .limit(1);
+            if (observed) {
+              current =
+                (await mergeSessionRows(tx, observed, sessionId, {
+                  rootNodeId: current.rootNodeId ?? observed.rootNodeId,
+                  deploymentId: current.deploymentId ?? observed.deploymentId,
+                  routeId: current.routeId ?? observed.routeId,
+                  experimentId: current.experimentId ?? observed.experimentId,
+                  variantName: current.variantName ?? observed.variantName,
+                })) ?? current;
+            }
+          }
 
-        const [row] = await tx
-          .update(sessions)
-          .set({
-            status: input.status,
-            error:
-              input.status === "failed"
-                ? input.error !== undefined
-                  ? sanitizeStoredErrorText(input.error)
-                  : current!.error
-                : null,
-            eveSessionId: input.eveSessionId,
-            ...(binding
-              ? {
-                  trigger: binding.trigger,
-                  routeId: binding.routeId,
-                  experimentId: binding.experimentId,
-                  variantName: binding.variantName,
-                  deploymentId: binding.deploymentId,
-                }
-              : {}),
-            completedAt:
-              input.status === "completed" || input.status === "failed" ? new Date() : null,
-          })
-          .where(eq(sessions.id, sessionId))
-          .returning();
-        if (!row) return null;
+          const [binding] = input.eveSessionId
+            ? await tx
+                .select()
+                .from(sessionBindings)
+                .where(
+                  and(
+                    eq(sessionBindings.projectId, current!.projectId),
+                    eq(sessionBindings.eveSessionId, input.eveSessionId),
+                  ),
+                )
+                .limit(1)
+            : [];
 
-        await tx
-          .update(projects)
-          .set({ latestSessionStatus: input.status, updatedAt: new Date() })
-          .where(eq(projects.id, row.projectId));
-        return sessionRowToSession(row);
-      });
+          const [row] = await tx
+            .update(sessions)
+            .set({
+              status: input.status,
+              error:
+                input.status === "failed"
+                  ? input.error !== undefined
+                    ? sanitizeStoredErrorText(input.error)
+                    : current!.error
+                  : null,
+              eveSessionId: input.eveSessionId,
+              ...(binding
+                ? {
+                    trigger: binding.trigger,
+                    routeId: binding.routeId,
+                    experimentId: binding.experimentId,
+                    variantName: binding.variantName,
+                    deploymentId: binding.deploymentId,
+                  }
+                : {}),
+              completedAt:
+                input.status === "completed" || input.status === "failed" ? new Date() : null,
+            })
+            .where(eq(sessions.id, sessionId))
+            .returning();
+          if (!row) return null;
+
+          await tx
+            .update(projects)
+            .set({ latestSessionStatus: input.status, updatedAt: new Date() })
+            .where(eq(projects.id, row.projectId));
+          return sessionRowToSession(row);
+        });
+      return retryOnIdentityRace(attempt, { arbiters: [sessionIdentityArbiter] });
     },
 
     async failRunningSessionsForRuntimeInstance(runtimeInstanceId, reason, now = new Date()) {

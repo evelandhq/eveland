@@ -172,6 +172,30 @@ platform components first (the safest order: stop, migrate, restart). The
 staged statements exist for a single write pass and deterministic ordering,
 not to make the migration online.
 
+## Session identity unique index
+
+Migration `0061` makes `sessions(project_id, eve_session_id)` unique, so the
+schema enforces the Session identity every OTLP ingest and every continuation
+already resolves through. Installs from before it can hold duplicate pairs (a
+Playground completion or a ScheduleRun completion that raced ingest); the
+migration folds them before creating the index, with the rules the platform's
+own placeholder merge applies: the older row survives, the newer row's nodes,
+events (renumbered after the survivor's), usage rows, and ScheduleRun links move
+onto it, usage counters are summed, and metadata gaps fill from the absorbed row.
+
+The migration refuses — with the query to list the offending rows in its hint —
+when two rows carry the same model usage step, because folding would count it
+twice. Delete the newer Session's duplicated usage rows (or the newer Session)
+and re-run. Check for duplicates before upgrading with:
+
+```sql
+select project_id, eve_session_id, count(*)
+from sessions
+where eve_session_id is not null
+group by 1, 2
+having count(*) > 1;
+```
+
 ## Legacy per-project workflow residue
 
 Every Release builds against the shared, external-only workflow world, and a production Worker refuses to start without `EVELAND_WORKFLOW_WORLD_URL`. Installs with history from before the shared World may still carry legacy per-project workflow configuration:

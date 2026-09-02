@@ -304,6 +304,13 @@ queue 压力建立本地视图。
 - Collector 接收后的 delivery 是 at-least-once；Built-in projection 和 usage
   aggregation 必须幂等。创建也包括在内：同一个 Eve session 最初几条事件所在的 batch
   经常重叠，竞争创建其 SessionNode 的输家会重新读取赢家的行，而不是失败。
+- Session 身份由 schema 保证，而不是事后靠合并逻辑补救：`sessions(project_id,
+eve_session_id)` 与 SessionNode 的同名对一样是唯一索引，两条存活的 Session 永远
+  不能同时认领一个 Eve session。唯一合法的重叠——Playground Session 还没拿到
+  Eve id、而 ingest 已经建了 observed placeholder——在写入 id 的那个事务内解决：
+  先把 placeholder 折叠进 Playground Session，再写 id。每个可能输掉这对键竞争的
+  写入方（Playground 完成、ScheduleRun 完成、ingest）都会把事务重跑一次并走
+  已有行路径；尚无 Eve id 的 Session 不受约束。
 - Collector 的 OTLP/HTTP exporter 只重试 429/502/503/504，其他状态码（包括 500）一律
   视为永久失败——batch 离开持久化队列，数据丢失。因此 Built-in 对格式正确的 batch
   在 projection 阶段失败时回答 503 而非 500：projection 幂等，重放是安全的；持续失败

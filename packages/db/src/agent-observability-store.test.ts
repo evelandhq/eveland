@@ -1,5 +1,6 @@
 import type { AgentEventObservation } from "@evelandhq/core/observability";
 import { describe, expect, test } from "vitest";
+import { isUniqueConstraint } from "./postgres-store-support.js";
 import { createTestStore } from "./vitest-store.js";
 
 describe("Agent observability ingestion repository", () => {
@@ -428,6 +429,32 @@ describe("Agent observability ingestion repository", () => {
       code: "UNMANAGED_TELEMETRY_RESOURCE",
       message: expect.stringMatching(/not managed/),
     });
+  });
+
+  test("the schema refuses a second live Session for one Eve session id", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    await store.createSession({
+      projectId,
+      deploymentId,
+      eveSessionId: "eve_root",
+      trigger: "playground",
+    });
+
+    // Session identity is enforced by `sessions_project_eve_session_idx`, not
+    // by merge logic after the fact: a second live row for the pair is refused.
+    await expect(
+      store.createSession({
+        projectId,
+        deploymentId,
+        eveSessionId: "eve_root",
+        trigger: "playground",
+      }),
+    ).rejects.toSatisfy((error) => isUniqueConstraint(error, "sessions_project_eve_session_idx"));
+    // NULL stays multi-valued: Sessions that have not learned their Eve id yet
+    // are the legitimate transient overlap and must not be constrained.
+    await store.createSession({ projectId, deploymentId, trigger: "playground" });
+    await store.createSession({ projectId, deploymentId, trigger: "playground" });
+    await expect(store.listSessions(projectId)).resolves.toHaveLength(3);
   });
 
   test("merges Agent telemetry into a pre-existing Playground session without weakening provenance", async () => {
