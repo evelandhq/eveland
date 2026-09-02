@@ -7,6 +7,7 @@ import {
   HOST_APT_PACKAGES,
   provisionLinuxHost,
   type LinuxHostDeps,
+  HOST_REQUIRED_COMMANDS,
 } from "./linux-host.ts";
 
 type HarnessOptions = {
@@ -19,6 +20,8 @@ type HarnessOptions = {
   debPackages?: string[];
   /** Whether `docker compose version` succeeds. */
   composeWorks?: boolean;
+  /** Commands that exist on PATH but fail `--version` (a dangling corepack shim). */
+  brokenCommands?: string[];
 };
 
 async function makeDeps(options: HarnessOptions = {}) {
@@ -34,6 +37,7 @@ async function makeDeps(options: HarnessOptions = {}) {
   const streamCalls: string[][] = [];
   const written: Record<string, string> = {};
   const commands = new Set(options.existingCommands ?? []);
+  const broken = new Set(options.brokenCommands ?? []);
   if (options.hasApt !== false) commands.add("apt-get");
   const users = new Set(options.existingUsers ?? []);
   const paths = new Set(
@@ -42,6 +46,7 @@ async function makeDeps(options: HarnessOptions = {}) {
       "/node-bin/node",
       "/node-bin/npm",
       "/node-bin/npx",
+      "/node-bin/corepack",
     ],
   );
 
@@ -64,6 +69,18 @@ async function makeDeps(options: HarnessOptions = {}) {
         return { code: commands.has(probed) ? 0 : 1, output: "" };
       }
       if (argv[0] === "id") return { code: users.has(argv[2]!) ? 0 : 1, output: "" };
+      // Functional probes: `<command> --version` on a fixed system PATH.
+      const versionIndex = argv.indexOf("--version");
+      if (versionIndex > 0) {
+        const probed = argv[versionIndex - 1]!;
+        const works = commands.has(probed) && !broken.has(probed);
+        return { code: works ? 0 : 1, output: "" };
+      }
+      // corepack's global install makes pnpm work again.
+      if (argv[0]?.endsWith("corepack") && argv[1] === "install") {
+        commands.add("pnpm");
+        broken.delete("pnpm");
+      }
       return { code: 0, output: "" };
     },
     streamCommand: async (argv) => {
@@ -179,6 +196,53 @@ describe("provisionLinuxHost", () => {
     // Docker of unknown provenance without Compose: told, not guessed at.
     const unknown = await makeDeps({ existingCommands: ["docker", "pnpm"], composeWorks: false });
     await expect(provisionLinuxHost(unknown.deps)).rejects.toThrow(/package family is unknown/);
+  });
+
+  test("a dangling system pnpm (shim into a removed interpreter) is refreshed through corepack", async () => {
+    // `command -v pnpm` would pass (the symlink exists); `pnpm --version` fails.
+    const harness = await makeDeps({
+      existingCommands: ["docker", "pnpm"],
+      brokenCommands: ["pnpm"],
+    });
+    await provisionLinuxHost(harness.deps);
+    expect(harness.execCalls).toContainEqual([
+      "/node-bin/corepack",
+      "enable",
+      "--install-directory",
+      "/usr/local/bin",
+    ]);
+    expect(harness.execCalls).toContainEqual([
+      "/node-bin/corepack",
+      "install",
+      "--global",
+      "pnpm@11.7.0",
+    ]);
+    // corepack itself is linked too, so the shims resolve after a pin move.
+    expect(harness.execCalls).toContainEqual([
+      "ln",
+      "-sf",
+      "/node-bin/corepack",
+      "/usr/local/bin/corepack",
+    ]);
+  });
+
+  test("an interpreter that already lives in /usr/local/bin is never symlinked to itself", async () => {
+    const harness = await makeDeps({
+      existingCommands: ["docker", "pnpm"],
+      existingPaths: ["/etc/apparmor.d", "/usr/local/bin/node", "/usr/local/bin/npm"],
+    });
+    harness.deps.nodeBinDir = "/usr/local/bin";
+    await provisionLinuxHost(harness.deps);
+    expect(harness.execCalls.some((argv) => argv[0] === "ln")).toBe(false);
+  });
+
+  test("a non-apt host with docker but no Compose v2 is refused with the prerequisite pointer", async () => {
+    const harness = await makeDeps({
+      hasApt: false,
+      composeWorks: false,
+      existingCommands: [...HOST_REQUIRED_COMMANDS, "pnpm"],
+    });
+    await expect(provisionLinuxHost(harness.deps)).rejects.toThrow(/docker compose/);
   });
 
   test("existing users and an existing profile are left alone", async () => {

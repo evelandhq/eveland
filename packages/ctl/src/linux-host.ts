@@ -92,27 +92,6 @@ async function commandExists(deps: LinuxHostDeps, command: string): Promise<bool
   return result.code === 0;
 }
 
-/**
- * Probes with a FIXED system PATH: the provisioner's own PATH carries the
- * installer's node bin dir, so an inherited-PATH probe would see pnpm there
- * and skip the system-wide install that deployment units and bwrap
- * sandboxes (which run with a plain system PATH) actually need.
- */
-async function commandExistsOnSystemPath(deps: LinuxHostDeps, command: string): Promise<boolean> {
-  const result = await deps.execCommand(
-    [
-      "env",
-      "-i",
-      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-      "sh",
-      "-c",
-      `command -v ${command}`,
-    ],
-    { cwd: deps.repoRootDir },
-  );
-  return result.code === 0;
-}
-
 async function debInstalled(deps: LinuxHostDeps, pkg: string): Promise<boolean> {
   const result = await deps.execCommand(["dpkg", "-s", pkg], { cwd: deps.repoRootDir });
   return result.code === 0;
@@ -193,6 +172,15 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
           "Install them with your package manager (see docs/production/prerequisites) and re-run.",
       );
     }
+    const compose = await deps.execCommand(["docker", "compose", "version"], {
+      cwd: deps.repoRootDir,
+    });
+    if (compose.code !== 0) {
+      throw new Error(
+        "This host has docker but no `docker compose` (v2). Install Compose v2 with your package " +
+          "manager (see docs/production/prerequisites) and re-run.",
+      );
+    }
   }
 
   // 2. The bwrap AppArmor profile (only where AppArmor manages profiles).
@@ -257,48 +245,79 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
   // 5. The system-PATH toolchain: deployment units and bwrap sandboxes run
   // with a plain system PATH, so the pinned node (and pnpm via corepack)
   // must be reachable there, not only in the installer's environment.
-  await linkNodeOnSystemPath(deps);
-  if (!(await commandExistsOnSystemPath(deps, "pnpm"))) {
-    const pin = await pinnedPnpmVersion(deps.repoRootDir);
-    deps.stdout(`Installing pnpm@${pin} onto the system PATH via corepack...`);
-    const corepack = path.join(deps.nodeBinDir, "corepack");
-    const enable = await deps.execCommand(
-      [corepack, "enable", "--install-directory", "/usr/local/bin"],
-      { cwd: deps.repoRootDir },
-    );
-    const install = await deps.execCommand([corepack, "install", "--global", `pnpm@${pin}`], {
-      cwd: deps.repoRootDir,
-    });
-    if (enable.code !== 0 || install.code !== 0) {
-      throw new Error(
-        "corepack could not put pnpm on the system PATH; install pnpm globally and re-run.",
-      );
-    }
-  }
+  await refreshSystemToolchain(deps);
   deps.stdout("Linux host provisioning complete.");
 }
 
+const SYSTEM_BIN_DIR = "/usr/local/bin";
+
 /**
- * (Re)points /usr/local/bin/{node,npm,npx} at the pinned interpreter. Also
- * run whenever the systemd artifacts are regenerated: a Node repair or an
- * update may have moved the pin, and a stale link would keep pointing at
- * an interpreter nvm removed.
+ * (Re)points /usr/local/bin/{node,npm,npx,corepack} at the pinned
+ * interpreter and makes sure a WORKING pnpm sits next to them. Also run
+ * whenever the systemd artifacts are regenerated: a Node repair or an
+ * update may have moved the pin, and a stale link — or corepack's pnpm
+ * shim, which points into the old interpreter's lib dir — would keep
+ * resolving to an interpreter nvm removed. pnpm is probed functionally
+ * (`pnpm --version` on a plain system PATH), not by existence, for exactly
+ * that reason.
  */
-export async function linkNodeOnSystemPath(
-  deps: Pick<LinuxHostDeps, "execCommand" | "fileExists" | "nodeBinDir" | "repoRootDir">,
+export async function refreshSystemToolchain(
+  deps: Pick<LinuxHostDeps, "execCommand" | "fileExists" | "nodeBinDir" | "repoRootDir"> & {
+    stdout?: (line: string) => void;
+  },
 ): Promise<void> {
-  for (const binary of ["node", "npm", "npx"]) {
-    const target = path.join(deps.nodeBinDir, binary);
+  const nodeBinDir = path.resolve(deps.nodeBinDir);
+  for (const binary of ["node", "npm", "npx", "corepack"]) {
+    const target = path.join(nodeBinDir, binary);
+    const linkPath = path.join(SYSTEM_BIN_DIR, binary);
+    // An interpreter that already lives in /usr/local/bin must not be
+    // replaced by a symlink to itself (ln -sf would happily do that).
+    if (target === linkPath) continue;
     if (await deps.fileExists(target)) {
-      const link = await deps.execCommand(
-        ["ln", "-sf", target, path.join("/usr/local/bin", binary)],
-        { cwd: deps.repoRootDir },
-      );
+      const link = await deps.execCommand(["ln", "-sf", target, linkPath], {
+        cwd: deps.repoRootDir,
+      });
       if (link.code !== 0) {
         throw new Error(`Linking ${binary} onto the system PATH failed:\n${link.output.trim()}`);
       }
     }
   }
+  if (await commandWorksOnSystemPath(deps, "pnpm")) return;
+  const pin = await pinnedPnpmVersion(deps.repoRootDir);
+  deps.stdout?.(`Installing pnpm@${pin} onto the system PATH via corepack...`);
+  const corepack = path.join(nodeBinDir, "corepack");
+  const enable = await deps.execCommand(
+    [corepack, "enable", "--install-directory", SYSTEM_BIN_DIR],
+    {
+      cwd: deps.repoRootDir,
+    },
+  );
+  const install = await deps.execCommand([corepack, "install", "--global", `pnpm@${pin}`], {
+    cwd: deps.repoRootDir,
+  });
+  if (enable.code !== 0 || install.code !== 0 || !(await commandWorksOnSystemPath(deps, "pnpm"))) {
+    throw new Error(
+      "corepack could not put a working pnpm on the system PATH; install pnpm globally and re-run.",
+    );
+  }
+}
+
+/** Runs `<command> --version` on a FIXED system PATH: a dangling shim fails where `command -v` would pass. */
+async function commandWorksOnSystemPath(
+  deps: Pick<LinuxHostDeps, "execCommand" | "repoRootDir">,
+  command: string,
+): Promise<boolean> {
+  const result = await deps.execCommand(
+    [
+      "env",
+      "-i",
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      command,
+      "--version",
+    ],
+    { cwd: deps.repoRootDir },
+  );
+  return result.code === 0;
 }
 
 async function pinnedPnpmVersion(repoRootDir: string): Promise<string> {
