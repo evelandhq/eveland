@@ -4,6 +4,30 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.49.0](https://github.com/evelandhq/eveland/compare/v0.48.0...v0.49.0) (2026-09-02)
+
+
+### Features
+
+* adopt eve 0.48.0 with a {0.47.x, 0.48.x} window and forward the Workflow webhook route ([#460](https://github.com/evelandhq/eveland/issues/460)) ([c21a913](https://github.com/evelandhq/eveland/commit/c21a913156fa8ca730583e74ce74e41e12d729f5))
+* adopt eve 0.49.0 with a gapped {0.47.x, 0.49.x} window ([#461](https://github.com/evelandhq/eveland/issues/461)) ([ff9e27e](https://github.com/evelandhq/eveland/commit/ff9e27e54175497cc39d9ef5bb71880ec1d5319f))
+* **auth:** CLI device authorization — RFC 8628 with scoped access tokens (eveland-cli PR A) ([#440](https://github.com/evelandhq/eveland/issues/440)) ([a3dd4d1](https://github.com/evelandhq/eveland/commit/a3dd4d1858b98ce0d0d91ffbf1f6ae839bdb2f2e))
+* **cli:** eveland CLI skeleton — login, logout, whoami (eveland-cli PR B) ([#451](https://github.com/evelandhq/eveland/issues/451)) ([b0f01c3](https://github.com/evelandhq/eveland/commit/b0f01c3e1b3542d1ff58e44e6dd56f9a0e7231c0))
+* **cli:** eveland deploy — preflight, upload, streamed build logs, promote by default (eveland-cli PR D) ([#443](https://github.com/evelandhq/eveland/issues/443)) ([233b0ae](https://github.com/evelandhq/eveland/commit/233b0aeb49829832ef8b1d4a892bc666e44a971c))
+* **cli:** eveland logs + env (eveland-cli PR E) ([#444](https://github.com/evelandhq/eveland/issues/444)) ([a961c01](https://github.com/evelandhq/eveland/commit/a961c01562f65321010c501752494f7f44e7369a))
+* **cli:** starter-agent template + eveland init (eveland-cli PR C) ([#442](https://github.com/evelandhq/eveland/issues/442)) ([fca3bfa](https://github.com/evelandhq/eveland/commit/fca3bfa6daa3e65826f900417e47b732f9094f92))
+* **ctl:** eveland-ctl — platform ops CLI, first-boot bootstrap, built-in agent seed, one-line installer, forward-only update, Linux systemd production form ([#459](https://github.com/evelandhq/eveland/issues/459)) ([97b6207](https://github.com/evelandhq/eveland/commit/97b62078b41b08ea9f1068eb277dc06361594241))
+* **worker:** drain the job queue with a bounded pump and claim latency-sensitive jobs first ([#445](https://github.com/evelandhq/eveland/issues/445)) ([71cb619](https://github.com/evelandhq/eveland/commit/71cb6192a4e0dec4a906ad763bac7f9fbfb6058e))
+* **worker:** wake the job pump on enqueue via Postgres NOTIFY ([#447](https://github.com/evelandhq/eveland/issues/447)) ([848a778](https://github.com/evelandhq/eveland/commit/848a778adadbc08a4bf802c12817e899ee183b93))
+
+
+### Bug Fixes
+
+* **db:** make sessions(project_id, eve_session_id) unique so Session identity is enforced by the schema ([#466](https://github.com/evelandhq/eveland/issues/466)) ([0d79662](https://github.com/evelandhq/eveland/commit/0d796621c1b2e1ff8badbf353060da1f6bdcfd39))
+* **observability:** retry the SessionNode create race and answer 503 when projection fails ([#464](https://github.com/evelandhq/eveland/issues/464)) ([5038941](https://github.com/evelandhq/eveland/commit/5038941f6e1c00da7d837c526a90e1b965fc07ab)), closes [#463](https://github.com/evelandhq/eveland/issues/463)
+* **worker:** move Source Preflight out of the guarded control loop into its own pump ([#449](https://github.com/evelandhq/eveland/issues/449)) ([8ec11db](https://github.com/evelandhq/eveland/commit/8ec11db10cc2fb6e1ccf80e94e8ff88216b10b72))
+* **worker:** scope job claim exclusion to what each job touches ([#450](https://github.com/evelandhq/eveland/issues/450)) ([1764d1f](https://github.com/evelandhq/eveland/commit/1764d1fb380ab0d06b788e5b9a0dca9754e66030)), closes [#448](https://github.com/evelandhq/eveland/issues/448)
+
 ## [0.48.0](https://github.com/evelandhq/eveland/compare/v0.47.0...v0.48.0) (2026-08-31)
 
 
