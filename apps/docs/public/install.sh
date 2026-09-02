@@ -358,22 +358,37 @@ if [ "$REPAIR_NODE" -eq 1 ]; then
   note "Stopping the platform before reinstalling dependencies under the repaired Node"
   env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" stop || fail "could not stop the platform; not touching node_modules under it."
   note "Installing dependencies (this can take a few minutes)"
-  SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile
+  SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile \
+    || fail "pnpm install failed; the platform is STOPPED. Fix the cause and re-run the installer (or: EVELAND_HOME=$PREFIX $BIN_DIR/eveland-ctl start)."
+  if [ "$NO_START" -eq 1 ]; then
+    note "Repair complete. The platform was stopped for the repair and stays stopped (--no-start): EVELAND_HOME=$PREFIX $BIN_DIR/eveland-ctl start"
+    exit 0
+  fi
+  # Service comes back FIRST — a version move is handed to update only once
+  # the platform runs again, because update's own no-op and refusal paths
+  # (already up to date, non-forward target) never start anything.
+  if grep -q '"supervision": "systemd"' "$ETC_DIR/install.json" 2>/dev/null; then
+    # The units bake the interpreter's bin dir in: regenerate them (and the
+    # system-PATH node/pnpm links) and start.
+    note "Node repaired — regenerating the systemd form for the new interpreter"
+    env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" install --systemd \
+      || fail "the systemd form could not be regenerated; the platform is STOPPED. See the output above, then re-run: EVELAND_HOME=$PREFIX $BIN_DIR/eveland-ctl install --systemd"
+  else
+    note "Node repaired — starting the platform"
+    env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" start --no-prompt \
+      || fail "the platform did not start after the repair; it is STOPPED. See the output above, then re-run: EVELAND_HOME=$PREFIX $BIN_DIR/eveland-ctl start"
+  fi
   if [ -n "$REQUESTED_VERSION" ]; then
     # The version move goes through update (backup, forward-only, migrate,
-    # artifact regeneration — which also re-links node onto the system PATH).
-    note "Node repaired — handing the requested version to eveland-ctl update"
+    # artifact regeneration), against a running platform.
+    note "Handing the requested version to eveland-ctl update"
     if [ "$INTERACTIVE" -eq 1 ]; then
       exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update --version "$REQUESTED_VERSION" </dev/tty
     fi
     exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update --no-prompt --version "$REQUESTED_VERSION"
   fi
-  if grep -q '"supervision": "systemd"' "$ETC_DIR/install.json" 2>/dev/null; then
-    # The units bake the interpreter's bin dir in: regenerate them (and the
-    # system-PATH node links) before anything starts.
-    note "Node repaired — regenerating the systemd form for the new interpreter"
-    exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" install --systemd
-  fi
+  note "Repair complete."
+  exit 0
 fi
 
 # --- Hand off to the smart tool ----------------------------------------------

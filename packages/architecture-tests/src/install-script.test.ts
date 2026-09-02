@@ -139,6 +139,20 @@ describe("install.sh publication", () => {
       '"$BIN_DIR/eveland-ctl" update --no-prompt --version "$REQUESTED_VERSION"',
     );
     expect(script).toContain('"$BIN_DIR/eveland-ctl" install --systemd');
+    // Service is restored BEFORE any version move: update's no-op and
+    // refusal paths never start anything, so a repair that went straight to
+    // update could leave the platform stopped.
+    const restoreSystemd = script.indexOf('"$BIN_DIR/eveland-ctl" install --systemd');
+    const restoreCtl = script.indexOf('"$BIN_DIR/eveland-ctl" start --no-prompt \\');
+    const handToUpdate = script.indexOf(
+      '"$BIN_DIR/eveland-ctl" update --no-prompt --version "$REQUESTED_VERSION"',
+    );
+    expect(restoreSystemd).toBeGreaterThan(-1);
+    expect(restoreCtl).toBeGreaterThan(-1);
+    expect(restoreSystemd).toBeLessThan(handToUpdate);
+    expect(restoreCtl).toBeLessThan(handToUpdate);
+    // --no-start after a repair says loudly that the platform stays stopped.
+    expect(script).toContain("stays stopped (--no-start)");
   });
 
   test("the repin temp copy of the env file is born 0600, swapped in atomically, and cleaned by the trap", () => {
