@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ApplianceLayout } from "./home.ts";
@@ -54,85 +54,70 @@ export async function writeSupervisorRecord(
 }
 
 /**
- * Atomically claims supervisor ownership. The record is written COMPLETELY
- * to a private temp file and published with link(2), so it either exists
- * fully formed or not at all — a contender can never observe (and unlink) a
- * half-initialized claim. Exactly one link succeeds; a live verified owner
- * blocks the claim. A stale record (dead or recycled pid) is reclaimed by
- * an atomic rename of exactly the inode that was observed stale: if another
- * contender already replaced it, the observed inode differs and the fresh
- * record is put back untouched. The record is held for the supervisor's
- * lifetime and removed by stop.
+ * Atomically claims supervisor ownership. The whole check-and-publish is
+ * serialized by a mutex directory (`mkdir` is atomic and exclusive), so no
+ * contender can read, misjudge or remove another contender's record at
+ * any point of the protocol; the record itself is written completely to a
+ * temp file and renamed into place, so it is never visible half-written.
+ * A mutex left behind by a crash mid-protocol is broken by age. The record
+ * is held for the supervisor's lifetime and removed by stop.
  */
 export async function claimSupervisorRecord(
   layout: ApplianceLayout,
   record: SupervisorRecord,
   identityOf: ProcessIdentity,
+  options: { sleep?: (ms: number) => Promise<void>; staleLockMs?: number } = {},
 ): Promise<{ claimed: true } | { claimed: false; ownerPid: number }> {
   await mkdir(layout.runDir, { recursive: true });
-  const pidPath = supervisorPidPath(layout);
-  const tempPath = `${pidPath}.claim-${record.pid}-${process.hrtime.bigint()}`;
-  await writeFile(tempPath, `${JSON.stringify(record)}\n`, { encoding: "utf8", mode: 0o644 });
+  const release = await acquireClaimMutex(layout, options);
   try {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        await link(tempPath, pidPath);
-        return { claimed: true };
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      }
-      // Someone holds the path. Live owner → we lose; stale → reclaim it.
-      let observed: { ino: bigint } | null;
-      try {
-        observed = { ino: (await stat(pidPath, { bigint: true })).ino };
-      } catch {
-        continue; // vanished between link and stat: retry the link
-      }
-      const owner = await verifiedSupervisorPid(layout, identityOf);
-      if (owner !== null && owner !== record.pid) return { claimed: false, ownerPid: owner };
-      const reclaimed = await reclaimStaleRecord(pidPath, observed.ino, record.pid);
-      if (!reclaimed) {
-        // Someone replaced the stale record while we looked; they own it.
-        const current = await verifiedSupervisorPid(layout, identityOf);
-        if (current !== null && current !== record.pid)
-          return { claimed: false, ownerPid: current };
-      }
-    }
-    const current = await verifiedSupervisorPid(layout, identityOf);
-    return { claimed: false, ownerPid: current ?? -1 };
+    const owner = await verifiedSupervisorPid(layout, identityOf);
+    if (owner !== null && owner !== record.pid) return { claimed: false, ownerPid: owner };
+    // No owner, a stale (dead or recycled pid) record, or our own: publish.
+    const pidPath = supervisorPidPath(layout);
+    const tempPath = `${pidPath}.tmp-${record.pid}`;
+    await writeFile(tempPath, `${JSON.stringify(record)}\n`, "utf8");
+    await rename(tempPath, pidPath);
+    return { claimed: true };
   } finally {
-    await rm(tempPath, { force: true });
+    await release();
   }
 }
 
-/**
- * Removes the record at pidPath only if it is still the inode observed
- * stale. rename(2) is atomic, so two reclaimers cannot both take the same
- * inode; a reclaimer that grabbed a NEWER record (a fresh claim published
- * after the observation) puts it back with link(2) and reports failure.
- */
-async function reclaimStaleRecord(
-  pidPath: string,
-  staleIno: bigint,
-  byPid: number,
-): Promise<boolean> {
-  const reclaimPath = `${pidPath}.reclaim-${byPid}-${process.hrtime.bigint()}`;
-  try {
-    await rename(pidPath, reclaimPath);
-  } catch {
-    return false; // already reclaimed (or replaced) by someone else
-  }
-  try {
-    const moved = await stat(reclaimPath, { bigint: true });
-    if (moved.ino !== staleIno) {
-      // Not the record we judged stale: a fresh claim. Restore it; if a
-      // third claim landed meanwhile, the path is taken and ours is moot.
-      await link(reclaimPath, pidPath).catch(() => {});
-      return false;
+export function supervisorClaimMutexPath(layout: ApplianceLayout): string {
+  return path.join(layout.runDir, "supervisor.pid.lock");
+}
+
+async function acquireClaimMutex(
+  layout: ApplianceLayout,
+  options: { sleep?: (ms: number) => Promise<void>; staleLockMs?: number },
+): Promise<() => Promise<void>> {
+  const mutexPath = supervisorClaimMutexPath(layout);
+  const sleep =
+    options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const staleLockMs = options.staleLockMs ?? 10_000;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await mkdir(mutexPath);
+      return async () => {
+        await rm(mutexPath, { recursive: true, force: true });
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
-    return true;
-  } finally {
-    await rm(reclaimPath, { force: true });
+    // Held by another contender — or abandoned by one that crashed inside
+    // the protocol (the critical section is a few file operations long).
+    try {
+      const held = await stat(mutexPath);
+      if (Date.now() - held.mtimeMs > staleLockMs) {
+        await rm(mutexPath, { recursive: true, force: true });
+        continue;
+      }
+    } catch {
+      continue; // released between our mkdir and stat
+    }
+    if (attempt > 2_000) throw new Error(`supervisor claim mutex ${mutexPath} never became free`);
+    await sleep(10);
   }
 }
 

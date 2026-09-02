@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -6,6 +6,7 @@ import { applianceLayout } from "./home.ts";
 import {
   claimSupervisorRecord,
   readSupervisorRecord,
+  supervisorClaimMutexPath,
   supervisorPidPath,
   verifiedSupervisorPid,
   writeSupervisorRecord,
@@ -107,11 +108,48 @@ describe("claimSupervisorRecord", () => {
     const record = await readSupervisorRecord(layout);
     expect(record).not.toBeNull();
     expect(record!.identity).toBe(`id-${record!.pid}`);
-    // No temp/reclaim files linger.
+    // No temp files or mutex linger.
     const { readdir } = await import("node:fs/promises");
     expect(
       (await readdir(layout.runDir)).filter((name) => name.startsWith("supervisor.pid")),
     ).toEqual(["supervisor.pid"]);
+  });
+
+  test("a claim's mutex holds contenders; a mutex abandoned by a crash is broken by age", async () => {
+    const layout = await makeLayout();
+    const alive = new Set([100, 200]);
+    await mkdir(layout.runDir, { recursive: true });
+    const { utimes } = await import("node:fs/promises");
+    const mutex = supervisorClaimMutexPath(layout);
+    // A mutex from a contender that died 60s ago inside the protocol.
+    await mkdir(mutex);
+    const old = new Date(Date.now() - 60_000);
+    await utimes(mutex, old, old);
+    const sleeps: number[] = [];
+    expect(
+      await claimSupervisorRecord(layout, { pid: 100, identity: "id-100" }, identityOf(alive), {
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+      }),
+    ).toEqual({ claimed: true });
+    expect(sleeps).toEqual([]); // broken immediately, not waited on
+    // A FRESH mutex is waited on; once released the protocol finds the owner.
+    await mkdir(mutex);
+    let waits = 0;
+    const result = await claimSupervisorRecord(
+      layout,
+      { pid: 200, identity: "id-200" },
+      identityOf(alive),
+      {
+        sleep: async () => {
+          waits += 1;
+          if (waits === 3) await rm(mutex, { recursive: true, force: true });
+        },
+      },
+    );
+    expect(waits).toBe(3);
+    expect(result).toEqual({ claimed: false, ownerPid: 100 });
   });
 
   test("a live owner blocks a later claim; a stale (dead or recycled) record is replaced", async () => {
