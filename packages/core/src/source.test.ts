@@ -116,11 +116,11 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(false);
     expect(result.eveVersion).toBe("0.22.6");
     expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.47.x or 0.48.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.47.x or 0.49.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
     );
   });
 
-  test("accepts dependency declarations contained inside the 0.47/0.48 compatibility window", () => {
+  test("accepts dependency declarations contained inside the 0.47/0.49 compatibility window", () => {
     for (const version of [
       "0.47.7",
       "~0.47.2",
@@ -128,19 +128,19 @@ describe("inspectEveProject", () => {
       "0.47",
       "0.47.x",
       "0.47.*",
-      "0.48.0",
-      "~0.48.0",
-      "^0.48.0",
-      "0.48",
-      "0.48.x",
-      "0.48.*",
+      "0.49.0",
+      "~0.49.0",
+      "^0.49.0",
+      "0.49",
+      "0.49.x",
+      "0.49.*",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }
     // The window is a set of verified lines, not "everything at or above the
-    // floor": 0.45.x hosted real deployments in the previous window and is
-    // rejected the moment it leaves, 0.46.x was never supported at all, and
-    // 0.49.x is not admitted before it has passed the matrix.
+    // floor": 0.48.x sits inside the hull but was skipped (0.49.0 superseded
+    // it before any deployment ran on it), 0.45.x/0.46.x are below the floor,
+    // and 0.50.x is not admitted before it has passed the matrix.
     for (const version of [
       "0.30.8",
       "0.31.3",
@@ -175,7 +175,10 @@ describe("inspectEveProject", () => {
       "0.46.0",
       "^0.46.0",
       "0.46.x",
-      "0.49.0",
+      "0.48.0",
+      "^0.48.0",
+      "0.48.x",
+      "0.50.0",
       "*",
       "latest",
     ]) {
@@ -199,8 +202,8 @@ describe("inspectEveProject", () => {
   test("reports the sliding compatibility window as structured ranges", () => {
     expect(createEveVersionInfo("0.47.7", "src_1")).toEqual({
       version: "0.47.7",
-      expected: "0.47.x or 0.48.x",
-      supportedRanges: ["0.47.x", "0.48.x"],
+      expected: "0.47.x or 0.49.x",
+      supportedRanges: ["0.47.x", "0.49.x"],
       supported: true,
       sourceRevisionId: "src_1",
     });

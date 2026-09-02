@@ -32,7 +32,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.48.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.49.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -85,8 +85,14 @@ describe("Eve compatibility repository contract", () => {
         );
       }
 
+      // 0.49.0 (@workflow/world beta.32) moved the lineage constants out of
+      // attributes.d.ts into attributes-validation.d.ts; 0.47.x still declares
+      // them inline. Read whichever the line ships.
+      const attributesDir = `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/compiled/@workflow/world`;
       const lineageContract = repositoryFile(
-        `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/compiled/@workflow/world/attributes.d.ts`,
+        existsSync(path.join(repositoryRoot, attributesDir, "attributes-validation.d.ts"))
+          ? `${attributesDir}/attributes-validation.d.ts`
+          : `${attributesDir}/attributes.d.ts`,
       );
       expect(lineageContract, dependencyName).toContain('ROOT_RUN_ID_ATTRIBUTE = "$rootRunId"');
       expect(lineageContract, dependencyName).toContain('PARENT_RUN_ID_ATTRIBUTE = "$parentRunId"');
