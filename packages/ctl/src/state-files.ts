@@ -54,69 +54,138 @@ export async function writeSupervisorRecord(
 }
 
 /**
- * Atomically claims supervisor ownership. The whole check-and-publish is
- * serialized by a mutex directory (`mkdir` is atomic and exclusive), so no
- * contender can read, misjudge or remove another contender's record at
- * any point of the protocol; the record itself is written completely to a
- * temp file and renamed into place, so it is never visible half-written.
- * A mutex left behind by a crash mid-protocol is broken by age. The record
- * is held for the supervisor's lifetime and removed by stop.
+ * Atomically claims supervisor ownership. The check-and-publish runs under
+ * a mutex directory (`mkdir` is atomic and exclusive) whose owner file
+ * names the holder; the record itself is written completely and renamed
+ * into place, so it is never visible half-written.
+ *
+ * A mutex is never broken by age: only one whose recorded holder is
+ * DEFINITIVELY dead (`kill(pid, 0)` → ESRCH) is taken — a dead process
+ * cannot be inside the critical section. The break moves the directory
+ * aside atomically and re-reads its owner: a live holder's mutex grabbed by
+ * mistake (replaced between read and rename) is put back or, failing
+ * that, dropped — and every holder re-validates that the canonical mutex
+ * still carries its own token immediately before publishing, so a holder
+ * whose mutex was moved aside gives up instead of publishing a second
+ * record. The record is held for the supervisor's lifetime and removed by
+ * stop.
  */
 export async function claimSupervisorRecord(
   layout: ApplianceLayout,
   record: SupervisorRecord,
   identityOf: ProcessIdentity,
-  options: { sleep?: (ms: number) => Promise<void>; staleLockMs?: number } = {},
+  options: {
+    sleep?: (ms: number) => Promise<void>;
+    isAlive?: (pid: number) => boolean;
+    /** An owner-less mutex (crash between mkdir and the owner write) is taken after this long. */
+    ownerlessGraceMs?: number;
+  } = {},
 ): Promise<{ claimed: true } | { claimed: false; ownerPid: number }> {
   await mkdir(layout.runDir, { recursive: true });
-  const release = await acquireClaimMutex(layout, options);
-  try {
-    const owner = await verifiedSupervisorPid(layout, identityOf);
-    if (owner !== null && owner !== record.pid) return { claimed: false, ownerPid: owner };
-    // No owner, a stale (dead or recycled pid) record, or our own: publish.
-    const pidPath = supervisorPidPath(layout);
-    const tempPath = `${pidPath}.tmp-${record.pid}`;
-    await writeFile(tempPath, `${JSON.stringify(record)}\n`, "utf8");
-    await rename(tempPath, pidPath);
-    return { claimed: true };
-  } finally {
-    await release();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const mutex = await acquireClaimMutex(layout, record.pid, options);
+    try {
+      const owner = await verifiedSupervisorPid(layout, identityOf);
+      if (owner !== null && owner !== record.pid) return { claimed: false, ownerPid: owner };
+      // No owner, a stale (dead or recycled pid) record, or our own: publish —
+      // but only if the mutex is still ours (see the doc comment above).
+      const pidPath = supervisorPidPath(layout);
+      const tempPath = `${pidPath}.tmp-${record.pid}`;
+      await writeFile(tempPath, `${JSON.stringify(record)}\n`, "utf8");
+      if (!(await mutex.stillHeld())) {
+        await rm(tempPath, { force: true });
+        continue; // our mutex was moved aside by a breaker: start over
+      }
+      await rename(tempPath, pidPath);
+      return { claimed: true };
+    } finally {
+      await mutex.release();
+    }
   }
+  const current = await verifiedSupervisorPid(layout, identityOf);
+  return { claimed: false, ownerPid: current ?? -1 };
 }
 
 export function supervisorClaimMutexPath(layout: ApplianceLayout): string {
   return path.join(layout.runDir, "supervisor.pid.lock");
 }
 
+type ClaimMutex = { stillHeld: () => Promise<boolean>; release: () => Promise<void> };
+
 async function acquireClaimMutex(
   layout: ApplianceLayout,
-  options: { sleep?: (ms: number) => Promise<void>; staleLockMs?: number },
-): Promise<() => Promise<void>> {
+  pid: number,
+  options: {
+    sleep?: (ms: number) => Promise<void>;
+    isAlive?: (pid: number) => boolean;
+    ownerlessGraceMs?: number;
+  },
+): Promise<ClaimMutex> {
   const mutexPath = supervisorClaimMutexPath(layout);
+  const ownerPath = path.join(mutexPath, "owner");
   const sleep =
     options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const staleLockMs = options.staleLockMs ?? 10_000;
+  const isAlive = options.isAlive ?? isProcessAlive;
+  const ownerlessGraceMs = options.ownerlessGraceMs ?? 60_000;
+  const token = `${pid}:${process.hrtime.bigint()}`;
+  const readOwner = async (dir: string): Promise<string | null> => {
+    try {
+      return (await readFile(path.join(dir, "owner"), "utf8")).trim();
+    } catch {
+      return null;
+    }
+  };
+
   for (let attempt = 0; ; attempt += 1) {
     try {
       await mkdir(mutexPath);
-      return async () => {
-        await rm(mutexPath, { recursive: true, force: true });
+      await writeFile(ownerPath, `${token}\n`, "utf8");
+      return {
+        stillHeld: async () => (await readOwner(mutexPath)) === token,
+        release: async () => {
+          if ((await readOwner(mutexPath)) === token) {
+            await rm(mutexPath, { recursive: true, force: true });
+          }
+        },
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
-    // Held by another contender — or abandoned by one that crashed inside
-    // the protocol (the critical section is a few file operations long).
-    try {
-      const held = await stat(mutexPath);
-      if (Date.now() - held.mtimeMs > staleLockMs) {
-        await rm(mutexPath, { recursive: true, force: true });
-        continue;
+
+    // Held by someone. Break it only when its holder is definitively dead
+    // (or it never got an owner and is old enough to be a crash remnant).
+    const heldBy = await readOwner(mutexPath);
+    let breakable = false;
+    if (heldBy === null) {
+      try {
+        const held = await stat(mutexPath);
+        breakable = Date.now() - held.mtimeMs > ownerlessGraceMs;
+      } catch {
+        continue; // released between our mkdir and stat
       }
-    } catch {
-      continue; // released between our mkdir and stat
+    } else {
+      const holderPid = Number(heldBy.split(":")[0]);
+      breakable = Number.isInteger(holderPid) && holderPid > 0 && !isAlive(holderPid);
     }
-    if (attempt > 2_000) throw new Error(`supervisor claim mutex ${mutexPath} never became free`);
+    if (breakable) {
+      const aside = `${mutexPath}.dead-${pid}-${process.hrtime.bigint()}`;
+      try {
+        await rename(mutexPath, aside);
+      } catch {
+        continue; // someone else broke or released it first
+      }
+      const moved = await readOwner(aside);
+      if (moved !== heldBy) {
+        // Not the dead one: a live holder's mutex replaced it between our
+        // read and our rename. Put it back; if the path is taken again by
+        // now, the holder will notice at its own re-validation.
+        await rename(aside, mutexPath).catch(() => rm(aside, { recursive: true, force: true }));
+      } else {
+        await rm(aside, { recursive: true, force: true });
+      }
+      continue;
+    }
+    if (attempt > 3_000) throw new Error(`supervisor claim mutex ${mutexPath} never became free`);
     await sleep(10);
   }
 }

@@ -101,7 +101,9 @@ describe("claimSupervisorRecord", () => {
     await writeSupervisorRecord(layout, { pid: 9, identity: "id-9" });
     const results = await Promise.all(
       [11, 12, 13, 14, 15, 16].map((pid) =>
-        claimSupervisorRecord(layout, { pid, identity: `id-${pid}` }, identityOf(alive)),
+        claimSupervisorRecord(layout, { pid, identity: `id-${pid}` }, identityOf(alive), {
+          isAlive: (candidate) => alive.has(candidate),
+        }),
       ),
     );
     expect(results.filter((result) => result.claimed)).toHaveLength(1);
@@ -115,33 +117,39 @@ describe("claimSupervisorRecord", () => {
     ).toEqual(["supervisor.pid"]);
   });
 
-  test("a claim's mutex holds contenders; a mutex abandoned by a crash is broken by age", async () => {
+  test("a mutex is broken only when its holder is DEAD; a live holder's mutex is waited on", async () => {
     const layout = await makeLayout();
     const alive = new Set([100, 200]);
     await mkdir(layout.runDir, { recursive: true });
-    const { utimes } = await import("node:fs/promises");
     const mutex = supervisorClaimMutexPath(layout);
-    // A mutex from a contender that died 60s ago inside the protocol.
+    // A mutex whose recorded holder (pid 9) died inside the protocol.
     await mkdir(mutex);
-    const old = new Date(Date.now() - 60_000);
-    await utimes(mutex, old, old);
+    await writeFile(path.join(mutex, "owner"), "9:1\n", "utf8");
     const sleeps: number[] = [];
     expect(
       await claimSupervisorRecord(layout, { pid: 100, identity: "id-100" }, identityOf(alive), {
+        isAlive: (pid) => alive.has(pid),
         sleep: async (ms) => {
           sleeps.push(ms);
         },
       }),
     ).toEqual({ claimed: true });
-    expect(sleeps).toEqual([]); // broken immediately, not waited on
-    // A FRESH mutex is waited on; once released the protocol finds the owner.
+    expect(sleeps).toEqual([]); // broken at once, never waited on
+
+    // A mutex held by a LIVE process (pid 100) is waited on however old it
+    // is — age never breaks a lock — until it is released.
     await mkdir(mutex);
+    await writeFile(path.join(mutex, "owner"), "100:1\n", "utf8");
+    const { utimes } = await import("node:fs/promises");
+    const old = new Date(Date.now() - 3_600_000);
+    await utimes(mutex, old, old);
     let waits = 0;
     const result = await claimSupervisorRecord(
       layout,
       { pid: 200, identity: "id-200" },
       identityOf(alive),
       {
+        isAlive: (pid) => alive.has(pid),
         sleep: async () => {
           waits += 1;
           if (waits === 3) await rm(mutex, { recursive: true, force: true });
@@ -150,6 +158,42 @@ describe("claimSupervisorRecord", () => {
     );
     expect(waits).toBe(3);
     expect(result).toEqual({ claimed: false, ownerPid: 100 });
+  });
+
+  test("an owner-less mutex is 'initializing' and waited on, unless it is an old crash remnant", async () => {
+    const layout = await makeLayout();
+    const alive = new Set([100]);
+    await mkdir(layout.runDir, { recursive: true });
+    const mutex = supervisorClaimMutexPath(layout);
+    await mkdir(mutex); // no owner file yet: someone is between mkdir and write
+    let waits = 0;
+    expect(
+      await claimSupervisorRecord(layout, { pid: 100, identity: "id-100" }, identityOf(alive), {
+        isAlive: (pid) => alive.has(pid),
+        ownerlessGraceMs: 60_000,
+        sleep: async () => {
+          waits += 1;
+          if (waits === 2) await rm(mutex, { recursive: true, force: true });
+        },
+      }),
+    ).toEqual({ claimed: true });
+    expect(waits).toBe(2);
+    // Past the grace period an owner-less directory is a crash remnant.
+    await mkdir(mutex);
+    const { utimes } = await import("node:fs/promises");
+    const old = new Date(Date.now() - 120_000);
+    await utimes(mutex, old, old);
+    const sleeps: number[] = [];
+    expect(
+      await claimSupervisorRecord(layout, { pid: 100, identity: "id-100" }, identityOf(alive), {
+        isAlive: (pid) => alive.has(pid),
+        ownerlessGraceMs: 60_000,
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+      }),
+    ).toEqual({ claimed: true });
+    expect(sleeps).toEqual([]);
   });
 
   test("a live owner blocks a later claim; a stale (dead or recycled) record is replaced", async () => {
