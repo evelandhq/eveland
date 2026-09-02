@@ -151,8 +151,20 @@ describe("install.sh publication", () => {
     expect(restoreCtl).toBeGreaterThan(-1);
     expect(restoreSystemd).toBeLessThan(handToUpdate);
     expect(restoreCtl).toBeLessThan(handToUpdate);
-    // --no-start after a repair says loudly that the platform stays stopped.
+    // --no-start after a repair says loudly that the platform stays stopped,
+    // and names a requested version it therefore did NOT apply.
     expect(script).toContain("stays stopped (--no-start)");
+    expect(script).toContain("was NOT applied (--no-start)");
+    // A failed dependency install must not suggest starting on top of it.
+    expect(script).toContain("do not start it");
+    expect(script).not.toMatch(/pnpm install failed[^\n]*eveland-ctl start/);
+  });
+
+  test("a plain re-run honours --no-start instead of forwarding to update (which restarts)", () => {
+    const noStart = script.indexOf("nothing to do with --no-start");
+    const forward = script.indexOf("forwarding to eveland-ctl update");
+    expect(noStart).toBeGreaterThan(-1);
+    expect(noStart).toBeLessThan(forward);
   });
 
   test("the repin temp copy of the env file is born 0600, swapped in atomically, and cleaned by the trap", () => {

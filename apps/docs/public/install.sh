@@ -115,6 +115,11 @@ if [ -f "$ETC_DIR/install.json" ] && grep -q '"bootstrapCompleted": true' "$ETC_
   fi
 fi
 if [ "$REPAIR_NODE" -eq 0 ] && [ -f "$ETC_DIR/install.json" ] && grep -q '"bootstrapCompleted": true' "$ETC_DIR/install.json" 2>/dev/null; then
+  if [ "$NO_START" -eq 1 ]; then
+    # update restarts the platform at the end; --no-start means "touch nothing".
+    note "Existing completed install at $PREFIX; nothing to do with --no-start. To upgrade: EVELAND_HOME=$PREFIX $BIN_DIR/eveland-ctl update${REQUESTED_VERSION:+ --version $REQUESTED_VERSION}"
+    exit 0
+  fi
   note "Existing completed install at $PREFIX — forwarding to eveland-ctl update"
   # An explicitly pinned version stays pinned; a bare re-run means "newest".
   if [ "$INTERACTIVE" -eq 1 ]; then
@@ -359,9 +364,13 @@ if [ "$REPAIR_NODE" -eq 1 ]; then
   env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" stop || fail "could not stop the platform; not touching node_modules under it."
   note "Installing dependencies (this can take a few minutes)"
   SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile \
-    || fail "pnpm install failed; the platform is STOPPED. Fix the cause and re-run the installer (or: EVELAND_HOME=$PREFIX $BIN_DIR/eveland-ctl start)."
+    || fail "pnpm install failed; the platform is STOPPED and its dependencies are incomplete — do not start it. Fix the cause and re-run the installer, which repeats the repair."
   if [ "$NO_START" -eq 1 ]; then
     note "Repair complete. The platform was stopped for the repair and stays stopped (--no-start): EVELAND_HOME=$PREFIX $BIN_DIR/eveland-ctl start"
+    if [ -n "$REQUESTED_VERSION" ]; then
+      # A version move needs the platform running again (update restarts it).
+      note "The requested version $REQUESTED_VERSION was NOT applied (--no-start). After starting: EVELAND_HOME=$PREFIX $BIN_DIR/eveland-ctl update --version $REQUESTED_VERSION"
+    fi
     exit 0
   fi
   # Service comes back FIRST — a version move is handed to update only once
