@@ -81,6 +81,15 @@ async function makeDeps(options: HarnessOptions = {}) {
         commands.add("pnpm");
         broken.delete("pnpm");
       }
+      // Linking a pnpm from the interpreter's bin dir makes it work too.
+      if (argv[0] === "ln" && argv[3] === "/usr/local/bin/pnpm") {
+        commands.add("pnpm");
+        broken.delete("pnpm");
+      }
+      // `npm install -g pnpm@…` lands pnpm in the interpreter's bin dir.
+      if (argv[0]?.endsWith("/npm") && argv[1] === "install" && argv[2] === "-g") {
+        paths.add("/node-bin/pnpm");
+      }
       return { code: 0, output: "" };
     },
     streamCommand: async (argv) => {
@@ -224,6 +233,37 @@ describe("provisionLinuxHost", () => {
       "/node-bin/corepack",
       "/usr/local/bin/corepack",
     ]);
+  });
+
+  test("a Node without corepack: a pnpm in its own bin dir is linked; otherwise npm installs it there", async () => {
+    // Corepack absent, pnpm already in the interpreter's bin dir (the
+    // installer's `npm i -g pnpm` fallback): linked like the rest, no corepack.
+    const withPnpm = await makeDeps({
+      existingCommands: ["docker"],
+      existingPaths: ["/etc/apparmor.d", "/node-bin/node", "/node-bin/npm", "/node-bin/pnpm"],
+    });
+    await provisionLinuxHost(withPnpm.deps);
+    expect(withPnpm.execCalls).toContainEqual([
+      "ln",
+      "-sf",
+      "/node-bin/pnpm",
+      "/usr/local/bin/pnpm",
+    ]);
+    expect(withPnpm.execCalls.some((argv) => argv[0]?.endsWith("corepack"))).toBe(false);
+    expect(
+      withPnpm.execCalls.some((argv) => argv[0]?.endsWith("/npm") && argv[1] === "install"),
+    ).toBe(false);
+
+    // Corepack absent and no pnpm anywhere: the interpreter's npm installs
+    // the pinned pnpm into its prefix, which is then linked.
+    const bare = await makeDeps({
+      existingCommands: ["docker"],
+      existingPaths: ["/etc/apparmor.d", "/node-bin/node", "/node-bin/npm"],
+    });
+    await provisionLinuxHost(bare.deps);
+    expect(bare.execCalls).toContainEqual(["/node-bin/npm", "install", "-g", "pnpm@11.7.0"]);
+    expect(bare.execCalls).toContainEqual(["ln", "-sf", "/node-bin/pnpm", "/usr/local/bin/pnpm"]);
+    expect(bare.execCalls.some((argv) => argv[0]?.endsWith("corepack"))).toBe(false);
   });
 
   test("an interpreter that already lives in /usr/local/bin is never symlinked to itself", async () => {

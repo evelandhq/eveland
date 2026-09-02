@@ -252,14 +252,17 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
 const SYSTEM_BIN_DIR = "/usr/local/bin";
 
 /**
- * (Re)points /usr/local/bin/{node,npm,npx,corepack} at the pinned
- * interpreter and makes sure a WORKING pnpm sits next to them. Also run
+ * (Re)points /usr/local/bin/{node,npm,npx,corepack,pnpm} at the pinned
+ * interpreter's bin dir and makes sure a WORKING pnpm sits there. Also run
  * whenever the systemd artifacts are regenerated: a Node repair or an
  * update may have moved the pin, and a stale link — or corepack's pnpm
  * shim, which points into the old interpreter's lib dir — would keep
  * resolving to an interpreter nvm removed. pnpm is probed functionally
  * (`pnpm --version` on a plain system PATH), not by existence, for exactly
- * that reason.
+ * that reason. Corepack is optional: a Node without it (or the installer's
+ * `npm i -g pnpm` fallback) already carries pnpm in its own bin dir, which
+ * is linked like the rest; failing that, pnpm is installed into that bin
+ * dir with the interpreter's npm.
  */
 export async function refreshSystemToolchain(
   deps: Pick<LinuxHostDeps, "execCommand" | "fileExists" | "nodeBinDir" | "repoRootDir"> & {
@@ -267,37 +270,53 @@ export async function refreshSystemToolchain(
   },
 ): Promise<void> {
   const nodeBinDir = path.resolve(deps.nodeBinDir);
-  for (const binary of ["node", "npm", "npx", "corepack"]) {
-    const target = path.join(nodeBinDir, binary);
-    const linkPath = path.join(SYSTEM_BIN_DIR, binary);
-    // An interpreter that already lives in /usr/local/bin must not be
-    // replaced by a symlink to itself (ln -sf would happily do that).
-    if (target === linkPath) continue;
-    if (await deps.fileExists(target)) {
-      const link = await deps.execCommand(["ln", "-sf", target, linkPath], {
-        cwd: deps.repoRootDir,
-      });
-      if (link.code !== 0) {
-        throw new Error(`Linking ${binary} onto the system PATH failed:\n${link.output.trim()}`);
+  const linkAll = async () => {
+    for (const binary of ["node", "npm", "npx", "corepack", "pnpm"]) {
+      const target = path.join(nodeBinDir, binary);
+      const linkPath = path.join(SYSTEM_BIN_DIR, binary);
+      // An interpreter that already lives in /usr/local/bin must not be
+      // replaced by a symlink to itself (ln -sf would happily do that).
+      if (target === linkPath) continue;
+      if (await deps.fileExists(target)) {
+        const link = await deps.execCommand(["ln", "-sf", target, linkPath], {
+          cwd: deps.repoRootDir,
+        });
+        if (link.code !== 0) {
+          throw new Error(`Linking ${binary} onto the system PATH failed:\n${link.output.trim()}`);
+        }
       }
     }
-  }
+  };
+  await linkAll();
   if (await commandWorksOnSystemPath(deps, "pnpm")) return;
+
   const pin = await pinnedPnpmVersion(deps.repoRootDir);
-  deps.stdout?.(`Installing pnpm@${pin} onto the system PATH via corepack...`);
   const corepack = path.join(nodeBinDir, "corepack");
-  const enable = await deps.execCommand(
-    [corepack, "enable", "--install-directory", SYSTEM_BIN_DIR],
-    {
+  if (await deps.fileExists(corepack)) {
+    deps.stdout?.(`Installing pnpm@${pin} onto the system PATH via corepack...`);
+    const enable = await deps.execCommand(
+      [corepack, "enable", "--install-directory", SYSTEM_BIN_DIR],
+      { cwd: deps.repoRootDir },
+    );
+    const install = await deps.execCommand([corepack, "install", "--global", `pnpm@${pin}`], {
       cwd: deps.repoRootDir,
-    },
+    });
+    if (enable.code === 0 && install.code === 0 && (await commandWorksOnSystemPath(deps, "pnpm"))) {
+      return;
+    }
+  }
+  // No (working) corepack: install pnpm into the interpreter's own prefix
+  // with its npm, then link it like the rest of the toolchain.
+  deps.stdout?.(`Installing pnpm@${pin} into ${nodeBinDir} via npm (no corepack)...`);
+  const npmInstall = await deps.execCommand(
+    [path.join(nodeBinDir, "npm"), "install", "-g", `pnpm@${pin}`],
+    { cwd: deps.repoRootDir },
   );
-  const install = await deps.execCommand([corepack, "install", "--global", `pnpm@${pin}`], {
-    cwd: deps.repoRootDir,
-  });
-  if (enable.code !== 0 || install.code !== 0 || !(await commandWorksOnSystemPath(deps, "pnpm"))) {
+  if (npmInstall.code === 0) await linkAll();
+  if (npmInstall.code !== 0 || !(await commandWorksOnSystemPath(deps, "pnpm"))) {
     throw new Error(
-      "corepack could not put a working pnpm on the system PATH; install pnpm globally and re-run.",
+      "Could not put a working pnpm on the system PATH (neither corepack nor `npm install -g pnpm` succeeded); " +
+        "install pnpm globally and re-run.",
     );
   }
 }
