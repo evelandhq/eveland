@@ -21,17 +21,19 @@ description: Agent 作者的命令行客户端——认证模型、origin 解析
 
 Headless 场景（CI）设置 `EVELAND_TOKEN`：它永远覆盖存储的凭证。token 30 天过期（无 refresh token）；过期即重新 `eveland login`。
 
+交互式批准有一个刻意的例外:`eveland-ctl` 首次引导期间,bootstrap——它刚刚种下 admin 账号、手里就握着其凭证——在回环 API 上无头批准自己发起的 device 请求,让本机 CLI 无需登录墙即可用。变的只是"谁点了批准",信任模型不变:操作者本就持有 admin 凭证,协议的每一步(先 claim 后 approve、scope 限制、过期、可吊销)都是标准流程,得到的也是一枚普通的 scoped device-flow token,与其他 token 一样可见、可吊销。
+
 ## 命令
 
-| 命令                                                                                 | 行为                                                                                                                                                        |
-| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eveland init <dir>`                                                                 | 从源码树内置模板脚手架新 agent 项目（无需登录）                                                                                                             |
-| `eveland login [--origin <url>]`                                                     | device flow 认证；按 origin 存储凭证                                                                                                                        |
-| `eveland logout [--origin <url>]`                                                    | 忘掉存储的凭证（已设置的 `EVELAND_TOKEN` 仍然生效）                                                                                                         |
-| `eveland whoami [--origin <url>]`                                                    | 打印 origin、用户、角色、token scope 与 token 来源                                                                                                          |
-| `eveland deploy [dir] [--name <slug>] [--no-promote]`                                | 上传 → 服务端构建（日志打到终端）→ promote                                                                                                                  |
-| `eveland logs [dir] [--name <slug>] [--type build\|deploy\|runtime] [-f] [--tail N]` | 打印项目日志尾部（默认 runtime、100 行）；`-f` 经服务端 `after` 游标跟随——任何一次轮询都不重读历史                                                          |
-| `eveland env list\|set KEY=value [--variable]\|rm KEY [--name <slug>]`               | 走 secrets API 管理项目环境——值只写不读；每次变更都会重启在线 deployment（`variable` 若在构建期被读取则已烘进 Release，需要重新 deploy 才生效，CLI 会提示） |
+| 命令                                                                                    | 行为                                                                                                                                                                                                        |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eveland init <dir>`                                                                    | 从源码树内置模板脚手架新 agent 项目（无需登录）                                                                                                                                                             |
+| `eveland login [--origin <url>]`                                                        | device flow 认证；按 origin 存储凭证                                                                                                                                                                        |
+| `eveland logout [--origin <url>]`                                                       | 忘掉存储的凭证（已设置的 `EVELAND_TOKEN` 仍然生效）                                                                                                                                                         |
+| `eveland whoami [--origin <url>]`                                                       | 打印 origin、用户、角色、token scope 与 token 来源                                                                                                                                                          |
+| `eveland deploy [dir] [--name <slug>] [--no-promote]`                                   | 上传 → 服务端构建（日志打到终端）→ promote                                                                                                                                                                  |
+| `eveland logs [dir] [--name <slug>] [--type build\|deploy\|runtime] [-f] [--tail N]`    | 打印项目日志尾部（默认 runtime、100 行）；`-f` 经服务端 `after` 游标跟随——任何一次轮询都不重读历史                                                                                                          |
+| `eveland env list\|set KEY=value [--variable]\|set KEY --stdin\|rm KEY [--name <slug>]` | 走 secrets API 管理项目环境(`set KEY --stdin` 从 stdin 读值,值不进进程列表)——值只写不读；每次变更都会重启在线 deployment（`variable` 若在构建期被读取则已烘进 Release，需要重新 deploy 才生效，CLI 会提示） |
 
 需要定位项目的命令（`logs`、`env`）与 `deploy` 用同一规则解析目标：`--name` 优先，其次工作目录 `package.json` 的 name，最后目录名。
 

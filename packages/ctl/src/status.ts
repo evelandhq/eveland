@@ -1,0 +1,128 @@
+import { OTEL_PLATFORM_HOST_HTTP_PORT, POSTGRES_HOST_PORT } from "@evelandhq/core/ports";
+import { loadPlatformEnvFile } from "./env-file.ts";
+import {
+  publicOrigin,
+  resolveLifecycle,
+  systemdSupervised,
+  type FetchLike,
+  type LifecycleIo,
+} from "./lifecycle.ts";
+import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
+import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
+import { SYSTEMD_HOST_UNITS } from "./systemd-mode.ts";
+import { readSupervisorState, verifiedSupervisorPid } from "./state-files.ts";
+
+/**
+ * `eveland-ctl status`: the supervisor's process view joined with live health
+ * probes — a child can be alive but unhealthy (bad config) or the state file
+ * stale after a crash, so both sides are always shown.
+ */
+
+export type { TcpProbe } from "./net-probe.ts";
+
+async function probe(fetchImpl: FetchLike, url: string): Promise<boolean> {
+  try {
+    const response = await fetchImpl(url, { signal: AbortSignal.timeout(2_000) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function runStatus(
+  _args: string[],
+  io: LifecycleIo & { tcpProbe?: TcpProbe },
+): Promise<number> {
+  const resolved = resolveLifecycle(io);
+  const tcpProbe = io.tcpProbe ?? defaultTcpProbe();
+  const envFile = await loadPlatformEnvFile({
+    env: io.env,
+    repoRoot: resolved.repoRootDir,
+    platform: resolved.platform,
+  });
+
+  let healthy = true;
+  if (await systemdSupervised(resolved)) {
+    io.stdout("Supervision: systemd production form (core services in Compose)");
+    io.stdout("");
+    io.stdout("Processes:");
+    const hostUnits = new Set<string>(SYSTEMD_HOST_UNITS);
+    for (const spec of PLATFORM_PROCESSES) {
+      if (hostUnits.has(spec.key)) {
+        const active = await resolved.execCommand(
+          ["systemctl", "is-active", systemdUnitName(spec.key)],
+          { cwd: resolved.repoRootDir },
+        );
+        const unitState = active.output.trim() || "unknown";
+        const ok = unitState === "active";
+        if (!ok) healthy = false;
+        io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${unitState} (systemd)`);
+      } else {
+        const ready = spec.readinessUrl ? await probe(resolved.fetchImpl, spec.readinessUrl) : null;
+        const ok = ready !== false;
+        if (!ok) healthy = false;
+        io.stdout(
+          `  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${ready === false ? "health FAILED" : "health ok"} (compose)`,
+        );
+      }
+    }
+  } else {
+    const supervisorPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
+    const supervisorAlive = supervisorPid !== null;
+    const state = await readSupervisorState(resolved.layout);
+
+    if (!supervisorAlive) {
+      io.stdout("Supervisor: not running");
+      healthy = false;
+    } else {
+      io.stdout(
+        `Supervisor: running (pid ${supervisorPid}, since ${state?.startedAt ?? "unknown"})`,
+      );
+    }
+
+    io.stdout("");
+    io.stdout("Processes:");
+    for (const spec of PLATFORM_PROCESSES) {
+      const child = state?.children[spec.key];
+      const alive = child?.pid != null && resolved.isAlive(child.pid);
+      const ready = spec.readinessUrl ? await probe(resolved.fetchImpl, spec.readinessUrl) : null;
+      const parts: string[] = [];
+      if (!supervisorAlive) {
+        parts.push("down");
+      } else if (alive) {
+        parts.push(`up (pid ${child!.pid})`);
+        if (child!.restarts > 0) parts.push(`${child!.restarts} restarts`);
+      } else {
+        parts.push(
+          child
+            ? `down (${child.status}${child.lastExit ? `, last exit ${child.lastExit}` : ""})`
+            : "unknown",
+        );
+      }
+      if (ready !== null) parts.push(ready ? "health ok" : "health FAILED");
+      const ok = supervisorAlive && alive && ready !== false;
+      if (!ok) healthy = false;
+      io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
+    }
+  }
+
+  io.stdout("");
+  io.stdout("Infrastructure:");
+  const postgresUp = await tcpProbe("127.0.0.1", POSTGRES_HOST_PORT);
+  io.stdout(
+    `  ${postgresUp ? "✓" : "✗"} ${"Postgres".padEnd(20)} 127.0.0.1:${POSTGRES_HOST_PORT} ${postgresUp ? "reachable" : "UNREACHABLE"}`,
+  );
+  if (!postgresUp) healthy = false;
+  const collectorUp = await tcpProbe("127.0.0.1", OTEL_PLATFORM_HOST_HTTP_PORT);
+  io.stdout(
+    `  ${collectorUp ? "✓" : "✗"} ${"OTLP Collector".padEnd(20)} 127.0.0.1:${OTEL_PLATFORM_HOST_HTTP_PORT} ${collectorUp ? "reachable" : "UNREACHABLE"}`,
+  );
+  if (!collectorUp) healthy = false;
+
+  if (envFile) {
+    io.stdout("");
+    io.stdout(`Config: ${envFile.path}`);
+    io.stdout(`Origin: ${publicOrigin(envFile)}`);
+  }
+  return healthy ? 0 : 1;
+}

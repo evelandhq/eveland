@@ -18,6 +18,7 @@
     "scheduling",
     "observability",
     "dashboard",
-    "cli"
+    "cli",
+    "ctl"
   ]
 }

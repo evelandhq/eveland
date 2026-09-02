@@ -17,6 +17,10 @@ const PACKAGE_DEPENDENCY_MATRIX: Record<string, string[]> = {
   // The CLI is a thin client of the public /api contract: it depends on no
   // workspace package so it stays runnable anywhere the source tree lands.
   "@evelandhq/cli": [],
+  // The ops CLI is bound to this machine's source tree by design (it only
+  // ever ships with it), so it may use core's shared constants — ports and
+  // health contracts — instead of re-declaring them.
+  "@evelandhq/ctl": ["@evelandhq/core"],
   eveland: [],
 };
 

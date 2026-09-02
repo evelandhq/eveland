@@ -88,7 +88,15 @@ scopes and are confined to a deny-by-default scope map — deployment delivery
 and read-only observation only. A CLI token never grants member administration
 or the operator surface, whatever the approving member's role; unauthenticated
 device-code creation is admission-controlled so it cannot grow storage without
-bound.
+bound. One deliberate exception exists to the interactive approval step:
+during `eveland-ctl` first boot, the bootstrap — which itself just seeded the
+admin account and holds its credentials — signs in as that admin over the
+loopback API and approves its own device request headlessly, so the machine's
+CLI is authenticated without a login wall. This changes who clicks approve,
+not the trust model: the actor already holds the admin credentials, every
+protocol step (claim before approve, scope confinement, revocability) is the
+standard flow, and the resulting token is an ordinary scoped device-flow token
+visible and revocable like any other.
 
 The public `/health` of the API and Agent Gateway returns, beyond liveness, the
 Eveland product `version`, Git `revision`, release `channel`, and current
