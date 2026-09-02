@@ -288,44 +288,55 @@ export async function refreshSystemToolchain(
     }
   };
   await linkAll();
-  if (await commandWorksOnSystemPath(deps, "pnpm")) return;
-
   const pin = await pinnedPnpmVersion(deps.repoRootDir);
+  // Working AND the pinned version: any runnable pnpm would otherwise
+  // silently satisfy the probe and bypass the repo's packageManager pin.
+  // (A checkout without a pin — no package.json yet — accepts any working pnpm.)
+  const pnpmIsPinned = async () => {
+    const version = await commandVersionOnSystemPath(deps, "pnpm");
+    return version !== null && (pin === null || version === pin);
+  };
+  if (await pnpmIsPinned()) return;
+
   const corepack = path.join(nodeBinDir, "corepack");
   if (await deps.fileExists(corepack)) {
-    deps.stdout?.(`Installing pnpm@${pin} onto the system PATH via corepack...`);
+    deps.stdout?.(`Installing pnpm@${pin ?? "latest"} onto the system PATH via corepack...`);
     const enable = await deps.execCommand(
       [corepack, "enable", "--install-directory", SYSTEM_BIN_DIR],
       { cwd: deps.repoRootDir },
     );
-    const install = await deps.execCommand([corepack, "install", "--global", `pnpm@${pin}`], {
-      cwd: deps.repoRootDir,
-    });
-    if (enable.code === 0 && install.code === 0 && (await commandWorksOnSystemPath(deps, "pnpm"))) {
-      return;
-    }
+    const install = await deps.execCommand(
+      [corepack, "install", "--global", `pnpm@${pin ?? "latest"}`],
+      {
+        cwd: deps.repoRootDir,
+      },
+    );
+    if (enable.code === 0 && install.code === 0 && (await pnpmIsPinned())) return;
   }
   // No (working) corepack: install pnpm into the interpreter's own prefix
   // with its npm, then link it like the rest of the toolchain.
-  deps.stdout?.(`Installing pnpm@${pin} into ${nodeBinDir} via npm (no corepack)...`);
+  deps.stdout?.(`Installing pnpm@${pin ?? "latest"} into ${nodeBinDir} via npm (no corepack)...`);
   const npmInstall = await deps.execCommand(
-    [path.join(nodeBinDir, "npm"), "install", "-g", `pnpm@${pin}`],
+    [path.join(nodeBinDir, "npm"), "install", "-g", `pnpm@${pin ?? "latest"}`],
     { cwd: deps.repoRootDir },
   );
   if (npmInstall.code === 0) await linkAll();
-  if (npmInstall.code !== 0 || !(await commandWorksOnSystemPath(deps, "pnpm"))) {
+  if (npmInstall.code !== 0 || !(await pnpmIsPinned())) {
     throw new Error(
-      "Could not put a working pnpm on the system PATH (neither corepack nor `npm install -g pnpm` succeeded); " +
-        "install pnpm globally and re-run.",
+      `Could not put pnpm@${pin ?? "latest"} on the system PATH (neither corepack nor \`npm install -g pnpm\` produced it); ` +
+        "install that version globally and re-run.",
     );
   }
 }
 
-/** Runs `<command> --version` on a FIXED system PATH: a dangling shim fails where `command -v` would pass. */
-async function commandWorksOnSystemPath(
+/**
+ * `<command> --version` on a FIXED system PATH: a dangling shim fails where
+ * `command -v` would pass. Returns the reported version, or null.
+ */
+async function commandVersionOnSystemPath(
   deps: Pick<LinuxHostDeps, "execCommand" | "repoRootDir">,
   command: string,
-): Promise<boolean> {
+): Promise<string | null> {
   const result = await deps.execCommand(
     [
       "env",
@@ -336,12 +347,19 @@ async function commandWorksOnSystemPath(
     ],
     { cwd: deps.repoRootDir },
   );
-  return result.code === 0;
+  if (result.code !== 0) return null;
+  return result.output.trim().split("\n")[0]?.replace(/^v/, "") ?? null;
 }
 
-async function pinnedPnpmVersion(repoRootDir: string): Promise<string> {
-  const manifest = JSON.parse(await readFile(path.join(repoRootDir, "package.json"), "utf8")) as {
-    packageManager?: string;
-  };
-  return manifest.packageManager?.replace(/^pnpm@/, "") ?? "latest";
+/** The repo's packageManager pin; null when the checkout has no package.json (or no pin). */
+async function pinnedPnpmVersion(repoRootDir: string): Promise<string | null> {
+  try {
+    const manifest = JSON.parse(await readFile(path.join(repoRootDir, "package.json"), "utf8")) as {
+      packageManager?: string;
+    };
+    const pin = manifest.packageManager?.replace(/^pnpm@/, "");
+    return pin && pin !== manifest.packageManager ? pin : null;
+  } catch {
+    return null;
+  }
 }

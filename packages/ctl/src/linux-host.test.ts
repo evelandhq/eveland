@@ -22,6 +22,8 @@ type HarnessOptions = {
   composeWorks?: boolean;
   /** Commands that exist on PATH but fail `--version` (a dangling corepack shim). */
   brokenCommands?: string[];
+  /** What a working system pnpm reports (the repo pins 11.7.0). */
+  pnpmVersion?: string;
 };
 
 async function makeDeps(options: HarnessOptions = {}) {
@@ -38,6 +40,7 @@ async function makeDeps(options: HarnessOptions = {}) {
   const written: Record<string, string> = {};
   const commands = new Set(options.existingCommands ?? []);
   const broken = new Set(options.brokenCommands ?? []);
+  let pnpmVersion = options.pnpmVersion ?? "11.7.0";
   if (options.hasApt !== false) commands.add("apt-get");
   const users = new Set(options.existingUsers ?? []);
   const paths = new Set(
@@ -74,12 +77,13 @@ async function makeDeps(options: HarnessOptions = {}) {
       if (versionIndex > 0) {
         const probed = argv[versionIndex - 1]!;
         const works = commands.has(probed) && !broken.has(probed);
-        return { code: works ? 0 : 1, output: "" };
+        return { code: works ? 0 : 1, output: works ? `${pnpmVersion}\n` : "" };
       }
-      // corepack's global install makes pnpm work again.
+      // corepack's global install makes the PINNED pnpm work again.
       if (argv[0]?.endsWith("corepack") && argv[1] === "install") {
         commands.add("pnpm");
         broken.delete("pnpm");
+        pnpmVersion = argv[3]!.replace(/^pnpm@/, "");
       }
       // Linking a pnpm from the interpreter's bin dir makes it work too.
       if (argv[0] === "ln" && argv[3] === "/usr/local/bin/pnpm") {
@@ -232,6 +236,17 @@ describe("provisionLinuxHost", () => {
       "-sf",
       "/node-bin/corepack",
       "/usr/local/bin/corepack",
+    ]);
+  });
+
+  test("a runnable pnpm of the WRONG version does not satisfy the pin: the pinned one is installed", async () => {
+    const harness = await makeDeps({ existingCommands: ["docker", "pnpm"], pnpmVersion: "9.0.0" });
+    await provisionLinuxHost(harness.deps);
+    expect(harness.execCalls).toContainEqual([
+      "/node-bin/corepack",
+      "install",
+      "--global",
+      "pnpm@11.7.0",
     ]);
   });
 
