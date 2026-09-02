@@ -124,7 +124,11 @@ describe("claimSupervisorRecord", () => {
     const mutex = supervisorClaimMutexPath(layout);
     // A mutex whose recorded holder (pid 9) died inside the protocol.
     await mkdir(mutex);
-    await writeFile(path.join(mutex, "owner"), "9:1\n", "utf8");
+    await writeFile(
+      path.join(mutex, "owner"),
+      `${JSON.stringify({ pid: 9, identity: "id-9", nonce: "1" })}\n`,
+      "utf8",
+    );
     const sleeps: number[] = [];
     expect(
       await claimSupervisorRecord(layout, { pid: 100, identity: "id-100" }, identityOf(alive), {
@@ -139,7 +143,11 @@ describe("claimSupervisorRecord", () => {
     // A mutex held by a LIVE process (pid 100) is waited on however old it
     // is — age never breaks a lock — until it is released.
     await mkdir(mutex);
-    await writeFile(path.join(mutex, "owner"), "100:1\n", "utf8");
+    await writeFile(
+      path.join(mutex, "owner"),
+      `${JSON.stringify({ pid: 100, identity: "id-100", nonce: "1" })}\n`,
+      "utf8",
+    );
     const { utimes } = await import("node:fs/promises");
     const old = new Date(Date.now() - 3_600_000);
     await utimes(mutex, old, old);
@@ -158,6 +166,47 @@ describe("claimSupervisorRecord", () => {
     );
     expect(waits).toBe(3);
     expect(result).toEqual({ claimed: false, ownerPid: 100 });
+  });
+
+  test("a holder whose pid was RECYCLED by another process reads as dead, not as a holder that never releases", async () => {
+    const layout = await makeLayout();
+    // pid 9 is alive again — as a different process (different identity).
+    const alive = new Set([9, 100]);
+    await mkdir(layout.runDir, { recursive: true });
+    const mutex = supervisorClaimMutexPath(layout);
+    await mkdir(mutex);
+    await writeFile(
+      path.join(mutex, "owner"),
+      `${JSON.stringify({ pid: 9, identity: "id-9-from-before-the-reboot", nonce: "1" })}\n`,
+      "utf8",
+    );
+    const sleeps: number[] = [];
+    expect(
+      await claimSupervisorRecord(layout, { pid: 100, identity: "id-100" }, identityOf(alive), {
+        isAlive: (pid) => alive.has(pid),
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+      }),
+    ).toEqual({ claimed: true });
+    expect(sleeps).toEqual([]);
+  });
+
+  test("the wait always outlasts the owner-less grace, so a crash remnant never blocks every start for good", async () => {
+    const layout = await makeLayout();
+    const alive = new Set([100]);
+    await mkdir(layout.runDir, { recursive: true });
+    const mutex = supervisorClaimMutexPath(layout);
+    await mkdir(mutex); // owner-less, fresh: a remnant of a crash right after mkdir
+    // A wait limit SHORTER than the grace is stretched past it.
+    expect(
+      await claimSupervisorRecord(layout, { pid: 100, identity: "id-100" }, identityOf(alive), {
+        isAlive: (pid) => alive.has(pid),
+        ownerlessGraceMs: 50,
+        waitLimitMs: 1,
+        sleep: async () => {},
+      }),
+    ).toEqual({ claimed: true });
   });
 
   test("an owner-less mutex is 'initializing' and waited on, unless it is an old crash remnant", async () => {

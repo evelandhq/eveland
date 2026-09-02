@@ -60,8 +60,9 @@ export async function writeSupervisorRecord(
  * into place, so it is never visible half-written.
  *
  * A mutex is never broken by age: only one whose recorded holder is
- * DEFINITIVELY dead (`kill(pid, 0)` → ESRCH) is taken — a dead process
- * cannot be inside the critical section. The break moves the directory
+ * DEFINITIVELY dead — gone, or a recycled pid whose start-time identity no
+ * longer matches the one recorded — is taken; a dead process cannot be
+ * inside the critical section. The break moves the directory
  * aside atomically and re-reads its owner: a live holder's mutex grabbed by
  * mistake (replaced between read and rename) is put back or, failing
  * that, dropped — and every holder re-validates that the canonical mutex
@@ -79,11 +80,13 @@ export async function claimSupervisorRecord(
     isAlive?: (pid: number) => boolean;
     /** An owner-less mutex (crash between mkdir and the owner write) is taken after this long. */
     ownerlessGraceMs?: number;
+    /** How long a contender waits on a live holder before giving up (always > the grace). */
+    waitLimitMs?: number;
   } = {},
 ): Promise<{ claimed: true } | { claimed: false; ownerPid: number }> {
   await mkdir(layout.runDir, { recursive: true });
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const mutex = await acquireClaimMutex(layout, record.pid, options);
+    const mutex = await acquireClaimMutex(layout, record.pid, identityOf, options);
     try {
       const owner = await verifiedSupervisorPid(layout, identityOf);
       if (owner !== null && owner !== record.pid) return { claimed: false, ownerPid: owner };
@@ -115,10 +118,12 @@ type ClaimMutex = { stillHeld: () => Promise<boolean>; release: () => Promise<vo
 async function acquireClaimMutex(
   layout: ApplianceLayout,
   pid: number,
+  identityOf: ProcessIdentity,
   options: {
     sleep?: (ms: number) => Promise<void>;
     isAlive?: (pid: number) => boolean;
     ownerlessGraceMs?: number;
+    waitLimitMs?: number;
   },
 ): Promise<ClaimMutex> {
   const mutexPath = supervisorClaimMutexPath(layout);
@@ -126,8 +131,19 @@ async function acquireClaimMutex(
   const sleep =
     options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const isAlive = options.isAlive ?? isProcessAlive;
-  const ownerlessGraceMs = options.ownerlessGraceMs ?? 60_000;
-  const token = `${pid}:${process.hrtime.bigint()}`;
+  const ownerlessGraceMs = options.ownerlessGraceMs ?? 30_000;
+  // The wait always outlasts the owner-less grace: a crash remnant must be
+  // breakable BEFORE a waiter gives up, or it blocks every start for good.
+  const waitLimitMs = Math.max(options.waitLimitMs ?? 120_000, ownerlessGraceMs + 10_000);
+  // The owner is named by pid AND start-time identity, exactly like the pid
+  // record: a pid recycled by an unrelated process must read as dead, not as
+  // a live holder that never releases.
+  const owner: MutexOwner = {
+    pid,
+    identity: await identityOf(pid),
+    nonce: process.hrtime.bigint().toString(),
+  };
+  const token = JSON.stringify(owner);
   const readOwner = async (dir: string): Promise<string | null> => {
     try {
       return (await readFile(path.join(dir, "owner"), "utf8")).trim();
@@ -135,8 +151,18 @@ async function acquireClaimMutex(
       return null;
     }
   };
+  const holderIsDead = async (raw: string): Promise<boolean> => {
+    const holder = parseMutexOwner(raw);
+    if (!holder) return true; // unparseable owner: not a live protocol participant
+    if (holder.identity !== null) {
+      const current = await identityOf(holder.pid);
+      return current === null || current !== holder.identity;
+    }
+    return !isAlive(holder.pid);
+  };
 
-  for (let attempt = 0; ; attempt += 1) {
+  const startedAt = Date.now();
+  for (;;) {
     try {
       await mkdir(mutexPath);
       await writeFile(ownerPath, `${token}\n`, "utf8");
@@ -152,8 +178,8 @@ async function acquireClaimMutex(
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
 
-    // Held by someone. Break it only when its holder is definitively dead
-    // (or it never got an owner and is old enough to be a crash remnant).
+    // Held by someone. Break it only when its holder is definitively dead or
+    // recycled (or it never got an owner and is old enough to be a remnant).
     const heldBy = await readOwner(mutexPath);
     let breakable = false;
     if (heldBy === null) {
@@ -164,8 +190,7 @@ async function acquireClaimMutex(
         continue; // released between our mkdir and stat
       }
     } else {
-      const holderPid = Number(heldBy.split(":")[0]);
-      breakable = Number.isInteger(holderPid) && holderPid > 0 && !isAlive(holderPid);
+      breakable = await holderIsDead(heldBy);
     }
     if (breakable) {
       const aside = `${mutexPath}.dead-${pid}-${process.hrtime.bigint()}`;
@@ -185,8 +210,27 @@ async function acquireClaimMutex(
       }
       continue;
     }
-    if (attempt > 3_000) throw new Error(`supervisor claim mutex ${mutexPath} never became free`);
+    if (Date.now() - startedAt > waitLimitMs) {
+      throw new Error(`supervisor claim mutex ${mutexPath} never became free`);
+    }
     await sleep(10);
+  }
+}
+
+type MutexOwner = { pid: number; identity: string | null; nonce: string };
+
+function parseMutexOwner(raw: string): MutexOwner | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<MutexOwner>;
+    if (typeof parsed.pid !== "number" || !Number.isInteger(parsed.pid) || parsed.pid <= 0)
+      return null;
+    return {
+      pid: parsed.pid,
+      identity: typeof parsed.identity === "string" ? parsed.identity : null,
+      nonce: typeof parsed.nonce === "string" ? parsed.nonce : "",
+    };
+  } catch {
+    return null;
   }
 }
 
