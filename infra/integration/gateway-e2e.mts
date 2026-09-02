@@ -195,6 +195,12 @@ async function main(): Promise<void> {
         `${stableBeforeSplit.id}:r4`,
       );
 
+      // Eve 0.48 answers the create with 202 as soon as the shared World has
+      // accepted the run, before the dispatcher has activated the Deployment
+      // and the first turn has started; a cancel that races that window is a
+      // legitimate `no_active_turn`. Attach to the durable stream and wait for
+      // the turn to exist before proving the bound cancel is routed.
+      await gatewayWaitForEvent(gatewayPort, localHost, cancellableSessionId, "turn.started");
       const cancelled = await gatewayRequest(gatewayPort, {
         host: localHost,
         path: `/eve/v1/session/${encodeURIComponent(cancellableSessionId)}/cancel`,
@@ -356,6 +362,45 @@ function gatewayRequest(
     );
     request.once("error", reject);
     request.end(input.body);
+  });
+}
+
+function gatewayWaitForEvent(
+  port: number,
+  host: string,
+  sessionId: string,
+  type: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const marker = `"type":"${type}"`;
+    const request = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: `/eve/v1/session/${encodeURIComponent(sessionId)}/stream`,
+        headers: { host },
+      },
+      (response) => {
+        let raw = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          raw += chunk;
+          if (raw.includes(marker)) {
+            response.destroy();
+            resolve();
+          }
+        });
+        response.on("end", () => {
+          if (!raw.includes(marker))
+            reject(new Error(`Gateway stream ended before ${type}: ${raw}`));
+        });
+      },
+    );
+    request.setTimeout(60_000, () =>
+      request.destroy(new Error(`Gateway stream produced no ${type} within 60s.`)),
+    );
+    request.once("error", reject);
+    request.end();
   });
 }
 
