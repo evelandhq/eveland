@@ -54,7 +54,7 @@ curl -fsSL https://eveland.ai/install.sh | bash
 
 渲染之后,引导准备并启动平台(admin 账号由 API 启动时依 `EVELAND_ADMIN_*` 自行种下)。在 **Linux root** 上,它先亲自预配文档化的宿主契约——apt 安装沙箱工具链、bwrap AppArmor profile、`/workspace`、`eveland-app`/`eveland-build` 服务用户、固化 node/pnpm 上系统 PATH——然后**直接落在下文"systemd 生产形态"**上:第一天即生产,没有中间监督器阶段。macOS(以及 Linux `--foreground`)则按需构建 Dashboard、拉起 infra 容器、等待 Postgres、应用迁移、启动 ctl 监督器。进程就绪后执行**隐式 CLI login**:与 `eveland login` 完全相同的 RFC 8628 device flow——同一个种子客户端、同样的 `deploy observe` scope、一枚正常可吊销的 token——只是批准环节用引导刚种下的 admin 会话在回环 API 上无头驱动,凭证写进 CLI 自己的存储(`~/.config/eveland/credentials/`)。黄金路径 `eveland init` → `eveland deploy` 因此不会碰到登录墙。login 失败只是警告而非启动失败(`eveland login` 可补救)。
 
-拿到 token 后,引导接着种下**内置 agent**(`stella`):以子进程调用真正的 `eveland` CLI——`eveland deploy templates/starter-agent --name stella`——种子流程走的就是用户首次 deploy 的那条黄金路径(preflight、上传、流式构建日志、promote),不可能与之悄悄分叉。此前收集的模型 key 随后经 `eveland env set KEY --stdin` 落进该 agent 的项目环境——值走 stdin 而不进 argv,后者在请求进行期间对本机任何用户都可经 `ps` 读到。种子(或 login)失败只警告,并在 `install.json` 记下 `seedCompleted: false`——此后每次 `eveland-ctl start` 都会重试直到成功——包括平台已在运行、其余一切都被短路的那种 `start`;其间没有内置 agent 平台也完全可用。最后在平台 origin 上打开浏览器(headless 安装只打印 URL)。
+拿到 token 后,引导接着种下**内置 agent**(`stella`):以子进程调用真正的 `eveland` CLI——`eveland deploy templates/starter-agent --name stella`——种子流程走的就是用户首次 deploy 的那条黄金路径(preflight、上传、流式构建日志、promote),不可能与之悄悄分叉。此前收集的模型 key 随后经 `eveland env set KEY --stdin` 落进该 agent 的项目环境——值走 stdin 而不进 argv,后者在请求进行期间对本机任何用户都可经 `ps` 读到。种子(或 login)失败只警告,并在 `install.json` 记下 `seedCompleted: false`——此后每次 `eveland-ctl start` 都会重试直到成功——包括平台已在运行、其余一切都被短路的那种 `start`;监督器起来之后才死掉的首次引导,同样由下一次 `start` _补完_(login、种子、完成标记),而不是被"已在运行"吞掉;其间没有内置 agent 平台也完全可用。最后在平台 origin 上打开浏览器(headless 安装只打印 URL)。
 
 ## 监督
 
@@ -64,10 +64,10 @@ macOS 没有 systemd,所以 `start` 把一个监督进程 daemon 化,由它拥�
 
 ## 升级
 
-`eveland-ctl update` 把 appliance 的源码 checkout **向前**移到更新的 release tag(默认最新的精确 `vX.Y.Z` tag——排在它上面的 pre-release 会被跳过;`--version` 可钉住——必须是严格更新的 `vX.Y.Z`)。更旧的 tag、pre-release 或裸 revision 会在任何东西移动之前被拒绝:迁移不会自动回退,升级契约只为向前移动背书——回滚要遵循该版本的回滚说明,而不是随手一个 `--version`。平台攒下的伤疤逐条产品化为步骤。开发 checkout 会被拒绝(那是 `git pull` 的事)。顺序有讲究:
+`eveland-ctl update` 把 appliance 的源码 checkout **向前**移到更新的 release tag(默认最新的精确 `vX.Y.Z` tag——排在它上面的 pre-release 会被跳过;`--version` 可钉住——必须是严格更新的 `vX.Y.Z`)。更旧的 tag、pre-release 或裸 revision 会在任何东西移动之前被拒绝:迁移不会自动回退,升级契约只为向前移动背书——回滚要遵循该版本的回滚说明,而不是随手一个 `--version`。平台攒下的伤疤逐条产品化为步骤。开发 checkout 会被拒绝(那是 `git pull` 的事);整个状态机由 `run/update.lock` 串行化——一个 update 进行中(或与续跑赛跑)时第二个会被拒绝并点名运行中的 pid;只要还记录着一次更新,`start` 就拒绝启动半更新的树(只有 update 自己的第二阶段可以启动)。顺序有讲究:
 
 1. **breaking 先行**:用 `git show` 读**目标版本**的 `CHANGELOG.md`(运行中的 checkout 根本没听说过新版本),抽出沿途每个 `⚠ BREAKING CHANGES` 段落,要求操作者确认(`--yes` 非交互接受;未确认则在任何东西移动之前中止)。
-2. **备份**:`pg_dump` 落进 `backups/`,文件名带着它保护的版本号。dump 失败拒绝继续(`--skip-backup` 是逃生口)。
+2. **备份**:`pg_dump` 落进 `backups/`,文件名带着它保护的版本号——先写 `.partial`、fsync、再 rename,备份要么完整存在要么不存在(失败、中断或空的 dump 不会留下任何能被当成备份的文件;文件权限 `0600`)。dump 失败拒绝继续(`--skip-backup` 是逃生口)。
 3. **先停再动**:整个平台在 checkout 之前停止——在运行中的进程脚下替换源码、`node_modules` 和 Dashboard 构建,会让它们从半更新的树重启。此后任何一步失败都刻意让平台保持停止,并打印一份明确的恢复方案:重试,或**按该版本的回滚说明**回滚(运维升级指南里的"Rollback boundary")——只有在说明宣称旧版本与已应用的迁移兼容时,才给出 checkout 旧 tag 的命令;否则方案是先从命名的数据库备份恢复。它从不宣称迁移向前兼容。进行中的更新会被记录(`run/update-pending.json`,在 checkout 移动之前写入,携带源版本、目标、备份、stash **commit** 与更新前的 eve pin),**重跑 `update` 即从该记录续跑**——checkout 已经报告目标版本,绝不会在平台停机时被误判为"已是最新";续跑完成时 eve 窗口警告照样触发;stash 按记录的 sha 恢复——sha 没记下来时按它在 stash 列表里的唯一名字找——而不是"最新的那个"。
 4. **脏树处理**:unmerged index 先 reset(stash 会被它噎住);真实的本地改动进**带名** stash(`eveland-ctl-update-<ts>`),更新完成后交互式询问是否恢复。ignored 文件不受影响。
 5. checkout → `pnpm install --frozen-lockfile`,然后第一阶段——仍是**旧**代码——把控制权交给**新 checkout 自己的** `eveland-ctl`(隐藏的 `_finish-update`),因为旧版本不该替新版本决定其产物和启动序列。新 ctl 刷新发布身份;在 systemd 形态下重新生成并 reload 自己的产物(两个 unit、各服务的 env 白名单、Compose overlay),让拓扑或权限修复真正到达已安装的机器,否则构建 Dashboard;随后 `db:migrate` 与 start(带常规就绪门)。start 失败落入同一份恢复方案。
