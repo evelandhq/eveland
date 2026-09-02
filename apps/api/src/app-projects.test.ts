@@ -56,8 +56,8 @@ describe("api app", () => {
           id: project.id,
           eveVersion: {
             version: "0.47.7",
-            expected: "0.47.x or 0.48.x",
-            supportedRanges: ["0.47.x", "0.48.x"],
+            expected: "0.47.x or 0.49.x",
+            supportedRanges: ["0.47.x", "0.49.x"],
             supported: true,
             sourceRevisionId: revision.id,
           },

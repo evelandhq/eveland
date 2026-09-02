@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.48.0
+  eve: 0.49.0
 catalogs:
   eve-matrix:
     eve-oldest: npm:eve@0.47.7
@@ -40,15 +40,16 @@ overrides:
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.47.x and 0.48.x; 0.45 left on
-# 2026-09-02 and the previously skipped 0.46 is now simply below the floor).
+# verified minor in the current window (0.47.x and 0.49.x; 0.48 was skipped when
+# 0.49 superseded it on 2026-09-02, like 0.46 before it; a skipped line sits
+# inside the hull but is rejected).
 #
 # The release-age cooldown is waived only for explicitly reviewed packages.
 # `eve`, `@evelandhq/sandbox-bwrap`, and `@evelandhq/workflow-world` are
 # excluded by name rather than by version because they are frequently released
 # first-party packages. The exact @workflow/* entries are the reviewed spec-v6
-# graph required by Eve 0.48.0 (unchanged since 0.38.3: eve's @workflow bumps
-# through 0.47 are devDependencies only); the @ai-sdk and ai entries are
+# graph required by Eve 0.49.0 (unchanged since 0.38.3: eve's @workflow bumps
+# through 0.49 are devDependencies only); the @ai-sdk and ai entries are
 # likewise pinned third-party decisions.
 minimumReleaseAgeExclude:
   - eve

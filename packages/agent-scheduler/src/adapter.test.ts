@@ -21,7 +21,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.47/0.48 compatibility window", async () => {
+  test("fails closed outside the 0.47/0.49 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -46,11 +46,15 @@ describe("injectSchedulerAdapter", () => {
       "~0.44.4",
       "0.45.2",
       "~0.45.2",
-      // 0.46 was the skipped line of the previous window; now it is simply
+      // 0.46 was the skipped line of an earlier window; now it is simply
       // below the floor, like every other pre-0.47 line here.
       "0.46.0",
       "~0.46.1",
-      "0.49.0",
+      // 0.48 is the skipped line of the current window: inside the hull,
+      // never verified, rejected.
+      "0.48.0",
+      "~0.48.0",
+      "0.50.0",
       ">=0.47.7",
       "*",
       "latest",
@@ -59,7 +63,7 @@ describe("injectSchedulerAdapter", () => {
 
       await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
         new RegExp(
-          `supports Eve 0\\.47\\.x or 0\\.48\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+          `supports Eve 0\\.47\\.x or 0\\.49\\.x.*found ${eveVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
         ),
       );
     }
@@ -73,12 +77,12 @@ describe("injectSchedulerAdapter", () => {
       "0.47",
       "0.47.x",
       "0.47.*",
-      "0.48.0",
-      "~0.48.0",
-      "^0.48.0",
-      "0.48",
-      "0.48.x",
-      "0.48.*",
+      "0.49.0",
+      "~0.49.0",
+      "^0.49.0",
+      "0.49",
+      "0.49.x",
+      "0.49.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -220,7 +224,7 @@ Produce the daily report.
     // Eve 0.33 made "steer" the default send policy, which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every line in the
-    // current 0.47/0.48 window supports the explicit `turnPolicy` option.
+    // current 0.47/0.49 window supports the explicit `turnPolicy` option.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };
