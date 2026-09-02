@@ -64,14 +64,14 @@ macOS 没有 systemd,所以 `start` 把一个监督进程 daemon 化,由它拥�
 
 ## 升级
 
-`eveland-ctl update` 把 appliance 的源码 checkout **向前**移到更新的 release tag(默认最新的精确 `vX.Y.Z` tag——排在它上面的 pre-release 会被跳过;`--version` 可钉住——必须是严格更新的 `vX.Y.Z`)。更旧的 tag、pre-release 或裸 revision 会在任何东西移动之前被拒绝:迁移不会自动回退,升级契约只为向前移动背书——回滚要遵循该版本的回滚说明,而不是随手一个 `--version`。平台攒下的伤疤逐条产品化为步骤。开发 checkout 会被拒绝(那是 `git pull` 的事);整个状态机由 `run/update.lock` 串行化——一个 update 进行中(或与续跑赛跑)时第二个会被拒绝并点名运行中的 pid;只要锁被活着的 `update` 持有、或还记录着一次更新,`start` 就拒绝启动半更新的树——锁覆盖了记录写入之前的备份/停机/stash 窗口(只有 update 自己的第二阶段可以启动)。顺序有讲究:
+`eveland-ctl update` 把 appliance 的源码 checkout **向前**移到更新的 release tag(默认最新的精确 `vX.Y.Z` tag——排在它上面的 pre-release 会被跳过;`--version` 可钉住——必须是严格更新的 `vX.Y.Z`)。更旧的 tag、pre-release 或裸 revision 会在任何东西移动之前被拒绝:迁移不会自动回退,升级契约只为向前移动背书——回滚要遵循该版本的回滚说明,而不是随手一个 `--version`。平台攒下的伤疤逐条产品化为步骤。开发 checkout 会被拒绝(那是 `git pull` 的事);整个状态机由 `run/update.lock` 串行化——一个 update 进行中(或与续跑赛跑)时第二个会被拒绝并点名运行中的 pid;`start` 全程持有**同一把**锁(两者彻底互斥,没有"看一眼再动手"的窗口),锁被活着的 `update` 持有、或还记录着一次更新时都拒绝(只有 update 自己的第二阶段可以启动)。顺序有讲究:
 
 1. **breaking 先行**:用 `git show` 读**目标版本**的 `CHANGELOG.md`(运行中的 checkout 根本没听说过新版本),抽出沿途每个 `⚠ BREAKING CHANGES` 段落,要求操作者确认(`--yes` 非交互接受;未确认则在任何东西移动之前中止)。
 2. **备份**:`pg_dump` 落进 `backups/`,文件名带着它保护的版本号——先写 `.partial`、fsync、再 rename,备份要么完整存在要么不存在(失败、中断或空的 dump 不会留下任何能被当成备份的文件;文件权限 `0600`)。dump 失败拒绝继续(`--skip-backup` 是逃生口)。
 3. **先停再动**:整个平台在 checkout 之前停止——在运行中的进程脚下替换源码、`node_modules` 和 Dashboard 构建,会让它们从半更新的树重启。此后任何一步失败都刻意让平台保持停止,并打印一份明确的恢复方案:重试,或**按该版本的回滚说明**回滚(运维升级指南里的"Rollback boundary")——只有在说明宣称旧版本与已应用的迁移兼容时,才给出 checkout 旧 tag 的命令;否则方案是先从命名的数据库备份恢复。它从不宣称迁移向前兼容。进行中的更新会被记录(`run/update-pending.json`,在 checkout 移动之前写入,携带源版本、目标、备份、stash **commit** 与更新前的 eve pin),**重跑 `update` 即从该记录续跑**——checkout 已经报告目标版本,绝不会在平台停机时被误判为"已是最新";记录只在最后一个恢复动作完成后才清除(中断的一次还欠着的动作不会随之丢失);续跑完成时 eve 窗口警告照样触发;stash 按记录的 sha 恢复——sha 没记下来时按它在 stash 列表里的唯一名字找——而不是"最新的那个"。
-4. **脏树处理**:unmerged index 先 reset(stash 会被它噎住);真实的本地改动进**带名** stash(`eveland-ctl-update-<ts>`),在更新后的树*启动任何东西之前*交互式询问是否恢复(绝不在平台已启动后 apply);记录会记住已恢复的 stash,续跑不会再找它。ignored 文件不受影响。
+4. **脏树处理**:unmerged index 先 reset(stash 会被它噎住);真实的本地改动进**带名** stash(`eveland-ctl-update-<ts>`),checkout 之后、`pnpm install` _之前_(本地改动可能碰到它读取的 manifest)、也在启动任何东西之前交互式询问是否恢复;apply 不干净就是失败门(stash 保留,冲突由你解决或丢弃,重跑从这里续),记录会记住已恢复的 stash,续跑不会再找它。ignored 文件不受影响。
 5. checkout → `pnpm install --frozen-lockfile`,然后第一阶段——仍是**旧**代码——把控制权交给**新 checkout 自己的** `eveland-ctl`(隐藏的 `_finish-update`),因为旧版本不该替新版本决定其产物和启动序列。新 ctl 刷新发布身份;在 systemd 形态下重新生成并 reload 自己的产物(两个 unit、各服务的 env 白名单、Compose overlay),让拓扑或权限修复真正到达已安装的机器,否则构建 Dashboard;随后 `db:migrate` 与 start(带常规就绪门)。start 失败落入同一份恢复方案。
-6. **eve 窗口检测**:若本次更新移动了受支持的 eve 窗口(经 starter 模板的 pin 观测),ctl 大声警告:按旧窗口构建的 Release 会 attest 为 unknown、其 schedule 进死信,直到每个项目 rebuild 并 promote。
+6. **eve 窗口检测**:若本次更新移动了受支持的 eve 窗口(比较两个_提交_里 starter 模板的 pin,绝不读可能被恢复的 stash 改过的工作树),ctl 大声警告:按旧窗口构建的 Release 会 attest 为 unknown、其 schedule 进死信,直到每个项目 rebuild 并 promote。
 7. 重启后探测固化的 `EVELAND_NODE`——被 `nvm uninstall` 无声移除的解释器会得到明确的"重跑安装脚本"指引,而不是一个谜。
 
 对已完成安装重跑公开安装脚本会转发到这里。
