@@ -7,6 +7,10 @@ development series until its public installation and upgrade contracts stabilize
 ## [0.49.0](https://github.com/evelandhq/eveland/compare/v0.48.0...v0.49.0) (2026-09-02)
 
 
+### ⚠ BREAKING CHANGES
+
+* **observability:** the docker-worker Compose profile is removed. Linux production installations must use the host systemd Agent runtime.
+
 ### Features
 
 * adopt eve 0.48.0 with a {0.47.x, 0.48.x} window and forward the Workflow webhook route ([#460](https://github.com/evelandhq/eveland/issues/460)) ([c21a913](https://github.com/evelandhq/eveland/commit/c21a913156fa8ca730583e74ce74e41e12d729f5))
@@ -17,6 +21,7 @@ development series until its public installation and upgrade contracts stabilize
 * **cli:** eveland logs + env (eveland-cli PR E) ([#444](https://github.com/evelandhq/eveland/issues/444)) ([a961c01](https://github.com/evelandhq/eveland/commit/a961c01562f65321010c501752494f7f44e7369a))
 * **cli:** starter-agent template + eveland init (eveland-cli PR C) ([#442](https://github.com/evelandhq/eveland/issues/442)) ([fca3bfa](https://github.com/evelandhq/eveland/commit/fca3bfa6daa3e65826f900417e47b732f9094f92))
 * **ctl:** eveland-ctl — platform ops CLI, first-boot bootstrap, built-in agent seed, one-line installer, forward-only update, Linux systemd production form ([#459](https://github.com/evelandhq/eveland/issues/459)) ([97b6207](https://github.com/evelandhq/eveland/commit/97b62078b41b08ea9f1068eb277dc06361594241))
+* **observability:** reach the API from the Collector in every installation form ([2498dcd](https://github.com/evelandhq/eveland/commit/2498dcd4546536c43fa39a1a7d7f329aacf0ae5a))
 * **worker:** drain the job queue with a bounded pump and claim latency-sensitive jobs first ([#445](https://github.com/evelandhq/eveland/issues/445)) ([71cb619](https://github.com/evelandhq/eveland/commit/71cb6192a4e0dec4a906ad763bac7f9fbfb6058e))
 * **worker:** wake the job pump on enqueue via Postgres NOTIFY ([#447](https://github.com/evelandhq/eveland/issues/447)) ([848a778](https://github.com/evelandhq/eveland/commit/848a778adadbc08a4bf802c12817e899ee183b93))
 
