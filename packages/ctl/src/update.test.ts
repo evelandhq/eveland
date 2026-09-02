@@ -9,7 +9,10 @@ import type { LifecycleIo } from "./io.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
 import type { Prompter } from "./prompt.ts";
 import { writeSupervisorRecord, writeSupervisorState } from "./state-files.ts";
+import { runStart } from "./lifecycle.ts";
+import { acquireMutex } from "./state-files.ts";
 import {
+  defaultPgDump,
   isForwardMove,
   newestStableTag,
   pendingUpdatePath,
@@ -17,6 +20,7 @@ import {
   recoveryPlan,
   runFinishUpdate,
   runUpdate,
+  updateMutexPath,
   type PgDump,
 } from "./update.ts";
 
@@ -416,6 +420,42 @@ describe("runUpdate (phase 1, the old code)", () => {
     expect(harness.out.join("\n")).toContain("redeploy and promote EVERY project");
   });
 
+  test("a second update while one is running is refused, and the lock is released afterwards", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    await mkdir(harness.layout.runDir, { recursive: true });
+    // Another eveland-ctl update (pid 777, alive) holds the update lock.
+    const held = await acquireMutex(updateMutexPath(harness.layout), 777, async (pid) =>
+      pid === 777 ? "id-777" : null,
+    );
+    harness.io.processIdentity = async (pid) => (pid === 777 ? "id-777" : `id-${pid}`);
+    expect(await runUpdate([], harness.io)).toBe(1);
+    expect(harness.err.join("\n")).toContain("Another eveland-ctl update is running (pid 777)");
+    expect(harness.pgDumps).toHaveLength(0);
+    await held.release();
+    // Lock gone: the update runs, and leaves no lock behind.
+    harness.io.processIdentity = async (pid) => `id-${pid}`;
+    expect(await runUpdate([], harness.io)).toBe(0);
+    const { stat } = await import("node:fs/promises");
+    await expect(stat(updateMutexPath(harness.layout))).rejects.toThrow();
+  });
+
+  test("start refuses a half-updated tree while an update is recorded; only the update's own phase 2 may start", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    harness.io.streamCommand = async (argv) => {
+      harness.streamed.push(argv);
+      return argv.includes("_finish-update") ? 1 : 0;
+    };
+    expect(await runUpdate([], harness.io)).toBe(1);
+    expect(await readPendingUpdate(harness.layout)).not.toBeNull();
+    harness.err.length = 0;
+    expect(await runStart([], harness.io)).toBe(1);
+    expect(harness.err.join("\n")).toContain("interrupted update is recorded");
+    expect(harness.timeline).not.toContain("start-daemon");
+    // Phase 2 (the new checkout's ctl) starts with the record still present.
+    expect(await runFinishUpdate(["--from", "0.48.0"], harness.io)).toBe(0);
+    expect(harness.timeline).toContain("start-daemon");
+  });
+
   test("the pending record lives under run/, next to the supervisor files", async () => {
     const harness = await makeHarness({});
     expect(pendingUpdatePath(harness.layout)).toBe(
@@ -661,5 +701,31 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
     expect(stderr).toContain("Starting the updated platform failed");
     expect(stderr).toContain("left STOPPED");
     expect(stderr).toContain("Rollback boundary");
+  });
+});
+
+describe("defaultPgDump", () => {
+  test("a backup exists complete or not at all: partial file, fsync, rename, 0600", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-pgdump-"));
+    const backupPath = path.join(dir, "eveland-v0.48.0.sql");
+    const ok = defaultPgDump({ argv: ["sh", "-c", "printf -- '-- dump\\nSELECT 1;\\n'"] });
+    expect(await ok(backupPath, { cwd: dir, envFilePath: "/dev/null" })).toBe(0);
+    const { stat } = await import("node:fs/promises");
+    expect(await readFile(backupPath, "utf8")).toContain("SELECT 1;");
+    expect((await stat(backupPath)).mode & 0o777).toBe(0o600);
+    await expect(stat(`${backupPath}.partial`)).rejects.toThrow();
+
+    // A failing dump leaves nothing behind that could pass for a backup.
+    const failing = defaultPgDump({ argv: ["sh", "-c", "printf 'half'; exit 3"] });
+    const failedPath = path.join(dir, "failed.sql");
+    expect(await failing(failedPath, { cwd: dir, envFilePath: "/dev/null" })).toBe(3);
+    await expect(stat(failedPath)).rejects.toThrow();
+    await expect(stat(`${failedPath}.partial`)).rejects.toThrow();
+
+    // A "successful" dump with no output is not a backup either.
+    const empty = defaultPgDump({ argv: ["true"] });
+    const emptyPath = path.join(dir, "empty.sql");
+    expect(await empty(emptyPath, { cwd: dir, envFilePath: "/dev/null" })).toBeNull();
+    await expect(stat(emptyPath)).rejects.toThrow();
   });
 });

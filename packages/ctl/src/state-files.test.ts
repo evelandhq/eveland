@@ -4,7 +4,9 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { applianceLayout } from "./home.ts";
 import {
+  acquireMutex,
   claimSupervisorRecord,
+  MutexBusyError,
   readSupervisorRecord,
   supervisorClaimMutexPath,
   supervisorPidPath,
@@ -302,5 +304,35 @@ describe("claimSupervisorRecord", () => {
     expect(
       await claimSupervisorRecord(layout, { pid: 500, identity: "id-500" }, identityOf(alive)),
     ).toEqual({ claimed: true });
+  });
+});
+
+describe("acquireMutex", () => {
+  test("onLiveHolder: 'fail' reports the live holder at once instead of waiting; a dead holder is still broken", async () => {
+    const layout = await makeLayout();
+    await mkdir(layout.runDir, { recursive: true });
+    const mutexPath = path.join(layout.runDir, "update.lock");
+    const alive = new Set([100, 200]);
+    const identityOf = async (pid: number) => (alive.has(pid) ? `id-${pid}` : null);
+    const held = await acquireMutex(mutexPath, 100, identityOf);
+    await expect(
+      acquireMutex(mutexPath, 200, identityOf, { onLiveHolder: "fail", sleep: async () => {} }),
+    ).rejects.toMatchObject({ name: "MutexBusyError", holderPid: 100 });
+    await held.release();
+    // Released: the next acquisition succeeds and holds.
+    const next = await acquireMutex(mutexPath, 200, identityOf, { onLiveHolder: "fail" });
+    expect(await next.stillHeld()).toBe(true);
+    await next.release();
+    // A dead holder never blocks a fail-fast acquisition either.
+    await mkdir(mutexPath);
+    await writeFile(
+      path.join(mutexPath, "owner"),
+      `${JSON.stringify({ pid: 9, identity: "id-9", nonce: "1" })}\n`,
+      "utf8",
+    );
+    const reclaimed = await acquireMutex(mutexPath, 200, identityOf, { onLiveHolder: "fail" });
+    expect(await reclaimed.stillHeld()).toBe(true);
+    await reclaimed.release();
+    expect(new MutexBusyError("/x", 1)).toBeInstanceOf(Error);
   });
 });

@@ -88,14 +88,7 @@ export async function claimSupervisorRecord(
   layout: ApplianceLayout,
   record: SupervisorRecord,
   identityOf: ProcessIdentity,
-  options: {
-    sleep?: (ms: number) => Promise<void>;
-    isAlive?: (pid: number) => boolean;
-    /** An owner-less mutex (crash between mkdir and the owner write) is taken after this long. */
-    ownerlessGraceMs?: number;
-    /** How long a contender waits on a live holder before giving up (always > the grace). */
-    waitLimitMs?: number;
-  } = {},
+  options: MutexOptions = {},
 ): Promise<{ claimed: true } | { claimed: false; ownerPid: number }> {
   await mkdir(layout.runDir, { recursive: true });
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -126,20 +119,52 @@ export function supervisorClaimMutexPath(layout: ApplianceLayout): string {
   return path.join(layout.runDir, "supervisor.pid.lock");
 }
 
-type ClaimMutex = { stillHeld: () => Promise<boolean>; release: () => Promise<void> };
+export type HeldMutex = { stillHeld: () => Promise<boolean>; release: () => Promise<void> };
+
+export type MutexOptions = {
+  sleep?: (ms: number) => Promise<void>;
+  isAlive?: (pid: number) => boolean;
+  /** An owner-less mutex (crash between mkdir and the owner write) is taken after this long. */
+  ownerlessGraceMs?: number;
+  /** How long a contender waits on a live holder before giving up (always > the grace). */
+  waitLimitMs?: number;
+  /** "fail": a LIVE holder makes the acquisition fail at once with MutexBusyError. */
+  onLiveHolder?: "wait" | "fail";
+};
+
+/** Thrown when a mutex is held by a live process and the caller chose not to wait. */
+export class MutexBusyError extends Error {
+  readonly mutexPath: string;
+  readonly holderPid: number;
+  constructor(mutexPath: string, holderPid: number) {
+    super(`${mutexPath} is held by pid ${holderPid}`);
+    this.name = "MutexBusyError";
+    this.mutexPath = mutexPath;
+    this.holderPid = holderPid;
+  }
+}
 
 async function acquireClaimMutex(
   layout: ApplianceLayout,
   pid: number,
   identityOf: ProcessIdentity,
-  options: {
-    sleep?: (ms: number) => Promise<void>;
-    isAlive?: (pid: number) => boolean;
-    ownerlessGraceMs?: number;
-    waitLimitMs?: number;
-  },
-): Promise<ClaimMutex> {
-  const mutexPath = supervisorClaimMutexPath(layout);
+  options: MutexOptions,
+): Promise<HeldMutex> {
+  return acquireMutex(supervisorClaimMutexPath(layout), pid, identityOf, options);
+}
+
+/**
+ * A crash-safe mutex directory for any ctl-wide critical section (the
+ * supervisor claim, the update state machine). See claimSupervisorRecord
+ * for the breaking rules: never by age, only for a dead or pid-recycled
+ * holder, with a failed liveness probe counting as "not dead".
+ */
+export async function acquireMutex(
+  mutexPath: string,
+  pid: number,
+  identityOf: ProcessIdentity,
+  options: MutexOptions = {},
+): Promise<HeldMutex> {
   const ownerPath = path.join(mutexPath, "owner");
   const sleep =
     options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -182,7 +207,7 @@ async function acquireClaimMutex(
   const startedAt = Date.now();
   for (;;) {
     try {
-      await mkdir(mutexPath);
+      await mkdir(mutexPath, { recursive: false });
       await writeFile(ownerPath, `${token}\n`, "utf8");
       return {
         stillHeld: async () => (await readOwner(mutexPath)) === token,
@@ -209,6 +234,9 @@ async function acquireClaimMutex(
       }
     } else {
       breakable = await holderIsDead(heldBy);
+      if (!breakable && options.onLiveHolder === "fail") {
+        throw new MutexBusyError(mutexPath, parseMutexOwner(heldBy)?.pid ?? -1);
+      }
     }
     if (breakable) {
       const aside = `${mutexPath}.dead-${pid}-${process.hrtime.bigint()}`;
@@ -229,7 +257,7 @@ async function acquireClaimMutex(
       continue;
     }
     if (Date.now() - startedAt > waitLimitMs) {
-      throw new Error(`supervisor claim mutex ${mutexPath} never became free`);
+      throw new Error(`mutex ${mutexPath} never became free`);
     }
     await sleep(10);
   }
@@ -338,4 +366,40 @@ export function isProcessAlive(
     // EPERM means the process exists but belongs to someone else — alive.
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
+}
+
+/**
+ * The record phase 1 writes before the checkout moves. If anything after
+ * that fails (checkout, pnpm install, phase 2), package.json already reports
+ * the target version, so a re-run must resume from this record instead of
+ * declaring itself "already up to date" over a stopped platform.
+ */
+export type PendingUpdate = {
+  from: string;
+  target: string;
+  backupPath: string | null;
+  stashName: string | null;
+  /** The stash COMMIT created for the dirty tree: restored by sha, never as "the newest stash". */
+  stashRef: string | null;
+  /** The starter template's eve pin BEFORE the checkout moved: the window comparison survives a resume. */
+  evePinBefore: string | null;
+  startedAt: string;
+};
+
+export function pendingUpdatePath(layout: { runDir: string }): string {
+  return path.join(layout.runDir, "update-pending.json");
+}
+
+export async function readPendingUpdate(layout: { runDir: string }): Promise<PendingUpdate | null> {
+  try {
+    const parsed = JSON.parse(await readFile(pendingUpdatePath(layout), "utf8")) as PendingUpdate;
+    return typeof parsed.from === "string" && typeof parsed.target === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writePendingUpdate(layout: { runDir: string }, record: PendingUpdate) {
+  await mkdir(layout.runDir, { recursive: true });
+  await writeFile(pendingUpdatePath(layout), `${JSON.stringify(record, null, 2)}\n`, "utf8");
 }

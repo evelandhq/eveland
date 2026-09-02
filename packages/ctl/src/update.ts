@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
@@ -9,6 +9,14 @@ import { loadPlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { resolveLifecycle, runStart, runStop, systemdModeContext } from "./lifecycle.ts";
+import {
+  acquireMutex,
+  MutexBusyError,
+  pendingUpdatePath,
+  readPendingUpdate,
+  writePendingUpdate,
+  type PendingUpdate,
+} from "./state-files.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
 import { installSystemdArtifacts } from "./systemd-mode.ts";
 
@@ -32,35 +40,86 @@ export type PgDump = (
   options: { cwd: string; envFilePath: string },
 ) => Promise<number | null>;
 
-export function defaultPgDump(): PgDump {
-  return (backupPath, { cwd, envFilePath }) =>
-    new Promise((resolve) => {
-      const child = spawn(
-        "docker",
-        // --env-file: compose interpolates the whole file even for one exec.
-        [
-          "compose",
-          "--env-file",
-          envFilePath,
-          "exec",
-          "-T",
-          "postgres",
-          "pg_dump",
-          "-U",
-          "eveland",
-          "-d",
-          "eveland",
-        ],
-        { cwd, stdio: ["ignore", "pipe", "inherit"] },
-      );
-      const out = createWriteStream(backupPath);
-      child.stdout.pipe(out);
-      child.on("error", () => resolve(null));
-      child.on("close", (code) => {
-        out.end();
-        resolve(code);
-      });
-    });
+/**
+ * pg_dump through Compose into a `.partial` file that is fsync'd and only
+ * then renamed to the final name: a backup either exists complete or not
+ * at all. A failed dump, a write error (disk full), or an empty result
+ * leaves no file behind and reports failure; the file is 0600.
+ */
+export function defaultPgDump(options: { argv?: string[] } = {}): PgDump {
+  return async (backupPath, { cwd, envFilePath }) => {
+    const argv = options.argv ?? [
+      "docker",
+      // --env-file: compose interpolates the whole file even for one exec.
+      "compose",
+      "--env-file",
+      envFilePath,
+      "exec",
+      "-T",
+      "postgres",
+      "pg_dump",
+      "-U",
+      "eveland",
+      "-d",
+      "eveland",
+    ];
+    const partialPath = `${backupPath}.partial`;
+    await rm(partialPath, { force: true });
+    const result = await new Promise<{ code: number | null; writeError: Error | null }>(
+      (resolve) => {
+        const [command, ...rest] = argv;
+        const child = spawn(command!, rest, { cwd, stdio: ["ignore", "pipe", "inherit"] });
+        const out = createWriteStream(partialPath, { mode: 0o600, flags: "wx" });
+        let writeError: Error | null = null;
+        let code: number | null | undefined;
+        let finished = false;
+        const done = () => {
+          if (code !== undefined && finished) resolve({ code, writeError });
+        };
+        out.on("error", (error) => {
+          writeError = error;
+          finished = true;
+          child.kill("SIGTERM");
+          done();
+        });
+        out.on("finish", () => {
+          finished = true;
+          done();
+        });
+        child.on("error", (error) => {
+          writeError = writeError ?? error;
+          code = null;
+          out.end();
+          done();
+        });
+        child.stdout!.pipe(out);
+        child.on("close", (exitCode) => {
+          code = exitCode;
+          done();
+        });
+      },
+    );
+    if (result.code !== 0 || result.writeError) {
+      await rm(partialPath, { force: true });
+      return result.code === 0 ? null : result.code;
+    }
+    // Durable before it is named as a backup: fsync the data, then rename.
+    try {
+      const handle = await open(partialPath, "r+");
+      try {
+        const { size } = await handle.stat();
+        if (size === 0) throw new Error("pg_dump produced no output");
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await rename(partialPath, backupPath);
+    } catch {
+      await rm(partialPath, { force: true });
+      return null;
+    }
+    return 0;
+  };
 }
 
 function templateEvePin(packageJsonRaw: string | null): string | null {
@@ -115,41 +174,7 @@ export function recoveryPlan(options: {
   ].join("\n");
 }
 
-/**
- * The record phase 1 writes before the checkout moves. If anything after
- * that fails (checkout, pnpm install, phase 2), package.json already reports
- * the target version, so a re-run must resume from this record instead of
- * declaring itself "already up to date" over a stopped platform.
- */
-export type PendingUpdate = {
-  from: string;
-  target: string;
-  backupPath: string | null;
-  stashName: string | null;
-  /** The stash COMMIT created for the dirty tree: restored by sha, never as "the newest stash". */
-  stashRef: string | null;
-  /** The starter template's eve pin BEFORE the checkout moved: the window comparison survives a resume. */
-  evePinBefore: string | null;
-  startedAt: string;
-};
-
-export function pendingUpdatePath(layout: { runDir: string }): string {
-  return path.join(layout.runDir, "update-pending.json");
-}
-
-export async function readPendingUpdate(layout: { runDir: string }): Promise<PendingUpdate | null> {
-  try {
-    const parsed = JSON.parse(await readFile(pendingUpdatePath(layout), "utf8")) as PendingUpdate;
-    return typeof parsed.from === "string" && typeof parsed.target === "string" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-async function writePendingUpdate(layout: { runDir: string }, record: PendingUpdate) {
-  await mkdir(layout.runDir, { recursive: true });
-  await writeFile(pendingUpdatePath(layout), `${JSON.stringify(record, null, 2)}\n`, "utf8");
-}
+export { pendingUpdatePath, readPendingUpdate, type PendingUpdate } from "./state-files.ts";
 
 /** The newest exact vX.Y.Z tag: a pre-release sorts above the stable it precedes and is never a default target. */
 export function newestStableTag(tagListOutput: string): string | undefined {
@@ -168,9 +193,47 @@ type UpdateContext = {
   prompter: { confirm: (question: string, defaultValue: boolean) => Promise<boolean> };
 };
 
+/** The update state machine's lock: one `update` at a time, phase 1 through completion. */
+export function updateMutexPath(layout: { runDir: string }): string {
+  return path.join(layout.runDir, "update.lock");
+}
+
 export async function runUpdate(
   args: string[],
   io: LifecycleIo & { pgDump?: PgDump },
+): Promise<number> {
+  // Two concurrent updates (or an update racing a resume) would both stop,
+  // stash, checkout and hand over; the whole state machine is serialized.
+  const resolved = resolveLifecycle(io);
+  await mkdir(resolved.layout.runDir, { recursive: true });
+  let lock: Awaited<ReturnType<typeof acquireMutex>>;
+  try {
+    lock = await acquireMutex(
+      updateMutexPath(resolved.layout),
+      process.pid,
+      resolved.processIdentity,
+      { onLiveHolder: "fail", sleep: resolved.sleep },
+    );
+  } catch (error) {
+    if (error instanceof MutexBusyError) {
+      io.stderr(
+        `Another eveland-ctl update is running (pid ${error.holderPid}); wait for it to finish.`,
+      );
+      return 1;
+    }
+    throw error;
+  }
+  try {
+    return await runUpdateLocked(args, io, resolved);
+  } finally {
+    await lock.release();
+  }
+}
+
+async function runUpdateLocked(
+  args: string[],
+  io: LifecycleIo & { pgDump?: PgDump },
+  resolved: ReturnType<typeof resolveLifecycle>,
 ): Promise<number> {
   const parsed = parseArgs({
     args,
@@ -182,7 +245,6 @@ export async function runUpdate(
     },
     allowPositionals: false,
   });
-  const resolved = resolveLifecycle(io);
   const metadata = await readInstallMetadata(resolved.layout);
   if (!metadata) {
     io.stderr(
@@ -557,7 +619,9 @@ export async function runFinishUpdate(args: string[], io: LifecycleIo): Promise<
   }
 
   io.stdout("Starting the updated platform...");
-  const started = await runStart([], io);
+  // The pending record still exists here (phase 1 clears it after we
+  // return): tell start this is the update itself, not a stray start.
+  const started = await runStart(["--from-update"], io);
   if (started !== 0) {
     io.stderr(recovery("Starting the updated platform failed"));
     return started;
