@@ -179,6 +179,12 @@ describe("install.sh publication", () => {
     );
   });
 
+  test("the installer verifies the EXACT pinned pnpm version, not merely that some pnpm runs", () => {
+    expect(script).toContain('if [ "$(pnpm_version)" != "$PNPM_PIN" ]; then');
+    expect(script).toContain('[ "$(pnpm_version)" = "$PNPM_PIN" ] || fail');
+    expect(script).not.toContain("if ! command -v pnpm >/dev/null 2>&1; then");
+  });
+
   test("the shims execute the two real bin entrypoints", () => {
     expect(script).toContain("packages/cli/src/bin.ts");
     expect(script).toContain("packages/ctl/src/bin.ts");

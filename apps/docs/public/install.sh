@@ -282,13 +282,17 @@ if [ -x "$NODE_BIN_DIR/corepack" ]; then
   "$NODE_BIN_DIR/corepack" enable --install-directory "$NODE_BIN_DIR" 2>/dev/null || true
   "$NODE_BIN_DIR/corepack" install --global "pnpm@$PNPM_PIN" || true
 fi
-if ! command -v pnpm >/dev/null 2>&1; then
-  # Node 25+ plans to drop corepack; install the pinned pnpm into the managed
-  # node prefix instead.
-  note "corepack unavailable — installing pnpm@$PNPM_PIN via npm"
+pnpm_version() { pnpm --version 2>/dev/null | sed 's/^v//' | head -1 || true; }
+if [ "$(pnpm_version)" != "$PNPM_PIN" ]; then
+  # No pnpm, or a pnpm from the shell that is not the pinned one (Node 25+
+  # plans to drop corepack): install the pinned pnpm into the managed node
+  # prefix, which leads PATH here and in the shims.
+  note "pnpm@$PNPM_PIN not on PATH (found: $(pnpm_version | sed 's/^$/none/')) — installing it via npm"
   "$NODE_BIN_DIR/npm" install -g "pnpm@$PNPM_PIN"
+  hash -r 2>/dev/null || true
 fi
-note "Using pnpm $(pnpm --version)"
+[ "$(pnpm_version)" = "$PNPM_PIN" ] || fail "pnpm@$PNPM_PIN is required but $(pnpm_version | sed 's/^$/none/') resolved on PATH; install that exact version and re-run."
+note "Using pnpm $(pnpm_version)"
 
 # --- Dependencies ------------------------------------------------------------
 if [ "$REPAIR_NODE" -eq 1 ]; then
