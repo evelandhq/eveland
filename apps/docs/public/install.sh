@@ -387,17 +387,19 @@ if [ "$REPAIR_NODE" -eq 1 ]; then
     env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" start --no-prompt \
       || fail "the platform did not start after the repair; it is STOPPED. See the output above, then re-run: EVELAND_HOME=$PREFIX $BIN_DIR/eveland-ctl start"
   fi
-  if [ -n "$REQUESTED_VERSION" ]; then
-    # The version move goes through update (backup, forward-only, migrate,
-    # artifact regeneration), against a running platform.
-    note "Handing the requested version to eveland-ctl update"
-    if [ "$INTERACTIVE" -eq 1 ]; then
-      exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update --version "$REQUESTED_VERSION" </dev/tty
-    fi
-    exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update --no-prompt --version "$REQUESTED_VERSION"
+  # A re-run against a completed install means "update" (newest, or the
+  # pinned version) — a repair does not change that; it only had to restore
+  # a working interpreter and a running platform first, because update's
+  # no-op and refusal paths never start anything.
+  note "Node repaired — forwarding to eveland-ctl update${REQUESTED_VERSION:+ --version $REQUESTED_VERSION}"
+  if [ "$INTERACTIVE" -eq 1 ]; then
+    # shellcheck disable=SC2086
+    exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update \
+      ${REQUESTED_VERSION:+--version "$REQUESTED_VERSION"} </dev/tty
   fi
-  note "Repair complete."
-  exit 0
+  # shellcheck disable=SC2086
+  exec env EVELAND_HOME="$PREFIX" "$BIN_DIR/eveland-ctl" update --no-prompt \
+    ${REQUESTED_VERSION:+--version "$REQUESTED_VERSION"}
 fi
 
 # --- Hand off to the smart tool ----------------------------------------------

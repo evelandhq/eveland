@@ -135,18 +135,19 @@ describe("install.sh publication", () => {
     const deps = script.indexOf("pnpm install --frozen-lockfile", stop);
     expect(stop).toBeGreaterThan(-1);
     expect(deps).toBeGreaterThan(stop);
+    // A repair keeps the re-run contract: it ends by forwarding to update
+    // (newest, or the pinned version), never by silently stopping short.
     expect(script).toContain(
-      '"$BIN_DIR/eveland-ctl" update --no-prompt --version "$REQUESTED_VERSION"',
+      "Node repaired — forwarding to eveland-ctl update${REQUESTED_VERSION:+ --version $REQUESTED_VERSION}",
     );
+    expect(script).not.toContain('note "Repair complete."');
     expect(script).toContain('"$BIN_DIR/eveland-ctl" install --systemd');
     // Service is restored BEFORE any version move: update's no-op and
     // refusal paths never start anything, so a repair that went straight to
     // update could leave the platform stopped.
     const restoreSystemd = script.indexOf('"$BIN_DIR/eveland-ctl" install --systemd');
     const restoreCtl = script.indexOf('"$BIN_DIR/eveland-ctl" start --no-prompt \\');
-    const handToUpdate = script.indexOf(
-      '"$BIN_DIR/eveland-ctl" update --no-prompt --version "$REQUESTED_VERSION"',
-    );
+    const handToUpdate = script.indexOf("Node repaired — forwarding to eveland-ctl update");
     expect(restoreSystemd).toBeGreaterThan(-1);
     expect(restoreCtl).toBeGreaterThan(-1);
     expect(restoreSystemd).toBeLessThan(handToUpdate);
