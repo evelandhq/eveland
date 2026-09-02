@@ -1,4 +1,5 @@
-import { globSync, readFileSync } from "node:fs";
+import { existsSync, globSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
@@ -31,7 +32,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.47.6");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.48.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -48,16 +49,32 @@ describe("Eve compatibility repository contract", () => {
       // the session-timeout run; a batch arriving after cleanup gets the
       // route's own 404, not a retention error.
       "ACTIVITY_COLLECTOR_WORKFLOW_NAME",
+      // 0.48.0: the durable run behind a tool whose `execute` is a Workflow
+      // body ("use workflow"). Audited 2026-09-02: started by
+      // `execution/tool-run/start.js` from inside the turn step, so the
+      // Workflow SDK stamps `$parentRunId` lineage and the run inherits its
+      // ancestor's stored class; it owns the `eve:tool-run:<operationId>` hook
+      // and settles by resuming the owner turn's outcome hook; cancellation
+      // rides `ctx.abortSignal` with a 30s grace period. An `ask()` hook stays
+      // answerable after the parent turn ends, so the run may outlive its turn
+      // until the interactive-class deadline reaps it like the session-timeout
+      // run; a late answer then gets the hook route's own 404.
+      "TOOL_RUN_WORKFLOW_NAME",
     ];
 
     // The covered list is the union across the window: a line may predate a
-    // stable workflow (0.45.x has no activity collector), but every stable
+    // stable workflow (0.47.x has no tool run), but every stable
     // workflow any supported line runs must be audited, and the list must not
     // keep entries no line runs anymore.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
+      // 0.48.0 moved the set out of workflow-runtime.js into its own module;
+      // 0.47.x still defines it inline. Read whichever the line ships.
+      const stableNamesModule = `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/execution/stable-workflow-names.js`;
       const runtimeSource = repositoryFile(
-        `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/execution/workflow-runtime.js`,
+        existsSync(path.join(repositoryRoot, stableNamesModule))
+          ? stableNamesModule
+          : `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/execution/workflow-runtime.js`,
       );
       const stableSet = /STABLE_WORKFLOW_NAMES=new Set\(\[([^\]]+)\]\)/.exec(runtimeSource)?.[1];
       expect(stableSet, dependencyName).toBeDefined();
@@ -93,7 +110,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.45/0.47 compatibility window", () => {
+  test("describes the supported 0.47/0.48 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-oldest", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {

@@ -173,6 +173,23 @@ describe("Eve session request classification", () => {
     expect(Eve.isWorkflowQueueNamespace("/api/.well-known/workflow/v1/flow")).toBe(false);
   });
 
+  test("carves the Workflow webhook resume route out of the refused namespace", () => {
+    // eve 0.48 serves `createWebhook()` URLs here on every method; the token
+    // is the credential, so exactly this shape is forwarded as a public request.
+    expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v1/webhook/whk_1")).toBe(true);
+    expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v1/webhook/a.b-c_d")).toBe(true);
+    // Still inside the refused namespace: the queue routes, a bare webhook
+    // prefix without a token, and anything nested under a token.
+    expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v1/flow")).toBe(false);
+    expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v1/step")).toBe(false);
+    expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v1/webhook")).toBe(false);
+    expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v1/webhook/")).toBe(false);
+    expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v1/webhook/whk_1/extra")).toBe(false);
+    expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v2/webhook/whk_1")).toBe(false);
+    // Every webhook route is inside the namespace the Gateway would otherwise refuse.
+    expect(Eve.isWorkflowQueueNamespace("/.well-known/workflow/v1/webhook/whk_1")).toBe(true);
+  });
+
   test("classifies only the canonical Eve task-input callback", () => {
     const classify = (Eve as Record<string, unknown>).classifyEveTaskInputRequest;
     expect(classify).toBeTypeOf("function");

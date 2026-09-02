@@ -1,23 +1,22 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.45.x",
-      verifiedVersion: "0.45.2",
+      range: "0.47.x",
+      verifiedVersion: "0.47.7",
       dependencyName: "eve-oldest",
     },
     {
-      range: "0.47.x",
-      verifiedVersion: "0.47.6",
+      range: "0.48.x",
+      verifiedVersion: "0.48.0",
       dependencyName: "eve",
     },
   ],
-  // 0.46 is deliberately skipped (like 0.40/0.41 and 0.43 before it): 0.47.0
-  // superseded it within hours, and skipping is safe because every wire
-  // format is byte-identical across the span -- the one 0.46-introduced
-  // change, stream protocol v24, ships identically in 0.47.x. The range is
-  // therefore the union of the two contiguous runs, not their hull, which
-  // would admit the skipped line.
-  peerDependencyRange: ">=0.45.0 <0.46.0 || >=0.47.0 <0.48.0",
+  // 0.45 left the window on 2026-09-02 when 0.48 entered; 0.46 (skipped
+  // between them, like 0.40/0.41 and 0.43 before it) is now simply below the
+  // floor. The two remaining lines are contiguous, so the range is one run.
+  // Should a future slide skip a line again, the range must be the union of
+  // the contiguous runs, never the hull, which would admit the skipped line.
+  peerDependencyRange: ">=0.47.0 <0.49.0",
 } as const;
 
 export type SupportedEveVersionRange =

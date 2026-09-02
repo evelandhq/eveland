@@ -2,10 +2,10 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.47.6
+  eve: 0.48.0
 catalogs:
   eve-matrix:
-    eve-oldest: npm:eve@0.45.2
+    eve-oldest: npm:eve@0.47.7
   # The published SDK's contract is narrower than the platform's. It imports
   # four primitives from eve/channels/auth, stable across 0.27-0.40, while the
   # policy's peerDependencyRange tracks what Eveland can actually host and
@@ -18,7 +18,7 @@ catalogs:
   # deliberately wider peer range. The platform's hosting window survives as
   # EVE_COMPATIBILITY_POLICY.peerDependencyRange, which still pins this floor.
   eve-sdk-peer:
-    eve: ">=0.45.0 <1.0.0"
+    eve: ">=0.47.0 <1.0.0"
 allowBuilds:
   cbor-extract: true
   esbuild: true
@@ -40,14 +40,14 @@ overrides:
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.45.x and 0.47.x; 0.46 is skipped,
-# like 0.40/0.41 and 0.43 in earlier windows).
+# verified minor in the current window (0.47.x and 0.48.x; 0.45 left on
+# 2026-09-02 and the previously skipped 0.46 is now simply below the floor).
 #
 # The release-age cooldown is waived only for explicitly reviewed packages.
 # `eve`, `@evelandhq/sandbox-bwrap`, and `@evelandhq/workflow-world` are
 # excluded by name rather than by version because they are frequently released
 # first-party packages. The exact @workflow/* entries are the reviewed spec-v6
-# graph required by Eve 0.47.6 (unchanged since 0.38.3: eve's @workflow bumps
+# graph required by Eve 0.48.0 (unchanged since 0.38.3: eve's @workflow bumps
 # through 0.47 are devDependencies only); the @ai-sdk and ai entries are
 # likewise pinned third-party decisions.
 minimumReleaseAgeExclude:

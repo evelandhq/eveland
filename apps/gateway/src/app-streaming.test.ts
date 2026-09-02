@@ -279,6 +279,58 @@ describe("Gateway", () => {
     expect(upstreamHits).toBe(0);
   });
 
+  test("forwards the Workflow webhook resume route on every method while still refusing the queue routes", async () => {
+    const seen: string[] = [];
+    const upstream = await startUpstream((request, response) => {
+      seen.push(`${request.method} ${request.url}`);
+      response.end("resumed");
+    });
+    const repo = repository([route({ hostPort: upstream.port })]);
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
+
+    // eve 0.48 registers `createWebhook()` URLs on GET/POST/PUT/PATCH/DELETE;
+    // the token is the only credential (an unknown one answers 404 upstream),
+    // so the Gateway forwards exactly this shape like any public request.
+    for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
+      const response = await app.request(
+        "http://p-alpha.agent.localhost/.well-known/workflow/v1/webhook/whk_1?source=stripe",
+        {
+          method,
+          headers: { host: "p-alpha.agent.localhost:4080" },
+          ...(method === "GET" || method === "DELETE" ? {} : { body: "{}" }),
+        },
+      );
+      expect(response.status, method).toBe(200);
+      await expect(response.text()).resolves.toBe("resumed");
+    }
+    expect(seen).toEqual(
+      ["GET", "POST", "PUT", "PATCH", "DELETE"].map(
+        (method) => `${method} /.well-known/workflow/v1/webhook/whk_1?source=stripe`,
+      ),
+    );
+
+    // Nothing else in the namespace loosens: a token-less webhook prefix, a
+    // nested path under a token, and the queue routes stay refused unseen.
+    for (const path of [
+      "/.well-known/workflow/v1/webhook",
+      "/.well-known/workflow/v1/webhook/",
+      "/.well-known/workflow/v1/webhook/whk_1/extra",
+      "/.well-known/workflow/v1/flow",
+      "/.well-known/workflow/v1/step",
+    ]) {
+      const response = await app.request(`http://p-alpha.agent.localhost${path}`, {
+        method: "POST",
+        headers: { host: "p-alpha.agent.localhost:4080" },
+        body: "{}",
+      });
+      expect(response.status, path).toBe(404);
+    }
+    expect(seen).toHaveLength(5);
+  });
+
   test("returns 410 instead of routing an expired public API SessionBinding", async () => {
     const upstream = await startUpstream((_request, response) => {
       response.end("should not be reached");
