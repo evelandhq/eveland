@@ -14,6 +14,12 @@
           "path": "packages/core/src/build-info.ts"
         }
       ]
+    },
+    "packages/eveland": {
+      "release-type": "node",
+      "component": "eveland",
+      "include-component-in-tag": true,
+      "bump-minor-pre-major": true
     }
   }
 }
