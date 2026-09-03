@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -174,4 +174,26 @@ describe("eveland env set --stdin", () => {
     ).toBe(1);
     expect(err.join("\n")).toContain("no value was read from stdin");
   });
+});
+
+// `--version` reads a manifest by a path relative to this file, so it is the
+// one command that breaks silently when the CLI's depth in the tree changes.
+// Nothing else exercises it: the only caller was install.sh's shim probe, on
+// a PR-path-gated job.
+test("--version reports the eveland package's own version", async () => {
+  const stdout: string[] = [];
+  const exitCode = await runCli(["--version"], {
+    env: {},
+    stdout: (line) => stdout.push(line),
+    stderr: () => {},
+    openUrl: async () => {},
+  });
+
+  const manifest = JSON.parse(
+    await readFile(new URL("../../package.json", import.meta.url), "utf8"),
+  ) as { version: string };
+
+  expect(exitCode).toBe(0);
+  expect(stdout.join("\n")).toContain(manifest.version);
+  expect(manifest.version).not.toBe("0.0.0");
 });

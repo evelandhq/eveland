@@ -195,6 +195,12 @@ jobs:
           test -x node_modules/.bin/eveland
           node_modules/.bin/eveland --help | grep -q "Usage: eveland"
           node_modules/.bin/eveland whoami 2>&1 | grep -q "No platform origin"
+          # --version reads the manifest by a path relative to the entry file,
+          # so it is the one command whose depth in the tree matters; from the
+          # tarball that hop must land on the package's own package.json.
+          installed="$(node -p "require('eveland/package.json').version" 2>/dev/null \
+            || node -p "JSON.parse(require('fs').readFileSync('node_modules/eveland/package.json')).version")"
+          node_modules/.bin/eveland --version | grep -q "$installed"
           # `init` scaffolds from a template that lives outside the tarball.
           # From an npm install it must say so, not fail with a bare ENOENT.
           node_modules/.bin/eveland init probe 2>&1 | grep -q "runs only from a checkout"
