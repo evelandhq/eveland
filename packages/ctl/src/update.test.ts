@@ -75,6 +75,7 @@ async function makeHarness(
       "EVELAND_ADMIN_EMAIL=admin@example.com",
       "EVELAND_ADMIN_PASSWORD=long-enough-password",
       "DATABASE_URL=postgres://x",
+      "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
       "EVELAND_RELEASE_CHANNEL=stable",
       "EVELAND_REVISION=0000000",
     ].join("\n"),
@@ -764,6 +765,46 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
     expect(flat.some((line) => line.includes("db:migrate"))).toBe(true);
     expect(harness.timeline).toContain("systemctl start");
     expect(harness.timeline).not.toContain("start-daemon");
+  });
+
+  test("systemd form: the API's Compose view of the world lands before anything runs Compose", async () => {
+    // The production overlay requires it, so an installation older than the
+    // variable cannot run a single Compose command until this is on disk.
+    // Failing the migration cuts the run off before the start step, so only
+    // update's own backfill can have written it -- starting the platform is
+    // far too late to be the thing that makes starting possible.
+    const harness = await makeHarness({ supervision: "systemd" });
+    harness.io.streamCommand = async (argv) => {
+      harness.streamed.push(argv);
+      return argv.includes("db:migrate") ? 1 : 0;
+    };
+
+    expect(await runFinishUpdate(FROM, harness.io)).toBe(1);
+    expect(harness.timeline).not.toContain("start-daemon");
+
+    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(onDisk.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
+      "postgres://eveland:eveland@postgres:5432/eveland",
+    );
+  });
+
+  test("systemd form: a world this installer did not render is named, never guessed at", async () => {
+    const harness = await makeHarness({ supervision: "systemd" });
+    const existing = await readFile(harness.layout.envFilePath, "utf8");
+    await writeFile(
+      harness.layout.envFilePath,
+      existing.replace(
+        "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
+        "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
+      ),
+      "utf8",
+    );
+
+    expect(await runFinishUpdate(FROM, harness.io), harness.err.join("\n")).toBe(0);
+
+    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(onDisk.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
+    expect(harness.err.join("\n")).toContain("EVELAND_WORKFLOW_WORLD_COMPOSE_URL");
   });
 
   test("a failed migration leaves the platform stopped, with the safe recovery plan", async () => {

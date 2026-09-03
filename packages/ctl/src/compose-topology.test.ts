@@ -16,11 +16,23 @@ import { renderApplianceOverlay } from "./systemd-mode.js";
  * So this ratchet merges the real files with `docker compose config`, which is
  * the only implementation of Compose merge semantics, and asserts the base,
  * host-native, production, and rendered appliance forms exercised here.
+ *
+ * It covers the API's own outbound hops for the same reason: the containerized
+ * API reaches the shared workflow database through an address that arrives in
+ * the container from a runtime `--env-file` Compose never sees, so only what
+ * the merged configuration pins can be trusted to be dialable from there.
  */
 const repositoryRoot = path.resolve(import.meta.dirname, "../../..");
 const baseCompose = path.join(repositoryRoot, "docker-compose.yml");
 const productionCompose = path.join(repositoryRoot, "docker-compose.prod.yml");
 const nativeCompose = path.join(repositoryRoot, "docker-compose.native.yml");
+
+/**
+ * Deliberately unlike the base file's development literal: the base value
+ * merges into every form, so only a value the operator's configuration alone
+ * can supply proves the production overlay still pins one.
+ */
+const COMPOSE_WORLD_SENTINEL = "postgres://sentinel:sentinel@world-db:6543/sentinel_world";
 
 /** Placeholders for the `:?set X` variables, so `config` can resolve. */
 const requiredEnv = {
@@ -35,6 +47,7 @@ const requiredEnv = {
   EVELAND_GATEWAY_AFFINITY_SECRET: "compose-topology-affinity",
   EVELAND_SCHEDULER_RUNTIME_SECRET: "compose-topology-runtime",
   EVELAND_SCHEDULER_DISPATCH_SECRET: "compose-topology-dispatch",
+  EVELAND_WORKFLOW_WORLD_COMPOSE_URL: COMPOSE_WORLD_SENTINEL,
 };
 
 const scratchDirectory = mkdtempSync(path.join(os.tmpdir(), "eveland-compose-topology-"));
@@ -177,6 +190,23 @@ describe.skipIf(!composeCliAvailable && !process.env.CI)(
           );
         });
 
+        test("the API addresses the shared workflow world on the Compose network", () => {
+          // The API's second Postgres connection, and the one the workflow
+          // readiness gate reads the World's cluster identity through.
+          // EVELAND_WORKFLOW_WORLD_URL is the host and Deployment view every
+          // host-resident process needs, and it reaches this container through
+          // a runtime --env-file; leaving the container's own view to that file
+          // resolves the identity to "unknown" and refuses every workflow-step
+          // activation, so the merged configuration has to pin it.
+          const worldUrl = requiredService(resolve(), "api").environment
+            ?.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL;
+
+          expect(worldUrl).toBeDefined();
+          expect(["localhost", "127.0.0.1", "host.docker.internal"]).not.toContain(
+            new URL(worldUrl!).hostname,
+          );
+        });
+
         test("the API publishes its port to host loopback only", () => {
           const published = requiredService(resolve(), "api").ports ?? [];
 
@@ -185,6 +215,18 @@ describe.skipIf(!composeCliAvailable && !process.env.CI)(
         });
       });
     }
+
+    test("the production forms take the world address from the installation's own configuration", () => {
+      // The base file's development literal merges into every form, so a
+      // production overlay that stopped pinning the world would keep passing
+      // the loopback check above while silently answering `eveland` for an
+      // installation whose world database is named something else.
+      for (const form of [forms.production(), forms.appliance()]) {
+        expect(requiredService(form, "api").environment?.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBe(
+          COMPOSE_WORLD_SENTINEL,
+        );
+      }
+    });
 
     test("the front door keeps the host network in production", () => {
       // The Agent Gateway reaches Deployments on the host's 127.0.0.1:18xxx

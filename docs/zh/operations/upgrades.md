@@ -170,12 +170,26 @@ Gateway 与 Dashboard 保持 Host Networking，因为前门仍要通过宿主机
 
 对已有安装：
 
-1. 重建容器而不是重启——Network Mode 与已发布端口只有重建才会生效：
+1. 在 `.env` 中新增 `EVELAND_WORKFLOW_WORLD_COMPOSE_URL`——与
+   `EVELAND_WORKFLOW_WORLD_URL` 同一个共享 Workflow Database，但以 Compose
+   网络寻址，例如
+   `EVELAND_WORKFLOW_WORLD_COMPOSE_URL=postgres://eveland:eveland@postgres:5432/eveland`。
+   生产 Overlay 将其列为必填，缺失时 Compose 直接拒绝启动。Compose 网络上的
+   API 无法访问 `EVELAND_WORKFLOW_WORLD_URL` 指向的宿主机回环发布端口；World
+   不可达时，Readiness Gate 会把 Cluster Identity 解析成 `unknown`，并以
+   `workflow_unavailable` 拒绝每一次 Workflow-step Activation。若安装仍在使用安装器
+   渲染出的那个 World DSN，`eveland-ctl update` 与 `start` 会自动补上；否则只会提示
+   该设成什么——安装器没渲染过的 World 属于该安装自己的拓扑，那里的 loopback 地址只
+   能证明写下它的进程够得到该库，不能证明背后是哪个 Cluster。手工管理的 Compose 安
+   装始终需自行添加。
+2. 重建容器而不是重启——Network Mode 与已发布端口只有重建才会生效：
    `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`。
-2. `.env` 无需任何改动。宿主机 Worker、Workflow Dispatcher 与前门仍在
+3. `.env` 的其余部分无需改动。`EVELAND_WORKFLOW_WORLD_URL` 仍是宿主机与
+   Deployment 的视角，宿主机 Worker、Workflow Dispatcher 与前门也仍在
    `http://127.0.0.1:17301` 访问 API。
-3. 之后确认 Observation 路径：一个能记录事件与 Token 用量的 Session 即可证明
-   Collector 重新访问得到 API。
+4. 之后确认两条路径：一个能记录事件与 Token 用量的 Session 证明 Collector
+   重新访问得到 API；Instance Health 页上的 `Workflow dispatch` 不再是
+   `unavailable`，则证明 API 访问得到 World。
 
 ## Linux 上的 Docker Agent Runtime 已下线
 

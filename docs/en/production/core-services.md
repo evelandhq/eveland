@@ -23,6 +23,7 @@ The production overlay reads a local `.env` (gitignored). At minimum set the pub
 - `WEB_ORIGIN`, `NEXT_PUBLIC_API_URL`, `BETTER_AUTH_URL` — the browser-visible Dashboard and API origins. `NEXT_PUBLIC_API_URL` is baked into the Dashboard at build time.
 - `EVELAND_IDENTITY_ISSUER`, `EVELAND_IDENTITY_ALLOWED_ORIGINS` — the stable Caller Token issuer and the exact chat browser origin.
 - `EVELAND_AGENT_BASE_DOMAINS` — the wildcard Agent domain, e.g. `agents.example.com`.
+- `EVELAND_WORKFLOW_WORLD_COMPOSE_URL` — the shared workflow database on the Compose network, e.g. `postgres://eveland:eveland@postgres:5432/eveland`. The API runs there and cannot dial the host loopback publish that `EVELAND_WORKFLOW_WORLD_URL` names for the host Worker, the dispatcher, and Deployments.
 - `BETTER_AUTH_SECRET`, `APP_SECRET_KEY`, `EVELAND_GATEWAY_SERVICE_TOKEN`, `EVELAND_GATEWAY_AFFINITY_SECRET`, `EVELAND_SCHEDULER_RUNTIME_SECRET`, `EVELAND_SCHEDULER_DISPATCH_SECRET`, `EVELAND_OTLP_SERVICE_TOKEN` — long random values, independent of each other. Never reuse the development fallbacks; outside explicit `NODE_ENV=development` the services fail closed without them.
 
 Every variable, default, and consumer is listed in the [environment-variable reference](/docs/reference/environment-variables).

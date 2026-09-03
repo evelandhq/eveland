@@ -12,6 +12,14 @@ import postgres from "postgres";
  */
 const identityCache = new Map<string, string>();
 
+/**
+ * Warn once per URL. The identity is re-read on every activation and every
+ * deploy gate, and an unreachable World makes each of those refuse with a
+ * retryable 503 — so an unthrottled warning would print once per request and
+ * again per dispatcher retry, for as long as the outage lasts.
+ */
+const warnedUrls = new Set<string>();
+
 export async function resolveWorldClusterIdentity(env: NodeJS.ProcessEnv): Promise<string> {
   const worldUrl = resolveWorkflowWorldPlatformUrl(env);
   if (!worldUrl) return "unknown";
@@ -26,8 +34,16 @@ export async function resolveWorldClusterIdentity(env: NodeJS.ProcessEnv): Promi
     }
     const identity = clusterWorldIdentity(row.system_identifier, row.database);
     identityCache.set(worldUrl, identity);
+    warnedUrls.delete(worldUrl);
     return identity;
-  } catch {
+  } catch (error) {
+    // The refusal this produces downstream names only the expectation
+    // ("not the expected unknown"), never that the connection itself failed.
+    // The cause belongs where the connection was attempted.
+    if (!warnedUrls.has(worldUrl)) {
+      warnedUrls.add(worldUrl);
+      console.warn(`Workflow world identity is unresolvable: ${String(error)}`);
+    }
     return "unknown";
   } finally {
     await sql.end({ timeout: 5 }).catch(() => {});

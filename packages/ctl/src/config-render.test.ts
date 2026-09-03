@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   deriveAgentBaseDomains,
   renderPlatformEnv,
+  migratedWorkflowWorldComposeUrl,
   type BootstrapInputs,
 } from "./config-render.ts";
 import { parseEnvFile } from "./env-file.ts";
@@ -71,6 +72,16 @@ describe("renderPlatformEnv", () => {
     expect(values.EVELAND_SCHEDULER_REDEEM_URL).toContain("127.0.0.1");
   });
 
+  test("Linux renders the Compose view of the world the containerized API needs", () => {
+    // The production overlay requires it: an API on the Compose network
+    // cannot dial the host loopback publish EVELAND_WORKFLOW_WORLD_URL names.
+    const { values } = render("linux");
+    expect(values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
+      "postgres://eveland:eveland@postgres:5432/eveland",
+    );
+    expect(render("darwin").values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
+  });
+
   test("the dispatcher activation token IS the gateway service token — the API validates against it", () => {
     const { values } = render("darwin");
     expect(values.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN).toBe(values.EVELAND_GATEWAY_SERVICE_TOKEN);
@@ -117,5 +128,37 @@ describe("deriveAgentBaseDomains", () => {
     expect(deriveAgentBaseDomains("http://localhost:17300")).toBe("agent.localhost");
     expect(deriveAgentBaseDomains("http://127.0.0.1:17300")).toBe("agent.localhost");
     expect(deriveAgentBaseDomains("https://eveland.example.com")).toBe("agent.eveland.example.com");
+  });
+});
+
+describe("migratedWorkflowWorldComposeUrl", () => {
+  test("answers for the worlds this installer rendered, on both platforms", () => {
+    for (const rendered of [
+      "postgres://eveland:eveland@127.0.0.1:17310/eveland",
+      "postgres://eveland:eveland@host.docker.internal:17310/eveland",
+    ]) {
+      expect(migratedWorkflowWorldComposeUrl(rendered)).toBe(
+        "postgres://eveland:eveland@postgres:5432/eveland",
+      );
+    }
+  });
+
+  test("refuses every world it did not render, loopback included", () => {
+    // A loopback address proves the writing process could reach the database,
+    // never which cluster is behind it. Rewriting one of these would point the
+    // readiness gate at a different cluster; the operator answers instead.
+    for (const foreign of [
+      // A host Postgres, a tunnel, or another Compose project all look like this.
+      "postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
+      "postgres://eveland:eveland@127.0.0.1:5432/eveland",
+      "postgres://someone:else@localhost:17310/eveland",
+      "postgres://eveland:eveland@db.internal:5432/eveland",
+      // Shapes a URL parser would reject outright rather than classify.
+      "postgres://u:p@127.0.0.1:17310,db.internal:5432/eveland",
+      "postgres:///var/run/postgresql/eveland",
+      "",
+    ]) {
+      expect(migratedWorkflowWorldComposeUrl(foreign), foreign).toBeNull();
+    }
   });
 });

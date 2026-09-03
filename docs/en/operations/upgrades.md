@@ -208,13 +208,30 @@ dials Deployments on the host's loopback ports.
 
 For an existing installation:
 
-1. Recreate the containers rather than restarting them — a network mode and a
+1. Add `EVELAND_WORKFLOW_WORLD_COMPOSE_URL` to `.env` — the same shared
+   workflow database as `EVELAND_WORKFLOW_WORLD_URL`, addressed on the Compose
+   network, e.g.
+   `EVELAND_WORKFLOW_WORLD_COMPOSE_URL=postgres://eveland:eveland@postgres:5432/eveland`.
+   The production overlay requires it and Compose refuses to start without it.
+   An API on the Compose network cannot dial the host loopback publish that
+   `EVELAND_WORKFLOW_WORLD_URL` names, and without a reachable World the
+   readiness gate resolves its cluster identity to `unknown` and refuses every
+   workflow-step activation with `workflow_unavailable`. `eveland-ctl update`
+   and `start` fill it in for an installation still carrying the world DSN the
+   installer rendered, and say what to set when it carries any other — a world
+   this installer did not render is that installation's own topology, and a
+   loopback address there proves only that the process which wrote it could
+   reach the database, never which cluster is behind it. A hand-managed Compose
+   installation always adds it itself.
+2. Recreate the containers rather than restarting them — a network mode and a
    published port only change on recreate:
    `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
-2. Nothing in `.env` changes. The host Worker, the workflow dispatcher, and the
+3. Nothing else in `.env` changes. `EVELAND_WORKFLOW_WORLD_URL` stays the host
+   and Deployment view, and the host Worker, the workflow dispatcher, and the
    front door keep reaching the API at `http://127.0.0.1:17301`.
-3. Confirm the Observation path afterwards: a Session that records events and
-   token usage proves the Collector reaches the API again.
+4. Confirm both paths afterwards: a Session that records events and token usage
+   proves the Collector reaches the API, and `Workflow dispatch` on the Instance
+   health page leaving `unavailable` proves the API reaches the World.
 
 ## Docker Agent runtime retired on Linux
 

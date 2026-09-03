@@ -1,5 +1,10 @@
 import path from "node:path";
-import { API_PORT, POSTGRES_HOST_PORT, PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import {
+  API_PORT,
+  POSTGRES_DEFAULT_PORT,
+  POSTGRES_HOST_PORT,
+  PUBLIC_ORIGIN_FALLBACK,
+} from "@evelandhq/core/ports";
 import { generateAdminPassword, generateAppSecretKey, generateHexSecret } from "./secrets.ts";
 
 /**
@@ -22,6 +27,37 @@ export type RenderedConfig = {
   content: string;
   values: Record<string, string>;
 };
+
+/**
+ * The containerized API's view of the shared workflow database this repository
+ * ships. An installation publishes Postgres on host loopback for the
+ * host-resident worker, dispatcher and Deployments; the API runs on the Compose
+ * network, where that address is its own loopback and only the service name
+ * resolves.
+ */
+export const WORKFLOW_WORLD_COMPOSE_URL = `postgres://eveland:eveland@postgres:${POSTGRES_DEFAULT_PORT}/eveland`;
+
+/**
+ * The world DSNs eveland-ctl has itself rendered. An installation still
+ * carrying one of them demonstrably runs the Compose Postgres above, so its
+ * Compose view is known rather than guessed.
+ *
+ * Nothing wider qualifies. A loopback address proves only that the process
+ * that wrote it could reach the database, never which cluster is behind it: a
+ * host Postgres, an SSH tunnel, or another Compose project all look the same
+ * from here, and rewriting one onto this repository's service name would point
+ * the readiness gate at a different cluster. Those installations answer for
+ * themselves through EVELAND_WORKFLOW_WORLD_COMPOSE_URL.
+ */
+const CTL_RENDERED_WORLD_URLS: ReadonlySet<string> = new Set([
+  `postgres://eveland:eveland@127.0.0.1:${POSTGRES_HOST_PORT}/eveland`,
+  `postgres://eveland:eveland@host.docker.internal:${POSTGRES_HOST_PORT}/eveland`,
+]);
+
+/** The Compose view for a world this installer rendered; null for any other. */
+export function migratedWorkflowWorldComposeUrl(workflowWorldUrl: string): string | null {
+  return CTL_RENDERED_WORLD_URLS.has(workflowWorldUrl.trim()) ? WORKFLOW_WORLD_COMPOSE_URL : null;
+}
 
 export function deriveAgentBaseDomains(publicOrigin: string): string {
   const hostname = new URL(publicOrigin).hostname;
@@ -53,7 +89,11 @@ export function renderPlatformEnv(options: {
     EVELAND_AGENT_BASE_DOMAINS: deriveAgentBaseDomains(inputs.publicOrigin),
     DATABASE_URL: databaseUrl,
     EVELAND_WORKFLOW_WORLD_URL: workflowWorldUrl,
-    ...(platform === "darwin" ? { EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: databaseUrl } : {}),
+    // Linux runs the API in Compose and needs the Compose view; darwin runs it
+    // on the host, where the loopback publish is the reachable one.
+    ...(platform === "darwin"
+      ? { EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: databaseUrl }
+      : { EVELAND_WORKFLOW_WORLD_COMPOSE_URL: WORKFLOW_WORLD_COMPOSE_URL }),
     WORKFLOW_DISPATCHER_ACTIVATION_API_URL: `http://127.0.0.1:${API_PORT}`,
     // The API validates dispatcher activations against the gateway service
     // token (apps/api/src/app-internal-routes.ts), so this is the same

@@ -65,6 +65,11 @@ services:
       EVELAND_API_BIND_HOST: 0.0.0.0
       EVELAND_PUBLIC_ORIGIN: ${EVELAND_PUBLIC_ORIGIN:-http://localhost:17300}
       DATABASE_URL: postgres://eveland:eveland@postgres:5432/eveland
+      # The API also reads ../../.env at runtime, whose world URLs are the
+      # host's and a Deployment's views; on the compose network both are this
+      # container's own loopback. Pinning the container's view here wins,
+      # because --env-file never overrides an existing variable.
+      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
       APP_SECRET_KEY: eveland-dev-secret-key-000000000
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}"
       EVELAND_ADMIN_EMAIL: ${EVELAND_ADMIN_EMAIL:-admin@example.com}
