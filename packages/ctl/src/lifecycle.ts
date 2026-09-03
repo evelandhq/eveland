@@ -756,7 +756,7 @@ export async function runStop(_args: string[], io: LifecycleIo): Promise<number>
     return 1;
   }
   await removeSupervisorFiles(resolved.layout);
-  io.stdout("Stopped. Infrastructure containers (postgres, otel-collector) keep running;");
+  io.stdout("Stopped. The infrastructure containers keep running;");
   io.stdout("use `docker compose stop` in the source tree to stop them too.");
   return 0;
 }

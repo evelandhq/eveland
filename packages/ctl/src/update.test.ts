@@ -757,14 +757,17 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
     );
     const etc = await readdir(harness.layout.etcDir);
     expect(etc).toContain("compose.appliance.yml");
+    expect(etc).toContain("eveland-api.env");
     expect(etc).toContain("eveland-gateway.env");
     expect(etc).toContain("eveland-web.env");
     expect(etc).toContain("eveland-workflow-dispatcher.env");
     expect(harness.timeline).toContain("systemctl daemon-reload");
-    // No host-side Dashboard build (the web container builds its own), but
-    // migrations still run, and the start goes through systemd.
+    // The Dashboard is a host artifact in BOTH forms now, and `.next` is
+    // gitignored: a checkout onto the new tag leaves the OLD build in place,
+    // so an update that skipped this would serve a Dashboard a release behind
+    // forever.
     const flat = harness.streamed.map((argv) => argv.join(" "));
-    expect(flat.some((line) => line.includes("@evelandhq/web build"))).toBe(false);
+    expect(flat.some((line) => line.includes("@evelandhq/web build"))).toBe(true);
     expect(flat.some((line) => line.includes("db:migrate"))).toBe(true);
     expect(harness.timeline).toContain("systemctl start");
     expect(harness.timeline).not.toContain("start-daemon");

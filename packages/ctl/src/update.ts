@@ -657,11 +657,10 @@ export async function runFinishUpdate(args: string[], io: LifecycleIo): Promise<
   await pinReleaseIdentity(resolved.execCommand, repo, envFile);
 
   const metadata = await readInstallMetadata(resolved.layout);
-  const systemdForm = metadata?.supervision === "systemd";
-  if (systemdForm) {
-    // The new version owns its artifacts: units, per-service env
-    // allowlists, and the Compose overlay are regenerated and reloaded.
-    io.stdout("Regenerating the systemd form's units, env allowlists, and Compose overlay...");
+  if (metadata?.supervision === "systemd") {
+    // The new version owns its artifacts: units, per-service env files, and
+    // the Compose overlay are regenerated and reloaded.
+    io.stdout("Regenerating the systemd form's units, env files, and Compose overlay...");
     const installed = await installSystemdArtifacts(systemdModeContext(io, resolved), envFile, {
       dockerBridgeHost: await detectDockerBridgeHost({
         execCommand: resolved.execCommand,
@@ -672,16 +671,20 @@ export async function runFinishUpdate(args: string[], io: LifecycleIo): Promise<
       io.stderr(recovery("Regenerating the systemd artifacts failed"));
       return 1;
     }
-  } else {
-    io.stdout("Building the Dashboard...");
-    const build = await streamCommand(["pnpm", "--filter", "@evelandhq/web", "build"], {
-      cwd: repo,
-      env: { ...io.env, ...envFile.values, SHARP_IGNORE_GLOBAL_LIBVIPS: "1" },
-    });
-    if (build !== 0) {
-      io.stderr(recovery("The Dashboard build failed"));
-      return 1;
-    }
+  }
+
+  // Both forms, unconditionally. `.next` is gitignored, so a checkout onto the
+  // new tag leaves the OLD build in place and every later start would serve
+  // it: a Dashboard silently a release behind, on a platform whose whole
+  // release-identity story is that the pieces must agree.
+  io.stdout("Building the Dashboard...");
+  const build = await streamCommand(["pnpm", "--filter", "@evelandhq/web", "build"], {
+    cwd: repo,
+    env: { ...io.env, ...envFile.values, SHARP_IGNORE_GLOBAL_LIBVIPS: "1" },
+  });
+  if (build !== 0) {
+    io.stderr(recovery("The Dashboard build failed"));
+    return 1;
   }
 
   io.stdout("Applying database migrations...");
