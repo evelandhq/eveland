@@ -7,13 +7,14 @@ import { applianceLayout, readInstallMetadata } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { PLATFORM_PROCESSES, processByKey, systemdUnitName } from "./processes.ts";
 import {
-  COMPOSE_CORE_SERVICES,
   DISPATCHER_ENV_KEYS,
   GATEWAY_ENV_KEYS,
   renderApplianceOverlay,
   renderDispatcherEnv,
   renderPlatformUnit,
   renderServiceEnv,
+  RETIRED_COMPOSE_SERVICES,
+  INFRA_COMPOSE_SERVICES,
   SYSTEMD_HOST_UNITS,
   WEB_ENV_KEYS,
 } from "./systemd-mode.ts";
@@ -34,18 +35,37 @@ function unitFor(key: string): string {
 }
 
 describe("the systemd form's units", () => {
-  test("host units and Compose services together cover every platform process, once", () => {
-    // The two lists are the whole topology. A process in neither is a process
-    // nothing starts; a process in both is two owners for one port.
-    const covered = [...SYSTEMD_HOST_UNITS, ...COMPOSE_CORE_SERVICES].sort();
-    expect(covered).toEqual(PLATFORM_PROCESSES.map((spec) => spec.key).sort());
+  test("every platform process has a unit, and nothing else does", () => {
+    // The unit list IS the topology now. A process missing from it is a
+    // process nothing starts.
+    expect([...SYSTEMD_HOST_UNITS].sort()).toEqual(
+      PLATFORM_PROCESSES.map((spec) => spec.key).sort(),
+    );
+  });
+
+  test("Docker is left holding only the Collector and the bundled database", () => {
+    expect([...INFRA_COMPOSE_SERVICES]).toEqual(["postgres", "otel-collector"]);
+  });
+
+  test("the API unit reads the whole configuration and can write only its data dir", () => {
+    const unit = unitFor("api");
+    expect(unit).toContain("User=eveland-platform");
+    expect(unit).not.toContain("User=root");
+    expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland-api.env");
+    expect(unit).toContain("ProtectSystem=strict");
+    expect(unit).toContain("ReadWritePaths=/var/lib/eveland-platform /opt/eveland/data");
+    expect(unit).toContain(
+      "ExecStart=/opt/eveland/source/node_modules/.bin/tsx --import=@evelandhq/platform-observability/register src/server.ts",
+    );
+    // Nothing orders itself after itself.
+    expect(unit).not.toContain("eveland-api.service");
   });
 
   test("the worker unit is root on purpose and reads the full configuration", () => {
     const unit = unitFor("worker");
     expect(unit).toContain("User=root");
     expect(unit).toContain("WorkingDirectory=/opt/eveland/source/apps/worker");
-    expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland.env");
+    expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland-worker.env");
     expect(unit).toContain("ExecStart=/opt/eveland/source/node_modules/.bin/tsx src/worker.ts");
     expect(unit).toContain("Restart=on-failure");
     // Root drives systemd-run, systemctl, chown and mounts: sandboxing it
@@ -176,36 +196,16 @@ describe("the public Gateway's and the Dashboard's narrowed environments", () =>
 
 describe("the appliance Compose overlay", () => {
   test("repoints data binds, masks native artifacts, and derives scheme/port from the origin", () => {
-    const overlay = renderApplianceOverlay({
-      dataDir: "/opt/eveland/data",
-      publicOrigin: "http://localhost:17300",
-      envFilePath: "/opt/eveland/etc/eveland.env",
-    });
-    expect(overlay).toContain("- /opt/eveland/data:/opt/eveland/data");
-    expect(overlay).toContain("EVELAND_DATA_DIR: /opt/eveland/data");
-    expect(overlay).toContain("eveland-appliance-api-node-modules:/workspace/node_modules");
-    // The prod command reads /workspace/.env at runtime; the API gets the
-    // full configuration, exactly once.
-    expect(overlay).toContain("- /opt/eveland/etc/eveland.env:/workspace/.env:ro");
-    expect(overlay.split("/opt/eveland/etc/eveland.env:/workspace/.env").length - 1).toBe(1);
-    expect(overlay).toContain("EVELAND_GATEWAY_PUBLIC_SCHEME: http");
-    expect(overlay).toContain('EVELAND_GATEWAY_PUBLIC_PORT: "17300"');
+    const overlay = renderApplianceOverlay({ dataDir: "/opt/eveland/data" });
     expect(overlay).toContain("/opt/eveland/data/otel:/var/lib/eveland/otel");
-    // Only the API and the Collector are containers now; every other process
-    // is a host unit, so nothing here may mention one.
-    for (const gone of ["worker", "gateway", "web"]) {
+    // Only the Collector is left to adjust. Every platform process is a host
+    // unit, so nothing here may mention one -- and no bind may hand a
+    // container the appliance source tree or its configuration.
+    for (const gone of ["api", "worker", "gateway", "web"]) {
       expect(overlay).not.toContain(`  ${gone}:`);
     }
-  });
-
-  test("an https origin on the default port drops the public port", () => {
-    const overlay = renderApplianceOverlay({
-      dataDir: "/opt/eveland/data",
-      publicOrigin: "https://eveland.example.com",
-      envFilePath: "/opt/eveland/etc/eveland.env",
-    });
-    expect(overlay).toContain("EVELAND_GATEWAY_PUBLIC_SCHEME: https");
-    expect(overlay).toContain('EVELAND_GATEWAY_PUBLIC_PORT: "0"');
+    expect(overlay).not.toContain("/workspace");
+    expect(overlay).not.toContain("eveland.env");
   });
 });
 
@@ -310,18 +310,15 @@ describe("runInstallCommand", () => {
     expect(harness.execCalls.some((argv) => argv[0] === "systemctl")).toBe(false);
   });
 
-  test("promotes: one unit per host process, narrowed env, overlay, compose core up, units started", async () => {
+  test("promotes: one unit per platform process, narrowed env, overlay, infra up, units started", async () => {
     const harness = await makeHarness({});
     expect(await runInstallCommand(["--systemd"], harness.io)).toBe(0);
 
-    // Exactly one unit per host process, and none for what Compose still runs.
+    // Exactly one unit per platform process.
     const unitPaths = Object.keys(harness.written).filter((p) => p.startsWith(harness.unitDir));
     expect(unitPaths.sort()).toEqual(
       SYSTEMD_HOST_UNITS.map((key) => path.join(harness.unitDir, systemdUnitName(key))).sort(),
     );
-    for (const service of COMPOSE_CORE_SERVICES) {
-      expect(unitPaths).not.toContain(path.join(harness.unitDir, systemdUnitName(service)));
-    }
     const workerUnit = harness.written[path.join(harness.unitDir, systemdUnitName("worker"))]!;
     expect(workerUnit).toContain("User=root");
     const dispatcherUnit =
@@ -344,13 +341,20 @@ describe("runInstallCommand", () => {
     const webEnv = await readFile(path.join(harness.layout.etcDir, "eveland-web.env"), "utf8");
     expect(webEnv).not.toContain("APP_SECRET_KEY");
     expect(webEnv).not.toContain("WORKFLOW_DISPATCHER_ACTIVATION_TOKEN");
+    // The API's file is the whole configuration plus what this form derives.
+    const apiEnv = await readFile(path.join(harness.layout.etcDir, "eveland-api.env"), "utf8");
+    expect(apiEnv).toContain("APP_SECRET_KEY=k");
+    expect(apiEnv).toContain("EVELAND_GATEWAY_PUBLIC_SCHEME=http");
+    expect(apiEnv).toContain("EVELAND_API_BIND_HOST=127.0.0.1");
+    expect(apiEnv).toContain("EVELAND_GATEWAY_INTERNAL_URL=");
 
-    // Compose brings up infra + what is left of the core with the three-file stack.
+    // Compose brings up the infrastructure, and only that, with the
+    // three-file stack.
     const composeUp = harness.execCalls.find((argv) => argv.includes("up"));
     expect(composeUp).toBeDefined();
     expect(composeUp!.join(" ")).toContain("docker-compose.prod.yml");
     expect(composeUp!.join(" ")).toContain("compose.appliance.yml");
-    for (const service of ["postgres", "otel-collector", ...COMPOSE_CORE_SERVICES]) {
+    for (const service of INFRA_COMPOSE_SERVICES) {
       expect(composeUp).toContain(service);
     }
     for (const key of SYSTEMD_HOST_UNITS) expect(composeUp).not.toContain(key);
@@ -359,9 +363,11 @@ describe("runInstallCommand", () => {
     // one still holds the port its host unit is about to bind.
     const removal = harness.execCalls.find((argv) => argv.includes("rm"));
     expect(removal).toBeDefined();
-    expect(removal!.join(" ")).toContain("--profile dev-gateway");
-    expect(removal!.join(" ")).toContain("--profile dev-web");
-    expect(removal!.join(" ")).toContain("--stop --force gateway web");
+    for (const { service, profile } of RETIRED_COMPOSE_SERVICES) {
+      expect(removal!.join(" ")).toContain(`--profile ${profile}`);
+      expect(removal).toContain(service);
+    }
+    expect(removal!.join(" ")).toContain("--stop --force");
 
     // Both units enabled and started; supervision recorded.
     for (const key of SYSTEMD_HOST_UNITS) {

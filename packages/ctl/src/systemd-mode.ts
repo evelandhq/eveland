@@ -4,7 +4,7 @@ import type { PlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata, type ApplianceLayout } from "./home.ts";
 import { writeInstallMetadata } from "./bootstrap.ts";
 import type { ExecCommand, FetchLike, LifecycleIo } from "./io.ts";
-import { GATEWAY_PORT } from "@evelandhq/core/ports";
+import { GATEWAY_INTERNAL_URL_FALLBACK, GATEWAY_PORT } from "@evelandhq/core/ports";
 import {
   PLATFORM_SERVICE_HOME,
   PLATFORM_SERVICE_USER,
@@ -39,14 +39,25 @@ import {
 export const SYSTEMD_UNIT_DIR = "/etc/systemd/system";
 
 /**
- * Platform processes supervised as host systemd units, in start order.
- * `COMPOSE_CORE_SERVICES` holds the remainder; the two lists together must
- * cover `PLATFORM_PROCESSES` exactly, which `systemd.test.ts` asserts.
+ * Platform processes supervised as host systemd units, in start order — all
+ * of them. `systemd.test.ts` asserts this covers `PLATFORM_PROCESSES`
+ * exactly: a process in neither list is a process nothing starts.
  */
-export const SYSTEMD_HOST_UNITS = ["gateway", "web", "worker", "workflow-dispatcher"] as const;
+export const SYSTEMD_HOST_UNITS = [
+  "api",
+  "gateway",
+  "web",
+  "worker",
+  "workflow-dispatcher",
+] as const;
 
-/** Core services still managed through Compose in the systemd form. */
-export const COMPOSE_CORE_SERVICES = ["api"] as const;
+/**
+ * What Docker still runs in the production form. The Collector stays a
+ * container on purpose: it is stateless, and the Docker runtime attaches it
+ * to every Agent's telemetry network. `postgres` is the installation's own
+ * bundled database.
+ */
+export const INFRA_COMPOSE_SERVICES = ["postgres", "otel-collector"] as const;
 
 /**
  * Compose services this form used to run and no longer does, with the profile
@@ -56,13 +67,15 @@ export const COMPOSE_CORE_SERVICES = ["api"] as const;
  * would fail to bind.
  */
 export const RETIRED_COMPOSE_SERVICES: ReadonlyArray<{ service: string; profile: string }> = [
+  { service: "api", profile: "dev-api" },
   { service: "gateway", profile: "dev-gateway" },
   { service: "web", profile: "dev-web" },
 ];
 
-// Generous on purpose while the API still runs a container install of its own
-// on first `compose up`. The host units themselves are ready in seconds.
-export const SYSTEMD_READINESS_DEADLINE_MS = 900_000;
+// No process installs its dependencies at start any more, so this is a
+// startup budget rather than the fifteen minutes an in-container
+// `pnpm install` plus `next build` used to need.
+export const SYSTEMD_READINESS_DEADLINE_MS = 180_000;
 export const SYSTEMD_READINESS_POLL_MS = 500;
 
 export type SystemdModeContext = {
@@ -127,50 +140,70 @@ export function serviceEnvFilePath(etcDir: string, service: string): string {
   return path.join(etcDir, `eveland-${service}.env`);
 }
 
-export function dispatcherEnvFilePath(etcDir: string): string {
-  return serviceEnvFilePath(etcDir, "workflow-dispatcher");
-}
-
-export function gatewayEnvFilePath(etcDir: string): string {
-  return serviceEnvFilePath(etcDir, "gateway");
-}
-
-export function webEnvFilePath(etcDir: string): string {
-  return serviceEnvFilePath(etcDir, "web");
-}
-
 /**
- * Values no operator writes and every host-native unit needs: the front
- * door's advertised scheme and port, derived from the one origin the
- * installation was configured with. The containerized form injected these
- * through Compose; a unit gets them here.
+ * Values no operator writes and every host-native unit needs. The
+ * containerized form injected these through Compose `environment:` blocks; a
+ * unit gets them here, and only here — etc/eveland.env stays the operator's
+ * file, never rewritten with machine facts.
+ *
+ * Most of what those blocks carried was compensation for containerization
+ * (service-name upstreams, `host.docker.internal`, an in-container 0.0.0.0
+ * bind) and simply disappears: every remaining address is already the code
+ * default, because the code defaults ARE the host-native addresses.
  */
-export function derivedServiceValues(values: Record<string, string>): Record<string, string> {
+export function derivedServiceValues(
+  values: Record<string, string>,
+  options: { dockerBridgeHost?: string | null } = {},
+): Record<string, string> {
   const origin = new URL(
     values.EVELAND_PUBLIC_ORIGIN?.trim() || `http://localhost:${GATEWAY_PORT}`,
   );
-  const scheme = origin.protocol.replace(":", "");
-  return {
-    EVELAND_GATEWAY_PUBLIC_SCHEME: scheme,
+  const derived: Record<string, string> = {
+    EVELAND_GATEWAY_PUBLIC_SCHEME: origin.protocol.replace(":", ""),
     // "0" means "the scheme's default port": an https origin with no explicit
     // port must not advertise the front door's bind port.
     EVELAND_GATEWAY_PUBLIC_PORT: origin.port === "" ? "0" : origin.port,
+    // The API's and the worker's route-cache invalidation hop. It has no code
+    // default — an unset value silently skips the invalidation — so the form
+    // that knows where the front door lives has to state it.
+    EVELAND_GATEWAY_INTERNAL_URL: GATEWAY_INTERNAL_URL_FALLBACK,
+    // Explicit rather than defaulted: this is the invariant the bridge
+    // listener is checked against.
+    EVELAND_API_BIND_HOST: "127.0.0.1",
   };
+  // Detected per start, because Docker renumbers its bridge on its own
+  // schedule and a stale address is a listener that fails to bind.
+  if (options.dockerBridgeHost) {
+    derived.EVELAND_API_DOCKER_BRIDGE_HOST = options.dockerBridgeHost;
+  }
+  return derived;
 }
 
+/**
+ * A unit's environment file. `keys` is the service's allowlist, or null for
+ * "the whole configuration" — which the API and the worker take, because both
+ * are trust roots by design (the API seeds the admin and holds the app
+ * secret; the worker drives systemd as root), and because narrowing them
+ * would silently drop any variable an operator adds to etc/eveland.env by
+ * hand.
+ */
 export function renderServiceEnv(
   service: string,
-  keys: readonly string[],
+  keys: readonly string[] | null,
   values: Record<string, string>,
 ): string {
   const lines = [
     `# Rendered by eveland-ctl on every start. The ${service} service's OWN`,
-    "# environment: the allowlisted subset of etc/eveland.env its systemd unit",
-    "# reads. Nothing else from the platform configuration reaches this process.",
+    keys
+      ? "# environment: the allowlisted subset of etc/eveland.env its systemd unit"
+      : "# environment: the whole platform configuration, which this service is",
+    keys
+      ? "# reads. Nothing else from the platform configuration reaches this process."
+      : "# trusted with, plus the addresses this installation form derives.",
     "# Edit etc/eveland.env, not this file.",
     "",
   ];
-  for (const key of keys) {
+  for (const key of keys ?? Object.keys(values)) {
     const value = values[key];
     if (value !== undefined && value !== "") lines.push(`${key}=${value}`);
   }
@@ -209,8 +242,6 @@ export type UnitRenderOptions = {
   etcDir: string;
   /** Absolute EVELAND_DATA_DIR; the only tree the API writes outside its own home. */
   dataDir: string;
-  /** etc/eveland.env — the full configuration, read only by the worker. */
-  envFilePath: string;
   nodeBinDir: string;
 };
 
@@ -247,12 +278,12 @@ const UNIT_PROFILES: Record<ProcessKey, UnitProfile> = {
       "# Unprivileged: this is the installation's only public listener. It",
       "# proxies and writes nothing to disk at all.",
     ],
-    envFile: (options) => gatewayEnvFilePath(options.etcDir),
+    envFile: (options) => serviceEnvFilePath(options.etcDir, "gateway"),
   },
   web: {
     identity: "platform-user",
     rationale: ["# Unprivileged: the Dashboard serves a build and proxies to the API."],
-    envFile: (options) => webEnvFilePath(options.etcDir),
+    envFile: (options) => serviceEnvFilePath(options.etcDir, "web"),
     // `next start` writes .next/cache (and .next/trace) at runtime; under
     // ProtectSystem=strict the whole checkout is read-only without this, and
     // the server dies on its first cache write.
@@ -268,7 +299,7 @@ const UNIT_PROFILES: Record<ProcessKey, UnitProfile> = {
       "# Root on purpose: the worker drives systemd-run, systemctl and chown.",
       "# Each deployed Agent runs under its own unprivileged systemd DynamicUser.",
     ],
-    envFile: (options) => options.envFilePath,
+    envFile: (options) => serviceEnvFilePath(options.etcDir, "worker"),
   },
   "workflow-dispatcher": {
     identity: "dynamic-user",
@@ -277,7 +308,7 @@ const UNIT_PROFILES: Record<ProcessKey, UnitProfile> = {
       "# touches deployment files. It talks to Postgres and to loopback HTTP only,",
       "# and it must never load tenant code.",
     ],
-    envFile: (options) => dispatcherEnvFilePath(options.etcDir),
+    envFile: (options) => serviceEnvFilePath(options.etcDir, "workflow-dispatcher"),
   },
 };
 
@@ -320,7 +351,16 @@ function identityLines(profile: UnitProfile, options: UnitRenderOptions): string
  */
 export function renderPlatformUnit(spec: ProcessSpec, options: UnitRenderOptions): string {
   const profile = UNIT_PROFILES[spec.key];
-  const after = ["network-online.target"];
+  const after = [
+    "network-online.target",
+    // The Collector, and a bundled database, are still containers. `After=` on
+    // a unit this host does not have is a no-op, so an installation on an
+    // external database is not held up by it.
+    "docker.service",
+    // Everything else talks to the API; ordering only shortens the window in
+    // which they retry, since each unit restarts on failure anyway.
+    ...(spec.key === "api" ? [] : [systemdUnitName("api")]),
+  ];
   return [
     "[Unit]",
     `Description=eveland ${spec.label}`,
@@ -361,43 +401,22 @@ function unitRenderOptions(
     sourceDir: context.repoRootDir,
     etcDir: context.layout.etcDir,
     dataDir: envFile.values.EVELAND_DATA_DIR ?? context.layout.dataDir,
-    envFilePath: context.layout.envFilePath,
     nodeBinDir,
   };
 }
 
 /**
- * The appliance Compose overlay, applied on top of docker-compose.prod.yml:
- * repoints the hardcoded /var/lib/eveland binds at the appliance data dir,
- * derives the public scheme/port from the configured origin instead of the
- * overlay's https assumption, and masks the API container's node_modules with
- * a named volume (the host checkout carries a NATIVE install for the ctl and
- * the host units; the alpine container must never write its musl artifacts
- * into it).
+ * The appliance Compose overlay, applied on top of docker-compose.prod.yml.
+ * With every platform process on the host, all that is left is repointing the
+ * Collector's hardcoded /var/lib/eveland binds at the appliance data dir.
  */
-export function renderApplianceOverlay(options: {
-  dataDir: string;
-  publicOrigin: string;
-  /** Full configuration — the API's; it seeds the admin and holds the app secret. */
-  envFilePath: string;
-}): string {
-  const derived = derivedServiceValues({ EVELAND_PUBLIC_ORIGIN: options.publicOrigin });
+export function renderApplianceOverlay(options: { dataDir: string }): string {
   return [
     "# Rendered by eveland-ctl. Appliance adjustments on top of",
     "# docker-compose.prod.yml — see packages/ctl/src/systemd-mode.ts.",
+    "# Only the Collector is left to adjust: every platform process is a host",
+    "# systemd unit, and the bundled database keeps its own volume.",
     "services:",
-    "  api:",
-    "    volumes: !override",
-    "      - .:/workspace",
-    // The prod commands load /workspace/.env at runtime (tsx --env-file);
-    // an appliance keeps its config in etc/, so bind it to that path.
-    `      - ${options.envFilePath}:/workspace/.env:ro`,
-    "      - eveland-appliance-api-node-modules:/workspace/node_modules",
-    `      - ${options.dataDir}:${options.dataDir}`,
-    "    environment:",
-    `      EVELAND_DATA_DIR: ${options.dataDir}`,
-    `      EVELAND_GATEWAY_PUBLIC_SCHEME: ${derived.EVELAND_GATEWAY_PUBLIC_SCHEME}`,
-    `      EVELAND_GATEWAY_PUBLIC_PORT: "${derived.EVELAND_GATEWAY_PUBLIC_PORT}"`,
     "  otel-config-init:",
     "    volumes: !override",
     "      - ./infra/otel/collector.yaml:/seed/collector.yaml:ro",
@@ -406,8 +425,6 @@ export function renderApplianceOverlay(options: {
     "    volumes: !override",
     `      - ${options.dataDir}/otel:/var/lib/eveland/otel:ro`,
     "      - eveland-otel-collector:/var/lib/otelcol",
-    "volumes:",
-    "  eveland-appliance-api-node-modules:",
     "",
   ].join("\n");
 }
@@ -420,13 +437,17 @@ export function renderApplianceOverlay(options: {
 export async function writeServiceEnvFiles(
   context: SystemdModeContext,
   envFile: PlatformEnvFile,
+  options: { dockerBridgeHost?: string | null } = {},
 ): Promise<void> {
   const { io, layout } = context;
-  const values = { ...envFile.values, ...derivedServiceValues(envFile.values) };
+  const values = { ...envFile.values, ...derivedServiceValues(envFile.values, options) };
   const writeTextFile =
     io.writeTextFile ??
     (async (filePath: string, content: string) => writeFile(filePath, content, "utf8"));
-  const files: Array<{ service: string; keys: readonly string[]; label: string }> = [
+  // null keys means "the whole configuration": see renderServiceEnv.
+  const files: Array<{ service: string; keys: readonly string[] | null; label: string }> = [
+    { service: "api", keys: null, label: "full configuration" },
+    { service: "worker", keys: null, label: "full configuration" },
     { service: "workflow-dispatcher", keys: DISPATCHER_ENV_KEYS, label: "dispatcher-only" },
     { service: "gateway", keys: GATEWAY_ENV_KEYS, label: "gateway-only" },
     { service: "web", keys: WEB_ENV_KEYS, label: "dashboard-only" },
@@ -435,28 +456,76 @@ export async function writeServiceEnvFiles(
     const filePath = serviceEnvFilePath(layout.etcDir, service);
     await writeTextFile(filePath, renderServiceEnv(service, keys, values));
     await chmod(filePath, 0o600).catch(() => {});
-    io.stdout(`Wrote ${filePath} (${label} environment)`);
+    io.stdout(`Wrote ${filePath} (${label})`);
   }
 }
 
 /**
  * Ownership the host units need before they can run, reconciled on every
- * start rather than once at install: an update rebuilds the Dashboard as
- * root, and the unprivileged Dashboard has to be able to write its cache
- * again afterwards.
+ * start rather than once at install: an update rebuilds the Dashboard and
+ * re-runs migrations as root, and the unprivileged services have to be able
+ * to write their own directories again afterwards.
+ *
+ * Three trees, and only three — this is the whole file-level contract between
+ * the root worker and the unprivileged platform services:
+ *
+ *   apps/web/.next   the Dashboard's runtime cache, written by `next start`
+ *   <dataDir>/uploads   where the API extracts uploaded sources for the
+ *                       worker (root) to read
+ *   <dataDir>/diagnostics   where the worker (root) publishes its
+ *                           configuration snapshot for the API to read; the
+ *                           setgid group bit is what makes that readable
+ *                           without making it world-readable
  */
-export async function reconcileHostOwnership(context: SystemdModeContext): Promise<number> {
+export async function reconcileHostOwnership(
+  context: SystemdModeContext,
+  options: { dataDir: string },
+): Promise<number> {
   const { io } = context;
-  const nextDir = path.join(context.repoRootDir, "apps/web/.next");
-  const chown = await context.execCommand(
-    ["chown", "-R", `${PLATFORM_SERVICE_USER}:${PLATFORM_SERVICE_USER}`, nextDir],
-    { cwd: context.repoRootDir },
-  );
-  if (chown.code !== 0) {
-    io.stderr(
-      `Could not give ${PLATFORM_SERVICE_USER} ownership of ${nextDir}:\n${chown.output.trim()}`,
-    );
-    return 1;
+  const owned: Array<{ path: string; owner: string; mode: string }> = [
+    {
+      path: path.join(context.repoRootDir, "apps/web/.next"),
+      owner: `${PLATFORM_SERVICE_USER}:${PLATFORM_SERVICE_USER}`,
+      mode: "0755",
+    },
+    {
+      path: path.join(options.dataDir, "uploads"),
+      owner: `${PLATFORM_SERVICE_USER}:${PLATFORM_SERVICE_USER}`,
+      mode: "0700",
+    },
+    {
+      path: path.join(options.dataDir, "diagnostics"),
+      // root writes, the platform group reads, nobody else sees it. 2xxx so
+      // the worker's snapshot inherits the group on create.
+      owner: `root:${PLATFORM_SERVICE_USER}`,
+      mode: "2750",
+    },
+  ];
+  for (const entry of owned) {
+    const created = await context.execCommand(["install", "-d", "-m", entry.mode, entry.path], {
+      cwd: context.repoRootDir,
+    });
+    if (created.code !== 0) {
+      io.stderr(`Could not create ${entry.path}:\n${created.output.trim()}`);
+      return 1;
+    }
+    // -R because a build (or a previous root-owned run) leaves files behind
+    // that the unprivileged service must still be able to replace.
+    const chown = await context.execCommand(["chown", "-R", entry.owner, entry.path], {
+      cwd: context.repoRootDir,
+    });
+    if (chown.code !== 0) {
+      io.stderr(`Could not set ${entry.path} to ${entry.owner}:\n${chown.output.trim()}`);
+      return 1;
+    }
+    // `install -d` only sets the mode when it creates the directory.
+    const chmodResult = await context.execCommand(["chmod", entry.mode, entry.path], {
+      cwd: context.repoRootDir,
+    });
+    if (chmodResult.code !== 0) {
+      io.stderr(`Could not set ${entry.path} to ${entry.mode}:\n${chmodResult.output.trim()}`);
+      return 1;
+    }
   }
   return 0;
 }
@@ -488,6 +557,7 @@ async function removeRetiredComposeServices(context: SystemdModeContext): Promis
 export async function installSystemdArtifacts(
   context: SystemdModeContext,
   envFile: PlatformEnvFile,
+  installOptions: { dockerBridgeHost?: string | null } = {},
 ): Promise<number> {
   const { io, layout } = context;
   const nodeBinDir = envFile.values.EVELAND_NODE
@@ -514,15 +584,13 @@ export async function installSystemdArtifacts(
     stdout: io.stdout,
   });
 
-  await writeServiceEnvFiles(context, envFile);
+  await writeServiceEnvFiles(context, envFile, installOptions);
 
   const overlay = applianceOverlayPath(layout.etcDir);
   await writeTextFile(
     overlay,
     renderApplianceOverlay({
       dataDir: envFile.values.EVELAND_DATA_DIR ?? path.join(layout.root, "data"),
-      publicOrigin: envFile.values.EVELAND_PUBLIC_ORIGIN ?? "http://localhost",
-      envFilePath: layout.envFilePath,
     }),
   );
   io.stdout(`Wrote ${overlay}`);
@@ -571,24 +639,27 @@ async function probeReady(fetchImpl: FetchLike, url: string): Promise<boolean> {
   }
 }
 
-/** Compose up (infra + core) + systemctl start + readiness. */
+/** Compose up (infra) + systemctl start + readiness. */
 export async function startViaSystemd(
   context: SystemdModeContext,
-  options: { skipInfra?: boolean } = {},
+  options: { skipInfra?: boolean; dataDir: string },
 ): Promise<number> {
   const { io, layout } = context;
-  const services = options.skipInfra
-    ? [...COMPOSE_CORE_SERVICES]
-    : ["postgres", "otel-collector", ...COMPOSE_CORE_SERVICES];
-  io.stdout("Starting the Compose services...");
-  const up = await context.execCommand(applianceComposeArgs(layout, "up", "-d", ...services), {
-    cwd: context.repoRootDir,
-  });
-  if (up.code !== 0) {
-    io.stderr(`docker compose up failed:\n${up.output.trim()}`);
-    return 1;
+  // `--skip-infra` means the same thing it always did: this installation is
+  // not the one that starts the containers. There is simply less behind that
+  // flag now — the Collector, and the bundled database when there is one.
+  if (!options.skipInfra) {
+    io.stdout(`Starting the infrastructure containers (${INFRA_COMPOSE_SERVICES.join(", ")})...`);
+    const up = await context.execCommand(
+      applianceComposeArgs(layout, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+      { cwd: context.repoRootDir },
+    );
+    if (up.code !== 0) {
+      io.stderr(`docker compose up failed:\n${up.output.trim()}`);
+      return 1;
+    }
   }
-  const owned = await reconcileHostOwnership(context);
+  const owned = await reconcileHostOwnership(context, { dataDir: options.dataDir });
   if (owned !== 0) return owned;
   for (const key of SYSTEMD_HOST_UNITS) {
     const result = await context.execCommand(["systemctl", "start", systemdUnitName(key)], {
@@ -599,7 +670,6 @@ export async function startViaSystemd(
       return 1;
     }
   }
-  const hostUnitKeys = new Set<string>(SYSTEMD_HOST_UNITS);
   const ready = new Set<string>();
   for (
     let waited = 0;
@@ -613,7 +683,7 @@ export async function startViaSystemd(
           ready.add(spec.key);
           io.stdout(`  ${spec.label} is ready`);
         }
-      } else if (hostUnitKeys.has(spec.key)) {
+      } else {
         const active = await context.execCommand(
           ["systemctl", "is-active", systemdUnitName(spec.key)],
           { cwd: context.repoRootDir },
@@ -630,32 +700,24 @@ export async function startViaSystemd(
   const missing = PLATFORM_PROCESSES.filter((spec) => !ready.has(spec.key)).map((s) => s.label);
   io.stderr(
     `Timed out waiting for: ${missing.join(", ")}. ` +
-      `Check \`docker compose ps\`, \`systemctl status ${SYSTEMD_HOST_UNITS.map(systemdUnitName).join(" ")}\`, ` +
-      "and `journalctl -u eveland-worker`.",
+      `Check \`systemctl status ${SYSTEMD_HOST_UNITS.map(systemdUnitName).join(" ")}\`, ` +
+      "`journalctl -u eveland-api`, and `docker compose ps`.",
   );
   return 1;
 }
 
-/** systemctl stop for the host units + compose stop for the core services. */
+/** systemctl stop for every host unit. The infrastructure containers stay up. */
 export async function stopViaSystemd(context: SystemdModeContext): Promise<number> {
-  const { io, layout } = context;
+  const { io } = context;
   let failed = false;
-  for (const key of SYSTEMD_HOST_UNITS) {
+  // Reverse start order: the front door goes first so nothing new arrives
+  // while what is behind it is going away.
+  for (const key of [...SYSTEMD_HOST_UNITS].reverse()) {
     const result = await context.execCommand(["systemctl", "stop", systemdUnitName(key)], {
       cwd: context.repoRootDir,
     });
     if (result.code !== 0) {
       io.stderr(`systemctl stop ${systemdUnitName(key)} failed:\n${result.output.trim()}`);
-      failed = true;
-    }
-  }
-  if (COMPOSE_CORE_SERVICES.length > 0) {
-    const stop = await context.execCommand(
-      applianceComposeArgs(layout, "stop", ...COMPOSE_CORE_SERVICES),
-      { cwd: context.repoRootDir },
-    );
-    if (stop.code !== 0) {
-      io.stderr(`docker compose stop failed:\n${stop.output.trim()}`);
       failed = true;
     }
   }

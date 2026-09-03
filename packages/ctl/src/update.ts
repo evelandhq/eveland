@@ -3,12 +3,9 @@ import { createWriteStream } from "node:fs";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import {
-  backfillWorkflowWorldComposeUrl,
-  defaultStreamCommand,
-  pinReleaseIdentity,
-} from "./bootstrap.ts";
+import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
 import { breakingChangesBetween } from "./changelog.ts";
+import { detectDockerBridgeHost } from "./docker-bridge.ts";
 import { loadPlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
@@ -625,10 +622,6 @@ export async function runFinishUpdate(args: string[], io: LifecycleIo): Promise<
   // Release identity follows the checkout (exact short SHA; stable only on
   // an exact release tag).
   await pinReleaseIdentity(resolved.execCommand, repo, envFile);
-  // Before the regenerated artifacts and every Compose command below: the
-  // production overlay requires the API's Compose view of the workflow world,
-  // and an installation older than that variable does not carry it yet.
-  await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
 
   const metadata = await readInstallMetadata(resolved.layout);
   const systemdForm = metadata?.supervision === "systemd";
@@ -636,7 +629,12 @@ export async function runFinishUpdate(args: string[], io: LifecycleIo): Promise<
     // The new version owns its artifacts: units, per-service env
     // allowlists, and the Compose overlay are regenerated and reloaded.
     io.stdout("Regenerating the systemd form's units, env allowlists, and Compose overlay...");
-    const installed = await installSystemdArtifacts(systemdModeContext(io, resolved), envFile);
+    const installed = await installSystemdArtifacts(systemdModeContext(io, resolved), envFile, {
+      dockerBridgeHost: await detectDockerBridgeHost({
+        execCommand: resolved.execCommand,
+        cwd: repo,
+      }),
+    });
     if (installed !== 0) {
       io.stderr(recovery("Regenerating the systemd artifacts failed"));
       return 1;

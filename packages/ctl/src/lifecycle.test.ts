@@ -13,7 +13,7 @@ import {
   writeSupervisorRecord,
   writeSupervisorState,
 } from "./state-files.ts";
-import { COMPOSE_CORE_SERVICES, SYSTEMD_HOST_UNITS } from "./systemd-mode.ts";
+import { INFRA_COMPOSE_SERVICES, SYSTEMD_HOST_UNITS } from "./systemd-mode.ts";
 
 // The fake identity convention shared by every harness: an alive pid has a
 // stable ps-style identity; a dead one reads null.
@@ -429,7 +429,7 @@ describe("runStart first boot", () => {
     expect(harness.out.join("\n")).toContain("Eveland is running at");
   });
 
-  test("Linux root first boot lands directly on the production form (systemd + compose core)", async () => {
+  test("Linux root first boot lands directly on the production form (all five as systemd units)", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     const configHome = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
     const unitDir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-units-"));
@@ -467,8 +467,13 @@ describe("runStart first boot", () => {
 
     expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
 
-    // The production form, not the ctl supervisor: no daemon, two units.
-    expect(Object.keys(written).some((p) => p.startsWith(unitDir))).toBe(true);
+    // The production form, not the ctl supervisor: no daemon, one unit per
+    // platform process.
+    expect(
+      Object.keys(written)
+        .filter((p) => p.startsWith(unitDir))
+        .sort(),
+    ).toEqual(SYSTEMD_HOST_UNITS.map((key) => path.join(unitDir, `eveland-${key}.service`)).sort());
     expect(written[path.join(unitDir, "eveland-worker.service")]).toContain("User=root");
     expect(written[path.join(unitDir, "eveland-workflow-dispatcher.service")]).toContain(
       "DynamicUser=yes",
@@ -477,11 +482,12 @@ describe("runStart first boot", () => {
     expect(metadata?.supervision).toBe("systemd");
     expect(metadata?.bootstrapCompleted).toBe(true);
     expect(metadata?.seedCompleted).toBe(true);
-    // Core services came up through the appliance compose stack.
-    const composeUp = harness.execCalls.find(
-      (argv) => argv[0] === "docker" && argv.includes("up") && argv.includes("api"),
-    );
+    // The infrastructure came up through the appliance compose stack, and
+    // nothing else did.
+    const composeUp = harness.execCalls.find((argv) => argv[0] === "docker" && argv.includes("up"));
     expect(composeUp!.join(" ")).toContain("compose.appliance.yml");
+    for (const service of INFRA_COMPOSE_SERVICES) expect(composeUp).toContain(service);
+    for (const key of SYSTEMD_HOST_UNITS) expect(composeUp).not.toContain(key);
   });
 
   test("an interrupted bootstrap resumes without re-rendering secrets", async () => {
@@ -538,37 +544,28 @@ describe("systemd supervision mode", () => {
     expect(daemonSpawned).toBe(false);
     const composeUp = harness.execCalls.find((argv) => argv.includes("up"));
     expect(composeUp!.join(" ")).toContain("docker-compose.prod.yml");
-    for (const service of COMPOSE_CORE_SERVICES) {
+    // Compose starts the infrastructure and nothing else.
+    for (const service of INFRA_COMPOSE_SERVICES) {
       expect(composeUp).toContain(service);
     }
-    // Host units are systemctl-managed; what Compose still runs is not.
     for (const key of SYSTEMD_HOST_UNITS) {
       expect(harness.execCalls).toContainEqual(["systemctl", "start", `eveland-${key}.service`]);
       expect(composeUp).not.toContain(key);
     }
-    for (const service of COMPOSE_CORE_SERVICES) {
-      expect(harness.execCalls).not.toContainEqual([
-        "systemctl",
-        "start",
-        `eveland-${service}.service`,
-      ]);
-    }
     expect(harness.out.join("\n")).toContain("Eveland is running at http://localhost:17300");
   });
 
-  test("stop delegates to systemctl for the host units and compose stop for the core", async () => {
+  test("stop delegates to systemctl for every host unit and leaves the containers up", async () => {
     const harness = await makeSystemdHarness();
     expect(await runStop([], harness.io)).toBe(0);
     for (const key of SYSTEMD_HOST_UNITS) {
       expect(harness.execCalls).toContainEqual(["systemctl", "stop", `eveland-${key}.service`]);
     }
-    const composeStop = harness.execCalls.find(
-      (argv) => argv.includes("stop") && argv[0] === "docker",
-    );
-    expect(composeStop).toBeDefined();
-    for (const service of COMPOSE_CORE_SERVICES) {
-      expect(composeStop).toContain(service);
-    }
+    // Nothing is stopped through Compose any more: the infrastructure
+    // containers deliberately keep running while the platform is down.
+    expect(
+      harness.execCalls.find((argv) => argv[0] === "docker" && argv.includes("stop")),
+    ).toBeUndefined();
     expect(harness.out.join("\n")).toContain("Stopped the platform");
   });
 });

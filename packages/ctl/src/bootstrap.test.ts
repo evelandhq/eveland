@@ -1,9 +1,8 @@
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import {
-  backfillWorkflowWorldComposeUrl,
   gatherBootstrapInputs,
   runBootstrapConfig,
   runBootstrapPrepare,
@@ -260,87 +259,5 @@ describe("install metadata", () => {
     expect(await readInstallMetadata(layout)).toEqual(metadata);
     await writeInstallMetadata(layout, { ...metadata, bootstrapCompleted: true });
     expect((await readInstallMetadata(layout))?.bootstrapCompleted).toBe(true);
-  });
-});
-
-describe("backfillWorkflowWorldComposeUrl", () => {
-  function recordingIo() {
-    const lines: string[] = [];
-    return { io: { env: {}, stdout: () => {}, stderr: (line: string) => lines.push(line) }, lines };
-  }
-
-  async function envFileWith(values: Record<string, string>) {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "eveland-backfill-"));
-    const filePath = path.join(directory, "eveland.env");
-    await writeFile(
-      filePath,
-      Object.entries(values)
-        .map(([key, value]) => `${key}=${value}`)
-        .join("\n") + "\n",
-      "utf8",
-    );
-    return { path: filePath, values: { ...values } };
-  }
-
-  test("an installation still on the rendered world gets its Compose view", async () => {
-    // Without it the production overlay's `:?` refuses to interpolate at all.
-    const { io } = recordingIo();
-    const envFile = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
-    });
-
-    await backfillWorkflowWorldComposeUrl(io, "linux", envFile);
-
-    const written = parseEnvFile(await readFile(envFile.path, "utf8"));
-    expect(written.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
-      "postgres://eveland:eveland@postgres:5432/eveland",
-    );
-    expect(envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
-      written.EVELAND_WORKFLOW_WORLD_COMPOSE_URL,
-    );
-  });
-
-  test("says what to set rather than guessing at a world it did not render", async () => {
-    const { io, lines } = recordingIo();
-    const envFile = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
-    });
-
-    await backfillWorkflowWorldComposeUrl(io, "linux", envFile);
-
-    expect(envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
-    expect(parseEnvFile(await readFile(envFile.path, "utf8"))).toEqual(envFile.values);
-    expect(lines.join("\n")).toContain("EVELAND_WORKFLOW_WORLD_COMPOSE_URL");
-  });
-
-  test("never overwrites an operator's own value, and never runs on darwin", async () => {
-    const { io } = recordingIo();
-    const operator = "postgres://eveland:eveland@postgres:5432/eveland_workflow";
-    const set = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
-      EVELAND_WORKFLOW_WORLD_COMPOSE_URL: operator,
-    });
-    await backfillWorkflowWorldComposeUrl(io, "linux", set);
-    expect(set.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(operator);
-
-    const darwin = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@host.docker.internal:17310/eveland",
-    });
-    await backfillWorkflowWorldComposeUrl(io, "darwin", darwin);
-    expect(darwin.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
-  });
-
-  test("is idempotent: a second run neither duplicates nor rewrites the key", async () => {
-    const { io } = recordingIo();
-    const envFile = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
-    });
-
-    await backfillWorkflowWorldComposeUrl(io, "linux", envFile);
-    const afterFirst = await readFile(envFile.path, "utf8");
-    await backfillWorkflowWorldComposeUrl(io, "linux", envFile);
-
-    expect(await readFile(envFile.path, "utf8")).toBe(afterFirst);
-    expect(afterFirst.match(/^EVELAND_WORKFLOW_WORLD_COMPOSE_URL=/gm)).toHaveLength(1);
   });
 });

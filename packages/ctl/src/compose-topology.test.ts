@@ -27,13 +27,6 @@ const baseCompose = path.join(repositoryRoot, "docker-compose.yml");
 const productionCompose = path.join(repositoryRoot, "docker-compose.prod.yml");
 const nativeCompose = path.join(repositoryRoot, "docker-compose.native.yml");
 
-/**
- * Deliberately unlike the base file's development literal: the base value
- * merges into every form, so only a value the operator's configuration alone
- * can supply proves the production overlay still pins one.
- */
-const COMPOSE_WORLD_SENTINEL = "postgres://sentinel:sentinel@world-db:6543/sentinel_world";
-
 /** Placeholders for the `:?set X` variables, so `config` can resolve. */
 const requiredEnv = {
   EVELAND_PUBLIC_ORIGIN: "http://localhost:17300",
@@ -47,7 +40,6 @@ const requiredEnv = {
   EVELAND_GATEWAY_AFFINITY_SECRET: "compose-topology-affinity",
   EVELAND_SCHEDULER_RUNTIME_SECRET: "compose-topology-runtime",
   EVELAND_SCHEDULER_DISPATCH_SECRET: "compose-topology-dispatch",
-  EVELAND_WORKFLOW_WORLD_COMPOSE_URL: COMPOSE_WORLD_SENTINEL,
 };
 
 const scratchDirectory = mkdtempSync(path.join(os.tmpdir(), "eveland-compose-topology-"));
@@ -115,17 +107,8 @@ function mergedConfig(files: string[]): ComposeConfig {
 }
 
 function applianceOverlayPath(): string {
-  const dataDir = "/opt/eveland/data";
   const file = path.join(scratchDirectory, "compose.appliance.yml");
-  writeFileSync(
-    file,
-    renderApplianceOverlay({
-      dataDir,
-      publicOrigin: "https://eveland.example.com",
-      envFilePath: "/opt/eveland/etc/eveland.env",
-    }),
-    "utf8",
-  );
+  writeFileSync(file, renderApplianceOverlay({ dataDir: "/opt/eveland/data" }), "utf8");
   return file;
 }
 
@@ -154,77 +137,99 @@ describe.skipIf(!composeCliAvailable && !process.env.CI)(
       appliance: () => mergedConfig([baseCompose, productionCompose, applianceOverlayPath()]),
     };
 
-    for (const [form, resolve] of Object.entries(forms)) {
-      describe(form, () => {
-        test("the Collector and the API share a network", () => {
-          const config = resolve();
-          const api = requiredService(config, "api");
-          const collector = requiredService(config, "otel-collector");
+    describe("development (every service containerized)", () => {
+      const resolve = () => forms.development();
 
-          // Host networking has no Compose service DNS, so an API in the host
-          // namespace is only dialable through the host gateway -- which
-          // cannot reach the loopback publish the network contract requires.
-          expect(api.network_mode).toBeUndefined();
-          expect(sharedNetworks(api, collector)).not.toEqual([]);
+      test("the Collector and the API share a network", () => {
+        const config = resolve();
+        const api = requiredService(config, "api");
+        const collector = requiredService(config, "otel-collector");
+
+        expect(api.network_mode).toBeUndefined();
+        expect(sharedNetworks(api, collector)).not.toEqual([]);
+      });
+
+      test("the Collector's exporters address the API by service name", () => {
+        const collector = requiredService(resolve(), "otel-collector").environment ?? {};
+
+        expect(collector.EVELAND_BUILTIN_OTLP_ENDPOINT).toBe(
+          `http://api:${API_PORT}/internal/otel`,
+        );
+        expect(collector.EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT).toBe(
+          `http://api:${API_PORT}/internal/observability/destinations`,
+        );
+      });
+
+      test("the API binds every interface inside its container", () => {
+        // Container-internal, not a host exposure: a container that binds
+        // loopback in its own namespace cannot be reached through a published
+        // port at all.
+        expect(requiredService(resolve(), "api").environment?.EVELAND_API_BIND_HOST).toBe(
+          "0.0.0.0",
+        );
+      });
+
+      test("the API addresses the shared workflow world on the Compose network", () => {
+        // The API's second Postgres connection, and the one the workflow
+        // readiness gate reads the World's cluster identity through. Inside a
+        // container a loopback address is the container's own.
+        const worldUrl = requiredService(resolve(), "api").environment
+          ?.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL;
+
+        expect(worldUrl).toBeDefined();
+        expect(["localhost", "127.0.0.1", "host.docker.internal"]).not.toContain(
+          new URL(worldUrl!).hostname,
+        );
+      });
+
+      test("the API publishes its port to host loopback only", () => {
+        const published = requiredService(resolve(), "api").ports ?? [];
+
+        expect(published.map((port) => port.published)).toContain(String(API_PORT));
+        for (const port of published) expect(port.host_ip).toBe("127.0.0.1");
+      });
+    });
+
+    for (const form of ["production", "appliance"] as const) {
+      describe(`${form} (host-native platform)`, () => {
+        const resolve = () => forms[form]();
+
+        test("no platform process is a container at all", () => {
+          // The whole point of the form: what Compose runs is infrastructure.
+          expect(Object.keys(resolve().services).sort()).toEqual([
+            "otel-collector",
+            "otel-config-init",
+            "postgres",
+          ]);
         });
 
-        test("the Collector's exporters address the API by service name", () => {
-          const collector = requiredService(resolve(), "otel-collector").environment ?? {};
+        test("the Collector stays on its bridge, and dials the host for the API", () => {
+          // Bridged so the Docker runtime can attach it to every Agent's
+          // telemetry network; host-gateway because the API it delivers to is
+          // a host process with a loopback listener no bridge can reach. The
+          // API binds its second, path-allowlisted listener on that same
+          // address (EVELAND_API_DOCKER_BRIDGE_HOST).
+          const collector = requiredService(resolve(), "otel-collector");
 
-          expect(collector.EVELAND_BUILTIN_OTLP_ENDPOINT).toBe(
-            `http://api:${API_PORT}/internal/otel`,
+          expect(collector.network_mode).toBeUndefined();
+          expect(collector.environment?.EVELAND_BUILTIN_OTLP_ENDPOINT).toBe(
+            `http://host.docker.internal:${API_PORT}/internal/otel`,
           );
-          expect(collector.EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT).toBe(
-            `http://api:${API_PORT}/internal/observability/destinations`,
-          );
-        });
-
-        test("the API binds every interface inside its container", () => {
-          // Container-internal, not a host exposure: a container that binds
-          // loopback in its own namespace cannot be reached through a
-          // published port at all.
-          expect(requiredService(resolve(), "api").environment?.EVELAND_API_BIND_HOST).toBe(
-            "0.0.0.0",
+          expect(collector.environment?.EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT).toBe(
+            `http://host.docker.internal:${API_PORT}/internal/observability/destinations`,
           );
         });
 
-        test("the API addresses the shared workflow world on the Compose network", () => {
-          // The API's second Postgres connection, and the one the workflow
-          // readiness gate reads the World's cluster identity through.
-          // EVELAND_WORKFLOW_WORLD_URL is the host and Deployment view every
-          // host-resident process needs, and it reaches this container through
-          // a runtime --env-file; leaving the container's own view to that file
-          // resolves the identity to "unknown" and refuses every workflow-step
-          // activation, so the merged configuration has to pin it.
-          const worldUrl = requiredService(resolve(), "api").environment
-            ?.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL;
+        test("the bundled database publishes to host loopback only", () => {
+          // Every reader of it is a host process now, so a loopback publish is
+          // all it needs -- and Postgres ships well-known default credentials.
+          const published = requiredService(resolve(), "postgres").ports ?? [];
 
-          expect(worldUrl).toBeDefined();
-          expect(["localhost", "127.0.0.1", "host.docker.internal"]).not.toContain(
-            new URL(worldUrl!).hostname,
-          );
-        });
-
-        test("the API publishes its port to host loopback only", () => {
-          const published = requiredService(resolve(), "api").ports ?? [];
-
-          expect(published.map((port) => port.published)).toContain(String(API_PORT));
+          expect(published).not.toEqual([]);
           for (const port of published) expect(port.host_ip).toBe("127.0.0.1");
         });
       });
     }
-
-    test("the production forms take the world address from the installation's own configuration", () => {
-      // The base file's development literal merges into every form, so a
-      // production overlay that stopped pinning the world would keep passing
-      // the loopback check above while silently answering `eveland` for an
-      // installation whose world database is named something else.
-      for (const form of [forms.production(), forms.appliance()]) {
-        expect(requiredService(form, "api").environment?.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBe(
-          COMPOSE_WORLD_SENTINEL,
-        );
-      }
-    });
 
     test("no production form starts a second copy of a host systemd unit", () => {
       // Every one of these is a host systemd unit, and exactly one of each may

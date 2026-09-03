@@ -237,6 +237,9 @@ async function makeHarness(
         timeline.push(`systemctl ${argv[1]}`);
         if (argv[1] === "is-active") return { code: 0, output: "active\n" };
       }
+      if (argv[1] === "network" && argv[2] === "inspect") {
+        return { code: 0, output: "172.17.0.1\n" };
+      }
       // docker info / compose during start
       return { code: 0, output: "ok" };
     },
@@ -767,44 +770,17 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
     expect(harness.timeline).not.toContain("start-daemon");
   });
 
-  test("systemd form: the API's Compose view of the world lands before anything runs Compose", async () => {
-    // The production overlay requires it, so an installation older than the
-    // variable cannot run a single Compose command until this is on disk.
-    // Failing the migration cuts the run off before the start step, so only
-    // update's own backfill can have written it -- starting the platform is
-    // far too late to be the thing that makes starting possible.
+  test("systemd form: the regenerated units carry a freshly detected Docker bridge address", async () => {
+    // Docker renumbers its bridge on its own schedule, and the address is
+    // where the API binds the listener the Collector delivers Agent events
+    // to. An update that carried the old one forward would leave a unit that
+    // fails to bind -- so the new checkout detects it again.
     const harness = await makeHarness({ supervision: "systemd" });
-    harness.io.streamCommand = async (argv) => {
-      harness.streamed.push(argv);
-      return argv.includes("db:migrate") ? 1 : 0;
-    };
-
-    expect(await runFinishUpdate(FROM, harness.io)).toBe(1);
-    expect(harness.timeline).not.toContain("start-daemon");
-
-    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
-    expect(onDisk.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
-      "postgres://eveland:eveland@postgres:5432/eveland",
-    );
-  });
-
-  test("systemd form: a world this installer did not render is named, never guessed at", async () => {
-    const harness = await makeHarness({ supervision: "systemd" });
-    const existing = await readFile(harness.layout.envFilePath, "utf8");
-    await writeFile(
-      harness.layout.envFilePath,
-      existing.replace(
-        "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
-        "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
-      ),
-      "utf8",
-    );
 
     expect(await runFinishUpdate(FROM, harness.io), harness.err.join("\n")).toBe(0);
 
-    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
-    expect(onDisk.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
-    expect(harness.err.join("\n")).toContain("EVELAND_WORKFLOW_WORLD_COMPOSE_URL");
+    const apiEnv = await readFile(path.join(harness.layout.etcDir, "eveland-api.env"), "utf8");
+    expect(apiEnv).toContain("EVELAND_API_DOCKER_BRIDGE_HOST=172.17.0.1");
   });
 
   test("a failed migration leaves the platform stopped, with the safe recovery plan", async () => {
