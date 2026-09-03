@@ -149,5 +149,5 @@ imports cleanly, so the package stays publishable from `main` at any time.
 Apache-2.0, © 2026 Jinzhou Chen. This SDK is deliberately licensed more
 permissively than the rest of the Eveland platform (AGPL-3.0-only) so that
 importing it into your own Agent carries no copyleft obligation. Source lives
-in [`packages/sdk`](https://github.com/evelandhq/eveland/tree/main/packages/sdk)
+in [`packages/eveland`](https://github.com/evelandhq/eveland/tree/main/packages/eveland)
 of the [Eveland monorepo](https://github.com/evelandhq/eveland).

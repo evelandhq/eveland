@@ -234,7 +234,7 @@ describe("Eve compatibility repository contract", () => {
         peerDependencies?: Record<string, string>;
       };
       const isWorkspacePackage = /^(?:apps|packages)\/[^/]+\/package\.json$/.test(packagePath);
-      const isPublishedSdk = packagePath === "packages/sdk/package.json";
+      const isPublishedSdk = packagePath === "packages/eveland/package.json";
       // Templates ship what `eveland init` copies verbatim to users, so they
       // carry the real verified version literal — `catalog:` is a fixture-only
       // marker the platform's specifier grammar rejects.
@@ -280,7 +280,7 @@ describe("Eve compatibility repository contract", () => {
       "packages/agent-auth/package.json",
       "packages/agent-observer/package.json",
       "packages/agent-scheduler/package.json",
-      "packages/sdk/package.json",
+      "packages/eveland/package.json",
     ]);
     expect([...legacyMatrixConsumers].sort()).toEqual([
       "packages/agent-observer/package.json",
@@ -295,13 +295,13 @@ describe("Eve compatibility repository contract", () => {
       "infra/integration/fixtures/workflow-wake/package.json",
     ]);
     expect([...templateConsumers].sort()).toEqual(["templates/starter-agent/package.json"]);
-    expect([...peerConsumers].sort()).toEqual(["packages/sdk/package.json"]);
+    expect([...peerConsumers].sort()).toEqual(["packages/eveland/package.json"]);
   });
 
   test("keeps the published SDK manifest installable by npm before packing", () => {
     const workspace = repositoryFile("pnpm-workspace.yaml");
     const sdkPeerRange = /\n {2}eve-sdk-peer:\n {4}eve: "([^"]+)"/.exec(workspace)?.[1];
-    const sdkPackage = JSON.parse(repositoryFile("packages/sdk/package.json")) as {
+    const sdkPackage = JSON.parse(repositoryFile("packages/eveland/package.json")) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
       optionalDependencies?: Record<string, string>;

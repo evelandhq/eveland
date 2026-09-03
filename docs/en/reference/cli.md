@@ -3,7 +3,23 @@ title: eveland CLI
 description: The agent author's command-line client - authentication model, origin resolution, credential storage, and the command surface.
 ---
 
-`eveland` is the platform's command-line client for agent authors. It speaks only the public `/api` contract — the same one the browser Dashboard uses — and carries platform-relationship verbs: authentication today, deploy/logs/env as the surface grows. Framework verbs (build, test, dev) belong to the `eve` toolchain; operating the platform itself (start, stop, doctor, update) belongs to `eveland-ctl`. The CLI ships with the source tree at `packages/cli` and is not published to npm. From a checkout, run it as `pnpm eveland <command>` (a root script; the entry runs directly from source under Node ≥ 24's type stripping, no build step).
+`eveland` is the platform's command-line client for agent authors. It speaks only the public `/api` contract — the same one the browser Dashboard uses — and carries platform-relationship verbs: authentication today, deploy/logs/env as the surface grows. Framework verbs (build, test, dev) belong to the `eve` toolchain; operating the platform itself (start, stop, doctor, update) belongs to `eveland-ctl`.
+
+## Getting the CLI
+
+The CLI is published as the `bin` of the [`eveland`](https://www.npmjs.com/package/eveland) npm package — the same package that carries the SDK your agent imports. There is no separate CLI package and no global install to keep in sync: the CLI a project runs is the one its lockfile pins, so it moves with the project rather than with whoever last ran an install.
+
+It is therefore reached the way any dependency's bin is reached, not by typing `eveland` at a bare shell prompt:
+
+| How                                                                          | When                                                                                                             |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| A `package.json` script (`"deploy": "eveland deploy"`), run as `pnpm deploy` | The normal path — `node_modules/.bin` is on `PATH` inside scripts.                                               |
+| `pnpm exec eveland <command>` (`npx eveland <command>`)                      | Ad-hoc, still the project's pinned copy.                                                                         |
+| `pnpm dlx eveland@latest init` (`npx eveland@latest init`)                   | Bootstrapping, before a `package.json` exists. Name the version — `npx` may otherwise serve a stale cached copy. |
+
+A bare `eveland` on `PATH` means a machine-wide install: `eveland-ctl`'s installer puts a shim there pointing at **that machine's platform checkout**, a different copy from any project's pinned one. When the two disagree, prefer the project's.
+
+From a checkout of this repository, run `pnpm eveland <command>` (a root script; the entry runs directly from source under Node ≥ 24's type stripping, no build step). `eveland init` is checkout-only — it scaffolds from `templates/starter-agent`, which lives outside the published tarball.
 
 ## Origin resolution
 

@@ -347,12 +347,17 @@ function printHelp(io: CliIo): void {
 }
 
 async function cliVersion(): Promise<string> {
-  // The CLI ships with the source tree and versions with the product: the
-  // root manifest carries the release-please-maintained Eveland version
-  // (the workspace package itself is pinned at 0.0.0 like every private
-  // package and would identify nothing).
+  // Its own package's version, which is the number a user can act on: it is
+  // what their lockfile pins and what `npm view eveland` resolves. This used
+  // to read the repository root manifest, back when the CLI was a private
+  // 0.0.0 workspace package that would have identified nothing; that path
+  // does not exist at all in the published tarball.
+  //
+  // Two levels up on purpose: the same hop reaches the manifest from
+  // src/cli/ when running from source and from dist/cli/ when running from
+  // the package as published.
   const packageJson = JSON.parse(
-    await readFile(new URL("../../../package.json", import.meta.url), "utf8"),
+    await readFile(new URL("../../package.json", import.meta.url), "utf8"),
   ) as { version: string };
   return packageJson.version;
 }

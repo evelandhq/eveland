@@ -1,0 +1,31 @@
+{
+  "name": "eveland-ctl",
+  "version": "0.0.1",
+  "description": "Placeholder. eveland-ctl is not distributed through npm — install Eveland with the official install script.",
+  "keywords": [
+    "eveland",
+    "placeholder"
+  ],
+  "homepage": "https://eveland.ai",
+  "bugs": "https://github.com/evelandhq/eveland/issues",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evelandhq/eveland.git",
+    "directory": "infra/npm-placeholders/eveland-ctl"
+  },
+  "bin": {
+    "eveland-ctl": "./bin/eveland-ctl.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

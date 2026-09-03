@@ -173,7 +173,7 @@ jobs:
       # The published package must stay installable straight from a registry
       # tarball: prepack builds dist, then the tarball is installed into a
       # clean project (the eve peer resolves from npm) and imported.
-      - name: Pack the sdk
+      - name: Pack the package
         run: pnpm --filter eveland pack --pack-destination /tmp/eveland-sdk
 
       - name: Install the tarball into a clean project and import it
@@ -183,6 +183,27 @@ jobs:
           npm install --no-audit --no-fund /tmp/eveland-sdk/eveland-*.tgz
           node -e "import('eveland/auth').then((m) => { if (typeof m.evelandIdentity !== 'function') throw new Error('evelandIdentity export missing'); console.log('sdk auth import ok'); })"
           node -e "import('eveland/memory').then((m) => { if (typeof m.evelandMemoryBackend !== 'function') throw new Error('evelandMemoryBackend export missing'); console.log('sdk memory import ok'); })"
+
+      # The CLI is the package's second published face, reached through `bin`
+      # rather than `exports`, so importing the SDK proves nothing about it.
+      # A bin pointing at a path prepack does not produce, or one whose
+      # relative imports were not rewritten from `.ts` to `.js` on the way
+      # into dist, would surface only after publishing.
+      - name: Run the CLI from the installed tarball
+        run: |
+          cd /tmp/sdk-smoke
+          test -x node_modules/.bin/eveland
+          node_modules/.bin/eveland --help | grep -q "Usage: eveland"
+          node_modules/.bin/eveland whoami 2>&1 | grep -q "No platform origin"
+          # --version reads the manifest by a path relative to the entry file,
+          # so it is the one command whose depth in the tree matters; from the
+          # tarball that hop must land on the package's own package.json.
+          installed="$(node -p "require('eveland/package.json').version" 2>/dev/null \
+            || node -p "JSON.parse(require('fs').readFileSync('node_modules/eveland/package.json')).version")"
+          node_modules/.bin/eveland --version | grep -q "$installed"
+          # `init` scaffolds from a template that lives outside the tarball.
+          # From an npm install it must say so, not fail with a bare ENOENT.
+          node_modules/.bin/eveland init probe 2>&1 | grep -q "runs only from a checkout"
 
   native-linux-observation:
     name: Linux native Observation path

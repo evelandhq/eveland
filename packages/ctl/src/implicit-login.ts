@@ -82,7 +82,7 @@ async function writeCredential(
     expiresAt: string | null;
   },
 ): Promise<string> {
-  // Mirrors the eveland CLI's store contract (packages/cli/src/credentials.ts):
+  // Mirrors the eveland CLI's store contract (packages/eveland/src/cli/credentials.ts):
   // one file per origin, 0700 dir, 0600 file, temp-write + rename.
   const filePath = credentialFilePath(publicOrigin, env);
   await mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });

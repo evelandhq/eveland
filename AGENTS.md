@@ -145,14 +145,21 @@ The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
   Token minting.
 - `packages/agent-scheduler`: release-time injection of the private Scheduler
   Channel.
-- `packages/cli`: the `eveland` CLI — the agent author's client of the public
-  `/api` contract. Depends on no workspace package so it stays runnable
-  anywhere the source tree lands.
 - `packages/ctl`: the `eveland-ctl` ops CLI — supervises this machine's
   platform processes and checks its health. Bound to the source tree by
   design, so it may use core's shared constants.
-- `packages/sdk`: the published `eveland` npm package. It must never import a
-  workspace package -- Agents install it from the registry, not from here.
+- `packages/eveland`: the published `eveland` npm package, two faces in one
+  tarball: the SDK Agents import (`src/auth`, `src/memory`, reached through the
+  `exports` map) and the `eveland` CLI (`src/cli`, reached through `bin`), the
+  agent author's client of the public `/api` contract. Neither face may import
+  a workspace package -- Agents install this from the registry, not from here,
+  and the CLI must stay runnable anywhere the source tree lands. The CLI also
+  runs straight from source (`pnpm eveland`, and eveland-ctl's first-boot
+  seeding), so the whole package must stay type-strippable: `erasableSyntaxOnly`
+  is on, relative imports carry `.ts` specifiers, and
+  `rewriteRelativeImportExtensions` rewrites them to `.js` on the way into
+  `dist/`. `pnpm install` leaves `node_modules/.bin/eveland` dangling until the
+  package is built -- from a checkout run `pnpm eveland`, not `pnpm exec`.
 - `infra`: Compose, Traefik, systemd, Lima, and real integration-smoke assets.
 
 Keep the dependency direction:

@@ -10,7 +10,7 @@ import { evelandIdentity } from "eveland/auth";
 // SDK, packed and unpacked into ./eveland-sdk by identity-e2e.mts (a
 // directory, not a tarball: source import records text files into the store,
 // so the fixture must not carry binaries), so this exercises the exact code
-// in packages/sdk, not a published snapshot.
+// in packages/eveland, not a published snapshot.
 export default eveChannel({
   auth: [evelandIdentity()],
 });

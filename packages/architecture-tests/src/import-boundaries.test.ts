@@ -14,13 +14,14 @@ const PACKAGE_DEPENDENCY_MATRIX: Record<string, string[]> = {
   "@evelandhq/session-collector": ["@evelandhq/core", "@evelandhq/db"],
   "@evelandhq/agent-auth": ["@evelandhq/core", "@evelandhq/db"],
   "@evelandhq/identity-broker": ["@evelandhq/core", "@evelandhq/db"],
-  // The CLI is a thin client of the public /api contract: it depends on no
-  // workspace package so it stays runnable anywhere the source tree lands.
-  "@evelandhq/cli": [],
   // The ops CLI is bound to this machine's source tree by design (it only
   // ever ships with it), so it may use core's shared constants — ports and
   // health contracts — instead of re-declaring them.
   "@evelandhq/ctl": ["@evelandhq/core"],
+  // The published npm package: the SDK Agents import plus the `eveland` CLI
+  // (src/cli), which is a thin client of the public /api contract. Neither
+  // face may import a workspace package — Agents install this from the
+  // registry, and the CLI must stay runnable anywhere the source tree lands.
   eveland: [],
 };
 

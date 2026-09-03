@@ -139,7 +139,7 @@ standalone if the site is unavailable.
 | `packages/agent-scheduler`        | Release-time injection of the private Scheduler Channel, including Extension-contributed schedules                                    |
 | `packages/platform-observability` | Shared OpenTelemetry SDK bootstrap for Eveland services                                                                               |
 | `packages/session-collector`      | Standard OTLP decoding and projection into the built-in Session, usage, and instance-health read models                               |
-| `packages/sdk`                    | The published `eveland` npm package (`eveland/auth`, `evelandIdentity()`); see its [README](packages/sdk/README.md)                   |
+| `packages/eveland`                | The published `eveland` npm package (`eveland/auth`, `evelandIdentity()`); see its [README](packages/eveland/README.md)               |
 | `packages/architecture-tests`     | Executable ratchets for dependency direction, import cycles, browser-safe core exports, and environment-variable coverage             |
 | `infra`                           | Compose, Traefik, systemd, Lima, and real integration-smoke assets                                                                    |
 
@@ -238,7 +238,8 @@ Copyright (C) 2026 Jinzhou Chen and contributors.
 Eveland is licensed under the [GNU Affero General Public License v3.0](LICENSE);
 third-party attributions are listed in [`NOTICE`](NOTICE). Two deliberate
 exceptions are more permissive: the published
-[`eveland` SDK](packages/sdk/) that Agents import is Apache-2.0 (so using it in
-your own Agent carries no copyleft obligation), and the bubblewrap sandbox
+[`eveland` package](packages/eveland/) is Apache-2.0 — both the SDK Agents
+import and the `eveland` CLI it ships as its bin — so depending on it from your
+own Agent carries no copyleft obligation, and the bubblewrap sandbox
 backend [`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap)
 is a separate Apache-2.0 project.

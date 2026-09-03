@@ -7,7 +7,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/evelandhq/eveland.git",
-    "directory": "packages/sdk"
+    "directory": "packages/eveland"
+  },
+  "bin": {
+    "eveland": "./dist/cli/bin.js"
   },
   "files": [
     "dist",
