@@ -13,7 +13,7 @@ Dashboard、API、Agent Gateway、Postgres 与托管 OpenTelemetry Collector 通
 
 ## 宿主机运行控制器
 
-Worker 作为 root 管理的 systemd Service 直接运行在 Linux 宿主机上，是唯一可以构建不受信任项目代码并控制 systemd Unit（`systemd-run`、`systemctl`、`chown`）的组件。构建在 bubblewrap Sandbox 内以独立的非特权构建用户运行；每个 Eve Deployment 使用自己的 systemd `DynamicUser`，只监听私有 `127.0.0.1:41xxx` 端口。Worker 没有公开监听端口。
+Worker 作为 root 管理的 systemd Service 直接运行在 Linux 宿主机上，是唯一可以构建不受信任项目代码并控制 systemd Unit（`systemd-run`、`systemctl`、`chown`）的组件。构建在 bubblewrap Sandbox 内以独立的非特权构建用户运行；每个 Eve Deployment 使用自己的 systemd `DynamicUser`，只监听 `127.0.0.1:18000–18999` 范围内的私有端口。Worker 没有公开监听端口。
 
 ## Workflow Dispatcher
 
