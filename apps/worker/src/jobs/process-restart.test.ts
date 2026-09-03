@@ -819,7 +819,7 @@ describe("processNextJob", () => {
       files: [
         {
           path: "package.json",
-          content: JSON.stringify({ dependencies: { eve: "^0.47.7" } }),
+          content: JSON.stringify({ dependencies: { eve: "^0.49.0" } }),
         },
         { path: "package-lock.json", content: "{}" },
       ],

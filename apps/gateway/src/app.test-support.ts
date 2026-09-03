@@ -101,9 +101,9 @@ export function repository(routes: ResolvedAgentRoute[]): GatewayRepository & {
     async getDeploymentEveVersion(deploymentId) {
       return deployments.has(deploymentId)
         ? {
-            version: "0.47.7",
-            expected: "0.47.x or 0.49.x",
-            supportedRanges: ["0.47.x", "0.49.x"],
+            version: "0.49.0",
+            expected: "0.49.x or 0.50.x",
+            supportedRanges: ["0.49.x", "0.50.x"],
             supported: true,
             sourceRevisionId: `src-${deploymentId}`,
           }

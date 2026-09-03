@@ -1,5 +1,4 @@
-import { existsSync, globSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { globSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
@@ -32,7 +31,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.49.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.50.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -63,18 +62,17 @@ describe("Eve compatibility repository contract", () => {
     ];
 
     // The covered list is the union across the window: a line may predate a
-    // stable workflow (0.47.x has no tool run), but every stable
-    // workflow any supported line runs must be audited, and the list must not
-    // keep entries no line runs anymore.
+    // stable workflow, but every stable workflow any supported line runs must
+    // be audited, and the list must not keep entries no line runs anymore.
+    // Both 0.49.x and 0.50.x run all six.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
-      // 0.48.0 moved the set out of workflow-runtime.js into its own module;
-      // 0.47.x still defines it inline. Read whichever the line ships.
-      const stableNamesModule = `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/execution/stable-workflow-names.js`;
+      // 0.48.0 moved the set out of workflow-runtime.js into its own module,
+      // and the whole window is past that now, so read the module directly. A
+      // future line that moves it again fails here rather than silently
+      // auditing nothing.
       const runtimeSource = repositoryFile(
-        existsSync(path.join(repositoryRoot, stableNamesModule))
-          ? stableNamesModule
-          : `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/execution/workflow-runtime.js`,
+        `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/execution/stable-workflow-names.js`,
       );
       const stableSet = /STABLE_WORKFLOW_NAMES=new Set\(\[([^\]]+)\]\)/.exec(runtimeSource)?.[1];
       expect(stableSet, dependencyName).toBeDefined();
@@ -86,13 +84,10 @@ describe("Eve compatibility repository contract", () => {
       }
 
       // 0.49.0 (@workflow/world beta.32) moved the lineage constants out of
-      // attributes.d.ts into attributes-validation.d.ts; 0.47.x still declares
-      // them inline. Read whichever the line ships.
-      const attributesDir = `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/compiled/@workflow/world`;
+      // attributes.d.ts into attributes-validation.d.ts, and the whole window
+      // is past that now, so read the validation module directly.
       const lineageContract = repositoryFile(
-        existsSync(path.join(repositoryRoot, attributesDir, "attributes-validation.d.ts"))
-          ? `${attributesDir}/attributes-validation.d.ts`
-          : `${attributesDir}/attributes.d.ts`,
+        `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/compiled/@workflow/world/attributes-validation.d.ts`,
       );
       expect(lineageContract, dependencyName).toContain('ROOT_RUN_ID_ATTRIBUTE = "$rootRunId"');
       expect(lineageContract, dependencyName).toContain('PARENT_RUN_ID_ATTRIBUTE = "$parentRunId"');
@@ -116,7 +111,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.47/0.48 compatibility window", () => {
+  test("describes the supported 0.49/0.50 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-oldest", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
