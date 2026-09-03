@@ -1,22 +1,21 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.47.x",
-      verifiedVersion: "0.47.7",
+      range: "0.49.x",
+      verifiedVersion: "0.49.0",
       dependencyName: "eve-oldest",
     },
     {
-      range: "0.49.x",
-      verifiedVersion: "0.49.0",
+      range: "0.50.x",
+      verifiedVersion: "0.50.0",
       dependencyName: "eve",
     },
   ],
-  // 0.48 is skipped: 0.49.0 superseded it within six hours of the window
-  // sliding onto it on 2026-09-02, so no deployment ever ran on it (the same
-  // shape as 0.40/0.41, 0.43, and 0.46 before it). A gapped window's range is
-  // the union of its contiguous runs, never the hull, which would admit the
-  // skipped line.
-  peerDependencyRange: ">=0.47.0 <0.48.0 || >=0.49.0 <0.50.0",
+  // The window's two lines are consecutive again, so the range is a single
+  // contiguous interval rather than the union of runs a gapped window needs.
+  // 0.48 stays rejected -- it was skipped when 0.49.0 superseded it, and it is
+  // now below the floor as well.
+  peerDependencyRange: ">=0.49.0 <0.51.0",
 } as const;
 
 export type SupportedEveVersionRange =
