@@ -186,7 +186,7 @@ describe("install.sh publication", () => {
   });
 
   test("the shims execute the two real bin entrypoints", () => {
-    expect(script).toContain("packages/cli/src/bin.ts");
+    expect(script).toContain("packages/eveland/src/cli/bin.ts");
     expect(script).toContain("packages/ctl/src/bin.ts");
   });
 });

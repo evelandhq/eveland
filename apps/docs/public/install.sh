@@ -338,7 +338,7 @@ EOF
   mv "$tmp" "$BIN_DIR/$name"
   note "Installed $BIN_DIR/$name"
 }
-write_shim eveland "packages/cli/src/bin.ts"
+write_shim eveland "packages/eveland/src/cli/bin.ts"
 write_shim eveland-ctl "packages/ctl/src/bin.ts"
 
 # --- PATH + completion (asked, never forced) ---------------------------------

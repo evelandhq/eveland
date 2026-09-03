@@ -3,7 +3,23 @@ title: eveland CLI
 description: Agent 作者的命令行客户端——认证模型、origin 解析、凭证存储与命令面。
 ---
 
-`eveland` 是平台面向 agent 作者的命令行客户端。它只走公开 `/api` 契约——与浏览器 Dashboard 同一契约——只承载平台关系动词：今天是认证，随着命令面扩展会有 deploy/logs/env。框架动词（build、test、dev）属于 `eve` 工具链；运维平台本身（start、stop、doctor、update）属于 `eveland-ctl`。CLI 随源码树住在 `packages/cli`，不发布到 npm。在源码 checkout 里用 `pnpm eveland <command>` 运行（根目录脚本；入口靠 Node ≥ 24 的 type stripping 直接跑源码，无需构建）。
+`eveland` 是平台面向 agent 作者的命令行客户端。它只走公开 `/api` 契约——与浏览器 Dashboard 同一契约——只承载平台关系动词：今天是认证，随着命令面扩展会有 deploy/logs/env。框架动词（build、test、dev）属于 `eve` 工具链；运维平台本身（start、stop、doctor、update）属于 `eveland-ctl`。
+
+## 如何获得 CLI
+
+CLI 作为 [`eveland`](https://www.npmjs.com/package/eveland) npm 包的 `bin` 发布——就是你的 agent import 的那个 SDK 包。没有单独的 CLI 包，也没有需要单独维护的全局安装：一个项目跑的 CLI 就是它 lockfile 里钉的那个版本，跟项目走，而不是跟"谁最后跑了一次安装"走。
+
+因此它的调用方式和任何依赖的 bin 一样，而不是在 shell 里裸敲 `eveland`：
+
+| 方式                                                                            | 何时用                                                                                 |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 写成 `package.json` script（`"deploy": "eveland deploy"`），用 `pnpm deploy` 跑 | 常规路径。script 内 `node_modules/.bin` 已在 `PATH` 上。                               |
+| `pnpm exec eveland <command>`（`npx eveland <command>`）                        | 临时执行，同样是项目钉住的那份。                                                       |
+| `pnpm dlx eveland@latest init`（`npx eveland@latest init`）                     | 引导阶段，`package.json` 还不存在时。务必写明版本，否则 `npx` 可能喂给你一份陈旧缓存。 |
+
+`PATH` 上能直接敲到 `eveland`，意味着这台机器做过全局安装：`eveland-ctl` 的安装器会在那里放一个 shim，指向**这台机器的平台 checkout**，与项目钉住的副本是两份东西。二者不一致时，以项目的为准。
+
+在本仓库的 checkout 里，用 `pnpm eveland <command>` 运行（根目录脚本；入口靠 Node ≥ 24 的 type stripping 直接跑源码，无需构建）。`eveland init` 仅限 checkout——它从 `templates/starter-agent` 拷贝，而那个目录不在发布的 tarball 里。
 
 ## Origin 解析
 

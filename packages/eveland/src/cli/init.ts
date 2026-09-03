@@ -8,10 +8,16 @@ import { fileURLToPath } from "node:url";
  * against the current eve compatibility window by CI, so a fresh init is
  * always deployable against the platform at the same commit — no version
  * rewriting needed at init time.
+ *
+ * The template lives outside this package, so it is reachable from a source
+ * checkout but not from the published tarball: `init` is checkout-only until
+ * it is reworked to delegate scaffolding to `eve init` and patch the result.
+ * `templateDirProblem` says so plainly instead of letting the copy fail with
+ * a bare ENOENT.
  */
 
 export function defaultTemplateDir(): string {
-  return fileURLToPath(new URL("../../../templates/starter-agent/", import.meta.url));
+  return fileURLToPath(new URL("../../../../templates/starter-agent/", import.meta.url));
 }
 
 export async function initProject(input: {
@@ -19,6 +25,8 @@ export async function initProject(input: {
   templateDir?: string;
 }): Promise<{ projectName: string; files: string[] }> {
   const templateDir = input.templateDir ?? defaultTemplateDir();
+  const problem = await templateDirProblem(templateDir);
+  if (problem) throw new Error(problem);
   const targetDir = path.resolve(input.targetDir);
   const projectName = normalizeProjectName(path.basename(targetDir));
 
@@ -38,6 +46,20 @@ export async function initProject(input: {
   const files: string[] = [];
   await collectFiles(targetDir, targetDir, files);
   return { projectName, files: files.sort() };
+}
+
+export async function templateDirProblem(templateDir: string): Promise<string | null> {
+  try {
+    await readdir(templateDir);
+    return null;
+  } catch {
+    return (
+      `The starter template is missing at ${templateDir}.\n` +
+      "`eveland init` scaffolds from the template in the platform source tree, so it " +
+      "runs only from a checkout — not from an npm install of this package. Clone " +
+      "https://github.com/evelandhq/eveland and run `pnpm eveland init` there."
+    );
+  }
 }
 
 function normalizeProjectName(basename: string): string {

@@ -14,7 +14,7 @@ export const BUILT_IN_AGENT_NAME = "stella";
 const MODEL_KEY_NAMES = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"] as const;
 
 export function cliBinPath(repoRootDir: string): string {
-  return path.join(repoRootDir, "packages/cli/src/bin.ts");
+  return path.join(repoRootDir, "packages/eveland/src/cli/bin.ts");
 }
 
 export function starterTemplateDir(repoRootDir: string): string {

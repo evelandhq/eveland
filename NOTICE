@@ -2,8 +2,9 @@ Eveland
 Copyright (C) 2026 Jinzhou Chen and contributors.
 
 Licensed under the GNU Affero General Public License v3.0 (see LICENSE),
-except packages/sdk (the published "eveland" npm package), which is licensed
-under the Apache License 2.0 (see packages/sdk/LICENSE).
+except packages/eveland (the published "eveland" npm package -- both the SDK
+Agents import and the "eveland" CLI it carries as its bin), which is licensed
+under the Apache License 2.0 (see packages/eveland/LICENSE).
 
 This distribution includes material from third parties:
 

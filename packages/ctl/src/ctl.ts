@@ -25,7 +25,7 @@ type Command = {
 };
 
 // The `eveland` CLI's verbs, for the cross-bin hint. Hand-synced with
-// packages/cli/src/cli.ts (the dependency direction forbids importing it).
+// packages/eveland/src/cli/cli.ts (the dependency direction forbids importing it).
 const EVELAND_COMMANDS = new Set(["init", "login", "logout", "whoami", "deploy", "env"]);
 
 const commands: Record<string, Command> = {

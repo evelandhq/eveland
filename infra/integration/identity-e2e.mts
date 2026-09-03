@@ -72,7 +72,7 @@ import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
 import { GATEWAY_PORT, PUBLIC_ORIGIN_FALLBACK } from "../../packages/core/src/ports.js";
 import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
 import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
-import { parseEvelandAuthenticationChallenge } from "../../packages/sdk/src/auth.js";
+import { parseEvelandAuthenticationChallenge } from "../../packages/eveland/src/auth.js";
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
 
@@ -90,7 +90,7 @@ const ADMIN = {
 const FIXTURE_TEMPLATE = fileURLToPath(
   new URL("../../apps/worker/src/integration/fixtures/identity-e2e", import.meta.url),
 );
-const SDK_DIR = fileURLToPath(new URL("../../packages/sdk", import.meta.url));
+const SDK_DIR = fileURLToPath(new URL("../../packages/eveland", import.meta.url));
 
 type HttpResult = {
   statusCode: number;

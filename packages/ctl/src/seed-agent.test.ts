@@ -34,7 +34,7 @@ describe("runSeedAgent", () => {
     expect(runner.calls).toHaveLength(1);
     expect(runner.calls[0]!.argv).toEqual([
       "/usr/bin/node",
-      "/repo/packages/cli/src/bin.ts",
+      "/repo/packages/eveland/src/cli/bin.ts",
       "deploy",
       "/repo/templates/starter-agent",
       "--origin",
