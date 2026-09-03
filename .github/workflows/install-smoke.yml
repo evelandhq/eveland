@@ -98,15 +98,43 @@ jobs:
           curl -fsS http://localhost:17300/health
           curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:17300/
 
-      - name: Collector can reach the API
-        # The API is a host process now, so the Collector dials the host
-        # gateway and the API answers on the bridge address eveland-ctl
-        # detected. This is the whole Observation path in one probe.
+      - name: Collector can reach the API, and only on the allowlisted paths
+        # The API is a host process now, so the Collector reaches it at the
+        # bridge address eveland-ctl detected -- which is what this probes,
+        # rather than a name it would have to trust Docker to inject
+        # (`--add-host` is rejected outright alongside `--network container:`).
+        # Both halves matter: the runtime path answers, and the control plane
+        # is not served there at all.
         run: |
+          BRIDGE="$(sudo sed -n 's/^EVELAND_API_DOCKER_BRIDGE_HOST=//p' /opt/eveland/etc/eveland-api.env)"
+          test -n "$BRIDGE"
+          echo "detected bridge address: $BRIDGE"
           sudo docker run --rm --network container:eveland-otel-collector \
-            --add-host host.docker.internal:host-gateway \
-            curlimages/curl:8.11.1 -fsS -o /dev/null \
-            http://host.docker.internal:17301/health
+            curlimages/curl:8.11.1 -fsS -o /dev/null "http://$BRIDGE:17301/health"
+          code="$(sudo docker run --rm --network container:eveland-otel-collector \
+            curlimages/curl:8.11.1 -s -o /dev/null -w '%{http_code}' \
+            "http://$BRIDGE:17301/api/projects")"
+          echo "control plane through the bridge listener: $code"
+          test "$code" = 404
+
+      - name: Agent telemetry actually landed
+        # The Observation path end to end, not just its last hop: the host
+        # worker exports host metrics over OTLP, the bridged Collector
+        # forwards them to the API, and the API projects them into Postgres.
+        # A silently disconnected Collector fills its queue and looks healthy.
+        run: |
+          # The ctl's own three-file stack from the ctl's own source tree: a
+          # bare `docker compose` here would resolve a different project (the
+          # runner workspace) and find no such service.
+          cd /opt/eveland/source
+          sudo docker compose \
+            -f docker-compose.yml -f docker-compose.prod.yml \
+            -f /opt/eveland/etc/compose.appliance.yml \
+            --env-file /opt/eveland/etc/eveland.env --profile bundled-postgres \
+            exec -T postgres psql -U eveland -d eveland -tAc \
+            "select count(*) from host_metric_samples where observed_at > now() - interval '10 minutes'" \
+            | tee /tmp/samples
+          test "$(tr -d '[:space:]' < /tmp/samples)" -gt 0
 
       - name: Stop cleanly
         run: |
