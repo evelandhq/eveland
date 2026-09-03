@@ -13,6 +13,7 @@
     "fmt:check": "oxfmt --check",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
+    "check:commits": "node scripts/check-commit-messages.mjs",
     "prepare": "simple-git-hooks",
     "dev": "pnpm -r --parallel dev",
     "dev:docs": "pnpm --filter @evelandhq/docs dev",
@@ -23,6 +24,7 @@
     "dev:gateway": "pnpm --filter @evelandhq/gateway dev"
   },
   "devDependencies": {
+    "@conventional-commits/parser": "0.4.1",
     "@types/node": "^26.2.0",
     "node-addon-api": "^8.9.2",
     "node-gyp": "^12.4.0",
