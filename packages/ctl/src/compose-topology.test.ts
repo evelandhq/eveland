@@ -15,12 +15,12 @@ import { renderApplianceOverlay } from "./systemd-mode.js";
  *
  * So this ratchet merges the real files with `docker compose config`, which is
  * the only implementation of Compose merge semantics, and asserts the base,
- * Linux-native, production, and rendered appliance forms exercised here.
+ * host-native, production, and rendered appliance forms exercised here.
  */
 const repositoryRoot = path.resolve(import.meta.dirname, "../../..");
 const baseCompose = path.join(repositoryRoot, "docker-compose.yml");
 const productionCompose = path.join(repositoryRoot, "docker-compose.prod.yml");
-const nativeLinuxCompose = path.join(repositoryRoot, "docker-compose.native-linux.yml");
+const nativeCompose = path.join(repositoryRoot, "docker-compose.native.yml");
 
 /** Placeholders for the `:?set X` variables, so `config` can resolve. */
 const requiredEnv = {
@@ -206,14 +206,14 @@ describe.skipIf(!composeCliAvailable && !process.env.CI)(
       }
     });
 
-    describe("Linux native", () => {
-      const resolve = () => mergedConfig([baseCompose, nativeLinuxCompose]);
+    describe("host native", () => {
+      const resolve = () => mergedConfig([baseCompose, nativeCompose]);
 
       test("the Collector stays on its bridge for Docker Agent telemetry", () => {
         expect(requiredService(resolve(), "otel-collector").network_mode).toBeUndefined();
       });
 
-      test("the Collector exporters use the host's private Docker bridge ingress", () => {
+      test("the Collector exporters address the API through the host gateway", () => {
         const collector = requiredService(resolve(), "otel-collector").environment ?? {};
 
         expect(collector.EVELAND_BUILTIN_OTLP_ENDPOINT).toBe(

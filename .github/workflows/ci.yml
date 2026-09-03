@@ -191,7 +191,7 @@ jobs:
         run: |
           bridge_host="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')"
           export EVELAND_API_DOCKER_BRIDGE_HOST="$bridge_host"
-          compose=(docker compose -f docker-compose.yml -f docker-compose.native-linux.yml)
+          compose=(docker compose -f docker-compose.yml -f docker-compose.native.yml)
           api_log="$RUNNER_TEMP/eveland-native-api.log"
           api_pid=""
           cleanup() {

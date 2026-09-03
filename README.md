@@ -43,20 +43,22 @@ cp .env.example .env                  # set BETTER_AUTH_SECRET and EVELAND_ADMIN
 pnpm --filter @evelandhq/api db:migrate  # required on first run and after schema changes
 ```
 
-On macOS, start the database and Collector with the base Compose file:
+Only the database and the Collector run in Compose; the platform itself runs on
+the host. The host-native overlay is required on every platform — the base file
+addresses the API by Compose service name, which resolves only when the API is
+a container too:
 
 ```bash
-docker compose up -d postgres otel-collector
+docker compose -f docker-compose.yml -f docker-compose.native.yml up -d postgres otel-collector
 pnpm dev                               # start all six dev processes
 ```
 
-On Linux, keep the Collector bridged for Docker Agent telemetry and give the
-host API a runtime-only listener on Docker's private bridge address:
+On Linux, the bridged Collector reaches the host through Docker's private
+bridge address rather than a proxied `host.docker.internal`, so the API needs a
+listener there. Export it before `pnpm dev`:
 
 ```bash
 export EVELAND_API_DOCKER_BRIDGE_HOST="$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')"
-docker compose -f docker-compose.yml -f docker-compose.native-linux.yml up -d postgres otel-collector
-pnpm dev
 ```
 
 Open the Dashboard at `http://localhost:17300` and the public documentation site at
