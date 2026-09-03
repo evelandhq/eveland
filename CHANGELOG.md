@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.50.0](https://github.com/evelandhq/eveland/compare/v0.49.0...v0.50.0) (2026-09-03)
+
+
+### Features
+
+* adopt eve 0.50.0 with a contiguous {0.49.x, 0.50.x} window ([#470](https://github.com/evelandhq/eveland/issues/470)) ([503b9d7](https://github.com/evelandhq/eveland/commit/503b9d7bf2fe9033c6cf8fb56e19cfa25a3d183b))
+
+
+### Bug Fixes
+
+* **compose:** give the containerized API a dialable address for the shared workflow world ([#468](https://github.com/evelandhq/eveland/issues/468)) ([ca662e4](https://github.com/evelandhq/eveland/commit/ca662e4c021c4d85aa72591cc30ed1b60488fc11))
+* **observability:** point host-native development at a Collector that can reach the API ([#469](https://github.com/evelandhq/eveland/issues/469)) ([0504f92](https://github.com/evelandhq/eveland/commit/0504f921bc040d836a94f7cbf96c62fafa40980f))
+
 ## [0.49.0](https://github.com/evelandhq/eveland/compare/v0.48.0...v0.49.0) (2026-09-02)
 
 
