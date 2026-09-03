@@ -8,6 +8,7 @@ import { API_INTERNAL_URL_FALLBACK, PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/co
 import {
   defaultStreamCommand,
   runBootstrapConfig,
+  backfillWorkflowWorldComposeUrl,
   runBootstrapPrepare,
   writeInstallMetadata,
   type BootstrapDeps,
@@ -493,6 +494,7 @@ async function runStartUnlocked(
   // bootstrap (idempotent all the way) rather than be swallowed here.
   if ((await systemdSupervised(resolved)) && !(await detectBootstrapNeeded(resolved))) {
     const envFile = await requirePlatformEnvFile(io, resolved);
+    await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
     const code = await startViaSystemd(systemdModeContext(io, resolved), {
       skipInfra: Boolean(parsed.values["skip-infra"]),
     });
@@ -634,6 +636,7 @@ async function runStartUnlocked(
     });
   } else {
     envFile = await requirePlatformEnvFile(io, resolved);
+    await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
     const problems = await preflightStart(resolved, { requireWebBuild: true });
     if (problems.length > 0) {
       for (const problem of problems) io.stderr(problem);

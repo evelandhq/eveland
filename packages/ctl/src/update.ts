@@ -3,7 +3,11 @@ import { createWriteStream } from "node:fs";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
+import {
+  backfillWorkflowWorldComposeUrl,
+  defaultStreamCommand,
+  pinReleaseIdentity,
+} from "./bootstrap.ts";
 import { breakingChangesBetween } from "./changelog.ts";
 import { loadPlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata } from "./home.ts";
@@ -621,6 +625,10 @@ export async function runFinishUpdate(args: string[], io: LifecycleIo): Promise<
   // Release identity follows the checkout (exact short SHA; stable only on
   // an exact release tag).
   await pinReleaseIdentity(resolved.execCommand, repo, envFile);
+  // Before the regenerated artifacts and every Compose command below: the
+  // production overlay requires the API's Compose view of the workflow world,
+  // and an installation older than that variable does not carry it yet.
+  await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
 
   const metadata = await readInstallMetadata(resolved.layout);
   const systemdForm = metadata?.supervision === "systemd";

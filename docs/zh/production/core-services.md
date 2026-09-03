@@ -23,6 +23,7 @@ pnpm --filter @evelandhq/api db:migrate
 - `WEB_ORIGIN`、`NEXT_PUBLIC_API_URL`、`BETTER_AUTH_URL`——浏览器可见的 Dashboard 与 API Origin。`NEXT_PUBLIC_API_URL` 在构建时固化进 Dashboard。
 - `EVELAND_IDENTITY_ISSUER`、`EVELAND_IDENTITY_ALLOWED_ORIGINS`——稳定的 Caller Token Issuer 与精确的聊天浏览器 Origin。
 - `EVELAND_AGENT_BASE_DOMAINS`——Wildcard Agent Domain，例如 `agents.example.com`。
+- `EVELAND_WORKFLOW_WORLD_COMPOSE_URL`——Compose 网络上的共享 Workflow Database，例如 `postgres://eveland:eveland@postgres:5432/eveland`。API 运行在 Compose 网络上，无法访问 `EVELAND_WORKFLOW_WORLD_URL` 为宿主机 Worker、Dispatcher 与 Deployment 指定的宿主机回环发布端口。
 - `BETTER_AUTH_SECRET`、`APP_SECRET_KEY`、`EVELAND_GATEWAY_SERVICE_TOKEN`、`EVELAND_GATEWAY_AFFINITY_SECRET`、`EVELAND_SCHEDULER_RUNTIME_SECRET`、`EVELAND_SCHEDULER_DISPATCH_SECRET`、`EVELAND_OTLP_SERVICE_TOKEN`——彼此独立的长随机值。绝不沿用开发 Fallback；在显式 `NODE_ENV=development` 之外，缺失这些值时服务直接拒绝启动（Fail Closed）。
 
 每个变量的定义、默认值与使用方见[环境变量参考](/zh/docs/reference/environment-variables)。

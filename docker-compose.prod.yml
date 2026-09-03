@@ -62,6 +62,13 @@ services:
       EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST: "${EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST:-}"
       # The front door is in the host namespace, so it has no service name here.
       EVELAND_GATEWAY_INTERNAL_URL: http://host.docker.internal:17300
+      # The same shared workflow database as EVELAND_WORKFLOW_WORLD_URL,
+      # addressed from the compose network. That variable is the host and
+      # Deployment view the systemd worker and dispatcher use, and no bridge
+      # client can dial a host loopback publish. Required rather than
+      # defaulted: the world database name is an installation's own choice,
+      # and guessing it points the readiness gate at a different cluster.
+      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: "${EVELAND_WORKFLOW_WORLD_COMPOSE_URL:?set EVELAND_WORKFLOW_WORLD_COMPOSE_URL to the shared workflow database as the Compose network reaches it, e.g. postgres://eveland:eveland@postgres:5432/eveland}"
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
       EVELAND_ACTIVATION_LEASE_TTL_MS: "${EVELAND_ACTIVATION_LEASE_TTL_MS:-180000}"
       EVELAND_COLD_START_TIMEOUT_MS: "${EVELAND_COLD_START_TIMEOUT_MS:-30000}"

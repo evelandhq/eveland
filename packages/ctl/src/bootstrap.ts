@@ -4,6 +4,7 @@ import path from "node:path";
 import { POSTGRES_HOST_PORT } from "@evelandhq/core/ports";
 import {
   defaultBootstrapInputs,
+  migratedWorkflowWorldComposeUrl,
   renderPlatformEnv,
   type BootstrapInputs,
 } from "./config-render.ts";
@@ -197,6 +198,43 @@ export async function pinReleaseIdentity(
   envFile.values.EVELAND_REVISION = identity.revision;
 }
 
+/**
+ * An installation rendered before EVELAND_WORKFLOW_WORLD_COMPOSE_URL existed
+ * carries only the host view of the shared workflow database, which the
+ * containerized Linux API cannot dial — and the production overlay requires
+ * the Compose view, so every Compose command would refuse to interpolate. So
+ * every path that starts or updates an existing installation runs this first,
+ * before any Compose invocation or artifact generation.
+ *
+ * It fills in only what this installer itself rendered, never overwrites a
+ * value the operator set, and says so plainly when an installation's own world
+ * topology is the one thing it must not guess at.
+ */
+export async function backfillWorkflowWorldComposeUrl(
+  io: LifecycleIo,
+  platform: NodeJS.Platform,
+  envFile: PlatformEnvFile,
+): Promise<void> {
+  // Only the Linux form runs the API in Compose; darwin runs it on the host,
+  // where the world's loopback address is the reachable one.
+  if (platform !== "linux") return;
+  if (envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL) return;
+  const worldUrl = envFile.values.EVELAND_WORKFLOW_WORLD_URL;
+  if (!worldUrl) return;
+  const composeUrl = migratedWorkflowWorldComposeUrl(worldUrl);
+  if (composeUrl === null) {
+    io.stderr(
+      `EVELAND_WORKFLOW_WORLD_COMPOSE_URL is not set in ${envFile.path}, and this ` +
+        "installation's EVELAND_WORKFLOW_WORLD_URL is not one eveland-ctl rendered, so the " +
+        "address its containerized API should use cannot be derived from it. Set it to the " +
+        "same shared workflow database, reachable from the Compose network.",
+    );
+    return;
+  }
+  await upsertEnvFileValue(envFile.path, "EVELAND_WORKFLOW_WORLD_COMPOSE_URL", composeUrl);
+  envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL = composeUrl;
+}
+
 /** Build + database preparation. Idempotent; safe to re-run after a failure. */
 export async function runBootstrapPrepare(
   deps: BootstrapDeps,
@@ -212,6 +250,7 @@ export async function runBootstrapPrepare(
   // Release identity: the exact short SHA, and a channel that is `stable`
   // only on an exact vX.Y.Z tag. Refreshed again by update.
   await pinReleaseIdentity(deps.execCommand, deps.repoRootDir, envFile);
+  await backfillWorkflowWorldComposeUrl(io, deps.platform, envFile);
 
   const childEnv = { ...io.env, ...envFile.values };
 
