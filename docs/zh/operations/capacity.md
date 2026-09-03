@@ -5,11 +5,11 @@ description: 将单机规格映射到并发 Build、运行中 Agent 与 Postgres
 
 Eveland 在一台机器上运行一组 Agent，因此实际问题是机器规格如何映射到并发工作负载。三类负载竞争宿主机资源，按内存权重从高到低：
 
-| 负载                                                                   | 内存（典型）    | CPU                 | Postgres 连接                                                           |
-| ---------------------------------------------------------------------- | --------------- | ------------------- | ----------------------------------------------------------------------- |
-| 一个 **Build**（`npm ci`/`npx eve build`）                             | 峰值 1–2 GB     | 高（突发，约 2 核） | 无——Build 环境有意排除所有数据库 URL                                    |
-| 一个 **运行中 Agent**（`npx eve start`）                               | 150–300 MB RSS  | 空闲时低            | 至多 `WORKFLOW_POSTGRES_MAX_POOL_SIZE`（默认 10）+ 它产生的平台请求负载 |
-| 核心服务（API、Agent Gateway、Dashboard、Worker、Postgres、Collector） | 合计约 1–1.5 GB | 低                  | 约 30（`DATABASE_POOL_SIZE` × API/Agent Gateway/Worker）                |
+| 负载                                                         | 内存（典型）    | CPU                 | Postgres 连接                                                           |
+| ------------------------------------------------------------ | --------------- | ------------------- | ----------------------------------------------------------------------- |
+| 一个 **Build**（`npm ci`/`npx eve build`）                   | 峰值 1–2 GB     | 高（突发，约 2 核） | 无——Build 环境有意排除所有数据库 URL                                    |
+| 一个 **运行中 Agent**（`npx eve start`）                     | 150–300 MB RSS  | 空闲时低            | 至多 `WORKFLOW_POSTGRES_MAX_POOL_SIZE`（默认 10）+ 它产生的平台请求负载 |
+| 核心服务（API、Agent Gateway、Dashboard、Worker、Collector） | 合计约 1–1.5 GB | 低                  | 约 30（`DATABASE_POOL_SIZE` × API/Agent Gateway/Worker）                |
 
 ## 并发治理
 

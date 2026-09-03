@@ -1,14 +1,15 @@
 import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { POSTGRES_HOST_PORT } from "@evelandhq/core/ports";
+import { POSTGRES_DEFAULT_PORT } from "@evelandhq/core/ports";
 import {
   defaultBootstrapInputs,
-  migratedWorkflowWorldComposeUrl,
   renderPlatformEnv,
   type BootstrapInputs,
+  type DatabaseForm,
 } from "./config-render.ts";
-import { parseEnvFile, upsertEnvFileValue, type PlatformEnvFile } from "./env-file.ts";
+import { envFileLine, parseEnvFile, upsertEnvFileValue, type PlatformEnvFile } from "./env-file.ts";
+import { describeDatabaseAddress, type PgReady } from "./pg-probe.ts";
 import { deriveReleaseIdentity } from "./release-identity.ts";
 import type { ApplianceLayout, InstallMetadata } from "./home.ts";
 import type { ExecCommand, LifecycleIo, StreamCommand } from "./io.ts";
@@ -57,17 +58,20 @@ export type BootstrapDeps = {
   layout: ApplianceLayout;
   repoRootDir: string;
   platform: "darwin" | "linux";
+  /** Whether this installation names an external database or ctl supervises one. */
+  databaseForm: DatabaseForm;
   prompter: Prompter;
   streamCommand: StreamCommand;
   execCommand: ExecCommand;
   tcpProbe: TcpProbe;
+  pgReady: PgReady;
   sleep: (ms: number) => Promise<void>;
   fileExists: (filePath: string) => Promise<boolean>;
   random?: (size: number) => Buffer;
 };
 
 export async function gatherBootstrapInputs(deps: BootstrapDeps): Promise<BootstrapInputs> {
-  const defaults = defaultBootstrapInputs(deps.io.env);
+  const defaults = defaultBootstrapInputs(deps.io.env, deps.platform, deps.databaseForm);
   const { prompter } = deps;
 
   const originAnswer = await prompter.ask(
@@ -82,6 +86,28 @@ export async function gatherBootstrapInputs(deps: BootstrapDeps): Promise<Bootst
       `Invalid public origin '${originAnswer}': expected a URL like https://eveland.example.com`,
     );
   }
+
+  // Only the external form has a question here. Where ctl supervises the
+  // database it also owns both addresses, and accepting an answer would point
+  // the platform at one cluster while ctl kept starting another.
+  const databaseUrl =
+    deps.databaseForm === "external"
+      ? await askDatabaseUrl(
+          prompter,
+          "Platform database URL",
+          defaults.databaseUrl,
+          "DATABASE_URL",
+        )
+      : requireDefault(defaults.databaseUrl, "DATABASE_URL");
+  const workflowWorldUrl =
+    deps.databaseForm === "external"
+      ? await askDatabaseUrl(
+          prompter,
+          "Shared workflow database URL (every new build uses it)",
+          defaults.workflowWorldUrl,
+          "EVELAND_WORKFLOW_WORLD_URL",
+        )
+      : requireDefault(defaults.workflowWorldUrl, "EVELAND_WORKFLOW_WORLD_URL");
 
   const adminEmail = (await prompter.ask("Admin email", defaults.adminEmail)).trim().toLowerCase();
   // Never prompted: a typed answer would be echoed into the install log the
@@ -114,7 +140,61 @@ export async function gatherBootstrapInputs(deps: BootstrapDeps): Promise<Bootst
     if (!use) openaiApiKey = undefined;
   }
 
-  return { publicOrigin, adminEmail, adminPassword, anthropicApiKey, openaiApiKey };
+  return {
+    publicOrigin,
+    databaseUrl,
+    workflowWorldUrl,
+    adminEmail,
+    adminPassword,
+    anthropicApiKey,
+    openaiApiKey,
+  };
+}
+
+/**
+ * A database address the installer has no default for is the operator's to
+ * answer, and a non-interactive install answers it by exporting the variable
+ * before running — so the error names the variable rather than the prompt.
+ */
+async function askDatabaseUrl(
+  prompter: Prompter,
+  question: string,
+  fallback: string | undefined,
+  variable: string,
+): Promise<string> {
+  // A DSN carries a password and the prompt writes to stderr, which the
+  // installer tees into logs/install.log — so an already-answered address is
+  // offered by host and port and recovered from the blank answer, never echoed.
+  let answer: string;
+  if (prompter.interactive) {
+    const offered = fallback ? describeDatabaseAddress(fallback) : null;
+    const hint = offered ? ` (blank keeps ${offered})` : "";
+    answer = (await prompter.ask(`${question}${hint}`, "")).trim() || fallback?.trim() || "";
+  } else {
+    answer = fallback?.trim() ?? "";
+  }
+  return requireDatabaseUrl(answer, variable);
+}
+
+function requireDefault(value: string | undefined, variable: string): string {
+  return requireDatabaseUrl(value?.trim() ?? "", variable);
+}
+
+function requireDatabaseUrl(answer: string, variable: string): string {
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(answer);
+  } catch {
+    parsed = null;
+  }
+  if (!parsed || !/^postgres(ql)?:$/.test(parsed.protocol) || !parsed.hostname) {
+    throw new Error(
+      `${variable} must be a Postgres connection URL like ` +
+        `postgres://eveland:<password>@db.internal:${POSTGRES_DEFAULT_PORT}/eveland` +
+        (answer ? "." : `; set ${variable} in the environment for a non-interactive install.`),
+    );
+  }
+  return answer;
 }
 
 export async function writeInstallMetadata(
@@ -167,7 +247,7 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
   const preservedKeys = Object.keys(preSeeded).filter((key) => !(key in rendered.values));
   if (preservedKeys.length > 0) {
     rendered.content += `\n# Preserved from the installer\n${preservedKeys
-      .map((key) => `${key}=${preSeeded[key]}`)
+      .map((key) => envFileLine(key, preSeeded[key]!))
       .join("\n")}\n`;
     for (const key of preservedKeys) rendered.values[key] = preSeeded[key]!;
   }
@@ -198,59 +278,17 @@ export async function pinReleaseIdentity(
   envFile.values.EVELAND_REVISION = identity.revision;
 }
 
-/**
- * An installation rendered before EVELAND_WORKFLOW_WORLD_COMPOSE_URL existed
- * carries only the host view of the shared workflow database, which the
- * containerized Linux API cannot dial — and the production overlay requires
- * the Compose view, so every Compose command would refuse to interpolate. So
- * every path that starts or updates an existing installation runs this first,
- * before any Compose invocation or artifact generation.
- *
- * It fills in only what this installer itself rendered, never overwrites a
- * value the operator set, and says so plainly when an installation's own world
- * topology is the one thing it must not guess at.
- */
-export async function backfillWorkflowWorldComposeUrl(
-  io: LifecycleIo,
-  platform: NodeJS.Platform,
-  envFile: PlatformEnvFile,
-): Promise<void> {
-  // Only the Linux form runs the API in Compose; darwin runs it on the host,
-  // where the world's loopback address is the reachable one.
-  if (platform !== "linux") return;
-  if (envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL) return;
-  const worldUrl = envFile.values.EVELAND_WORKFLOW_WORLD_URL;
-  if (!worldUrl) return;
-  const composeUrl = migratedWorkflowWorldComposeUrl(worldUrl);
-  if (composeUrl === null) {
-    io.stderr(
-      `EVELAND_WORKFLOW_WORLD_COMPOSE_URL is not set in ${envFile.path}, and this ` +
-        "installation's EVELAND_WORKFLOW_WORLD_URL is not one eveland-ctl rendered, so the " +
-        "address its containerized API should use cannot be derived from it. Set it to the " +
-        "same shared workflow database, reachable from the Compose network.",
-    );
-    return;
-  }
-  await upsertEnvFileValue(envFile.path, "EVELAND_WORKFLOW_WORLD_COMPOSE_URL", composeUrl);
-  envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL = composeUrl;
-}
-
 /** Build + database preparation. Idempotent; safe to re-run after a failure. */
 export async function runBootstrapPrepare(
   deps: BootstrapDeps,
   envFile: PlatformEnvFile,
-  options: {
-    buildWeb: boolean;
-    /** Full argv whose exit 0 means Postgres actually accepts connections. */
-    pgReadyCommand: string[];
-  },
+  options: { buildWeb: boolean },
 ): Promise<void> {
   const { io } = deps;
 
   // Release identity: the exact short SHA, and a channel that is `stable`
   // only on an exact vX.Y.Z tag. Refreshed again by update.
   await pinReleaseIdentity(deps.execCommand, deps.repoRootDir, envFile);
-  await backfillWorkflowWorldComposeUrl(io, deps.platform, envFile);
 
   const childEnv = { ...io.env, ...envFile.values };
 
@@ -268,16 +306,19 @@ export async function runBootstrapPrepare(
     if (code !== 0) throw new Error("The Dashboard build failed; see the output above.");
   }
 
-  // A bare TCP probe is a FALSE ready signal here: Docker's port proxy
-  // accepts connections before postgres inside finishes starting, and the
-  // migration then dies on "the database system is starting up". Ask
-  // postgres itself.
+  // The migration's own DSN, connected to and queried: a bare TCP probe is a
+  // FALSE ready signal, because a port proxy or forwarder accepts before the
+  // database behind it is serving and the migration then dies on "the
+  // database system is starting up".
+  const databaseUrl = envFile.values.DATABASE_URL?.trim();
+  if (!databaseUrl) {
+    throw new Error(`No DATABASE_URL in ${envFile.path}; the platform has no database to migrate.`);
+  }
   io.stdout("Waiting for Postgres...");
   const deadlineMs = 120_000;
   let up = false;
   for (let waited = 0; waited < deadlineMs; waited += 2_000) {
-    const ready = await deps.execCommand(options.pgReadyCommand, { cwd: deps.repoRootDir });
-    if (ready.code === 0) {
+    if (await deps.pgReady(databaseUrl)) {
       up = true;
       break;
     }
@@ -285,7 +326,9 @@ export async function runBootstrapPrepare(
   }
   if (!up) {
     throw new Error(
-      `Postgres did not become ready on 127.0.0.1:${POSTGRES_HOST_PORT}. Check \`docker compose ps\` and \`docker compose logs postgres\` in ${deps.repoRootDir}.`,
+      `Postgres at ${describeDatabaseAddress(databaseUrl) ?? "the configured address"} did not ` +
+        `accept connections within ${deadlineMs / 1_000}s. Check that DATABASE_URL in ` +
+        `${envFile.path} names a reachable database and that its credentials are right.`,
     );
   }
 

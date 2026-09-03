@@ -32,7 +32,7 @@ Built Release artifacts (`builds/`) are _not_ safely excludable: a Release is im
 2. Restore the control-plane database and the shared workflow database from the same backup window.
 3. Restore the data root at the **same absolute path** — API's mounted path and Worker's `EVELAND_DATA_DIR` must agree, and stored `sourcePath` values are absolute.
 4. Restore configuration files, check out the exact release tag the backup was taken under, and install the frozen lockfile. Restore onto the same version first; upgrade afterwards through the normal [upgrade path](/docs/operations/upgrades).
-5. Start Postgres, then the core services, the dispatcher, and Worker. Worker reconciles stale `ready` RuntimeInstances to `stopped` or `failed`; nothing restarts by itself.
+5. Start the core services, the dispatcher, and Worker. Worker reconciles stale `ready` RuntimeInstances to `stopped` or `failed`; nothing restarts by itself.
 6. Send a real request or wait for a schedule: the next activation cold-starts the preserved exact Release. Verify identity and health per **Settings → About** before reopening ingress.
 
 ## Host reboot recovery

@@ -1,6 +1,6 @@
 import { access, chmod, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { PlatformEnvFile } from "./env-file.ts";
+import { envFileLine, type PlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata, type ApplianceLayout } from "./home.ts";
 import { writeInstallMetadata } from "./bootstrap.ts";
 import type { ExecCommand, FetchLike, LifecycleIo } from "./io.ts";
@@ -36,6 +36,15 @@ export const SYSTEMD_HOST_UNITS = ["worker", "workflow-dispatcher"] as const;
 
 /** Core services managed through Compose in the systemd form. */
 export const COMPOSE_CORE_SERVICES = ["api", "gateway", "web"] as const;
+
+/**
+ * Infrastructure this form starts. Postgres is deliberately absent: the form
+ * runs the API on the Compose bridge while the worker, the dispatcher and
+ * every Deployment run on the host, and only a database outside this
+ * installation has one address all three namespaces can dial. It is an
+ * external prerequisite here — see docs/en/production/prerequisites.md.
+ */
+export const PRODUCTION_INFRA_SERVICES = ["otel-collector"] as const;
 
 // Generous on purpose: the first `compose up` of this form runs each core
 // service's in-container pnpm install, and the Dashboard container also
@@ -125,7 +134,7 @@ export function renderServiceEnv(
   ];
   for (const key of keys) {
     const value = values[key];
-    if (value !== undefined && value !== "") lines.push(`${key}=${value}`);
+    if (value !== undefined && value !== "") lines.push(envFileLine(key, value));
   }
   lines.push("");
   return lines.join("\n");
@@ -161,7 +170,7 @@ export function renderDispatcherEnv(values: Record<string, string>): string {
   ];
   for (const key of DISPATCHER_ENV_KEYS) {
     const value = values[key];
-    if (value !== undefined && value !== "") lines.push(`${key}=${value}`);
+    if (value !== undefined && value !== "") lines.push(envFileLine(key, value));
   }
   lines.push("");
   return lines.join("\n");
@@ -426,7 +435,7 @@ export async function startViaSystemd(
   const { io, layout } = context;
   const services = options.skipInfra
     ? [...COMPOSE_CORE_SERVICES]
-    : ["postgres", "otel-collector", ...COMPOSE_CORE_SERVICES];
+    : [...PRODUCTION_INFRA_SERVICES, ...COMPOSE_CORE_SERVICES];
   io.stdout("Starting the Compose services (this runs their in-container install)...");
   const up = await context.execCommand(applianceComposeArgs(layout, "up", "-d", ...services), {
     cwd: context.repoRootDir,

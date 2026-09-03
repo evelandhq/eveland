@@ -85,6 +85,7 @@ async function makeHarness(options: HarnessOptions = {}) {
       return 4242;
     },
     isAlive: (pid) => alivePids.has(pid),
+    pgReady: async () => true,
     processIdentity: async (pid) => (alivePids.has(pid) ? fakeIdentity(pid) : null),
     sendSignal: (pid, signal) => {
       signals.push({ pid, signal });
@@ -95,6 +96,8 @@ async function makeHarness(options: HarnessOptions = {}) {
 }
 
 const VALID_ENV = "NODE_ENV=development\nEVELAND_PUBLIC_ORIGIN=http://localhost:17300\n";
+const LINUX_PLATFORM_DB = "postgres://eveland:secret@db.internal:5432/eveland";
+const LINUX_WORLD_DB = "postgres://eveland:secret@db.internal:5432/eveland_workflow";
 
 describe("runStart", () => {
   test("starts the daemon, brings infra up, waits for readiness, and prints the origin", async () => {
@@ -382,6 +385,10 @@ describe("runStart first boot", () => {
     const unitDir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-units-"));
     harness.io.platform = "linux";
     harness.io.env.XDG_CONFIG_HOME = configHome;
+    // This form has no database of its own; install.sh passes the operator's
+    // exported addresses through to ctl.
+    harness.io.env.DATABASE_URL = LINUX_PLATFORM_DB;
+    harness.io.env.EVELAND_WORKFLOW_WORLD_URL = LINUX_WORLD_DB;
     harness.io.fetchImpl = deviceFlowFetch();
     harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
@@ -434,6 +441,10 @@ describe("runStart first boot", () => {
     const unitDir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-units-"));
     harness.io.platform = "linux";
     harness.io.env.XDG_CONFIG_HOME = configHome;
+    // This form has no database of its own; install.sh passes the operator's
+    // exported addresses through to ctl.
+    harness.io.env.DATABASE_URL = LINUX_PLATFORM_DB;
+    harness.io.env.EVELAND_WORKFLOW_WORLD_URL = LINUX_WORLD_DB;
     harness.io.fetchImpl = deviceFlowFetch();
     harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
@@ -476,11 +487,21 @@ describe("runStart first boot", () => {
     expect(metadata?.supervision).toBe("systemd");
     expect(metadata?.bootstrapCompleted).toBe(true);
     expect(metadata?.seedCompleted).toBe(true);
-    // Core services came up through the appliance compose stack.
+    // Core services came up through the appliance compose stack, and no
+    // Compose Postgres with them: this form's database is external, and a
+    // second cluster nobody notices is how a Deployment ends up writing runs
+    // the dispatcher never claims.
     const composeUp = harness.execCalls.find(
       (argv) => argv[0] === "docker" && argv.includes("up") && argv.includes("api"),
     );
     expect(composeUp!.join(" ")).toContain("compose.appliance.yml");
+    for (const argv of harness.execCalls.filter((call) => call.includes("up"))) {
+      expect(argv).not.toContain("postgres");
+    }
+    // The exported addresses are what the installation actually runs on.
+    const rendered = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(rendered.DATABASE_URL).toBe(LINUX_PLATFORM_DB);
+    expect(rendered.EVELAND_WORKFLOW_WORLD_URL).toBe(LINUX_WORLD_DB);
   });
 
   test("an interrupted bootstrap resumes without re-rendering secrets", async () => {

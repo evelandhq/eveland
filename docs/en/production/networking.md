@@ -32,7 +32,8 @@ Keep the wildcard rule path-transparent. Eve task-input callbacks and custom MCP
 - Agent processes bind private ports in the `127.0.0.1:18000–18999` range. Never add those dynamic ports to Traefik or firewall rules.
 - The managed Collector's receivers (loopback `17311`/`17312` for the platform, `17313`/`17314` for Agents) must never be published on a public interface.
 - API (`17301`) and Dashboard (`17302`) bind loopback only; the front door (`17300`) is the sole non-loopback listener.
-- Postgres publishes `17310` on the host so host services and deployed Agent processes can reach it, and it ships with well-known default credentials. **Block `17310` from every non-local network at the host firewall** (for example `ufw deny in on <public-interface> to any port 17310`, or an equivalent security-group rule); the only inbound ports a public interface needs are the reverse proxy's `80`/`443`.
+- Postgres is external to this host and publishes no port on it. What the topology needs instead is an **outbound** path from this host to the database instance, on the one address `DATABASE_URL` and `EVELAND_WORKFLOW_WORLD_URL` name — used unchanged by the API container, the Worker, the dispatcher, and every deployed Agent process. Keep the instance itself off the public internet (a private network, or a security group admitting only this host), and do not put a transaction-pooling proxy in front of it: the workflow queue depends on `LISTEN`/`NOTIFY`. See [Prepare the host](/docs/production/prerequisites#provision-an-external-postgres).
+- The only inbound ports a public interface needs are the reverse proxy's `80`/`443`.
 
 ## Agent Gateway boundary
 

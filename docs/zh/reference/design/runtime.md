@@ -41,8 +41,9 @@ Agent 的边际成本趋近于零，同样配置的机器在 systemd 上能跑�
 Docker Agent Runtime。Linux Native 开发让 Collector 保持桥接，因为 Docker Runtime 会把它接入每个
 Agent 的私有 Telemetry 网络。因此宿主机 API 在 Docker 私有 Bridge 地址上增加
 第二个 Listener，只允许 Health、Collector Observation、Agent JWKS 与 Scheduler
-Channel 路径；Control Plane 仍然只绑定 Loopback。生产环境的核心平台服务
-（Postgres、OTel Collector）仍然容器化；搬到宿主机上的是 _Agent_ 运行时。
+Channel 路径；Control Plane 仍然只绑定 Loopback。生产环境的托管 OTel Collector
+仍然容器化；Postgres 则彻底离开了 Compose——一个同时在三个网络命名空间里运行代码的
+形态，对其中某一个命名空间内的数据库给不出统一地址。搬到宿主机上的是 _Agent_ 运行时。
 
 ## 混合运行时：可见，但不受支持
 

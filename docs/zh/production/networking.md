@@ -32,7 +32,8 @@ Project Slug 全局唯一且不可变。Deployment Key 恰好由八个小写字�
 - Agent 进程绑定 `127.0.0.1:18000–18999` 范围内的私有端口。永远不要把这些动态端口加进 Traefik 或防火墙规则。
 - 托管 Collector 的 Receiver（平台侧 Loopback `17311`/`17312`，Agent 侧 `17313`/`17314`）绝不能发布到公开接口。
 - API（`17301`）与 Dashboard（`17302`）仅绑定 Loopback；前门（`17300`）是唯一的非回环监听端口。
-- Postgres 在宿主机上发布 `17310`，以便宿主机服务和已部署的 Agent 进程访问它，而它携带的是众所周知的默认凭据。**必须在宿主机防火墙上阻断所有非本地网络对 `17310` 的访问**（例如 `ufw deny in on <public-interface> to any port 17310`，或等效的安全组规则）；公开接口唯一需要放行的入站端口是反向代理的 `80`/`443`。
+- Postgres 位于本机之外，不在本机上发布任何端口。这套拓扑需要的是从本机到数据库实例的**出站**通路，走 `DATABASE_URL` 与 `EVELAND_WORKFLOW_WORLD_URL` 所指的那一个地址——API 容器、Worker、Dispatcher 与每个已部署的 Agent 进程原样使用同一串地址。实例本身不要暴露在公网（放在私有网络中，或用只放行本机的安全组），并且不要在它前面放 Transaction Pooling 代理：Workflow 队列依赖 `LISTEN`/`NOTIFY`。参见[准备宿主机](/zh/docs/production/prerequisites#准备外部-postgres)。
+- 公开接口唯一需要放行的入站端口是反向代理的 `80`/`443`。
 
 ## Agent Gateway 边界
 

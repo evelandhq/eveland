@@ -1,9 +1,8 @@
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import {
-  backfillWorkflowWorldComposeUrl,
   gatherBootstrapInputs,
   runBootstrapConfig,
   runBootstrapPrepare,
@@ -12,7 +11,11 @@ import {
 } from "./bootstrap.ts";
 import { parseEnvFile } from "./env-file.ts";
 import { applianceLayout, readInstallMetadata } from "./home.ts";
+import type { DatabaseForm } from "./config-render.ts";
 import type { Prompter } from "./prompt.ts";
+
+const PLATFORM_DB = "postgres://eveland:secret@db.internal:5432/eveland";
+const WORLD_DB = "postgres://eveland:secret@db.internal:5432/eveland_workflow";
 
 function scriptedPrompter(answers: Array<string | boolean>): Prompter {
   const queue = [...answers];
@@ -33,6 +36,8 @@ function scriptedPrompter(answers: Array<string | boolean>): Prompter {
 async function makeDeps(options: {
   prompter?: Prompter;
   env?: NodeJS.ProcessEnv;
+  platform?: "darwin" | "linux";
+  databaseForm?: DatabaseForm;
   webBuildExists?: boolean;
   postgresUp?: boolean;
   commandExit?: number | null;
@@ -51,7 +56,11 @@ async function makeDeps(options: {
     },
     layout,
     repoRootDir: repo,
-    platform: "darwin",
+    platform: options.platform ?? "darwin",
+    // What lifecycle decides for these platforms by default: Linux first boot
+    // lands on the production form, macOS on the ctl supervisor.
+    databaseForm:
+      options.databaseForm ?? ((options.platform ?? "darwin") === "linux" ? "external" : "compose"),
     prompter: options.prompter ?? scriptedPrompter([]),
     streamCommand: async (argv) => {
       commands.push(argv);
@@ -64,12 +73,10 @@ async function makeDeps(options: {
           ? { code: 128, output: "fatal: no tag exactly matches" }
           : { code: 0, output: "v0.48.0\n" };
       }
-      if (argv.includes("pg_isready")) {
-        return { code: (options.postgresUp ?? true) ? 0 : 1, output: "" };
-      }
       return { code: 0, output: "" };
     },
     tcpProbe: async () => options.postgresUp ?? true,
+    pgReady: async () => options.postgresUp ?? true,
     sleep: async () => {},
     fileExists: async (filePath) => {
       if (filePath.endsWith("BUILD_ID")) return options.webBuildExists ?? false;
@@ -111,8 +118,81 @@ describe("gatherBootstrapInputs", () => {
     expect(inputs.anthropicApiKey).toBe("sk-ant-typed");
   });
 
+  test("the Compose form is never asked about a database it does not choose", async () => {
+    // ctl supervises that Postgres and owns both of its addresses. Accepting an
+    // answer here pointed the platform at one cluster while ctl kept starting
+    // another -- and on macOS the Agents' view was silently replaced by the
+    // platform's, splitting the World across two databases.
+    const asked: string[] = [];
+    const { deps } = await makeDeps({
+      prompter: {
+        interactive: true,
+        ask: async (question, defaultValue) => {
+          asked.push(question);
+          return defaultValue;
+        },
+        confirm: async (_question, defaultValue) => defaultValue,
+      },
+    });
+    const inputs = await gatherBootstrapInputs(deps);
+    expect(asked.some((question) => /database/i.test(question))).toBe(false);
+    expect(inputs.databaseUrl).toBe("postgres://eveland:eveland@127.0.0.1:17310/eveland");
+    expect(inputs.workflowWorldUrl).toBe(
+      "postgres://eveland:eveland@host.docker.internal:17310/eveland",
+    );
+  });
+
+  test("the external form asks, and never echoes the address it already has", async () => {
+    // The prompt writes to stderr and the installer tees stderr into
+    // logs/install.log, so a DSN offered as a default would persist its
+    // password there. Only host and port are shown; a blank answer keeps it.
+    const asked: string[] = [];
+    const { deps } = await makeDeps({
+      platform: "linux",
+      env: { DATABASE_URL: PLATFORM_DB, EVELAND_WORKFLOW_WORLD_URL: WORLD_DB },
+      prompter: {
+        interactive: true,
+        ask: async (question, defaultValue) => {
+          asked.push(question);
+          // Blank only where the point is that a blank answer keeps what the
+          // installation already has.
+          return /database/i.test(question) ? "" : defaultValue;
+        },
+        confirm: async (_question, defaultValue) => defaultValue,
+      },
+    });
+    const inputs = await gatherBootstrapInputs(deps);
+    expect(inputs.databaseUrl).toBe(PLATFORM_DB);
+    expect(inputs.workflowWorldUrl).toBe(WORLD_DB);
+    const databaseQuestions = asked.filter((question) => /database/i.test(question));
+    expect(databaseQuestions.length).toBe(2);
+    for (const question of databaseQuestions) {
+      expect(question).toContain("db.internal:5432");
+      expect(question).not.toContain("secret");
+    }
+  });
+
+  test("a typed address wins over the exported one", async () => {
+    const typed = "postgres://eveland:other@elsewhere.internal:5432/eveland";
+    const { deps } = await makeDeps({
+      platform: "linux",
+      env: { DATABASE_URL: PLATFORM_DB, EVELAND_WORKFLOW_WORLD_URL: WORLD_DB },
+      prompter: scriptedPrompter([
+        "http://localhost:17300", // origin
+        typed, // platform database
+        "", // shared world: blank keeps the exported one
+        "admin@example.com",
+      ]),
+    });
+    const inputs = await gatherBootstrapInputs(deps);
+    expect(inputs.databaseUrl).toBe(typed);
+    expect(inputs.workflowWorldUrl).toBe(WORLD_DB);
+  });
+
   test("an EVELAND_ADMIN_PASSWORD already in the environment wins over generation", async () => {
-    const { deps } = await makeDeps({ env: { EVELAND_ADMIN_PASSWORD: "operator-chosen-pw" } });
+    const { deps } = await makeDeps({
+      env: { EVELAND_ADMIN_PASSWORD: "operator-chosen-pw" },
+    });
     expect((await gatherBootstrapInputs(deps)).adminPassword).toBe("operator-chosen-pw");
   });
 
@@ -131,8 +211,48 @@ describe("gatherBootstrapInputs", () => {
   });
 
   test("a too-short environment-provided admin password is rejected before anything is written", async () => {
-    const { deps } = await makeDeps({ env: { EVELAND_ADMIN_PASSWORD: "short" } });
+    const { deps } = await makeDeps({
+      env: { EVELAND_ADMIN_PASSWORD: "short" },
+    });
     await expect(gatherBootstrapInputs(deps)).rejects.toThrow(/at least 12 characters/);
+  });
+
+  test("Linux with no database in the environment names the variable to export", async () => {
+    // The form has no database of its own to default to, and a non-interactive
+    // install answers the question by exporting the variable — so the error
+    // has to be the variable name, not "answer the prompt".
+    const { deps } = await makeDeps({ platform: "linux" });
+    await expect(gatherBootstrapInputs(deps)).rejects.toThrow(
+      /DATABASE_URL must be a Postgres connection URL[^]*set DATABASE_URL in the environment/,
+    );
+  });
+
+  test("Linux adopts the addresses a non-interactive install exported", async () => {
+    const { deps } = await makeDeps({
+      platform: "linux",
+      env: {
+        DATABASE_URL: "postgres://eveland:secret@db.internal:5432/eveland",
+        EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:secret@db.internal:5432/eveland_workflow",
+      },
+    });
+    const inputs = await gatherBootstrapInputs(deps);
+    expect(inputs.databaseUrl).toBe("postgres://eveland:secret@db.internal:5432/eveland");
+    expect(inputs.workflowWorldUrl).toBe(
+      "postgres://eveland:secret@db.internal:5432/eveland_workflow",
+    );
+  });
+
+  test("an answer that is not a Postgres URL is refused, naming its variable", async () => {
+    const { deps } = await makeDeps({
+      platform: "linux",
+      env: {
+        DATABASE_URL: "postgres://eveland:secret@db.internal:5432/eveland",
+        EVELAND_WORKFLOW_WORLD_URL: "db.internal:5432/eveland_workflow",
+      },
+    });
+    await expect(gatherBootstrapInputs(deps)).rejects.toThrow(
+      /EVELAND_WORKFLOW_WORLD_URL must be a Postgres connection URL/,
+    );
   });
 });
 
@@ -193,7 +313,7 @@ describe("runBootstrapPrepare", () => {
   test("builds the Dashboard when missing and applies migrations with the rendered env", async () => {
     const { deps, commands } = await makeDeps({ webBuildExists: false });
     const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
     expect(commands).toEqual([
       ["pnpm", "--filter", "@evelandhq/web", "build"],
       ["pnpm", "--filter", "@evelandhq/api", "db:migrate"],
@@ -203,14 +323,14 @@ describe("runBootstrapPrepare", () => {
   test("skips the Dashboard build when one exists", async () => {
     const { deps, commands } = await makeDeps({ webBuildExists: true });
     const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
     expect(commands).toEqual([["pnpm", "--filter", "@evelandhq/api", "db:migrate"]]);
   });
 
   test("pins release identity: exact short SHA, and stable only on an exact release tag", async () => {
     const { deps, layout } = await makeDeps({ webBuildExists: true });
     const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
     expect(envFile.values.EVELAND_REVISION).toBe("abc1234");
     expect(envFile.values.EVELAND_RELEASE_CHANNEL).toBe("stable");
     const onDisk = parseEnvFile(await readFile(layout.envFilePath, "utf8"));
@@ -219,20 +339,23 @@ describe("runBootstrapPrepare", () => {
     expect(onDisk.APP_SECRET_KEY).toBe(envFile.values.APP_SECRET_KEY);
   });
 
-  test("an unreachable Postgres fails with a compose hint instead of a migrate stack trace", async () => {
-    const { deps } = await makeDeps({ webBuildExists: true, postgresUp: false });
+  test("an unreachable Postgres names the address and DATABASE_URL, not a migrate stack trace", async () => {
+    const { deps, layout } = await makeDeps({
+      webBuildExists: true,
+      postgresUp: false,
+    });
     const envFile = await runBootstrapConfig(deps);
-    await expect(
-      runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] }),
-    ).rejects.toThrow(/docker compose ps/);
+    await expect(runBootstrapPrepare(deps, envFile, { buildWeb: true })).rejects.toThrow(
+      new RegExp(`did not accept connections[^]*DATABASE_URL in ${layout.envFilePath}`),
+    );
   });
 
   test("a failing migration is a clear error", async () => {
     const { deps } = await makeDeps({ webBuildExists: true, commandExit: 1 });
     const envFile = await runBootstrapConfig(deps);
-    await expect(
-      runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] }),
-    ).rejects.toThrow(/migration failed/);
+    await expect(runBootstrapPrepare(deps, envFile, { buildWeb: true })).rejects.toThrow(
+      /migration failed/,
+    );
   });
 });
 
@@ -240,7 +363,7 @@ describe("runBootstrapPrepare on a non-release checkout", () => {
   test("a bare SHA / branch checkout is `edge`, never impersonating a stable release", async () => {
     const { deps } = await makeDeps({ webBuildExists: true, onTag: false });
     const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
     expect(envFile.values.EVELAND_RELEASE_CHANNEL).toBe("edge");
     expect(envFile.values.EVELAND_REVISION).toBe("abc1234");
   });
@@ -258,89 +381,10 @@ describe("install metadata", () => {
     };
     await writeInstallMetadata(layout, metadata);
     expect(await readInstallMetadata(layout)).toEqual(metadata);
-    await writeInstallMetadata(layout, { ...metadata, bootstrapCompleted: true });
+    await writeInstallMetadata(layout, {
+      ...metadata,
+      bootstrapCompleted: true,
+    });
     expect((await readInstallMetadata(layout))?.bootstrapCompleted).toBe(true);
-  });
-});
-
-describe("backfillWorkflowWorldComposeUrl", () => {
-  function recordingIo() {
-    const lines: string[] = [];
-    return { io: { env: {}, stdout: () => {}, stderr: (line: string) => lines.push(line) }, lines };
-  }
-
-  async function envFileWith(values: Record<string, string>) {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "eveland-backfill-"));
-    const filePath = path.join(directory, "eveland.env");
-    await writeFile(
-      filePath,
-      Object.entries(values)
-        .map(([key, value]) => `${key}=${value}`)
-        .join("\n") + "\n",
-      "utf8",
-    );
-    return { path: filePath, values: { ...values } };
-  }
-
-  test("an installation still on the rendered world gets its Compose view", async () => {
-    // Without it the production overlay's `:?` refuses to interpolate at all.
-    const { io } = recordingIo();
-    const envFile = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
-    });
-
-    await backfillWorkflowWorldComposeUrl(io, "linux", envFile);
-
-    const written = parseEnvFile(await readFile(envFile.path, "utf8"));
-    expect(written.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
-      "postgres://eveland:eveland@postgres:5432/eveland",
-    );
-    expect(envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
-      written.EVELAND_WORKFLOW_WORLD_COMPOSE_URL,
-    );
-  });
-
-  test("says what to set rather than guessing at a world it did not render", async () => {
-    const { io, lines } = recordingIo();
-    const envFile = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
-    });
-
-    await backfillWorkflowWorldComposeUrl(io, "linux", envFile);
-
-    expect(envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
-    expect(parseEnvFile(await readFile(envFile.path, "utf8"))).toEqual(envFile.values);
-    expect(lines.join("\n")).toContain("EVELAND_WORKFLOW_WORLD_COMPOSE_URL");
-  });
-
-  test("never overwrites an operator's own value, and never runs on darwin", async () => {
-    const { io } = recordingIo();
-    const operator = "postgres://eveland:eveland@postgres:5432/eveland_workflow";
-    const set = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
-      EVELAND_WORKFLOW_WORLD_COMPOSE_URL: operator,
-    });
-    await backfillWorkflowWorldComposeUrl(io, "linux", set);
-    expect(set.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(operator);
-
-    const darwin = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@host.docker.internal:17310/eveland",
-    });
-    await backfillWorkflowWorldComposeUrl(io, "darwin", darwin);
-    expect(darwin.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
-  });
-
-  test("is idempotent: a second run neither duplicates nor rewrites the key", async () => {
-    const { io } = recordingIo();
-    const envFile = await envFileWith({
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
-    });
-
-    await backfillWorkflowWorldComposeUrl(io, "linux", envFile);
-    const afterFirst = await readFile(envFile.path, "utf8");
-    await backfillWorkflowWorldComposeUrl(io, "linux", envFile);
-
-    expect(await readFile(envFile.path, "utf8")).toBe(afterFirst);
-    expect(afterFirst.match(/^EVELAND_WORKFLOW_WORLD_COMPOSE_URL=/gm)).toHaveLength(1);
   });
 });

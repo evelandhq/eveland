@@ -39,8 +39,8 @@ sudo systemctl enable --now eveland-worker
 
 - `EVELAND_RUNTIME=systemd` and `NODE_ENV=production`. `NODE_ENV=production` already defaults the runtime to systemd, but keep the explicit value so the file documents the host's runtime unambiguously.
 - `EVELAND_DATA_DIR=/var/lib/eveland` — the exact absolute path the API container mounts.
-- `DATABASE_URL` — the platform database.
-- `EVELAND_WORKFLOW_WORLD_URL` (and `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when needed) — the shared workflow database; must equal the dispatcher's value.
+- `DATABASE_URL` — the platform database; the exact same string the API's Compose environment holds.
+- `EVELAND_WORKFLOW_WORLD_URL` — the shared workflow database; must equal the dispatcher's value and the API's, character for character.
 - `APP_SECRET_KEY` — must match the API's value. After rotation, redeploy every Agent Deployment so its telemetry credential is signed by the new key.
 - `EVELAND_GATEWAY_SERVICE_TOKEN`, `EVELAND_GATEWAY_INTERNAL_URL` — Agent Gateway service authentication.
 - `EVELAND_SCHEDULER_RUNTIME_SECRET`, `EVELAND_SCHEDULER_DISPATCH_SECRET`, `EVELAND_SCHEDULER_REDEEM_URL` — scheduler authentication; the runtime secret must also match the dispatcher's value.

@@ -5,11 +5,11 @@ description: Map single-host machine size to concurrent builds, running Agents, 
 
 Eveland runs a fleet of Agents on one machine, so the practical question is how machine size maps to concurrent workload. Three workload kinds compete for the host, in decreasing memory weight:
 
-| Workload                                                                   | Memory (typical) | CPU                     | Postgres connections                                                                      |
-| -------------------------------------------------------------------------- | ---------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
-| One **build** (`npm ci`/`npx eve build`)                                   | 1–2 GB peak      | high (bursts, ~2 cores) | none — the build environment deliberately excludes all database URLs                      |
-| One **running Agent** (`npx eve start`)                                    | 150–300 MB RSS   | low while idle          | up to `WORKFLOW_POSTGRES_MAX_POOL_SIZE` (default 10) + platform request load it generates |
-| Core services (API, Agent Gateway, Dashboard, Worker, Postgres, Collector) | ~1–1.5 GB total  | low                     | ~30 (`DATABASE_POOL_SIZE` × API/Agent Gateway/Worker)                                     |
+| Workload                                                         | Memory (typical) | CPU                     | Postgres connections                                                                      |
+| ---------------------------------------------------------------- | ---------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| One **build** (`npm ci`/`npx eve build`)                         | 1–2 GB peak      | high (bursts, ~2 cores) | none — the build environment deliberately excludes all database URLs                      |
+| One **running Agent** (`npx eve start`)                          | 150–300 MB RSS   | low while idle          | up to `WORKFLOW_POSTGRES_MAX_POOL_SIZE` (default 10) + platform request load it generates |
+| Core services (API, Agent Gateway, Dashboard, Worker, Collector) | ~1–1.5 GB total  | low                     | ~30 (`DATABASE_POOL_SIZE` × API/Agent Gateway/Worker)                                     |
 
 ## Concurrency governance
 

@@ -53,16 +53,25 @@ Save this as `/etc/apparmor.d/bwrap` and load it with `apparmor_parser -r -W /et
 
 Worker itself must run as root (it drives `systemd-run`, `systemctl`, and `chown`); it is installed as a systemd service in [Install the host Worker](/docs/production/worker).
 
-## Provision Postgres
+## Provision an external Postgres
 
-Production uses two databases, normally on one instance:
+**Postgres is a prerequisite of this topology, not part of it.** Production runs code in three network namespaces at once — the Compose bridge (API), the host (Agent Gateway, Dashboard, Worker, workflow dispatcher), and every Deployment's own host process. A Compose-hosted database is dialable from all three only under three different addresses, so each database would need a per-namespace view and every consumer would have to be told which view it held. An instance outside the installation has one address that resolves the same everywhere, which is why each database here is a single DSN.
 
-- **Platform database** (`DATABASE_URL`) — owns Projects, Deployments, jobs, and auth. Configure a dedicated role.
-- **Shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`) — one database backing `@evelandhq/workflow-world` for every Project, scoped internally by `tenant_id`. It is required in production: Worker fails startup closed without it, and API reads the same URL to verify the World's cluster identity. Worker startup and tenant provisioning apply all pending workflow-world migrations automatically, serialized by a PostgreSQL advisory lock; set `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when the host reaches the database through a different address than Deployments do.
+Provision an instance and create two databases on it before installing:
 
-Do not create per-project workflow databases: the shared World replaced them. The legacy `WORKFLOW_POSTGRES_URL` is only relevant to installs still deleting Projects from before the shared World — see [Upgrade and rollback](/docs/operations/upgrades).
+- **Platform database** (`DATABASE_URL`) — owns Projects, Deployments, jobs, and auth. Configure a dedicated role that owns it.
+- **Shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`) — one database backing `@evelandhq/workflow-world` for every Project, scoped internally by `tenant_id`. It is required in production: Worker fails startup closed without it, and API reads the same URL to verify the World's cluster identity. Worker startup and tenant provisioning apply all pending workflow-world migrations automatically, serialized by a PostgreSQL advisory lock.
 
-Size `max_connections` and per-Deployment pool budgets with [Capacity planning](/docs/operations/capacity) before the first real workload, and put both databases plus the data root on your backup schedule — see [Backup and restore](/docs/operations/backup-restore).
+Both databases must exist before the first start; nothing in the platform creates them. The role does **not** need `CREATEDB`: a new Project becomes a tenant partition inside the shared World, never a database of its own. Only an install still carrying the legacy `WORKFLOW_POSTGRES_URL` needs `CREATE`/`DROP DATABASE`, and only to finish deleting Projects that predate the shared World — see [Upgrade and rollback](/docs/operations/upgrades).
+
+Requirements on the instance itself:
+
+- **One address, reachable as written from everywhere.** The same `DATABASE_URL` and `EVELAND_WORKFLOW_WORLD_URL` strings go into the API's Compose environment, `eveland-worker.env`, and `eveland-workflow-dispatcher.env`, and reach every Deployment. A host loopback address does not qualify: inside the API container that is the container's own loopback.
+- **No transaction-pooling proxy in front of it.** The workflow queue depends on `LISTEN`/`NOTIFY`, which transaction pooling breaks outright — a dispatcher behind PgBouncer in `transaction` mode silently stops waking runs. Use session pooling or a direct connection.
+- **A connection budget that accounts for Deployments.** Every running Agent holds a set of long-lived connections of its own; `WORKFLOW_POSTGRES_MAX_POOL_SIZE` is the lever. Size `max_connections` and per-Deployment pool budgets with [Capacity planning](/docs/operations/capacity) before the first real workload.
+- **`postgresql-client` installed on the host.** `eveland-ctl update` takes a `pg_dump` backup before it moves the checkout, and it runs on the host, not inside a container. Install it with `sudo apt-get install -y postgresql-client`, and keep it at least as new as the server — `pg_dump` refuses outright against a newer one.
+
+Put both databases plus the data root on your backup schedule — see [Backup and restore](/docs/operations/backup-restore).
 
 ## Run preflight
 

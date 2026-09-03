@@ -13,7 +13,8 @@
     "test": "vitest run --maxWorkers=2 --testTimeout=30000"
   },
   "dependencies": {
-    "@evelandhq/core": "workspace:*"
+    "@evelandhq/core": "workspace:*",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "vitest": "^4.1.11"

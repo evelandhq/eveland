@@ -8,11 +8,11 @@ import { API_INTERNAL_URL_FALLBACK, PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/co
 import {
   defaultStreamCommand,
   runBootstrapConfig,
-  backfillWorkflowWorldComposeUrl,
   runBootstrapPrepare,
   writeInstallMetadata,
   type BootstrapDeps,
 } from "./bootstrap.ts";
+import type { DatabaseForm } from "./config-render.ts";
 import type { ExecCommand, FetchLike, LifecycleIo, SpawnDaemon } from "./io.ts";
 import { loadPlatformEnvFile, type PlatformEnvFile } from "./env-file.ts";
 import {
@@ -25,6 +25,7 @@ import {
 import { runImplicitLogin } from "./implicit-login.ts";
 import { provisionLinuxHost } from "./linux-host.ts";
 import { defaultTcpProbe } from "./net-probe.ts";
+import { defaultPgReady } from "./pg-probe.ts";
 import { runSeedAgent } from "./seed-agent.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
 import { absoluteProcessDir, childEnvironment, PLATFORM_PROCESSES } from "./processes.ts";
@@ -48,6 +49,7 @@ import { Supervisor, type SupervisedProcess } from "./supervisor.ts";
 import {
   applianceComposeArgs,
   installSystemdArtifacts,
+  PRODUCTION_INFRA_SERVICES,
   startViaSystemd,
   stopViaSystemd,
   type SystemdModeContext,
@@ -60,6 +62,13 @@ export const READINESS_POLL_MS = 500;
 export const STOP_WAIT_MS = 15_000;
 export const STOP_KILL_WAIT_MS = 5_000;
 
+/**
+ * Infrastructure the ctl-supervised form starts for itself. It runs every
+ * platform process in the host namespace, so a Compose Postgres published on
+ * host loopback is dialable by all of them and ctl hosts the database. The
+ * Linux production form splits across namespaces and takes an external
+ * database instead — see PRODUCTION_INFRA_SERVICES.
+ */
 export const INFRA_COMPOSE_SERVICES = ["postgres", "otel-collector"];
 
 function defaultFileExists(filePath: string): Promise<boolean> {
@@ -188,19 +197,24 @@ export function composeArgs(envFilePath: string, ...rest: string[]): string[] {
 async function ensureInfraUp(
   io: LifecycleIo,
   resolved: ResolvedLifecycle,
-  upArgs: string[],
+  services: readonly string[],
+  composeArgv: (...rest: string[]) => string[],
 ): Promise<void> {
+  const listed = services.join(", ");
   const probe = await resolved.execCommand(["docker", "info", "--format", "{{.ServerVersion}}"], {
     cwd: resolved.repoRootDir,
   });
   if (probe.code !== 0) {
     throw new Error(
-      "Docker is not reachable, and Postgres and the OTLP Collector run in Docker Compose. " +
-        "Start Docker and retry, or pass --skip-infra if the containers are managed elsewhere.",
+      `Docker is not reachable, and this installation's infrastructure (${listed}) runs in ` +
+        "Docker Compose. Start Docker and retry, or pass --skip-infra if the containers are " +
+        "managed elsewhere.",
     );
   }
-  io.stdout("Starting infrastructure (postgres, otel-collector)...");
-  const result = await resolved.execCommand(upArgs, { cwd: resolved.repoRootDir });
+  io.stdout(`Starting infrastructure (${listed})...`);
+  const result = await resolved.execCommand(composeArgv("up", "-d", ...services), {
+    cwd: resolved.repoRootDir,
+  });
   if (result.code !== 0) {
     throw new Error(`docker compose up failed:\n${result.output.trim()}`);
   }
@@ -307,6 +321,7 @@ function bootstrapDeps(
   io: LifecycleIo,
   resolved: ResolvedLifecycle,
   noPrompt: boolean,
+  databaseForm: DatabaseForm,
 ): BootstrapDeps {
   if (resolved.platform !== "darwin" && resolved.platform !== "linux") {
     throw new Error(`Unsupported platform '${resolved.platform}'.`);
@@ -316,10 +331,12 @@ function bootstrapDeps(
     layout: resolved.layout,
     repoRootDir: resolved.repoRootDir,
     platform: resolved.platform,
+    databaseForm,
     prompter: noPrompt ? nonInteractivePrompter() : (io.prompter ?? createPrompter()),
     streamCommand: io.streamCommand ?? defaultStreamCommand(io.stdout),
     execCommand: resolved.execCommand,
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
+    pgReady: io.pgReady ?? defaultPgReady(),
     sleep: resolved.sleep,
     fileExists: resolved.fileExists,
     random: io.random,
@@ -494,7 +511,6 @@ async function runStartUnlocked(
   // bootstrap (idempotent all the way) rather than be swallowed here.
   if ((await systemdSupervised(resolved)) && !(await detectBootstrapNeeded(resolved))) {
     const envFile = await requirePlatformEnvFile(io, resolved);
-    await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
     const code = await startViaSystemd(systemdModeContext(io, resolved), {
       skipInfra: Boolean(parsed.values["skip-infra"]),
     });
@@ -536,9 +552,23 @@ async function runStartUnlocked(
   }
 
   const bootstrapping = await detectBootstrapNeeded(resolved);
+  // Linux first boot lands DIRECTLY on the production form (systemd units +
+  // Compose core services) — the plan's "day-one production" — unless
+  // --foreground explicitly opts into the ctl supervisor. It is the form, not
+  // the OS, that decides whether this installation names an external database
+  // or supervises one of its own, so the two must be decided together.
+  const linuxProductionForm =
+    resolved.platform === "linux" &&
+    !parsed.values.foreground &&
+    (io.getuid ?? process.getuid ?? (() => -1))() === 0;
   let envFile: PlatformEnvFile;
   if (bootstrapping) {
-    const deps = bootstrapDeps(io, resolved, Boolean(parsed.values["no-prompt"]));
+    const deps = bootstrapDeps(
+      io,
+      resolved,
+      Boolean(parsed.values["no-prompt"]),
+      linuxProductionForm ? "external" : "compose",
+    );
     const problems = await preflightStart(resolved, { requireWebBuild: false });
     if (problems.length > 0) {
       for (const problem of problems) io.stderr(problem);
@@ -576,37 +606,17 @@ async function runStartUnlocked(
         getuid: io.getuid ?? process.getuid ?? (() => -1),
       });
     }
-    // Linux first boot lands DIRECTLY on the production form (systemd
-    // units + Compose core services) — the plan's "day-one production" —
-    // unless --foreground explicitly opts into the ctl supervisor.
-    const linuxProductionForm =
-      deps.platform === "linux" &&
-      !parsed.values.foreground &&
-      (io.getuid ?? process.getuid ?? (() => -1))() === 0;
     const context = systemdModeContext(io, resolved);
     if (linuxProductionForm) {
       const installed = await installSystemdArtifacts(context, envFile);
       if (installed !== 0) return installed;
       if (!parsed.values["skip-infra"]) {
-        await ensureInfraUp(
-          io,
-          resolved,
-          applianceComposeArgs(resolved.layout, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+        await ensureInfraUp(io, resolved, PRODUCTION_INFRA_SERVICES, (...rest) =>
+          applianceComposeArgs(resolved.layout, ...rest),
         );
       }
       // The Dashboard builds inside its own container in this form.
-      await runBootstrapPrepare(deps, envFile, {
-        buildWeb: false,
-        pgReadyCommand: applianceComposeArgs(
-          resolved.layout,
-          "exec",
-          "-T",
-          "postgres",
-          "pg_isready",
-          "-U",
-          "eveland",
-        ),
-      });
+      await runBootstrapPrepare(deps, envFile, { buildWeb: false });
       await mkdir(resolved.layout.logsDir, { recursive: true });
       const started = await startViaSystemd(context, { skipInfra: true });
       if (started !== 0) return started;
@@ -616,37 +626,21 @@ async function runStartUnlocked(
       return 0;
     }
     if (!parsed.values["skip-infra"]) {
-      await ensureInfraUp(
-        io,
-        resolved,
-        composeArgs(envFile.path, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+      await ensureInfraUp(io, resolved, INFRA_COMPOSE_SERVICES, (...rest) =>
+        composeArgs(envFile.path, ...rest),
       );
     }
-    await runBootstrapPrepare(deps, envFile, {
-      buildWeb: true,
-      pgReadyCommand: composeArgs(
-        envFile.path,
-        "exec",
-        "-T",
-        "postgres",
-        "pg_isready",
-        "-U",
-        "eveland",
-      ),
-    });
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
   } else {
     envFile = await requirePlatformEnvFile(io, resolved);
-    await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
     const problems = await preflightStart(resolved, { requireWebBuild: true });
     if (problems.length > 0) {
       for (const problem of problems) io.stderr(problem);
       return 1;
     }
     if (!parsed.values["skip-infra"]) {
-      await ensureInfraUp(
-        io,
-        resolved,
-        composeArgs(envFile.path, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+      await ensureInfraUp(io, resolved, INFRA_COMPOSE_SERVICES, (...rest) =>
+        composeArgs(envFile.path, ...rest),
       );
     }
   }

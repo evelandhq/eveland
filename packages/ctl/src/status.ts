@@ -1,4 +1,4 @@
-import { OTEL_PLATFORM_HOST_HTTP_PORT, POSTGRES_HOST_PORT } from "@evelandhq/core/ports";
+import { OTEL_PLATFORM_HOST_HTTP_PORT } from "@evelandhq/core/ports";
 import { loadPlatformEnvFile } from "./env-file.ts";
 import {
   publicOrigin,
@@ -8,6 +8,7 @@ import {
   type LifecycleIo,
 } from "./lifecycle.ts";
 import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
+import { databaseAddress, defaultPgReady } from "./pg-probe.ts";
 import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
 import { SYSTEMD_HOST_UNITS } from "./systemd-mode.ts";
 import { readSupervisorState, verifiedSupervisorPid } from "./state-files.ts";
@@ -35,6 +36,7 @@ export async function runStatus(
 ): Promise<number> {
   const resolved = resolveLifecycle(io);
   const tcpProbe = io.tcpProbe ?? defaultTcpProbe();
+  const pgReady = io.pgReady ?? defaultPgReady();
   const envFile = await loadPlatformEnvFile({
     env: io.env,
     repoRoot: resolved.repoRootDir,
@@ -108,11 +110,26 @@ export async function runStatus(
 
   io.stdout("");
   io.stdout("Infrastructure:");
-  const postgresUp = await tcpProbe("127.0.0.1", POSTGRES_HOST_PORT);
-  io.stdout(
-    `  ${postgresUp ? "✓" : "✗"} ${"Postgres".padEnd(20)} 127.0.0.1:${POSTGRES_HOST_PORT} ${postgresUp ? "reachable" : "UNREACHABLE"}`,
-  );
-  if (!postgresUp) healthy = false;
+  // Whatever DATABASE_URL names, wherever it lives. The check is a real
+  // connection, not a port: Docker's port proxy, an SSH tunnel and a Lima
+  // port-forward all accept a connection with no Postgres behind them, so a
+  // TCP probe reports a hijacked or wrong-credential address as reachable.
+  // A DATABASE_URL that is missing or not a DSN is itself the failure — the
+  // platform has nowhere to store anything — so it is reported, not skipped.
+  const databaseUrl = envFile?.values.DATABASE_URL?.trim();
+  const database = databaseUrl ? databaseAddress(databaseUrl) : null;
+  if (!database) {
+    io.stdout(
+      `  ✗ ${"Postgres".padEnd(20)} ${databaseUrl ? "DATABASE_URL is not a Postgres URL" : "DATABASE_URL is not set"}`,
+    );
+    healthy = false;
+  } else {
+    const postgresUp = await pgReady(databaseUrl!);
+    io.stdout(
+      `  ${postgresUp ? "✓" : "✗"} ${"Postgres".padEnd(20)} ${database.host}:${database.port} ${postgresUp ? "reachable" : "UNREACHABLE"}`,
+    );
+    if (!postgresUp) healthy = false;
+  }
   const collectorUp = await tcpProbe("127.0.0.1", OTEL_PLATFORM_HOST_HTTP_PORT);
   io.stdout(
     `  ${collectorUp ? "✓" : "✗"} ${"OTLP Collector".padEnd(20)} 127.0.0.1:${OTEL_PLATFORM_HOST_HTTP_PORT} ${collectorUp ? "reachable" : "UNREACHABLE"}`,

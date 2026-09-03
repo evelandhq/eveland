@@ -39,8 +39,8 @@ sudo systemctl enable --now eveland-worker
 
 - `EVELAND_RUNTIME=systemd` 与 `NODE_ENV=production`。`NODE_ENV=production` 本身就会把 Runtime 默认为 systemd，但保留显式值，让该文件无歧义地记录宿主机的 Runtime。
 - `EVELAND_DATA_DIR=/var/lib/eveland`——与 API 容器挂载完全相同的绝对路径。
-- `DATABASE_URL`——平台数据库。
-- `EVELAND_WORKFLOW_WORLD_URL`（必要时加 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`）——共享 Workflow 数据库；必须与 Dispatcher 的值相同。
+- `DATABASE_URL`——平台数据库；与 API 的 Compose 环境中那一串完全相同。
+- `EVELAND_WORKFLOW_WORLD_URL`——共享 Workflow 数据库；必须与 Dispatcher 和 API 的值逐字相同。
 - `APP_SECRET_KEY`——必须与 API 的值一致。轮换后需重新部署每个 Agent Deployment，使其遥测凭证由新 Key 签名。
 - `EVELAND_GATEWAY_SERVICE_TOKEN`、`EVELAND_GATEWAY_INTERNAL_URL`——Agent Gateway Service Authentication。
 - `EVELAND_SCHEDULER_RUNTIME_SECRET`、`EVELAND_SCHEDULER_DISPATCH_SECRET`、`EVELAND_SCHEDULER_REDEEM_URL`——Scheduler Authentication；其中 Runtime Secret 还必须与 Dispatcher 的值一致。

@@ -22,7 +22,7 @@ Eveland 不替代 Eve 的文件系统优先编写方式，也不接管 Agent 自
 
 ## 为生产环境而设计
 
-受支持的生产拓扑将核心服务与宿主机运行权限分开。Dashboard、API、Agent Gateway、Postgres 与托管 OpenTelemetry Collector 组成核心服务；宿主机 Worker 将 Eve Deployment 启动为隔离的 systemd Service，再由恰好一个 Workflow Dispatcher 补齐生产拓扑。Agent 端口只监听私有 Loopback，Agent Gateway 负责稳定与预览 Host。
+受支持的生产拓扑将核心服务与宿主机运行权限分开。Dashboard、API、Agent Gateway 与托管 OpenTelemetry Collector 组成核心服务；宿主机 Worker 将 Eve Deployment 启动为隔离的 systemd Service，再由恰好一个 Workflow Dispatcher 补齐生产拓扑。Agent 端口只监听私有 Loopback，Agent Gateway 负责稳定与预览 Host。
 
 该边界使 Docker Controller、源码、解密后的 Secrets 和 Telemetry Policy 数据远离公开 Agent 流量。每个 Deployment 的 CPU/内存限制、空闲停止与按需唤醒让资源使用保持可控。
 

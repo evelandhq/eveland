@@ -32,7 +32,7 @@ Eveland 不自带备份工具。运维使用标准的 `pg_dump`、`rsync` 或文
 2. 从同一备份窗口恢复控制平面数据库与共享 Workflow 数据库。
 3. 在**同一绝对路径**恢复数据根目录——API 的挂载路径与 Worker 的 `EVELAND_DATA_DIR` 必须一致，存储的 `sourcePath` 为绝对路径。
 4. 恢复配置文件，Checkout 备份当时的精确 Release Tag 并安装 Frozen Lockfile。先恢复到相同版本，之后再走正常的[升级路径](/zh/docs/operations/upgrades)。
-5. 启动 Postgres，再启动核心服务、Dispatcher 与 Worker。Worker 会把过期的 `ready` RuntimeInstance 对账为 `stopped` 或 `failed`；没有任何进程会自行重启。
+5. 启动核心服务、Dispatcher 与 Worker。Worker 会把过期的 `ready` RuntimeInstance 对账为 `stopped` 或 `failed`；没有任何进程会自行重启。
 6. 发送真实请求或等待 Schedule：下一次 Activation 会 Cold Start 保留的精确 Release。重新开放 Ingress 前，按 **Settings → About** 核对 Identity 与 Health。
 
 ## 宿主机重启恢复

@@ -1,16 +1,22 @@
 import { describe, expect, test } from "vitest";
 import {
+  databaseDefaults,
+  defaultBootstrapInputs,
   deriveAgentBaseDomains,
   renderPlatformEnv,
-  migratedWorkflowWorldComposeUrl,
   type BootstrapInputs,
 } from "./config-render.ts";
 import { parseEnvFile } from "./env-file.ts";
+
+const PLATFORM_DB = "postgres://eveland:secret@db.internal:5432/eveland";
+const WORLD_DB = "postgres://eveland:secret@db.internal:5432/eveland_workflow";
 
 const INPUTS: BootstrapInputs = {
   publicOrigin: "http://localhost:17300",
   adminEmail: "admin@example.com",
   adminPassword: "a-long-enough-password",
+  databaseUrl: PLATFORM_DB,
+  workflowWorldUrl: WORLD_DB,
 };
 
 function render(platform: "darwin" | "linux", inputs = INPUTS) {
@@ -21,6 +27,26 @@ describe("renderPlatformEnv", () => {
   test("the rendered file parses back to exactly the returned values", () => {
     const { content, values } = render("darwin");
     expect(parseEnvFile(content)).toEqual(values);
+  });
+
+  test("every value is quoted, so Compose cannot interpolate a password away", () => {
+    // Compose expands `$NAME` inside an unquoted --env-file value while the
+    // host's readers take it literally: the containerized API would receive a
+    // truncated DSN and the Worker the real one, which is the split this whole
+    // topology exists to remove.
+    const dollar = "postgres://eveland:pa$WORD@db.internal:5432/eveland";
+    const { content, values } = render("linux", { ...INPUTS, databaseUrl: dollar });
+    expect(content).toContain(`DATABASE_URL='${dollar}'`);
+    expect(parseEnvFile(content).DATABASE_URL).toBe(dollar);
+    expect(values.DATABASE_URL).toBe(dollar);
+  });
+
+  test("a value carrying a single quote is refused rather than written", () => {
+    // Compose rejects the whole file, not just that line, so there is no
+    // encoding to fall back to — and a half-read env file is a worse failure.
+    expect(() => render("linux", { ...INPUTS, adminPassword: "pa'ssword-long-enough" })).toThrow(
+      /single quote/,
+    );
   });
 
   test("covers the decide-per-install set with no placeholder secrets", () => {
@@ -56,30 +82,29 @@ describe("renderPlatformEnv", () => {
     }
   });
 
+  test("both database addresses come from the answers, never from a shape ctl invents", () => {
+    for (const platform of ["darwin", "linux"] as const) {
+      const { values } = render(platform);
+      expect(values.DATABASE_URL, platform).toBe(PLATFORM_DB);
+      expect(values.EVELAND_WORKFLOW_WORLD_URL, platform).toBe(WORLD_DB);
+    }
+  });
+
   test("macOS derives Docker-shaped deployment addresses and the docker runtime", () => {
     const { values } = render("darwin");
     expect(values.EVELAND_RUNTIME).toBe("docker");
-    expect(values.EVELAND_WORKFLOW_WORLD_URL).toContain("host.docker.internal");
-    expect(values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toContain("127.0.0.1");
     expect(values.EVELAND_SCHEDULER_REDEEM_URL).toContain("host.docker.internal");
+    // Agents reach the world through a name the platform's own host processes
+    // cannot resolve, so the platform gets the loopback view of it.
+    expect(values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBe(PLATFORM_DB);
   });
 
   test("Linux derives loopback deployment addresses and the systemd runtime", () => {
     const { values } = render("linux");
     expect(values.EVELAND_RUNTIME).toBe("systemd");
-    expect(values.EVELAND_WORKFLOW_WORLD_URL).toContain("127.0.0.1");
-    expect(values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBeUndefined();
     expect(values.EVELAND_SCHEDULER_REDEEM_URL).toContain("127.0.0.1");
-  });
-
-  test("Linux renders the Compose view of the world the containerized API needs", () => {
-    // The production overlay requires it: an API on the Compose network
-    // cannot dial the host loopback publish EVELAND_WORKFLOW_WORLD_URL names.
-    const { values } = render("linux");
-    expect(values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
-      "postgres://eveland:eveland@postgres:5432/eveland",
-    );
-    expect(render("darwin").values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
+    // One external database, one address: nothing here holds a second view.
+    expect(values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBeUndefined();
   });
 
   test("the dispatcher activation token IS the gateway service token — the API validates against it", () => {
@@ -118,7 +143,10 @@ describe("renderPlatformEnv", () => {
   test("model keys are rendered only when provided", () => {
     const without = render("darwin");
     expect(without.values.ANTHROPIC_API_KEY).toBeUndefined();
-    const withKeys = render("darwin", { ...INPUTS, anthropicApiKey: "sk-ant-test" });
+    const withKeys = render("darwin", {
+      ...INPUTS,
+      anthropicApiKey: "sk-ant-test",
+    });
     expect(withKeys.values.ANTHROPIC_API_KEY).toBe("sk-ant-test");
   });
 });
@@ -131,34 +159,71 @@ describe("deriveAgentBaseDomains", () => {
   });
 });
 
-describe("migratedWorkflowWorldComposeUrl", () => {
-  test("answers for the worlds this installer rendered, on both platforms", () => {
-    for (const rendered of [
-      "postgres://eveland:eveland@127.0.0.1:17310/eveland",
+describe("databaseDefaults", () => {
+  test("the Compose form offers the database it supervises, in the Agents' view", () => {
+    const macos = databaseDefaults("darwin", "compose");
+    expect(macos.databaseUrl).toBe("postgres://eveland:eveland@127.0.0.1:17310/eveland");
+    // Agents run in Docker on macOS and reach the host by this name.
+    expect(macos.workflowWorldUrl).toBe(
       "postgres://eveland:eveland@host.docker.internal:17310/eveland",
-    ]) {
-      expect(migratedWorkflowWorldComposeUrl(rendered)).toBe(
-        "postgres://eveland:eveland@postgres:5432/eveland",
-      );
-    }
+    );
+
+    // The ctl supervisor on Linux runs Agents as host units, so one loopback
+    // address serves the platform and the Agents alike.
+    const linux = databaseDefaults("linux", "compose");
+    expect(linux.databaseUrl).toBe("postgres://eveland:eveland@127.0.0.1:17310/eveland");
+    expect(linux.workflowWorldUrl).toBe("postgres://eveland:eveland@127.0.0.1:17310/eveland");
   });
 
-  test("refuses every world it did not render, loopback included", () => {
-    // A loopback address proves the writing process could reach the database,
-    // never which cluster is behind it. Rewriting one of these would point the
-    // readiness gate at a different cluster; the operator answers instead.
-    for (const foreign of [
-      // A host Postgres, a tunnel, or another Compose project all look like this.
-      "postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
-      "postgres://eveland:eveland@127.0.0.1:5432/eveland",
-      "postgres://someone:else@localhost:17310/eveland",
-      "postgres://eveland:eveland@db.internal:5432/eveland",
-      // Shapes a URL parser would reject outright rather than classify.
-      "postgres://u:p@127.0.0.1:17310,db.internal:5432/eveland",
-      "postgres:///var/run/postgresql/eveland",
-      "",
-    ]) {
-      expect(migratedWorkflowWorldComposeUrl(foreign), foreign).toBeNull();
+  test("the external form offers nothing: an invented address is worse than a question", () => {
+    // Its API is on the Compose bridge while the worker, the dispatcher and
+    // every Deployment are on the host. A loopback default is undialable from
+    // the bridge, and one that happens to answer proves nothing about which
+    // cluster is behind it.
+    expect(databaseDefaults("linux", "external")).toEqual({});
+  });
+
+  test("the form decides, not the OS — Linux is on both sides of it", () => {
+    // `eveland-ctl start --foreground` on Linux runs every platform process on
+    // the host, exactly like macOS; keying the defaults off the OS left that
+    // form with no answer to a question it should never have been asked.
+    expect(databaseDefaults("linux", "compose").databaseUrl).toBeDefined();
+    expect(databaseDefaults("linux", "external").databaseUrl).toBeUndefined();
+  });
+});
+
+describe("defaultBootstrapInputs", () => {
+  test("the external form takes both addresses from the environment an install exports", () => {
+    const defaults = defaultBootstrapInputs(
+      { DATABASE_URL: PLATFORM_DB, EVELAND_WORKFLOW_WORLD_URL: WORLD_DB },
+      "linux",
+      "external",
+    );
+    expect(defaults.databaseUrl).toBe(PLATFORM_DB);
+    expect(defaults.workflowWorldUrl).toBe(WORLD_DB);
+  });
+
+  test("the external form leaves them unanswered when the environment carries none", () => {
+    const defaults = defaultBootstrapInputs({}, "linux", "external");
+    expect(defaults.databaseUrl).toBeUndefined();
+    expect(defaults.workflowWorldUrl).toBeUndefined();
+  });
+
+  test("the Compose form ignores the environment: ctl starts the database it named", () => {
+    // An address from the shell would point the platform elsewhere while ctl
+    // still brings up its own Compose Postgres.
+    for (const platform of ["darwin", "linux"] as const) {
+      const defaults = defaultBootstrapInputs(
+        { DATABASE_URL: PLATFORM_DB, EVELAND_WORKFLOW_WORLD_URL: WORLD_DB },
+        platform,
+        "compose",
+      );
+      expect(defaults.databaseUrl, platform).toBe(
+        databaseDefaults(platform, "compose").databaseUrl,
+      );
+      expect(defaults.workflowWorldUrl, platform).toBe(
+        databaseDefaults(platform, "compose").workflowWorldUrl,
+      );
     }
   });
 });

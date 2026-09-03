@@ -3,11 +3,7 @@ import { createWriteStream } from "node:fs";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import {
-  backfillWorkflowWorldComposeUrl,
-  defaultStreamCommand,
-  pinReleaseIdentity,
-} from "./bootstrap.ts";
+import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
 import { breakingChangesBetween } from "./changelog.ts";
 import { loadPlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata } from "./home.ts";
@@ -42,38 +38,52 @@ import { installSystemdArtifacts } from "./systemd-mode.ts";
 
 export type PgDump = (
   backupPath: string,
-  options: { cwd: string; envFilePath: string },
+  options: { cwd: string; databaseUrl: string },
 ) => Promise<number | null>;
 
 /**
- * pg_dump through Compose into a `.partial` file that is fsync'd and only
- * then renamed to the final name: a backup either exists complete or not
- * at all. A failed dump, a write error (disk full), or an empty result
- * leaves no file behind and reports failure; the file is 0600.
+ * pg_dump into a `.partial` file that is fsync'd and only then renamed to the
+ * final name: a backup either exists complete or not at all. A failed dump, a
+ * write error (disk full), or an empty result leaves no file behind and
+ * reports failure; the file is 0600.
  */
+/**
+ * Splits a DSN into what may appear on a command line and what may not.
+ * `/proc/<pid>/cmdline` is world-readable and pg_dump runs for as long as the
+ * backup takes, so the password rides in the child's environment instead —
+ * the same reason a Deployment's secrets reach Docker through --env-file
+ * (apps/worker/src/runtime/docker.ts).
+ */
+export function splitDumpCredentials(databaseUrl: string): {
+  dsn: string;
+  password: string | null;
+} {
+  let parsed: URL;
+  try {
+    parsed = new URL(databaseUrl);
+  } catch {
+    return { dsn: databaseUrl, password: null };
+  }
+  if (!parsed.password) return { dsn: databaseUrl, password: null };
+  const password = decodeURIComponent(parsed.password);
+  parsed.password = "";
+  return { dsn: parsed.toString(), password };
+}
+
 export function defaultPgDump(options: { argv?: string[] } = {}): PgDump {
-  return async (backupPath, { cwd, envFilePath }) => {
-    const argv = options.argv ?? [
-      "docker",
-      // --env-file: compose interpolates the whole file even for one exec.
-      "compose",
-      "--env-file",
-      envFilePath,
-      "exec",
-      "-T",
-      "postgres",
-      "pg_dump",
-      "-U",
-      "eveland",
-      "-d",
-      "eveland",
-    ];
+  return async (backupPath, { cwd, databaseUrl }) => {
+    const { dsn, password } = splitDumpCredentials(databaseUrl);
+    const argv = options.argv ?? ["pg_dump", "--dbname", dsn];
     const partialPath = `${backupPath}.partial`;
     await rm(partialPath, { force: true });
     const result = await new Promise<{ code: number | null; writeError: Error | null }>(
       (resolve) => {
         const [command, ...rest] = argv;
-        const child = spawn(command!, rest, { cwd, stdio: ["ignore", "pipe", "inherit"] });
+        const child = spawn(command!, rest, {
+          cwd,
+          stdio: ["ignore", "pipe", "inherit"],
+          env: password === null ? process.env : { ...process.env, PGPASSWORD: password },
+        });
         const out = createWriteStream(partialPath, { mode: 0o600, flags: "wx" });
         let writeError: Error | null = null;
         let code: number | null | undefined;
@@ -375,18 +385,24 @@ async function runUpdateLocked(
   // Backup before anything moves.
   let backupPath: string | null = null;
   if (!parsed.values["skip-backup"]) {
+    const databaseUrl = envFile.values.DATABASE_URL?.trim();
+    if (!databaseUrl) {
+      io.stderr(
+        `No DATABASE_URL in ${envFile.path} — there is no database to back up. ` +
+          "Fix the configuration or pass --skip-backup.",
+      );
+      return 1;
+    }
     await mkdir(resolved.layout.backupsDir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     backupPath = path.join(resolved.layout.backupsDir, `eveland-v${currentVersion}-${stamp}.sql`);
     io.stdout(`Backing up the database to ${backupPath}...`);
-    const dump = await (io.pgDump ?? defaultPgDump())(backupPath, {
-      cwd: repo,
-      envFilePath: envFile.path,
-    });
+    const dump = await (io.pgDump ?? defaultPgDump())(backupPath, { cwd: repo, databaseUrl });
     if (dump !== 0) {
       io.stderr(
-        "pg_dump failed — refusing to update without a backup. " +
-          "Fix the database (is the postgres container running?) or pass --skip-backup.",
+        "pg_dump failed — refusing to update without a backup. Check that a pg_dump at least as " +
+          "new as the server is on PATH (postgresql-client on Linux, libpq on macOS) and that " +
+          "DATABASE_URL is reachable from this host, or pass --skip-backup.",
       );
       return 1;
     }
@@ -625,10 +641,6 @@ export async function runFinishUpdate(args: string[], io: LifecycleIo): Promise<
   // Release identity follows the checkout (exact short SHA; stable only on
   // an exact release tag).
   await pinReleaseIdentity(resolved.execCommand, repo, envFile);
-  // Before the regenerated artifacts and every Compose command below: the
-  // production overlay requires the API's Compose view of the workflow world,
-  // and an installation older than that variable does not carry it yet.
-  await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
 
   const metadata = await readInstallMetadata(resolved.layout);
   const systemdForm = metadata?.supervision === "systemd";

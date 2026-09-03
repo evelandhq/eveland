@@ -170,23 +170,16 @@ Gateway 与 Dashboard 保持 Host Networking，因为前门仍要通过宿主机
 
 对已有安装：
 
-1. 在 `.env` 中新增 `EVELAND_WORKFLOW_WORLD_COMPOSE_URL`——与
-   `EVELAND_WORKFLOW_WORLD_URL` 同一个共享 Workflow Database，但以 Compose
-   网络寻址，例如
-   `EVELAND_WORKFLOW_WORLD_COMPOSE_URL=postgres://eveland:eveland@postgres:5432/eveland`。
-   生产 Overlay 将其列为必填，缺失时 Compose 直接拒绝启动。Compose 网络上的
-   API 无法访问 `EVELAND_WORKFLOW_WORLD_URL` 指向的宿主机回环发布端口；World
-   不可达时，Readiness Gate 会把 Cluster Identity 解析成 `unknown`，并以
-   `workflow_unavailable` 拒绝每一次 Workflow-step Activation。若安装仍在使用安装器
-   渲染出的那个 World DSN，`eveland-ctl update` 与 `start` 会自动补上；否则只会提示
-   该设成什么——安装器没渲染过的 World 属于该安装自己的拓扑，那里的 loopback 地址只
-   能证明写下它的进程够得到该库，不能证明背后是哪个 Cluster。手工管理的 Compose 安
-   装始终需自行添加。
+1. 给 API 一个它自己够得到的共享 Workflow Database 地址。Compose 网络上的
+   API 无法访问当时 `EVELAND_WORKFLOW_WORLD_URL` 指向的宿主机回环发布端口；
+   World 不可达时，Readiness Gate 会把 Cluster Identity 解析成 `unknown`，并以
+   `workflow_unavailable` 拒绝每一次 Workflow-step Activation。升级过这个 Release
+   即可彻底解决——参见 [Postgres 移出 Compose](#postgres-移出-compose)，那里一个
+   外部地址同时服务 API、宿主机进程与每个 Deployment。
 2. 重建容器而不是重启——Network Mode 与已发布端口只有重建才会生效：
    `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`。
-3. `.env` 的其余部分无需改动。`EVELAND_WORKFLOW_WORLD_URL` 仍是宿主机与
-   Deployment 的视角，宿主机 Worker、Workflow Dispatcher 与前门也仍在
-   `http://127.0.0.1:17301` 访问 API。
+3. 宿主机 Worker、Workflow Dispatcher 与前门仍在 `http://127.0.0.1:17301`
+   访问 API。
 4. 之后确认两条路径：一个能记录事件与 Token 用量的 Session 证明 Collector
    重新访问得到 API；Instance Health 页上的 `Workflow dispatch` 不再是
    `unavailable`，则证明 API 访问得到 World。
@@ -211,6 +204,111 @@ Runtime——只有 Linux 生产形态不再支持它。
 生产 Overlay 现在把基础文件中的开发 Worker 门控在一个生产命令永不启用的
 Profile 之后（与 Workflow Dispatcher 一致），因此合并后的配置不可能启动第二个
 Runtime 控制器。
+
+## Postgres 移出 Compose
+
+**破坏性变更。** Linux 生产不再在 Docker Compose 中运行 Postgres。基础文件里的
+数据库被门控在一个生产命令永不启用的 Profile 之后，`DATABASE_URL` 与
+`EVELAND_WORKFLOW_WORLD_URL` 现在是 `.env` 中的必填项——缺失时 Compose 直接
+拒绝启动。`EVELAND_WORKFLOW_WORLD_COMPOSE_URL` 已删除，请从配置中移除（时机见下面第 5 步）。
+
+原因：这套形态同时在三个网络命名空间里运行代码——Compose 网桥（API）、宿主机
+（Agent Gateway、Dashboard、Worker、Dispatcher），以及每个 Deployment 自己的宿主机
+进程。Compose 内的数据库对这三者只能用三个不同地址表示，于是每个数据库都要一份
+按命名空间划分的视图，每个消费方还得被告知自己拿的是哪一份。外部实例只有一个
+地址，在三处解析结果相同。
+
+本地开发与 macOS `eveland-ctl` Appliance 形态完全不变：它们的全部平台进程都在
+宿主机命名空间内，Compose 里的 Postgres 保持原样。
+
+迁移时有两件事决定具体命令：这套安装是怎么管理的，以及它实际上有几个数据库。
+
+**哪些文件里写着数据库地址。**
+
+- **`eveland-ctl` Appliance 形态** —— 只有 `/opt/eveland/etc/eveland.env` 一个文件。
+  每次启动都会由它重新渲染 Worker、Dispatcher、Gateway 和 Dashboard 各自的环境，
+  所以只需要改这一个；搬动 checkout 的是 `eveland-ctl update`。
+- **手工部署形态** —— Compose 的 `.env`，加上 `/etc/eveland/eveland-worker.env` 与
+  `/etc/eveland/eveland-workflow-dispatcher.env`，三处都要手改；搬动 checkout 的是
+  `git`。
+
+**有几个数据库。** `eveland-ctl` 装出来的 Appliance 只有一个：它把 `DATABASE_URL`
+与 `EVELAND_WORKFLOW_WORLD_URL` 都渲染到同一个 `eveland` 库，平台的表和 World 的表
+共存在那里。这次改动并不要求两个——两个 DSN 完全可以指向同一个库，macOS Appliance
+就是这么做的——所以最稳妥的迁移是保持现有拓扑。不要假设，直接从配置里读：
+
+```bash
+grep -E '^(DATABASE_URL|EVELAND_WORKFLOW_WORLD_URL)=' /opt/eveland/etc/eveland.env
+```
+
+1. 按[准备宿主机](/zh/docs/production/prerequisites#准备外部-postgres)准备外部实例：
+   一个原样在 Compose 网桥与宿主机上都可连通的地址，前面不放 Transaction Pooling
+   代理，并在本机安装 `postgresql-client` 以便 `pg_dump`。上一步列出几个不同的库，
+   就在外部实例上建几个。
+2. **趁旧栈还起着**把数据搬过去：这次导出、以及第 4 步 update 自己的预备份，都是在
+   Compose 容器内跑 `pg_dump`，平台完全停掉之后就没有这个容器了。只停会写入的部分。
+
+   ```bash
+   compose="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+   $compose stop api gateway web
+   sudo systemctl stop eveland-worker eveland-workflow-dispatcher
+   # 上一步列出几个库就写几行 —— 通常就这一行。
+   $compose exec -T postgres pg_dump -U eveland -d eveland \
+     | psql 'postgres://eveland:<password>@db.internal:5432/eveland'
+   ```
+
+   `workflow_stream_chunks` 占据 Dump 的绝大部分体积，它是可重建状态而非历史——
+   导出前先 `truncate table workflow_stream_chunks;` 能省掉大半体积。代价只是已完成
+   Run 的可重放 Stream，不影响任何进行中的 Run。
+
+3. **在这个版本的任何代码启动之前**改配置：上面列出的每一处文件里，`DATABASE_URL`
+   与 `EVELAND_WORKFLOW_WORLD_URL` 都逐字相同地指向新的外部地址。
+
+   **`EVELAND_WORKFLOW_WORLD_COMPOSE_URL` 此刻先留着。** 被替换掉的那个版本是用
+   `${EVELAND_WORKFLOW_WORLD_COMPOSE_URL:?}` 插值它的，在这一步删掉，会让那个版本上
+   剩下的每一条 `docker compose` 命令直接失败——包括第 4 步 update 的预备份。
+
+   每个值都加引号：Compose 会展开未加引号的 `--env-file` 值里的 `$NAME`，而宿主机
+   一侧的读取方按字面处理——于是含 `$` 的密码到了容器里的 API 是被截断的，到宿主机
+   进程手上却是完整的。写成 `DATABASE_URL='postgres://…'`，四方读到的就一致。
+
+4. 切到这个版本。
+
+   - Appliance 形态：`sudo eveland-ctl update`。
+   - 手工部署形态：更新 checkout，然后**重建**容器而不是重启——环境变量的改动只有
+     重建才会进入容器——再把宿主机上的 unit 起回来：
+
+     ```bash
+     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+     sudo systemctl start eveland-worker eveland-workflow-dispatcher
+     ```
+
+5. 删掉 `EVELAND_WORKFLOW_WORLD_COMPOSE_URL`。这个版本没有任何代码读它，所以它是
+   惰性的、不会造成伤害——但留在配置里的陈旧地址，下一个运维还得花力气证伪。
+6. **重启每一个运行中的 Deployment。** Deployment 的 World 地址是启动时注入的，
+   而 Activation 对一个已经在正常占用自己端口的 unit 是**复用**而不是重新渲染——
+   所以一个跨过切换点仍在运行的 Agent 会永远拨打旧地址，且只有它的 Durable
+   Workflow Step 会失败。通过 Dashboard 或 `eveland` 逐个 Restart，这条路径会
+   用 Worker 当前的配置重新组装环境。之后抽查一个：
+
+   ```bash
+   sudo cat /proc/$(systemctl show -p MainPID --value eveland-<project>-<deployment>)/environ \
+     | tr '\0' '\n' | grep EVELAND_WORKFLOW_WORLD_URL
+   ```
+
+7. 验证：**Settings → About** 上各组件一致，Instance Health 页的
+   `Workflow dispatch` 不是 `unavailable`，且一个 Session 能记录事件与 Token 用量。
+8. 下线旧容器。`docker compose up -d` 不再启动它，但也不会停掉一个已经在跑的；
+   而且该服务现在位于 Profile 之后，直接 `docker compose stop postgres` 会
+   退出码 0 却什么都没做。必须带上 Profile：
+
+   ```bash
+   compose="docker compose --profile dev-postgres -f docker-compose.yml -f docker-compose.prod.yml"
+   $compose stop postgres && $compose rm -f postgres
+   ```
+
+   放着不管正是这次改动要防的那个失效：`17310` 上还有第二个集群在应答，随时
+   接住任何仍持有旧 DSN 的进程。它的 Volume 先留着，等新实例稳定后再删。
 
 ## 遗留的按 Project Workflow 残余
 

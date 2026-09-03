@@ -65,8 +65,8 @@ describe("the dispatcher's narrowed environment", () => {
       DATABASE_URL: "postgres://platform",
       EVELAND_GATEWAY_AFFINITY_SECRET: "nor-this-one",
     });
-    expect(rendered).toContain("EVELAND_WORKFLOW_WORLD_URL=postgres://w");
-    expect(rendered).toContain("WORKFLOW_DISPATCHER_ACTIVATION_TOKEN=activation-token");
+    expect(rendered).toContain("EVELAND_WORKFLOW_WORLD_URL='postgres://w'");
+    expect(rendered).toContain("WORKFLOW_DISPATCHER_ACTIVATION_TOKEN='activation-token'");
     expect(rendered).not.toContain("must-not-appear");
     expect(rendered).not.toContain("nor-this");
     expect(rendered).not.toContain("DATABASE_URL");
@@ -101,8 +101,8 @@ describe("the public Gateway's and the Dashboard's narrowed environments", () =>
 
   test("the gateway file carries its compose-defined variables and nothing secret beyond them", () => {
     const rendered = renderServiceEnv("gateway", GATEWAY_ENV_KEYS, FULL);
-    expect(rendered).toContain("EVELAND_GATEWAY_SERVICE_TOKEN=gw-token");
-    expect(rendered).toContain("DATABASE_URL=postgres://platform");
+    expect(rendered).toContain("EVELAND_GATEWAY_SERVICE_TOKEN='gw-token'");
+    expect(rendered).toContain("DATABASE_URL='postgres://platform'");
     expect(rendered).not.toContain("must-not-appear");
     for (const forbidden of [
       "APP_SECRET_KEY",
@@ -120,7 +120,7 @@ describe("the public Gateway's and the Dashboard's narrowed environments", () =>
 
   test("the dashboard file is tiny: release identity and the API address", () => {
     const rendered = renderServiceEnv("web", WEB_ENV_KEYS, FULL);
-    expect(rendered).toContain("API_URL=http://api");
+    expect(rendered).toContain("API_URL='http://api'");
     expect(rendered).not.toContain("DATABASE_URL");
     expect(rendered).not.toContain("must-not-appear");
   });
@@ -296,7 +296,7 @@ describe("runInstallCommand", () => {
       path.join(harness.layout.etcDir, "eveland-workflow-dispatcher.env"),
       "utf8",
     );
-    expect(dispatcherEnv).toContain("EVELAND_WORKFLOW_WORLD_URL=postgres://w");
+    expect(dispatcherEnv).toContain("EVELAND_WORKFLOW_WORLD_URL='postgres://w'");
     expect(dispatcherEnv).not.toContain("APP_SECRET_KEY");
     // The public Gateway's and the Dashboard's files are narrowed too.
     const gatewayEnv = await readFile(
@@ -313,10 +313,14 @@ describe("runInstallCommand", () => {
     expect(composeUp).toBeDefined();
     expect(composeUp!.join(" ")).toContain("docker-compose.prod.yml");
     expect(composeUp!.join(" ")).toContain("compose.appliance.yml");
-    for (const service of ["postgres", "otel-collector", "api", "gateway", "web"]) {
+    for (const service of ["otel-collector", "api", "gateway", "web"]) {
       expect(composeUp).toContain(service);
     }
     expect(composeUp!.join(" ")).not.toMatch(/ worker/);
+    // Postgres is an external prerequisite of this form, not a service it
+    // starts: a second cluster nobody notices is how a Deployment ends up
+    // writing runs the dispatcher never claims.
+    expect(composeUp).not.toContain("postgres");
 
     // Both units enabled and started; supervision recorded.
     for (const key of SYSTEMD_HOST_UNITS) {

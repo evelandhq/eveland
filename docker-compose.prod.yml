@@ -1,10 +1,12 @@
-# Production overlay for a single-box (Linux) deployment. API/Dashboard/Postgres run in Docker
-# Compose; the worker runs on the host as a systemd service (infra/systemd/eveland-worker.service,
-# see docs/en/production/core-services.md).
+# Production overlay for a single-box (Linux) deployment. API/Agent Gateway/Dashboard run in
+# Docker Compose; the worker and the workflow dispatcher run on the host as systemd services
+# (infra/systemd/, see docs/en/production/core-services.md).
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
-# Set the two public URLs in a local .env (gitignored) for the target environment:
+# Set these in a local .env (gitignored) for the target environment:
+#   DATABASE_URL=postgres://...                # the external platform database
+#   EVELAND_WORKFLOW_WORLD_URL=postgres://...  # the external shared workflow database
 #   EVELAND_PUBLIC_ORIGIN=https://your-host    # the single browser-visible origin (front door)
 #   EVELAND_IDENTITY_ALLOWED_ORIGINS=https://your-chat-host  # only with an external chat frontend
 #   BETTER_AUTH_SECRET=<long-random-secret>    # independent auth encryption/signing secret
@@ -14,12 +16,20 @@
 # Deployed agent data lives under /var/lib/eveland on the host, bind-mounted into the API at the
 # same absolute path so database sourcePath values are valid in both places.
 #
+# Why Postgres is external: this form runs code in three network namespaces at once -- the Compose
+# bridge (API), the host (Agent Gateway, Dashboard, worker, dispatcher) and every Deployment's own
+# host process. A Compose-hosted database is dialable from all three only under three different
+# addresses, so each database needed a per-namespace view and every consumer had to be told which
+# view it held. An external Postgres has ONE address that resolves the same everywhere, which is
+# the whole reason each database is a single DSN here. It must be reachable from the Compose
+# bridge as written: a host-loopback address is the API container's own loopback, not the host's.
+# See docs/en/production/prerequisites.md.
+#
 # Why host networking: production runs every Deployment as a host systemd process bound to the
 # host's 127.0.0.1:PORT (loopback, not public), so the Agent Gateway (public proxy + internal
 # Playground) reaches an Agent only by sharing the host's network. On host network the compose
-# service DNS (postgres/api) is gone, so services talk over localhost; postgres stays bridged but
-# publishes host port 17310. `ports: !override []` clears base published ports (incompatible with
-# host net).
+# service DNS (api) is gone, so services talk over localhost. `ports: !override []` clears base
+# published ports (incompatible with host net).
 #
 # Why the API is NOT on the host network: it dials no Deployment port (its only outbound call is
 # the Gateway's cache invalidation), and the Collector must reach it to deliver every Agent event.
@@ -45,30 +55,43 @@ services:
       - eveland-otel-collector:/var/lib/otelcol
 
   postgres:
-    restart: unless-stopped
+    # Production takes Postgres as an external prerequisite (see the header).
+    # Gate the base file's development database behind a profile the production
+    # command never enables, so the merged config cannot start one -- an
+    # unnoticed second cluster is how a Deployment ends up writing runs the
+    # dispatcher never claims.
+    profiles: ["dev-postgres"]
 
   api:
     restart: unless-stopped
     # No network_mode/ports override: the API stays on the compose network and
     # keeps the base file's loopback publish (see the header).
+    # The base file's dependency is on the profile-gated database above, which
+    # is not part of this form at all; Compose rejects a merged config that
+    # depends on a service no enabled profile defines.
+    depends_on: !override
+      - gateway
     command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && cd apps/api && NODE_ENV=production pnpm exec tsx --import=@evelandhq/platform-observability/register --env-file=../../.env src/server.ts"
     extra_hosts:
       - host.docker.internal:host-gateway
     environment:
       CI: "true"
       EVELAND_PUBLIC_ORIGIN: "${EVELAND_PUBLIC_ORIGIN:?set EVELAND_PUBLIC_ORIGIN}"
+      # The base file pins the development database by Compose service name;
+      # this form has no such service. Required rather than defaulted: a
+      # database address is an installation's own, and a wrong guess migrates
+      # and serves a different cluster than the host processes use.
+      DATABASE_URL: "${DATABASE_URL:?set DATABASE_URL to the external platform database, dialable as written from the host and the Compose network alike}"
       EVELAND_DATA_DIR: /var/lib/eveland
       EVELAND_OTLP_SERVICE_TOKEN: "${EVELAND_OTLP_SERVICE_TOKEN:?set EVELAND_OTLP_SERVICE_TOKEN}"
       EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST: "${EVELAND_OBSERVABILITY_PRIVATE_ENDPOINT_ALLOWLIST:-}"
       # The front door is in the host namespace, so it has no service name here.
       EVELAND_GATEWAY_INTERNAL_URL: http://host.docker.internal:17300
-      # The same shared workflow database as EVELAND_WORKFLOW_WORLD_URL,
-      # addressed from the compose network. That variable is the host and
-      # Deployment view the systemd worker and dispatcher use, and no bridge
-      # client can dial a host loopback publish. Required rather than
-      # defaulted: the world database name is an installation's own choice,
-      # and guessing it points the readiness gate at a different cluster.
-      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: "${EVELAND_WORKFLOW_WORLD_COMPOSE_URL:?set EVELAND_WORKFLOW_WORLD_COMPOSE_URL to the shared workflow database as the Compose network reaches it, e.g. postgres://eveland:eveland@postgres:5432/eveland}"
+      # The shared workflow database the worker, the dispatcher and every
+      # Deployment use. One external address serves all of them, so the
+      # platform-side view this variable exists to carry is that same value;
+      # it is pinned here only to displace the base file's development literal.
+      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: "${EVELAND_WORKFLOW_WORLD_URL:?set EVELAND_WORKFLOW_WORLD_URL to the external shared workflow database, dialable as written from the host and the Compose network alike}"
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
       EVELAND_ACTIVATION_LEASE_TTL_MS: "${EVELAND_ACTIVATION_LEASE_TTL_MS:-180000}"
       EVELAND_COLD_START_TIMEOUT_MS: "${EVELAND_COLD_START_TIMEOUT_MS:-30000}"
@@ -89,10 +112,13 @@ services:
     restart: unless-stopped
     network_mode: host
     ports: !override []
+    # Same reason as the API above: the base file's dependency names the
+    # profile-gated development database.
+    depends_on: !override []
     command: sh -lc "corepack enable && pnpm install && cd apps/gateway && NODE_ENV=production pnpm exec tsx --import=@evelandhq/platform-observability/register --env-file=../../.env src/server.ts"
     environment:
       CI: "true"
-      DATABASE_URL: postgres://eveland:eveland@localhost:17310/eveland
+      DATABASE_URL: "${DATABASE_URL:?set DATABASE_URL to the external platform database, dialable as written from the host and the Compose network alike}"
       GATEWAY_PORT: 17300
       EVELAND_AGENT_BASE_DOMAINS: "${EVELAND_AGENT_BASE_DOMAINS:?set EVELAND_AGENT_BASE_DOMAINS}"
       EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"

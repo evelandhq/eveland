@@ -12,7 +12,7 @@ function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
       path: "/repo/.env",
       values: {
         NODE_ENV: "development",
-        DATABASE_URL: "postgres://eveland:eveland@localhost/eveland",
+        DATABASE_URL: "postgres://eveland:eveland@localhost:17310/eveland",
         APP_SECRET_KEY: "k".repeat(32),
         BETTER_AUTH_SECRET: "s".repeat(32),
         EVELAND_ADMIN_PASSWORD: "long-enough-password",
@@ -27,6 +27,7 @@ function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
       return { code: 0, output: "" };
     },
     tcpProbe: async () => false,
+    pgJournal: async () => ({ status: "migrated", count: 42 }),
     fetchImpl: async () => new Response("{}", { status: 200 }),
     fileExists: async () => false,
     freeDiskBytes: async () => 100 * 1024 ** 3,
@@ -38,6 +39,20 @@ function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
 
 function byName(checks: Awaited<ReturnType<typeof collectDoctorChecks>>, name: string) {
   return checks.find((check) => check.name === name);
+}
+
+/** A configuration whose database lives outside this installation. */
+function externalEnvFile() {
+  return {
+    path: "/opt/eveland/etc/eveland.env",
+    values: {
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://eveland:secret@db.internal:5432/eveland",
+      APP_SECRET_KEY: "k".repeat(32),
+      BETTER_AUTH_SECRET: "s".repeat(32),
+      EVELAND_ADMIN_PASSWORD: "long-enough-password",
+    },
+  };
 }
 
 describe("collectDoctorChecks", () => {
@@ -136,38 +151,83 @@ describe("collectDoctorChecks", () => {
     expect(byName(checks, "sharp-libvips")?.status).toBe("warn");
   });
 
-  test("a reachable Postgres whose compose container is missing hints at a hijack", async () => {
+  test("the migration journal is read through DATABASE_URL, and the address is reported", async () => {
+    const asked: string[] = [];
     const checks = await collectDoctorChecks(
       makeDeps({
-        tcpProbe: async (host, port) => host === "127.0.0.1" && port === POSTGRES_HOST_PORT,
-        execCommand: async (argv) => {
-          if (argv[1] === "compose")
-            return { code: 1, output: 'service "postgres" is not running' };
-          if (argv[0] === "docker") return { code: 0, output: "27.0\n" };
-          if (argv[0] === "pnpm") return { code: 0, output: "11.7.0\n" };
-          return { code: 0, output: "Info-ZIP" };
+        envFile: {
+          path: "/repo/.env",
+          values: {
+            NODE_ENV: "development",
+            DATABASE_URL: "postgres://eveland:secret@db.internal:5432/eveland",
+            APP_SECRET_KEY: "k".repeat(32),
+            BETTER_AUTH_SECRET: "s".repeat(32),
+            EVELAND_ADMIN_PASSWORD: "long-enough-password",
+          },
+        },
+        pgJournal: async (url) => {
+          asked.push(url);
+          return { status: "migrated", count: 7 };
         },
       }),
+    );
+    expect(asked).toEqual(["postgres://eveland:secret@db.internal:5432/eveland"]);
+    const check = byName(checks, "postgres");
+    expect(check?.status).toBe("ok");
+    expect(check?.detail).toContain("7 migrations applied");
+    expect(check?.detail).toContain("db.internal:5432");
+    // The DSN carries a password; only its address may be printed.
+    expect(check?.detail).not.toContain("secret");
+  });
+
+  test("a database with no journal points at db:migrate and at the hijack that looks like it", async () => {
+    const checks = await collectDoctorChecks(
+      makeDeps({ pgJournal: async () => ({ status: "unmigrated" }) }),
     );
     const check = byName(checks, "postgres");
     expect(check?.status).toBe("warn");
+    expect(check?.detail).toContain("db:migrate");
     expect(check?.detail).toContain("Lima");
   });
 
-  test("an unmigrated database points at db:migrate", async () => {
-    const checks = await collectDoctorChecks(
+  test("an unreachable database is benign only when it is the one Compose here publishes", async () => {
+    const unreachable = {
+      status: "unreachable",
+      detail: "ECONNREFUSED",
+    } as const;
+    const supervised = await collectDoctorChecks(makeDeps({ pgJournal: async () => unreachable }));
+    expect(byName(supervised, "postgres")?.status).toBe("ok");
+
+    // An external database is nobody's to start later, so unreachable is a
+    // failure. The signal has to be the configured DSN, not the install
+    // metadata: a hand-managed production install carries no install.json at
+    // all and would otherwise be told its dead database is merely not up yet.
+    const production = await collectDoctorChecks(
       makeDeps({
-        tcpProbe: async (host, port) => host === "127.0.0.1" && port === POSTGRES_HOST_PORT,
-        execCommand: async (argv) => {
-          if (argv[1] === "compose")
-            return { code: 1, output: 'relation "drizzle.__drizzle_migrations" does not exist' };
-          if (argv[0] === "docker") return { code: 0, output: "27.0\n" };
-          if (argv[0] === "pnpm") return { code: 0, output: "11.7.0\n" };
-          return { code: 0, output: "Info-ZIP" };
-        },
+        platform: "linux",
+        envFile: externalEnvFile(),
+        pgJournal: async () => unreachable,
       }),
     );
-    expect(byName(checks, "postgres")?.detail).toContain("db:migrate");
+    const check = byName(production, "postgres");
+    expect(check?.status).toBe("fail");
+    expect(check?.detail).toContain("ECONNREFUSED");
+  });
+
+  test("an external database means this installation does not police 17310", async () => {
+    // That port belongs to a Compose database this installation does not run;
+    // a listener there is another project's, not a collision with the next
+    // start, and not an exposure of ours.
+    const checks = await collectDoctorChecks(
+      makeDeps({
+        platform: "linux",
+        envFile: externalEnvFile(),
+        nonLoopbackAddresses: () => ["192.168.1.10"],
+        tcpProbe: async (_host, port) => port === POSTGRES_HOST_PORT,
+      }),
+    );
+    expect(byName(checks, "ports")?.status).toBe("ok");
+    expect(byName(checks, "loopback-exposure")?.status).toBe("ok");
   });
 
   test("a broken pinned EVELAND_NODE is reported with the nvm-uninstall hint", async () => {

@@ -13,6 +13,7 @@ import { runStart } from "./lifecycle.ts";
 import { acquireMutex } from "./state-files.ts";
 import {
   defaultPgDump,
+  splitDumpCredentials,
   isForwardMove,
   newestStableTag,
   pendingUpdatePath,
@@ -767,46 +768,6 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
     expect(harness.timeline).not.toContain("start-daemon");
   });
 
-  test("systemd form: the API's Compose view of the world lands before anything runs Compose", async () => {
-    // The production overlay requires it, so an installation older than the
-    // variable cannot run a single Compose command until this is on disk.
-    // Failing the migration cuts the run off before the start step, so only
-    // update's own backfill can have written it -- starting the platform is
-    // far too late to be the thing that makes starting possible.
-    const harness = await makeHarness({ supervision: "systemd" });
-    harness.io.streamCommand = async (argv) => {
-      harness.streamed.push(argv);
-      return argv.includes("db:migrate") ? 1 : 0;
-    };
-
-    expect(await runFinishUpdate(FROM, harness.io)).toBe(1);
-    expect(harness.timeline).not.toContain("start-daemon");
-
-    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
-    expect(onDisk.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
-      "postgres://eveland:eveland@postgres:5432/eveland",
-    );
-  });
-
-  test("systemd form: a world this installer did not render is named, never guessed at", async () => {
-    const harness = await makeHarness({ supervision: "systemd" });
-    const existing = await readFile(harness.layout.envFilePath, "utf8");
-    await writeFile(
-      harness.layout.envFilePath,
-      existing.replace(
-        "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
-        "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
-      ),
-      "utf8",
-    );
-
-    expect(await runFinishUpdate(FROM, harness.io), harness.err.join("\n")).toBe(0);
-
-    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
-    expect(onDisk.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
-    expect(harness.err.join("\n")).toContain("EVELAND_WORKFLOW_WORLD_COMPOSE_URL");
-  });
-
   test("a failed migration leaves the platform stopped, with the safe recovery plan", async () => {
     const harness = await makeHarness({});
     harness.io.sendSignal!(4242, "SIGTERM");
@@ -839,12 +800,55 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
   });
 });
 
+describe("splitDumpCredentials", () => {
+  test("the password leaves the command line and rides in the environment", async () => {
+    // /proc/<pid>/cmdline is world-readable and pg_dump runs for as long as
+    // the backup takes, so any local user could read the DSN off the argv.
+    const { dsn, password } = splitDumpCredentials(
+      "postgres://eveland:s3cr3t@db.internal:5432/eveland?sslmode=require",
+    );
+    expect(dsn).toBe("postgres://eveland@db.internal:5432/eveland?sslmode=require");
+    expect(password).toBe("s3cr3t");
+  });
+
+  test("a percent-encoded password is decoded, because libpq will not decode PGPASSWORD", async () => {
+    const { password } = splitDumpCredentials("postgres://eveland:pa%40ss%2Fword@db:5432/eveland");
+    expect(password).toBe("pa@ss/word");
+  });
+
+  test("a DSN with no password, and one that is not a URL, pass through untouched", async () => {
+    expect(splitDumpCredentials("postgres://eveland@db:5432/eveland")).toEqual({
+      dsn: "postgres://eveland@db:5432/eveland",
+      password: null,
+    });
+    expect(splitDumpCredentials("host=db user=eveland")).toEqual({
+      dsn: "host=db user=eveland",
+      password: null,
+    });
+  });
+
+  test("the dump child receives PGPASSWORD and the argv never does", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-dumpenv-"));
+    const backupPath = path.join(dir, "dump.sql");
+    // The stand-in prints what it was given: the environment must carry the
+    // password, and the recorded argv must not.
+    const dump = defaultPgDump({ argv: ["sh", "-c", 'printf "%s\n" "$PGPASSWORD"'] });
+    expect(
+      await dump(backupPath, {
+        cwd: dir,
+        databaseUrl: "postgres://eveland:s3cr3t@db.internal:5432/eveland",
+      }),
+    ).toBe(0);
+    expect(await readFile(backupPath, "utf8")).toBe("s3cr3t\n");
+  });
+});
+
 describe("defaultPgDump", () => {
   test("a backup exists complete or not at all: partial file, fsync, rename, 0600", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-pgdump-"));
     const backupPath = path.join(dir, "eveland-v0.48.0.sql");
     const ok = defaultPgDump({ argv: ["sh", "-c", "printf -- '-- dump\\nSELECT 1;\\n'"] });
-    expect(await ok(backupPath, { cwd: dir, envFilePath: "/dev/null" })).toBe(0);
+    expect(await ok(backupPath, { cwd: dir, databaseUrl: "postgres://x" })).toBe(0);
     const { stat } = await import("node:fs/promises");
     expect(await readFile(backupPath, "utf8")).toContain("SELECT 1;");
     expect((await stat(backupPath)).mode & 0o777).toBe(0o600);
@@ -853,14 +857,14 @@ describe("defaultPgDump", () => {
     // A failing dump leaves nothing behind that could pass for a backup.
     const failing = defaultPgDump({ argv: ["sh", "-c", "printf 'half'; exit 3"] });
     const failedPath = path.join(dir, "failed.sql");
-    expect(await failing(failedPath, { cwd: dir, envFilePath: "/dev/null" })).toBe(3);
+    expect(await failing(failedPath, { cwd: dir, databaseUrl: "postgres://x" })).toBe(3);
     await expect(stat(failedPath)).rejects.toThrow();
     await expect(stat(`${failedPath}.partial`)).rejects.toThrow();
 
     // A "successful" dump with no output is not a backup either.
     const empty = defaultPgDump({ argv: ["true"] });
     const emptyPath = path.join(dir, "empty.sql");
-    expect(await empty(emptyPath, { cwd: dir, envFilePath: "/dev/null" })).toBeNull();
+    expect(await empty(emptyPath, { cwd: dir, databaseUrl: "postgres://x" })).toBeNull();
     await expect(stat(emptyPath)).rejects.toThrow();
   });
 });

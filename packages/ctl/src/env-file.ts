@@ -15,6 +15,28 @@ export type PlatformEnvFile = {
   values: Record<string, string>;
 };
 
+/**
+ * One assignment line, quoted so every reader of this file agrees on the value.
+ *
+ * Compose interpolates `$NAME` and `${NAME}` inside an unquoted `--env-file`
+ * value, while systemd's EnvironmentFile, Node's --env-file, and parseEnvFile
+ * all take it literally: a password of `pa$WORD` reaches the containerized API
+ * as `pa` and every host process as itself. Single quotes are the only literal
+ * form all four share.
+ *
+ * A value containing a single quote has no such form -- Compose rejects the
+ * whole file, not just that line -- so it is refused here instead.
+ */
+export function envFileLine(key: string, value: string): string {
+  if (value.includes("'")) {
+    throw new Error(
+      `${key} contains a single quote, which no env-file reader can carry. ` +
+        "Percent-encode it as %27 inside a connection URL, or choose a value without one.",
+    );
+  }
+  return `${key}='${value}'`;
+}
+
 export function parseEnvFile(raw: string): Record<string, string> {
   const values: Record<string, string> = {};
   for (const line of raw.split("\n")) {
@@ -49,10 +71,10 @@ export async function upsertEnvFileValue(
   const pattern = new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=`);
   const index = lines.findIndex((line) => pattern.test(line));
   if (index >= 0) {
-    lines[index] = `${key}=${value}`;
+    lines[index] = envFileLine(key, value);
   } else {
     const trailing = lines.at(-1) === "" ? lines.pop() : undefined;
-    lines.push(`${key}=${value}`);
+    lines.push(envFileLine(key, value));
     if (trailing !== undefined) lines.push(trailing);
   }
   await writeFile(filePath, lines.join("\n"), "utf8");

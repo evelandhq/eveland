@@ -208,27 +208,19 @@ dials Deployments on the host's loopback ports.
 
 For an existing installation:
 
-1. Add `EVELAND_WORKFLOW_WORLD_COMPOSE_URL` to `.env` — the same shared
-   workflow database as `EVELAND_WORKFLOW_WORLD_URL`, addressed on the Compose
-   network, e.g.
-   `EVELAND_WORKFLOW_WORLD_COMPOSE_URL=postgres://eveland:eveland@postgres:5432/eveland`.
-   The production overlay requires it and Compose refuses to start without it.
-   An API on the Compose network cannot dial the host loopback publish that
-   `EVELAND_WORKFLOW_WORLD_URL` names, and without a reachable World the
-   readiness gate resolves its cluster identity to `unknown` and refuses every
-   workflow-step activation with `workflow_unavailable`. `eveland-ctl update`
-   and `start` fill it in for an installation still carrying the world DSN the
-   installer rendered, and say what to set when it carries any other — a world
-   this installer did not render is that installation's own topology, and a
-   loopback address there proves only that the process which wrote it could
-   reach the database, never which cluster is behind it. A hand-managed Compose
-   installation always adds it itself.
+1. Give the API its own dialable address for the shared workflow database. An
+   API on the Compose network cannot reach the host loopback publish that
+   `EVELAND_WORKFLOW_WORLD_URL` named at the time, and without a reachable
+   World the readiness gate resolves its cluster identity to `unknown` and
+   refuses every workflow-step activation with `workflow_unavailable`. Upgrading
+   past this release resolves it for good — see
+   [Postgres moved out of Compose](#postgres-moved-out-of-compose), where one
+   external address serves the API, the host processes, and every Deployment.
 2. Recreate the containers rather than restarting them — a network mode and a
    published port only change on recreate:
    `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
-3. Nothing else in `.env` changes. `EVELAND_WORKFLOW_WORLD_URL` stays the host
-   and Deployment view, and the host Worker, the workflow dispatcher, and the
-   front door keep reaching the API at `http://127.0.0.1:17301`.
+3. The host Worker, the workflow dispatcher, and the front door keep reaching
+   the API at `http://127.0.0.1:17301`.
 4. Confirm both paths afterwards: a Session that records events and token usage
    proves the Collector reaches the API, and `Workflow dispatch` on the Instance
    health page leaving `unavailable` proves the API reaches the World.
@@ -257,6 +249,134 @@ The production overlay now gates the base file's development Worker behind a
 profile the production command never enables, mirroring the workflow
 dispatcher, so the merged configuration cannot start a second runtime
 controller.
+
+## Postgres moved out of Compose
+
+**Breaking.** Linux production no longer runs Postgres in Docker Compose. The
+base file's database is gated behind a profile the production command never
+enables, and `DATABASE_URL` and `EVELAND_WORKFLOW_WORLD_URL` are now required
+in `.env` — Compose refuses to start without them. `EVELAND_WORKFLOW_WORLD_COMPOSE_URL`
+is gone; delete it — at step 5 below, not before.
+
+Why: this form runs code in three network namespaces at once — the Compose
+bridge (API), the host (Agent Gateway, Dashboard, Worker, dispatcher), and every
+Deployment's own host process. A Compose-hosted database is dialable from all
+three only under three different addresses, so each database needed a
+per-namespace view and every consumer had to be told which one it held. An
+external instance has one address that resolves the same everywhere.
+
+Local development and the macOS `eveland-ctl` appliance are unchanged: both run
+every platform process in the host namespace, so their Compose Postgres stays
+exactly as it was.
+
+To migrate, two things decide the exact commands: how this installation is
+managed, and how many databases it actually has.
+
+**Which files name the database.**
+
+- **`eveland-ctl` appliance** — one file, `/opt/eveland/etc/eveland.env`. Every
+  start re-renders the Worker's, the dispatcher's, the Gateway's and the
+  Dashboard's own environments from it, so it is the only one to edit, and
+  `eveland-ctl update` moves the checkout.
+- **Hand-managed** — the Compose `.env` plus `/etc/eveland/eveland-worker.env`
+  and `/etc/eveland/eveland-workflow-dispatcher.env`, each edited by hand, and
+  `git` moves the checkout.
+
+**How many databases.** An appliance that `eveland-ctl` installed has exactly
+one: it rendered `DATABASE_URL` and `EVELAND_WORKFLOW_WORLD_URL` at the same
+`eveland` database, and the platform's tables and the World's tables live there
+together. Nothing in this change requires two — two DSNs may name one database,
+which is what the macOS appliance does — so the safest migration is the one that
+keeps the topology already in place. Read it off the configuration rather than
+assuming:
+
+```bash
+grep -E '^(DATABASE_URL|EVELAND_WORKFLOW_WORLD_URL)=' /opt/eveland/etc/eveland.env
+```
+
+1. Prepare the external instance per
+   [Prepare the host](/docs/production/prerequisites#provision-an-external-postgres):
+   an address dialable as written from the Compose bridge and the host alike, no
+   transaction-pooling proxy in front of it, and `postgresql-client` installed on
+   this host for `pg_dump`. Create a database for each distinct one the previous
+   step listed.
+2. Copy the data across **while the old stack is still up**: this dump, and the
+   pre-update backup in step 4, both run `pg_dump` inside the Compose container,
+   which a fully stopped platform no longer has. Stop only what writes.
+
+   ```bash
+   compose="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+   $compose stop api gateway web
+   sudo systemctl stop eveland-worker eveland-workflow-dispatcher
+   # One line per database the previous step listed -- usually just this one.
+   $compose exec -T postgres pg_dump -U eveland -d eveland \
+     | psql 'postgres://eveland:<password>@db.internal:5432/eveland'
+   ```
+
+   `workflow_stream_chunks` dominates the dump and is recoverable state, not
+   history — `truncate table workflow_stream_chunks;` before dumping cuts most
+   of the volume. It costs the replayable stream of already-finished runs,
+   nothing an in-flight run needs.
+
+3. Repoint the configuration, **before any code from this version starts**, so
+   `DATABASE_URL` and `EVELAND_WORKFLOW_WORLD_URL` hold the external addresses,
+   character for character, in every file the layout above lists.
+
+   **Leave `EVELAND_WORKFLOW_WORLD_COMPOSE_URL` in place for now.** The version
+   being replaced interpolates it as `${EVELAND_WORKFLOW_WORLD_COMPOSE_URL:?}`,
+   so deleting it here makes every remaining `docker compose` command on that
+   version fail outright — the pre-update backup in step 4 included.
+
+   Quote each value: Compose expands `$NAME` inside an unquoted `--env-file`
+   value while the host's readers take it literally, so a password containing
+   `$` reaches the containerized API truncated and every host process intact.
+   `DATABASE_URL='postgres://…'` is read the same by all of them.
+
+4. Move to this version.
+
+   - Appliance: `sudo eveland-ctl update`.
+   - Hand-managed: update the checkout, then **recreate** the containers rather
+     than restarting them — an environment change only reaches a container on
+     recreate — and start the host units again:
+
+     ```bash
+     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+     sudo systemctl start eveland-worker eveland-workflow-dispatcher
+     ```
+
+5. Delete `EVELAND_WORKFLOW_WORLD_COMPOSE_URL`. Nothing on this version reads
+   it, so it is inert rather than harmful — but a stale address left in the
+   configuration is one the next operator has to disprove.
+6. **Restart every running Deployment.** A Deployment receives the world
+   address at launch, and activation deliberately reuses a unit that is
+   already serving its port rather than re-rendering it — so an Agent that was
+   running through the switch keeps dialing the old address forever, and only
+   its durable workflow steps fail. Restart each one through the Dashboard or
+   `eveland`; that path recomposes the environment from the Worker's current
+   configuration. Check one afterwards:
+
+   ```bash
+   sudo cat /proc/$(systemctl show -p MainPID --value eveland-<project>-<deployment>)/environ \
+     | tr '\0' '\n' | grep EVELAND_WORKFLOW_WORLD_URL
+   ```
+
+7. Verify: **Settings → About** agrees across components, `Workflow dispatch`
+   on the Instance health page is not `unavailable`, and a Session records
+   events and token usage.
+8. Retire the old container. `docker compose up -d` no longer starts it, but it
+   does not stop one that is already running either — and because the service
+   now sits behind a profile, a plain `docker compose stop postgres` exits 0
+   having done nothing. Address it through the profile:
+
+   ```bash
+   compose="docker compose --profile dev-postgres -f docker-compose.yml -f docker-compose.prod.yml"
+   $compose stop postgres && $compose rm -f postgres
+   ```
+
+   Leaving it up is the exact failure this change exists to prevent: a second
+   cluster still answering on `17310`, ready to absorb any process that still
+   holds the old DSN. Keep its volume until the new instance has proven itself,
+   then remove that too.
 
 ## Legacy per-project workflow residue
 

@@ -27,7 +27,7 @@
   <rect class="box" x="40" y="140" width="310" height="94" rx="8"/>
   <text class="label" x="195" y="162" text-anchor="middle">生产 Compose 核心服务</text>
   <text class="name" x="195" y="186" text-anchor="middle">Dashboard · API · Agent Gateway</text>
-  <text class="sub" x="195" y="208" text-anchor="middle">Postgres + 共享数据目录</text>
+  <text class="sub" x="195" y="208" text-anchor="middle">Collector · 共享数据目录 · 外部 Postgres</text>
 
   <line class="line" x1="356" y1="176" x2="464" y2="176" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
   <text class="edge-label" x="410" y="168" text-anchor="middle">Job · Event</text>

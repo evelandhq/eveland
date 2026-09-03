@@ -21,6 +21,12 @@ import {
 } from "./lifecycle.ts";
 import { verifiedSupervisorPid } from "./state-files.ts";
 import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
+import {
+  databaseAddress,
+  defaultPgJournalProbe,
+  describeDatabaseAddress,
+  type PgJournalProbe,
+} from "./pg-probe.ts";
 
 /**
  * `eveland-ctl doctor`: every check this installation has historically been
@@ -49,6 +55,7 @@ export type DoctorDeps = {
   systemdForm?: boolean;
   execCommand: ExecCommand;
   tcpProbe: TcpProbe;
+  pgJournal: PgJournalProbe;
   fetchImpl: FetchLike;
   fileExists: (filePath: string) => Promise<boolean>;
   freeDiskBytes: (dir: string) => Promise<number | null>;
@@ -69,16 +76,22 @@ const REQUIRED_ENV_KEYS = [
 const LOOPBACK_ONLY_PORTS: Array<{ port: number; label: string }> = [
   { port: API_PORT, label: "Platform API" },
   { port: WEB_PORT, label: "Dashboard" },
-  { port: POSTGRES_HOST_PORT, label: "Postgres" },
 ];
 const FIXED_PORTS: Array<{ port: number; label: string }> = [
   { port: GATEWAY_PORT, label: "Agent Gateway" },
   { port: API_PORT, label: "Platform API" },
   { port: WEB_PORT, label: "Dashboard" },
-  { port: POSTGRES_HOST_PORT, label: "Postgres" },
   { port: OTEL_PLATFORM_HOST_GRPC_PORT, label: "OTLP Collector (gRPC)" },
   { port: OTEL_PLATFORM_HOST_HTTP_PORT, label: "OTLP Collector (HTTP)" },
 ];
+/**
+ * Only an installation whose own Compose Postgres publishes this port owns it.
+ * Where the database is external, a listener here is another project's
+ * business — but where it is not, the port checks are what catch a Lima
+ * port-forward hijacking the address the platform is about to use.
+ */
+const COMPOSE_POSTGRES_PORT = { port: POSTGRES_HOST_PORT, label: "Postgres" };
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const MIN_FREE_DISK_FAIL = 2 * 1024 ** 3;
 const MIN_FREE_DISK_WARN = 10 * 1024 ** 3;
 const PROXY_VARIABLES = [
@@ -95,6 +108,24 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
   const checks: CheckResult[] = [];
   const add = (name: string, status: CheckStatus, detail: string) =>
     checks.push({ name, status, detail });
+
+  // Postgres content: a port that answers proves nothing — a foreign Postgres
+  // (a Lima VM's forward, another project) accepts connections just fine. The
+  // configured DSN is the only authority on which database this installation
+  // uses, so both the port checks below and the journal check further down key
+  // off it. The supervision form would be the wrong signal: a hand-managed
+  // production install carries no install.json at all, and would be mistaken
+  // for one whose database `eveland-ctl start` brings up.
+  const databaseUrl = deps.envFile?.values.DATABASE_URL?.trim();
+  const configuredDatabase = databaseUrl ? databaseAddress(databaseUrl) : null;
+  const composePostgres =
+    configuredDatabase !== null &&
+    LOOPBACK_HOSTS.has(configuredDatabase.host) &&
+    configuredDatabase.port === POSTGRES_HOST_PORT;
+  const loopbackOnlyPorts = composePostgres
+    ? [...LOOPBACK_ONLY_PORTS, COMPOSE_POSTGRES_PORT]
+    : LOOPBACK_ONLY_PORTS;
+  const fixedPorts = composePostgres ? [...FIXED_PORTS, COMPOSE_POSTGRES_PORT] : FIXED_PORTS;
 
   // Operating system.
   if (deps.platform === "darwin") {
@@ -152,14 +183,15 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
   const docker = await deps.execCommand(["docker", "info", "--format", "{{.ServerVersion}}"], {
     cwd: deps.repoRootDir,
   });
-  const dockerOk = docker.code === 0;
-  if (dockerOk) {
+  if (docker.code === 0) {
     add("docker", "ok", `daemon ${docker.output.trim()}`);
   } else {
     add(
       "docker",
       "fail",
-      "Docker daemon is not reachable; Postgres and the OTLP Collector run in Compose.",
+      composePostgres
+        ? "Docker daemon is not reachable; Postgres and the OTLP Collector run in Compose."
+        : "Docker daemon is not reachable; the core services and the OTLP Collector run in Compose.",
     );
   }
 
@@ -231,7 +263,7 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
       OTEL_PLATFORM_HOST_HTTP_PORT,
     ]);
     const foreign: string[] = [];
-    for (const { port, label } of FIXED_PORTS) {
+    for (const { port, label } of fixedPorts) {
       if (infraPorts.has(port)) continue;
       if (await deps.tcpProbe("127.0.0.1", port)) foreign.push(`${port} (${label})`);
     }
@@ -251,7 +283,7 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
   // Loopback exposure: only the Agent Gateway may be reachable off-host.
   const exposures: string[] = [];
   for (const address of deps.nonLoopbackAddresses()) {
-    for (const { port, label } of LOOPBACK_ONLY_PORTS) {
+    for (const { port, label } of loopbackOnlyPorts) {
       if (await deps.tcpProbe(address, port)) exposures.push(`${label} on ${address}:${port}`);
     }
   }
@@ -330,57 +362,30 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
     );
   }
 
-  // Postgres content: reachable is not enough — a foreign Postgres on the
-  // platform port (a Lima VM's forward, another project) answers TCP just
-  // fine. Ask the Compose container itself for the migration journal.
-  const postgresReachable = await deps.tcpProbe("127.0.0.1", POSTGRES_HOST_PORT);
-  if (postgresReachable && dockerOk) {
-    // --env-file: compose interpolates the whole file even for one service,
-    // and an appliance's configuration is not a ./.env in the compose cwd.
-    const envFileArgs = deps.envFile ? ["--env-file", deps.envFile.path] : [];
-    const result = await deps.execCommand(
-      [
-        "docker",
-        "compose",
-        ...envFileArgs,
-        "exec",
-        "-T",
-        "postgres",
-        "psql",
-        "-U",
-        "eveland",
-        "-d",
-        "eveland",
-        "-tAc",
-        "select count(*) from drizzle.__drizzle_migrations",
-      ],
-      { cwd: deps.repoRootDir },
-    );
-    if (result.code === 0) {
-      add("postgres", "ok", `${result.output.trim()} migrations applied`);
-    } else if (/no such service|not running|no container/i.test(result.output)) {
+  // Reachable is not trusted: connect with the configured DSN and read the
+  // migration journal, because only a cluster that has one is the cluster
+  // holding this installation's schema.
+  if (databaseUrl) {
+    const address = describeDatabaseAddress(databaseUrl) ?? "the configured address";
+    const journal = await deps.pgJournal(databaseUrl);
+    if (journal.status === "migrated") {
+      add("postgres", "ok", `${journal.count} migrations applied (${address})`);
+    } else if (journal.status === "unmigrated") {
       add(
         "postgres",
         "warn",
-        `Something answers on 127.0.0.1:${POSTGRES_HOST_PORT} but the Compose postgres container is not running — check for a foreign Postgres (a Lima VM port-forward hijack looks exactly like this).`,
+        `${address} answers but has no migration journal. Run \`pnpm --filter @evelandhq/api db:migrate\`, ` +
+          "or check for a foreign Postgres on that address (a Lima port-forward hijack looks exactly like this).",
       );
-    } else if (/does not exist/i.test(result.output)) {
-      add(
-        "postgres",
-        "warn",
-        "Postgres is running but not migrated. Run `pnpm --filter @evelandhq/api db:migrate`.",
-      );
+    } else if (composePostgres && !deps.supervisorRunning) {
+      add("postgres", "ok", `${address} is not up yet (\`eveland-ctl start\` brings it up)`);
     } else {
-      add("postgres", "warn", `Could not verify migrations: ${result.output.trim().slice(0, 200)}`);
+      add(
+        "postgres",
+        "fail",
+        `Cannot reach the platform database at ${address}: ${journal.detail}`,
+      );
     }
-  } else if (postgresReachable) {
-    add(
-      "postgres",
-      "warn",
-      "Postgres port answers but Docker is unreachable; cannot verify it is ours.",
-    );
-  } else {
-    add("postgres", "ok", "not running (started by `eveland-ctl start`)");
   }
 
   // Live platform health, when it is up.
@@ -458,6 +463,7 @@ export async function runDoctor(
     systemdForm: metadata?.supervision === "systemd",
     execCommand: resolved.execCommand,
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
+    pgJournal: defaultPgJournalProbe(),
     fetchImpl: resolved.fetchImpl,
     fileExists: resolved.fileExists,
     freeDiskBytes: defaultFreeDiskBytes,

@@ -53,16 +53,25 @@ profile bwrap /usr/bin/bwrap flags=(unconfined) {
 
 Worker 本身必须以 root 运行（它驱动 `systemd-run`、`systemctl` 与 `chown`），安装步骤见[安装宿主机 Worker](/zh/docs/production/worker)。
 
-## 准备 Postgres
+## 准备外部 Postgres
 
-生产环境使用两个数据库，通常位于同一实例：
+**Postgres 是这套拓扑的前置条件，而不是它的一部分。** 生产形态同时在三个网络命名空间里运行代码——Compose 网桥（API）、宿主机（Agent Gateway、Dashboard、Worker、Workflow Dispatcher），以及每个 Deployment 自己的宿主机进程。Compose 内的数据库对这三者只能用三个不同地址表示，于是每个数据库都要一份按命名空间划分的视图，每个消费方还得被告知自己拿的是哪一份。安装之外的实例只有一个地址，在三处解析结果相同——这正是这里每个数据库只需一个 DSN 的原因。
 
-- **平台数据库**（`DATABASE_URL`）——持有 Project、Deployment、Job 与认证数据。配置专用角色。
-- **共享 Workflow 数据库**（`EVELAND_WORKFLOW_WORLD_URL`）——一个数据库为所有 Project 承载 `@evelandhq/workflow-world`，内部按 `tenant_id` 隔离。生产环境必需：缺失时 Worker 启动直接失败（Fail Closed），API 也读取同一 URL 校验 World 的 Cluster Identity。Worker 启动与 Tenant Provisioning 会自动应用所有待执行的 Workflow World Migration，由 PostgreSQL Advisory Lock 串行化；当宿主机与 Deployment 通过不同地址访问该数据库时，设置 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`。
+安装前先准备好实例，并在其上创建两个数据库：
 
-不要创建每项目独立的 Workflow 数据库：共享 World 已取代它们。遗留的 `WORKFLOW_POSTGRES_URL` 只与仍在删除共享 World 之前 Project 的安装相关——参见[升级与回滚](/zh/docs/operations/upgrades)。
+- **平台数据库**（`DATABASE_URL`）——持有 Project、Deployment、Job 与认证数据。配置持有它的专用角色。
+- **共享 Workflow 数据库**（`EVELAND_WORKFLOW_WORLD_URL`）——一个数据库为所有 Project 承载 `@evelandhq/workflow-world`，内部按 `tenant_id` 隔离。生产环境必需：缺失时 Worker 启动直接失败（Fail Closed），API 也读取同一 URL 校验 World 的 Cluster Identity。Worker 启动与 Tenant Provisioning 会自动应用所有待执行的 Workflow World Migration，由 PostgreSQL Advisory Lock 串行化。
 
-在第一个真实负载之前，按[容量规划](/zh/docs/operations/capacity)确定 `max_connections` 与每 Deployment 连接池预算，并将两个数据库与数据根目录纳入备份计划——参见[备份与恢复](/zh/docs/operations/backup-restore)。
+两个数据库必须在首次启动前存在，平台本身不会创建它们。该角色**不需要** `CREATEDB`：新 Project 在共享 World 内成为一个 Tenant 分区，而不是独立数据库。只有仍带着遗留 `WORKFLOW_POSTGRES_URL` 的安装才需要 `CREATE`/`DROP DATABASE`，且仅用于删除共享 World 之前遗留的 Project——参见[升级与回滚](/zh/docs/operations/upgrades)。
+
+对实例本身的要求：
+
+- **一个地址，原样在所有位置都可连通。** 完全相同的 `DATABASE_URL` 与 `EVELAND_WORKFLOW_WORLD_URL` 字符串会进入 API 的 Compose 环境、`eveland-worker.env` 与 `eveland-workflow-dispatcher.env`，并被下发到每个 Deployment。宿主机回环地址不满足这一条：在 API 容器内部，那是容器自己的回环。
+- **前面不要放 Transaction Pooling 代理。** Workflow 队列依赖 `LISTEN`/`NOTIFY`，Transaction Pooling 会直接把它废掉——`transaction` 模式的 PgBouncer 后面的 Dispatcher 会静默地不再唤醒 Run。请使用 Session Pooling 或直连。
+- **把 Deployment 算进连接预算。** 每个运行中的 Agent 都会持有一批自己的长连接，`WORKFLOW_POSTGRES_MAX_POOL_SIZE` 是调节杠杆。在第一个真实负载之前，按[容量规划](/zh/docs/operations/capacity)确定 `max_connections` 与每 Deployment 连接池预算。
+- **宿主机安装 `postgresql-client`。** `eveland-ctl update` 在移动 Checkout 之前会做一次 `pg_dump` 备份，而它运行在宿主机上而非容器内。用 `sudo apt-get install -y postgresql-client` 安装，并保持版本不低于服务端——`pg_dump` 对更新的服务端会直接拒绝导出。
+
+将两个数据库与数据根目录纳入备份计划——参见[备份与恢复](/zh/docs/operations/backup-restore)。
 
 ## 运行 Preflight
 

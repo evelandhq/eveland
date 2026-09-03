@@ -22,7 +22,7 @@ Eveland does not replace Eve's filesystem-first authoring model or the Agent's o
 
 ## Production by design
 
-The supported production topology separates the core services from privileged runtime control. The Dashboard, API, Agent Gateway, Postgres, and the managed OpenTelemetry Collector form the core services; a host Worker starts Eve deployments as isolated systemd services, and exactly one Workflow Dispatcher completes the production topology. Agent ports stay on private loopback, while the Agent Gateway owns the stable and preview hosts.
+The supported production topology separates the core services from privileged runtime control. The Dashboard, API, Agent Gateway, and the managed OpenTelemetry Collector form the core services; a host Worker starts Eve deployments as isolated systemd services, and exactly one Workflow Dispatcher completes the production topology. Agent ports stay on private loopback, while the Agent Gateway owns the stable and preview hosts.
 
 This boundary keeps the Docker controller, source tree, decrypted secrets, and telemetry policy data away from public Agent traffic. Per-deployment CPU and memory limits, idle stopping, and on-demand activation keep runtime capacity intentional.
 

@@ -28,11 +28,12 @@ const productionCompose = path.join(repositoryRoot, "docker-compose.prod.yml");
 const nativeCompose = path.join(repositoryRoot, "docker-compose.native.yml");
 
 /**
- * Deliberately unlike the base file's development literal: the base value
- * merges into every form, so only a value the operator's configuration alone
- * can supply proves the production overlay still pins one.
+ * Deliberately unlike the base file's development literals: those merge into
+ * every form, so only values the operator's configuration alone can supply
+ * prove the production overlay still pins the addresses it must.
  */
-const COMPOSE_WORLD_SENTINEL = "postgres://sentinel:sentinel@world-db:6543/sentinel_world";
+const PLATFORM_DB_SENTINEL = "postgres://sentinel:sentinel@platform-db:6543/sentinel_platform";
+const WORLD_DB_SENTINEL = "postgres://sentinel:sentinel@world-db:6543/sentinel_world";
 
 /** Placeholders for the `:?set X` variables, so `config` can resolve. */
 const requiredEnv = {
@@ -47,7 +48,8 @@ const requiredEnv = {
   EVELAND_GATEWAY_AFFINITY_SECRET: "compose-topology-affinity",
   EVELAND_SCHEDULER_RUNTIME_SECRET: "compose-topology-runtime",
   EVELAND_SCHEDULER_DISPATCH_SECRET: "compose-topology-dispatch",
-  EVELAND_WORKFLOW_WORLD_COMPOSE_URL: COMPOSE_WORLD_SENTINEL,
+  DATABASE_URL: PLATFORM_DB_SENTINEL,
+  EVELAND_WORKFLOW_WORLD_URL: WORLD_DB_SENTINEL,
 };
 
 const scratchDirectory = mkdtempSync(path.join(os.tmpdir(), "eveland-compose-topology-"));
@@ -216,15 +218,29 @@ describe.skipIf(!composeCliAvailable && !process.env.CI)(
       });
     }
 
-    test("the production forms take the world address from the installation's own configuration", () => {
-      // The base file's development literal merges into every form, so a
-      // production overlay that stopped pinning the world would keep passing
-      // the loopback check above while silently answering `eveland` for an
-      // installation whose world database is named something else.
+    test("the production forms take both database addresses from the installation's own configuration", () => {
+      // The base file pins its development databases by Compose service name
+      // and Node's --env-file never overrides an existing variable, so an
+      // overlay that stopped interpolating these would silently run the
+      // installation against a cluster it does not have.
       for (const form of [forms.production(), forms.appliance()]) {
-        expect(requiredService(form, "api").environment?.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBe(
-          COMPOSE_WORLD_SENTINEL,
+        const api = requiredService(form, "api").environment ?? {};
+        expect(api.DATABASE_URL).toBe(PLATFORM_DB_SENTINEL);
+        expect(api.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBe(WORLD_DB_SENTINEL);
+        expect(requiredService(form, "gateway").environment?.DATABASE_URL).toBe(
+          PLATFORM_DB_SENTINEL,
         );
+      }
+    });
+
+    test("no production form starts a Postgres of its own", () => {
+      // Its API is on the Compose bridge while the worker, the dispatcher and
+      // every Deployment are on the host, so the one address all three dial
+      // has to be external. A Compose database merged back in would be a
+      // second cluster nobody notices -- and a Deployment writing runs into a
+      // database the dispatcher never claims from.
+      for (const form of [forms.production(), forms.appliance()]) {
+        expect(Object.keys(form.services)).not.toContain("postgres");
       }
     });
 

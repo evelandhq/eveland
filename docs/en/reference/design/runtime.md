@@ -47,9 +47,10 @@ runtime to opt into there. Linux native development keeps the Collector
 bridged because the Docker runtime attaches it to each Agent's private telemetry
 network. The host API therefore adds a second listener on Docker's private bridge
 address, restricted to health, Collector Observation, Agent JWKS, and Scheduler
-Channel paths; its control plane remains loopback-only. Core platform services
-(Postgres, the OTel Collector) stay containerized in production; it is the
-_Agent_ runtime that moved to the host.
+Channel paths; its control plane remains loopback-only. The managed OTel Collector
+stays containerized in production; Postgres left Compose entirely, because a
+form running code in three network namespaces has no single address for a
+database inside one of them. It is the _Agent_ runtime that moved to the host.
 
 ## Mixed runtimes: visible, not supported
 

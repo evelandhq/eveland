@@ -27,7 +27,7 @@
   <rect class="box" x="40" y="140" width="310" height="94" rx="8"/>
   <text class="label" x="195" y="162" text-anchor="middle">Docker Compose</text>
   <text class="name" x="195" y="186" text-anchor="middle">Dashboard · API · Agent Gateway</text>
-  <text class="sub" x="195" y="208" text-anchor="middle">Postgres + shared data</text>
+  <text class="sub" x="195" y="208" text-anchor="middle">Collector · shared data · external Postgres</text>
 
   <line class="line" x1="356" y1="176" x2="464" y2="176" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
   <text class="edge-label" x="410" y="168" text-anchor="middle">jobs · events</text>

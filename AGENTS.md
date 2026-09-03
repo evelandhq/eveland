@@ -268,8 +268,11 @@ corresponding tests and docs are updated.
   use the adapter that owns that Deployment, not merely the worker's current
   default.
 - Docker remains the local-development runtime. The current Linux production
-  topology uses Docker Compose for API/Agent Gateway/Dashboard/Postgres and a host systemd
-  worker with a shared absolute data root. Do not globally flip runtime or path
+  topology uses Docker Compose for API/Agent Gateway/Dashboard and a host systemd
+  worker with a shared absolute data root, against an external Postgres — that
+  form runs code in three network namespaces, and only a database outside the
+  installation has one address all three can dial. Local development and the
+  macOS appliance keep the Compose Postgres. Do not globally flip runtime or path
   defaults without updating preflight, Compose, env examples, and deployment
   docs.
 - API and worker must agree on absolute source, release, and telemetry policy paths. Treat
