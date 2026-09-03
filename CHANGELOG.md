@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.51.0](https://github.com/evelandhq/eveland/compare/v0.50.0...v0.51.0) (2026-09-03)
+
+
+### Features
+
+* **cli:** publish the eveland CLI as the bin of the eveland npm package ([#474](https://github.com/evelandhq/eveland/issues/474)) ([7f89b7b](https://github.com/evelandhq/eveland/commit/7f89b7b9eb4b4cb9c4eb6e7bf24cce7723c6683e))
+
 ## [0.50.0](https://github.com/evelandhq/eveland/compare/v0.49.0...v0.50.0) (2026-09-03)
 
 
