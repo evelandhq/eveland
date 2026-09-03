@@ -35,6 +35,6 @@ description: 查找生产配置分组以及每个值所属的组件。
 
 - [环境变量参考](/zh/docs/reference/environment-variables)：平台全部环境变量名称、默认值与读取位置
 - [生产架构概览](/zh/docs/production)：核心服务、宿主机 Worker 与 Dispatcher 的整体拓扑
-- [安装核心服务](/zh/docs/production/core-services)：Compose 生产环境变量配置
+- [安装核心服务](/zh/docs/production/core-services)：生产环境变量配置
 - [安装宿主机 Worker](/zh/docs/production/worker)：Worker systemd 环境变量配置
 - [安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)：Dispatcher 环境变量配置与参数调优

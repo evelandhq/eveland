@@ -159,37 +159,90 @@ group by 1, 2
 having count(*) > 1;
 ```
 
-## API 离开 Host Networking
+## 每个平台进程都是宿主机 systemd unit
 
-本次 Release 把 API 移出 Host Networking。在生产 Overlay 中它运行在 Compose
-网络上，只发布 `127.0.0.1:17301`，托管 Collector 以 `http://api:17301`
-寻址它。Host Networking 的 API 只能满足"仅回环端口"契约或 Collector 的可达性
-之一，不可能两者兼顾——只要还在尝试，Observation 路径就一直静默断开。Agent
-Gateway 与 Dashboard 保持 Host Networking，因为前门仍要通过宿主机 Loopback
-端口访问 Deployment。
+本次 Release 把 Linux 生产形态彻底搬上宿主机。API、Agent Gateway、Dashboard、
+Worker 与 Workflow Dispatcher 全部是 systemd unit；Docker 只留下托管
+OpenTelemetry Collector，以及——除非这套安装自带 PostgreSQL——那个自带的数据库。
 
-对已有安装：
+由此带来两点变化，都是配置的简化：
 
-1. 在 `.env` 中新增 `EVELAND_WORKFLOW_WORLD_COMPOSE_URL`——与
-   `EVELAND_WORKFLOW_WORLD_URL` 同一个共享 Workflow Database，但以 Compose
-   网络寻址，例如
-   `EVELAND_WORKFLOW_WORLD_COMPOSE_URL=postgres://eveland:eveland@postgres:5432/eveland`。
-   生产 Overlay 将其列为必填，缺失时 Compose 直接拒绝启动。Compose 网络上的
-   API 无法访问 `EVELAND_WORKFLOW_WORLD_URL` 指向的宿主机回环发布端口；World
-   不可达时，Readiness Gate 会把 Cluster Identity 解析成 `unknown`，并以
-   `workflow_unavailable` 拒绝每一次 Workflow-step Activation。若安装仍在使用安装器
-   渲染出的那个 World DSN，`eveland-ctl update` 与 `start` 会自动补上；否则只会提示
-   该设成什么——安装器没渲染过的 World 属于该安装自己的拓扑，那里的 loopback 地址只
-   能证明写下它的进程够得到该库，不能证明背后是哪个 Cluster。手工管理的 Compose 安
-   装始终需自行添加。
-2. 重建容器而不是重启——Network Mode 与已发布端口只有重建才会生效：
-   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`。
-3. `.env` 的其余部分无需改动。`EVELAND_WORKFLOW_WORLD_URL` 仍是宿主机与
-   Deployment 的视角，宿主机 Worker、Workflow Dispatcher 与前门也仍在
-   `http://127.0.0.1:17301` 访问 API。
-4. 之后确认两条路径：一个能记录事件与 Token 用量的 Session 证明 Collector
-   重新访问得到 API；Instance Health 页上的 `Workflow dispatch` 不再是
+- `EVELAND_WORKFLOW_WORLD_COMPOSE_URL` **已移除**。它之所以存在，是因为容器里的
+  API 无法访问 `EVELAND_WORKFLOW_WORLD_URL` 指向的宿主机回环发布端口。现在这个
+  数据库的每一个读取方都是同一网络命名空间里的宿主机进程，因此安装又只剩一个
+  地址。删掉这个变量，没有任何代码再读它。
+- Collector 通过 `host.docker.internal`（Docker 的 host-gateway）访问 API，而
+  API 在同一地址上绑定第二个 Listener，只接受 Health、Collector Observation、
+  Agent JWKS 与 Scheduler Channel 路径。`eveland-ctl` 每次启动都会重新探测这个
+  地址——Docker 会按自己的节奏给 Bridge 重新编号，而过期地址意味着 Listener
+  绑不上。
+
+### 使用 `eveland-ctl`
+
+```bash
+eveland-ctl update
+```
+
+迁移到此为止。它会渲染新的 unit、移除退役的 `api`/`gateway`/`web` 容器、在宿主机
+构建 Dashboard 并启动一切。之后可以回收这些容器用过、现在已无人引用的卷：
+
+```bash
+docker volume ls --filter name=eveland-appliance
+docker volume rm <其中列出的 gateway、web 与 web-next 卷>
+```
+
+### 手工迁移
+
+1. 在宿主机构建 Dashboard——它现在是宿主机制品：
+   `pnpm --filter @evelandhq/web build`。
+2. 为每个平台进程安装一个 unit，参照 `infra/systemd/eveland-worker.service`。
+   三个有监听端口的服务应共用一个非特权系统用户，配 `ProtectSystem=strict` 与
+   显式 `ReadWritePaths`：API 是 `EVELAND_DATA_DIR`，Dashboard 是它的 `.next`，
+   Agent Gateway 什么都不需要。
+3. 在 API 的环境中设置 `EVELAND_API_DOCKER_BRIDGE_HOST` 为
+   `docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}'`
+   的输出，并在 Docker Bridge 重新编号后重新读取。
+4. 移除旧容器，然后只启动基础设施：
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml rm --stop --force api gateway web`
+   再执行
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d otel-collector postgres`
+   （使用自己 PostgreSQL 时去掉 `postgres`）。
+5. 从配置中删除 `EVELAND_WORKFLOW_WORLD_COMPOSE_URL`。
+6. 之后确认两条路径：一个能记录事件与 Token 用量的 Session 证明 Collector
+   访问得到 API；Instance Health 页上的 `Workflow dispatch` 不再是
    `unavailable`，则证明 API 访问得到 World。
+
+## 迁移到自己的 PostgreSQL
+
+安装现在会在 `install.json` 中记录数据库是 `bundled` 还是 `external`，
+`start` / `doctor` / `status` / `update` 都按这条记录分支。已有安装没有这个
+字段，一律按自带处理——事实也是如此。
+
+迁到自己运维的 PostgreSQL 是一次有意的迁移，而不是改一行配置——没有任何机制会
+替你检测这个变化：
+
+1. 停止平台：`eveland-ctl stop`。
+2. 导出自带数据库：
+   `docker compose --env-file /opt/eveland/etc/eveland.env exec -T postgres pg_dump -U eveland -d eveland > eveland.sql`。
+   注意：`eveland-ctl` 渲染的安装把平台表与共享 Workflow World 放在**同一个**
+   数据库里，都叫 `eveland`——没有第二个库要导。
+3. 恢复到你的服务器上，目标库的属主角色不需要 CREATEDB。
+4. 把 `/opt/eveland/etc/eveland.env` 里的 `DATABASE_URL` 与
+   `EVELAND_WORKFLOW_WORLD_URL` 指向新服务器。两个都要改，且指向同一个库。
+5. 在 `/opt/eveland/etc/install.json` 中设置 `"database": "external"`。
+6. 如果宿主机上没有 `pg_dump` 就装上（`eveland-ctl doctor` 会提示），因为升级
+   前的备份现在从宿主机执行。
+7. `eveland-ctl start`，然后 `eveland-ctl doctor`——`postgres` 检查会通过配置的
+   URL 读取 Migration 日志，因此它能确认你连的确实是刚恢复的那个库，而不是某个
+   恰好在应答的东西。
+8. 平台在新服务器上健康之后，删除自带容器与它的卷：
+   `docker compose --profile bundled-postgres rm --stop --force postgres` 与
+   `docker volume rm <project>_eveland-postgres`。
+
+关于服务器本身的生产建议：优先选托管实例，让版本升级与故障切换沿用你既有的做法；
+绝不要在它前面放事务级连接池代理，因为 Durable Job 队列依赖会话级的
+`LISTEN`/`NOTIFY`；并在第一个真实负载之前按[容量规划](/zh/docs/operations/capacity)
+确定 `max_connections`。
 
 ## Linux 上的 Docker Agent Runtime 已下线
 

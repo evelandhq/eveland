@@ -9,7 +9,7 @@ Eveland's production boundary is intentionally different from its local developm
 
 ## Core services
 
-The Dashboard, API, Agent Gateway, Postgres, and the managed OpenTelemetry Collector run in Docker Compose with the production overlay. API owns authenticated team workflows and persistence. The Agent Gateway is the only public Agent data plane and has neither the Docker socket nor access to sources, Releases, secrets, or Collector configuration; the Compose stack masks the data directory from it. The overlay starts neither a Worker nor a workflow dispatcher: both are host units, described in the next section and in [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
+The API, Agent Gateway, and Dashboard run on the host as systemd units under one unprivileged system user, with `ProtectSystem=strict`, a read-only source tree, and an explicit `ReadWritePaths` each. API owns authenticated team workflows and persistence. The Agent Gateway is the only public Agent data plane; it has neither the Docker socket nor any writable path at all, so sources, Releases, secrets, and Collector configuration are out of its reach. Docker runs the managed OpenTelemetry Collector and, unless the installation brought its own PostgreSQL, the bundled database — and nothing else.
 
 ## Host runtime controller
 
@@ -21,7 +21,7 @@ Durable workflows run in external mode: Deployments never claim their own timers
 
 ## Shared data contract
 
-API and Worker must see the same absolute data root, normally `/var/lib/eveland`; the API container bind-mounts it at that exact host path. A Project's stored `sourcePath` is written by whichever side imports the Project and read by whichever side later serves or deploys it, so a mismatched mount leaves one side unable to find files the other wrote. Imported sources, prepared Releases, Agent observability policies, managed Collector configuration, and sandbox caches all live below this root.
+API and Worker must see the same absolute data root, normally `/var/lib/eveland`; both are host processes reading it directly. A Project's stored `sourcePath` is written by whichever side imports the Project and read by whichever side later serves or deploys it, so a mismatched mount leaves one side unable to find files the other wrote. Imported sources, prepared Releases, Agent observability policies, managed Collector configuration, and sandbox caches all live below this root.
 
 ## Telemetry topology
 

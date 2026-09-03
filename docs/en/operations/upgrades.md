@@ -196,42 +196,102 @@ group by 1, 2
 having count(*) > 1;
 ```
 
-## API off host networking
+## Every platform process is a host systemd unit
 
-This release moves the API off host networking. In the production overlay it
-runs on the Compose network, publishes only `127.0.0.1:17301`, and the managed
-Collector addresses it as `http://api:17301`. A host-network API can satisfy the
-loopback-only port contract or the Collector's reach, never both — the
-Observation path stayed silently disconnected as long as it tried. Agent
-Gateway and the Dashboard keep host networking, because the front door still
-dials Deployments on the host's loopback ports.
+This release finishes moving the Linux production form onto the host. The API,
+Agent Gateway, Dashboard, Worker, and workflow dispatcher are all systemd units;
+Docker keeps the managed OpenTelemetry Collector and, unless the installation
+brought its own PostgreSQL, the bundled database.
 
-For an existing installation:
+Two things follow from that, and both simplify the configuration:
 
-1. Add `EVELAND_WORKFLOW_WORLD_COMPOSE_URL` to `.env` — the same shared
-   workflow database as `EVELAND_WORKFLOW_WORLD_URL`, addressed on the Compose
-   network, e.g.
-   `EVELAND_WORKFLOW_WORLD_COMPOSE_URL=postgres://eveland:eveland@postgres:5432/eveland`.
-   The production overlay requires it and Compose refuses to start without it.
-   An API on the Compose network cannot dial the host loopback publish that
-   `EVELAND_WORKFLOW_WORLD_URL` names, and without a reachable World the
-   readiness gate resolves its cluster identity to `unknown` and refuses every
-   workflow-step activation with `workflow_unavailable`. `eveland-ctl update`
-   and `start` fill it in for an installation still carrying the world DSN the
-   installer rendered, and say what to set when it carries any other — a world
-   this installer did not render is that installation's own topology, and a
-   loopback address there proves only that the process which wrote it could
-   reach the database, never which cluster is behind it. A hand-managed Compose
-   installation always adds it itself.
-2. Recreate the containers rather than restarting them — a network mode and a
-   published port only change on recreate:
-   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
-3. Nothing else in `.env` changes. `EVELAND_WORKFLOW_WORLD_URL` stays the host
-   and Deployment view, and the host Worker, the workflow dispatcher, and the
-   front door keep reaching the API at `http://127.0.0.1:17301`.
-4. Confirm both paths afterwards: a Session that records events and token usage
+- `EVELAND_WORKFLOW_WORLD_COMPOSE_URL` is **removed**. It existed because a
+  containerized API could not dial the host loopback publish
+  `EVELAND_WORKFLOW_WORLD_URL` named. Every reader of that database is now a
+  host process in one network namespace, so the installation has one address
+  again. Delete the variable; nothing reads it.
+- The Collector reaches the API through `host.docker.internal` (Docker's
+  host-gateway), where the API binds a second listener restricted to health,
+  Collector Observation, Agent JWKS, and Scheduler Channel paths.
+  `eveland-ctl` detects that address on every start, because Docker renumbers
+  its bridge on its own schedule and a stale one is a listener that fails to
+  bind.
+
+### With `eveland-ctl`
+
+```bash
+eveland-ctl update
+```
+
+That is the whole migration. It renders the new units, removes the retired
+`api`, `gateway`, and `web` containers, builds the Dashboard on the host, and
+starts everything. Afterwards you can reclaim the volumes those containers
+used, which nothing references any more:
+
+```bash
+docker volume ls --filter name=eveland-appliance
+docker volume rm <the gateway, web, and web-next volumes it lists>
+```
+
+### By hand
+
+1. Build the Dashboard on the host — it is a host artifact now:
+   `pnpm --filter @evelandhq/web build`.
+2. Install one unit per platform process, modelled on
+   `infra/systemd/eveland-worker.service`. The three listening services should
+   run as one unprivileged system user with `ProtectSystem=strict` and an
+   explicit `ReadWritePaths`: `EVELAND_DATA_DIR` for the API, the Dashboard's
+   `.next` for the Dashboard, nothing for the Agent Gateway.
+3. Set `EVELAND_API_DOCKER_BRIDGE_HOST` in the API's environment to
+   `docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}'`,
+   and re-read it whenever Docker's bridge is renumbered.
+4. Remove the old containers, then start only the infrastructure:
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml rm --stop --force api gateway web`
+   followed by
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d otel-collector postgres`
+   (drop `postgres` on your own PostgreSQL).
+5. Delete `EVELAND_WORKFLOW_WORLD_COMPOSE_URL` from the configuration.
+6. Confirm both paths afterwards: a Session that records events and token usage
    proves the Collector reaches the API, and `Workflow dispatch` on the Instance
    health page leaving `unavailable` proves the API reaches the World.
+
+## Moving to your own PostgreSQL
+
+An installation now records in `install.json` whether its database is `bundled`
+or `external`, and `start` / `doctor` / `status` / `update` all branch on that
+record. Existing installations carry no such field and are treated as bundled,
+which is what they are.
+
+Moving to a PostgreSQL you operate is a deliberate migration, not a
+configuration edit — nothing detects the change for you:
+
+1. Stop the platform: `eveland-ctl stop`.
+2. Dump the bundled database:
+   `docker compose --env-file /opt/eveland/etc/eveland.env exec -T postgres pg_dump -U eveland -d eveland > eveland.sql`.
+   Note that a ctl-rendered installation keeps the platform tables and the
+   shared workflow World in the SAME database, both named `eveland` — there is
+   no second dump to take.
+3. Restore it into your server, into a database owned by a role that needs no
+   CREATEDB.
+4. Point `DATABASE_URL` and `EVELAND_WORKFLOW_WORLD_URL` in
+   `/opt/eveland/etc/eveland.env` at the new server. Both, and to the same
+   database.
+5. Set `"database": "external"` in `/opt/eveland/etc/install.json`.
+6. Install `pg_dump` on the host if it is not there (`eveland-ctl doctor` says
+   so), since upgrade backups now run from the host.
+7. `eveland-ctl start`, then `eveland-ctl doctor` — the `postgres` check reads
+   the migration journal through the configured URL, so it confirms you are
+   pointed at the database you just restored and not at something else that
+   happens to answer.
+8. Once the platform is healthy on the new server, remove the bundled
+   container and its volume: `docker compose --profile bundled-postgres rm
+--stop --force postgres` and `docker volume rm <project>_eveland-postgres`.
+
+Production advice for the server itself: prefer a managed instance so version
+upgrades and failover follow practices you already have; never put a
+transaction-pooling proxy in front of it, because the durable job queue depends
+on session-scoped `LISTEN`/`NOTIFY`; and size `max_connections` with
+[Capacity planning](/docs/operations/capacity) before the first real workload.
 
 ## Docker Agent runtime retired on Linux
 

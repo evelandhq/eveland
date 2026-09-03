@@ -79,9 +79,9 @@ between the build user and the app user. Skipping the sandbox
   injection is drop-in parity with `docker --env` and requires no app-side
   changes.
 - The shared data root `/var/lib/eveland` becomes a hard cross-service
-  contract: the API container must bind-mount it at the identical absolute
-  path so stored source paths resolve for both the container and the host
-  Worker.
+  contract: every platform process reads it at that one absolute path, so a
+  stored source path resolves the same for the API that wrote it and the
+  Worker that later builds from it.
 
 ## Deeper reference
 

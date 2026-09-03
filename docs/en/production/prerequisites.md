@@ -53,14 +53,27 @@ Save this as `/etc/apparmor.d/bwrap` and load it with `apparmor_parser -r -W /et
 
 Worker itself must run as root (it drives `systemd-run`, `systemctl`, and `chown`); it is installed as a systemd service in [Install the host Worker](/docs/production/worker).
 
-## Provision Postgres
+## Choose a PostgreSQL
 
-Production uses two databases, normally on one instance:
+An installation either runs the bundled database or uses one you provide. `eveland-ctl` asks once, at first boot, and records the answer in `install.json`; every later command branches on that record rather than guessing from the connection URL.
 
-- **Platform database** (`DATABASE_URL`) — owns Projects, Deployments, jobs, and auth. Configure a dedicated role.
-- **Shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`) — one database backing `@evelandhq/workflow-world` for every Project, scoped internally by `tenant_id`. It is required in production: Worker fails startup closed without it, and API reads the same URL to verify the World's cluster identity. Worker startup and tenant provisioning apply all pending workflow-world migrations automatically, serialized by a PostgreSQL advisory lock; set `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when the host reaches the database through a different address than Deployments do.
+- **Bundled** — the Compose `postgres` service, published on host loopback `17310`. Nothing to provision, and upgrades dump it inside its own container, where the client and server versions match by construction. Suitable for a single-box installation.
+- **Your own** (recommended for anything you would page someone about) — a managed instance or a server you already operate, so backups, failover, and version upgrades follow the practices you already have. Answer the first-boot prompt with its connection URL, or set `DATABASE_URL` in the environment before the first `eveland-ctl start`.
 
-Do not create per-project workflow databases: the shared World replaced them. The legacy `WORKFLOW_POSTGRES_URL` is only relevant to installs still deleting Projects from before the shared World — see [Upgrade and rollback](/docs/operations/upgrades).
+There is no automatic fallback in either direction. If you name a server and it does not answer, the install stops there with the connection error rather than quietly starting a bundled container beside it — two clusters, one holding half the data, is not a state worth reaching.
+
+What the platform needs from your own server is a role that owns two databases (or, as `eveland-ctl` renders it, one database used for both):
+
+- **Platform database** (`DATABASE_URL`) — owns Projects, Deployments, jobs, and auth.
+- **Shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`) — one database backing `@evelandhq/workflow-world` for every Project, scoped internally by `tenant_id`. It is required in production: Worker fails startup closed without it, and API reads the same URL to verify the World's cluster identity. Worker startup and tenant provisioning apply all pending workflow-world migrations automatically, serialized by a PostgreSQL advisory lock.
+
+Every reader of these — API, Agent Gateway, Worker, dispatcher, and every Deployment — is a host process in one network namespace, so each URL is a single address. `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` exists only for a platform that reaches the database by a different name than its Deployments do, which on Linux is no longer the case.
+
+CREATEDB is not required. A Project is a tenant partition inside the shared World; only the legacy termination path still issues `CREATE DATABASE`. Do not create per-project workflow databases: the shared World replaced them. The legacy `WORKFLOW_POSTGRES_URL` is only relevant to installs still deleting Projects from before the shared World — see [Upgrade and rollback](/docs/operations/upgrades).
+
+Do not put a transaction-pooling proxy (PgBouncer in `transaction` mode, and most "serverless" pool front-ends) in front of either database: the durable job queue depends on session-scoped `LISTEN`/`NOTIFY` and advisory locks, which transaction pooling silently drops.
+
+An installation on its own PostgreSQL also needs `pg_dump` on the host, because `eveland-ctl update` takes a pre-upgrade backup with it (Debian/Ubuntu: `apt-get install postgresql-client`). `eveland-ctl doctor` checks for it, so a missing client is a finding rather than a failure halfway through an upgrade.
 
 Size `max_connections` and per-Deployment pool budgets with [Capacity planning](/docs/operations/capacity) before the first real workload, and put both databases plus the data root on your backup schedule — see [Backup and restore](/docs/operations/backup-restore).
 

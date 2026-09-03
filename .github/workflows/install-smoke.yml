@@ -99,9 +99,14 @@ jobs:
           curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:17300/
 
       - name: Collector can reach the API
+        # The API is a host process now, so the Collector dials the host
+        # gateway and the API answers on the bridge address eveland-ctl
+        # detected. This is the whole Observation path in one probe.
         run: |
           sudo docker run --rm --network container:eveland-otel-collector \
-            curlimages/curl:8.11.1 -fsS -o /dev/null http://api:17301/health
+            --add-host host.docker.internal:host-gateway \
+            curlimages/curl:8.11.1 -fsS -o /dev/null \
+            http://host.docker.internal:17301/health
 
       - name: Stop cleanly
         run: |
@@ -112,8 +117,9 @@ jobs:
         run: |
           sudo tail -n 100 /opt/eveland/logs/*.log || true
           sudo tail -n 50 /opt/eveland/logs/install.log || true
-          sudo journalctl -u eveland-worker -u eveland-workflow-dispatcher -n 120 --no-pager || true
+          sudo journalctl -u eveland-api -u eveland-gateway -u eveland-web \
+            -u eveland-worker -u eveland-workflow-dispatcher -n 200 --no-pager || true
           cd /opt/eveland/source || exit 0
-          COMPOSE="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml -f /opt/eveland/etc/compose.appliance.yml --env-file /opt/eveland/etc/eveland.env"
+          COMPOSE="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml -f /opt/eveland/etc/compose.appliance.yml --env-file /opt/eveland/etc/eveland.env --profile bundled-postgres"
           $COMPOSE ps || true
-          $COMPOSE logs --tail 80 api gateway web postgres otel-collector || true
+          $COMPOSE logs --tail 80 postgres otel-collector || true

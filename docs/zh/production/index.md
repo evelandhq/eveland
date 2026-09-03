@@ -9,7 +9,7 @@ Eveland 的生产边界刻意不同于本地开发栈。生产 Eve Deployment �
 
 ## 核心服务
 
-Dashboard、API、Agent Gateway、Postgres 与托管 OpenTelemetry Collector 通过生产 Compose Overlay 运行。API 负责需要团队认证的操作和持久化。Agent Gateway 是唯一公开的 Agent 数据面，既不持有 Docker Socket，也不能访问 Source、Release、Secrets 或 Collector 配置；Compose 栈对它屏蔽了数据目录。Overlay 既不启动 Worker 也不启动 Workflow Dispatcher：两者都是宿主机 unit，见下一节与[安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)。
+API、Agent Gateway 与 Dashboard 以宿主机 systemd unit 运行，共用一个非特权系统用户，各自配以 `ProtectSystem=strict`、只读源码树和显式的 `ReadWritePaths`。API 负责需要团队认证的操作和持久化。Agent Gateway 是唯一公开的 Agent 数据面；它既不持有 Docker Socket，也没有任何可写路径，因此 Source、Release、Secrets 与 Collector 配置都在它够不到的地方。Docker 只运行托管 OpenTelemetry Collector，以及——除非这套安装自带 PostgreSQL——那个自带的数据库。
 
 ## 宿主机运行控制器
 
@@ -21,7 +21,7 @@ Durable Workflow 以 External 模式运行：Deployment 从不认领自己的 Ti
 
 ## 共享数据契约
 
-API 与 Worker 必须看到相同的绝对数据根目录，通常为 `/var/lib/eveland`；API 容器以完全相同的宿主机路径 Bind Mount 它。Project 存储的 `sourcePath` 由导入 Project 的一侧写入，由之后提供服务或部署的一侧读取，因此挂载不一致会让一侧找不到另一侧写入的文件。导入源码、Prepared Release、Agent Observability Policy、托管 Collector 配置与 Sandbox Cache 全部位于该数据根之下。
+API 与 Worker 必须看到相同的绝对数据根目录，通常为 `/var/lib/eveland`；两者都是宿主机进程，直接读取它。Project 存储的 `sourcePath` 由导入 Project 的一侧写入，由之后提供服务或部署的一侧读取，因此挂载不一致会让一侧找不到另一侧写入的文件。导入源码、Prepared Release、Agent Observability Policy、托管 Collector 配置与 Sandbox Cache 全部位于该数据根之下。
 
 ## 遥测拓扑
 

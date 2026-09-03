@@ -12,7 +12,7 @@ Eveland 不自带备份工具。运维使用标准的 `pg_dump`、`rsync` 或文
 1. **控制平面 Postgres**（`DATABASE_URL`）：Project、SourceRevision、Release、Deployment、Route、SessionBinding、ScheduleRun、Job、Team Membership，以及所有以 AES-256-GCM 密文存储的加密 Secret。
 2. **共享 Workflow 数据库**（`EVELAND_WORKFLOW_WORLD_URL`）：持久化 Workflow Run、Timer、Stream 与 Per-run Queue。它是平台状态而非遥测——丢失它意味着丢失所有进行中与可恢复的持久化 Run。
 3. **数据根目录**（`EVELAND_DATA_DIR`，通常为 `/var/lib/eveland`）：导入源码与上传、已构建的 Release Artifact、Deployment Env 文件、Agent Observability Policy、受管 Collector 配置与 Exporter Queue，以及 Sandbox Cache——它包含每个持久化 Session 的 `/workspace` 状态，虽名为 Cache，实为数据。
-4. **数据库之外的配置**：Compose `.env`、`/etc/eveland/eveland-worker.env` 与 Dispatcher Env 文件。`APP_SECRET_KEY` 需要特别对待：数据库备份只含密文，没有 Key 的备份无法恢复任何已存 Secret。Key 材料应保存在 Secret Store 中，而不仅在宿主机上。
+4. **数据库之外的配置**：平台环境文件（`/opt/eveland/etc/eveland.env`，或你的 `.env`）——`etc/` 下各服务的文件在每次启动时都从它重新渲染，无需单独备份。`APP_SECRET_KEY` 需要特别对待：数据库备份只含密文，没有 Key 的备份无法恢复任何已存 Secret。Key 材料应保存在 Secret Store 中，而不仅在宿主机上。
 
 带有共享 World 之前历史的安装可能还持有派生的遗留 `eveland_wf_*` 数据库；在其 Project 被删除前它们同样是状态（见[升级与回滚](/zh/docs/operations/upgrades)）。
 
