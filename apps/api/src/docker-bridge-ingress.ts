@@ -1,3 +1,5 @@
+import { isPrivateBridgeIpv4 } from "@evelandhq/core/docker-bridge";
+
 type ApiFetch = (request: Request) => Response | Promise<Response>;
 
 const allowedPathPrefixes = ["/internal/otel/", "/internal/observability/destinations/"];
@@ -7,32 +9,29 @@ const allowedExactPaths = new Set([
   "/internal/scheduler/dispatch",
 ]);
 
-function isPrivateIpv4(host: string): boolean {
-  const octets = host.split(".").map(Number);
-  if (
-    octets.length !== 4 ||
-    octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
-  ) {
-    return false;
-  }
-  const [first, second] = octets;
-  return (
-    first === 10 ||
-    (first === 172 && second !== undefined && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168)
-  );
-}
-
+/**
+ * The API's second listener: a private Docker bridge address, for the one
+ * direction a host-native API cannot serve from loopback — a bridged
+ * container dialing in. On Linux nothing proxies `host.docker.internal` to
+ * the host's loopback, so the managed Collector reaches the API here or not
+ * at all.
+ *
+ * This is the same listener in development and in production; what keeps it
+ * safe is not the environment but three invariants enforced here:
+ *
+ *   1. the address is a private IPv4 (RFC 1918) — never a wildcard, a
+ *      hostname, or a routable address;
+ *   2. the primary listener is a SEPARATE loopback bind, so the control plane
+ *      is never served on the bridge by accident;
+ *   3. `createDockerBridgeIngress` serves an explicit path allowlist and 404s
+ *      everything else, so what any container on this host can reach is the
+ *      runtime data path, never the platform control plane.
+ */
 export function resolveDockerBridgeBindHost(env: NodeJS.ProcessEnv): string | undefined {
   const host = env.EVELAND_API_DOCKER_BRIDGE_HOST?.trim();
   if (!host) return undefined;
-  if (!isPrivateIpv4(host)) {
+  if (!isPrivateBridgeIpv4(host)) {
     throw new Error("EVELAND_API_DOCKER_BRIDGE_HOST must be a private Docker bridge IPv4 address.");
-  }
-  if (env.NODE_ENV === "production") {
-    throw new Error(
-      "EVELAND_API_DOCKER_BRIDGE_HOST is only supported for Linux native development.",
-    );
   }
   const primaryHost = env.EVELAND_API_BIND_HOST?.trim() ?? "127.0.0.1";
   if (!(primaryHost === "localhost" || primaryHost === "::1" || primaryHost.startsWith("127."))) {
