@@ -144,6 +144,7 @@ async function makeHarness(
     },
     fetchImpl: async () => new Response("{}", { status: 200 }),
     tcpProbe: async () => true,
+    pgReady: async () => true,
     getuid: () => 0,
     systemdUnitDir: unitDir,
     writeTextFile: async (filePath, content) => {

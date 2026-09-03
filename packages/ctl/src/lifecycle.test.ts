@@ -59,6 +59,13 @@ async function makeHarness(options: HarnessOptions = {}) {
     stderr: (line) => err.push(line),
     repoRootDir: repo,
     sleep: async () => {},
+    // Every IO seam is stubbed HERE, not per test: the first-boot readiness
+    // gate opens a real Postgres connection through this one, so a harness
+    // that leaves it out passes on a developer's machine (which has a
+    // database on the platform port) and burns the full 120-second deadline
+    // in CI, which does not.
+    pgReady: async () => true,
+    tcpProbe: async () => true,
     fetchImpl: async () =>
       (options.fetchOk ?? true)
         ? new Response("{}", { status: 200 })
@@ -203,7 +210,6 @@ describe("runStart first boot", () => {
     const configHome = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
     harness.io.env.XDG_CONFIG_HOME = configHome;
     harness.io.fetchImpl = deviceFlowFetch();
-    harness.io.tcpProbe = async () => true;
     const streamed: string[][] = [];
     harness.io.streamCommand = async (argv) => {
       streamed.push(argv);
@@ -261,7 +267,6 @@ describe("runStart first boot", () => {
       }
       return new Response("{}", { status: 200 });
     };
-    harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
 
     expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
@@ -274,7 +279,6 @@ describe("runStart first boot", () => {
   test("a completed install with pending seeding retries it on the next start until it sticks", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
-    harness.io.tcpProbe = async () => true;
     // First boot: readiness fine, but every auth call fails -> seed pending.
     harness.io.fetchImpl = async (url) =>
       new URL(url).pathname.startsWith("/api/auth/")
@@ -314,7 +318,6 @@ describe("runStart first boot", () => {
   test("a bootstrap interrupted after the supervisor came up is FINISHED by the next start, not swallowed by 'already running'", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
-    harness.io.tcpProbe = async () => true;
     const streamed: string[][] = [];
     harness.io.streamCommand = async (argv) => {
       streamed.push(argv);
@@ -346,7 +349,6 @@ describe("runStart first boot", () => {
   test("pending seeding is retried even when the platform is already running", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
-    harness.io.tcpProbe = async () => true;
     harness.io.fetchImpl = async (url) =>
       new URL(url).pathname.startsWith("/api/auth/")
         ? new Response("{}", { status: 500 })
@@ -384,7 +386,6 @@ describe("runStart first boot", () => {
     harness.io.platform = "linux";
     harness.io.env.XDG_CONFIG_HOME = configHome;
     harness.io.fetchImpl = deviceFlowFetch();
-    harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
     const io = harness.io as typeof harness.io & {
       getuid: () => number;
@@ -436,7 +437,6 @@ describe("runStart first boot", () => {
     harness.io.platform = "linux";
     harness.io.env.XDG_CONFIG_HOME = configHome;
     harness.io.fetchImpl = deviceFlowFetch();
-    harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
     const io = harness.io as typeof harness.io & {
       getuid: () => number;
@@ -494,7 +494,6 @@ describe("runStart first boot", () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
     harness.io.fetchImpl = deviceFlowFetch();
-    harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
     expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
     const first = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
