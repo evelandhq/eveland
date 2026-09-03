@@ -12,7 +12,8 @@ import {
   WEB_PORT,
 } from "@evelandhq/core/ports";
 import { loadPlatformEnvFile, type PlatformEnvFile } from "./env-file.ts";
-import { readInstallMetadata } from "./home.ts";
+import { databaseMode, readInstallMetadata, type DatabaseMode } from "./home.ts";
+import { defaultPgJournalProbe, describeDatabaseAddress, type PgJournalProbe } from "./pg-probe.ts";
 import {
   resolveLifecycle,
   type ExecCommand,
@@ -45,7 +46,10 @@ export type DoctorDeps = {
   repoRootDir: string;
   envFile: PlatformEnvFile | null;
   supervisorRunning: boolean;
+  /** Bundled or external Postgres; some checks only apply to one. */
+  database: DatabaseMode;
   execCommand: ExecCommand;
+  pgJournalProbe: PgJournalProbe;
   tcpProbe: TcpProbe;
   fetchImpl: FetchLike;
   fileExists: (filePath: string) => Promise<boolean>;
@@ -157,7 +161,8 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
     add(
       "docker",
       "fail",
-      "Docker daemon is not reachable; Postgres and the OTLP Collector run in Compose.",
+      "Docker daemon is not reachable; the OTLP Collector (and the bundled database, if this " +
+        "installation has one) run in Compose.",
     );
   }
 
@@ -326,57 +331,49 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
     );
   }
 
-  // Postgres content: reachable is not enough — a foreign Postgres on the
+  // Postgres content: reachable is not enough -- a foreign Postgres on the
   // platform port (a Lima VM's forward, another project) answers TCP just
-  // fine. Ask the Compose container itself for the migration journal.
-  const postgresReachable = await deps.tcpProbe("127.0.0.1", POSTGRES_HOST_PORT);
-  if (postgresReachable && dockerOk) {
-    // --env-file: compose interpolates the whole file even for one service,
-    // and an appliance's configuration is not a ./.env in the compose cwd.
-    const envFileArgs = deps.envFile ? ["--env-file", deps.envFile.path] : [];
-    const result = await deps.execCommand(
-      [
-        "docker",
-        "compose",
-        ...envFileArgs,
-        "exec",
-        "-T",
-        "postgres",
-        "psql",
-        "-U",
-        "eveland",
-        "-d",
-        "eveland",
-        "-tAc",
-        "select count(*) from drizzle.__drizzle_migrations",
-      ],
-      { cwd: deps.repoRootDir },
-    );
-    if (result.code === 0) {
-      add("postgres", "ok", `${result.output.trim()} migrations applied`);
-    } else if (/no such service|not running|no container/i.test(result.output)) {
+  // fine. Ask the database this installation is configured with for the
+  // migration journal, through the DSN every platform process uses.
+  const databaseUrl = deps.envFile?.values.DATABASE_URL?.trim();
+  const databaseLabel = databaseUrl ? describeDatabaseAddress(databaseUrl) : null;
+  if (!databaseUrl) {
+    // config-required already reported the missing value.
+  } else if (!databaseLabel) {
+    add("postgres", "fail", "DATABASE_URL is not a PostgreSQL connection URL.");
+  } else {
+    const journal = await deps.pgJournalProbe(databaseUrl);
+    if (journal.status === "migrated") {
+      add("postgres", "ok", `${databaseLabel}: ${journal.count} migrations applied`);
+    } else if (journal.status === "unmigrated") {
       add(
         "postgres",
         "warn",
-        `Something answers on 127.0.0.1:${POSTGRES_HOST_PORT} but the Compose postgres container is not running — check for a foreign Postgres (a Lima VM port-forward hijack looks exactly like this).`,
-      );
-    } else if (/does not exist/i.test(result.output)) {
-      add(
-        "postgres",
-        "warn",
-        "Postgres is running but not migrated. Run `pnpm --filter @evelandhq/api db:migrate`.",
+        `${databaseLabel} answers but carries no migration journal. Either it is a fresh database ` +
+          "(run `pnpm --filter @evelandhq/api db:migrate`) or it is not this installation's -- a " +
+          "Lima VM port-forward hijack looks exactly like this.",
       );
     } else {
-      add("postgres", "warn", `Could not verify migrations: ${result.output.trim().slice(0, 200)}`);
+      add("postgres", "fail", `${databaseLabel} is unreachable: ${journal.detail}`);
     }
-  } else if (postgresReachable) {
-    add(
-      "postgres",
-      "warn",
-      "Postgres port answers but Docker is unreachable; cannot verify it is ours.",
-    );
-  } else {
-    add("postgres", "ok", "not running (started by `eveland-ctl start`)");
+  }
+
+  // pg_dump, but only where an upgrade actually needs it on the host: the
+  // bundled database is dumped inside its own container, at a version that
+  // matches by construction. Better here than halfway through an upgrade.
+  if (deps.database === "external") {
+    const pgDump = await deps.execCommand(["pg_dump", "--version"], { cwd: deps.repoRootDir });
+    if (pgDump.code === 0) {
+      add("pg_dump", "ok", pgDump.output.trim().split("\n")[0] ?? "present");
+    } else {
+      add(
+        "pg_dump",
+        "fail",
+        "pg_dump is not installed, and this installation uses its own PostgreSQL, so " +
+          "`eveland-ctl update` cannot take its pre-upgrade backup. Install the PostgreSQL " +
+          "client package (Debian/Ubuntu: apt-get install postgresql-client).",
+      );
+    }
   }
 
   // Live platform health, when it is up.
@@ -451,7 +448,9 @@ export async function runDoctor(
     repoRootDir: resolved.repoRootDir,
     envFile,
     supervisorRunning: supervisorPid !== null || metadata?.supervision === "systemd",
+    database: databaseMode(metadata),
     execCommand: resolved.execCommand,
+    pgJournalProbe: defaultPgJournalProbe(),
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
     fetchImpl: resolved.fetchImpl,
     fileExists: resolved.fileExists,

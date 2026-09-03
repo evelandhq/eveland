@@ -16,6 +16,7 @@ import type { ExecCommand, FetchLike, LifecycleIo, SpawnDaemon } from "./io.ts";
 import { loadPlatformEnvFile, type PlatformEnvFile } from "./env-file.ts";
 import {
   applianceLayout,
+  databaseMode,
   readInstallMetadata,
   repoRoot,
   resolveApplianceRoot,
@@ -24,6 +25,7 @@ import {
 import { runImplicitLogin } from "./implicit-login.ts";
 import { provisionLinuxHost } from "./linux-host.ts";
 import { defaultTcpProbe } from "./net-probe.ts";
+import { defaultPgReady } from "./pg-probe.ts";
 import { runSeedAgent } from "./seed-agent.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
 import { absoluteProcessDir, childEnvironment, PLATFORM_PROCESSES } from "./processes.ts";
@@ -46,7 +48,7 @@ import {
 import { Supervisor, type SupervisedProcess } from "./supervisor.ts";
 import {
   applianceComposeArgs,
-  INFRA_COMPOSE_SERVICES,
+  composeInfraServices,
   installSystemdArtifacts,
   startViaSystemd,
   stopViaSystemd,
@@ -228,11 +230,12 @@ async function ensureInfraUp(
   });
   if (probe.code !== 0) {
     throw new Error(
-      "Docker is not reachable, and Postgres and the OTLP Collector run in Docker Compose. " +
+      "Docker is not reachable, and the OTLP Collector runs in Docker Compose. " +
         "Start Docker and retry, or pass --skip-infra if the containers are managed elsewhere.",
     );
   }
-  io.stdout("Starting infrastructure (postgres, otel-collector)...");
+  const services = upArgs.slice(upArgs.indexOf("-d") + 1);
+  io.stdout(`Starting infrastructure (${services.join(", ")})...`);
   const result = await resolved.execCommand(upArgs, { cwd: resolved.repoRootDir });
   if (result.code !== 0) {
     throw new Error(`docker compose up failed:\n${result.output.trim()}`);
@@ -355,6 +358,7 @@ function bootstrapDeps(
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
     sleep: resolved.sleep,
     fileExists: resolved.fileExists,
+    pgReady: io.pgReady ?? defaultPgReady(),
     random: io.random,
   };
 }
@@ -543,6 +547,7 @@ async function runStartUnlocked(
     const code = await startViaSystemd(context, {
       skipInfra: Boolean(parsed.values["skip-infra"]),
       dataDir: resolvedDataDir(resolved, envFile),
+      database: databaseMode(await readInstallMetadata(resolved.layout)),
     });
     if (code !== 0) return code;
     await retrySeedIfPending(io, resolved, envFile);
@@ -583,6 +588,7 @@ async function runStartUnlocked(
 
   const bootstrapping = await detectBootstrapNeeded(resolved);
   let envFile: PlatformEnvFile;
+  let database = databaseMode(await readInstallMetadata(resolved.layout));
   if (bootstrapping) {
     const deps = bootstrapDeps(io, resolved, Boolean(parsed.values["no-prompt"]));
     const problems = await preflightStart(resolved, { requireWebBuild: false });
@@ -590,17 +596,21 @@ async function runStartUnlocked(
       for (const problem of problems) io.stderr(problem);
       return 1;
     }
-    envFile = await runBootstrapConfig(deps);
+    const configured = await runBootstrapConfig(deps);
+    envFile = configured.envFile;
+    database = configured.database;
     const existingMetadata = await readInstallMetadata(resolved.layout);
-    if (!existingMetadata) {
-      await writeInstallMetadata(resolved.layout, {
-        version: 1,
-        installedAt: new Date().toISOString(),
-        method: io.env.EVELAND_INSTALL_METHOD === "install.sh" ? "install.sh" : "manual",
-        osMode: deps.platform,
-        bootstrapCompleted: false,
-      });
-    }
+    await writeInstallMetadata(resolved.layout, {
+      version: 1,
+      installedAt: new Date().toISOString(),
+      method: io.env.EVELAND_INSTALL_METHOD === "install.sh" ? "install.sh" : "manual",
+      osMode: deps.platform,
+      bootstrapCompleted: false,
+      ...existingMetadata,
+      // The answer to bundled-or-external, recorded before the first Compose
+      // command that depends on it.
+      database,
+    });
     if (deps.platform === "linux") {
       // The production-host contract (sandbox toolchain, bwrap AppArmor
       // profile, service users, /workspace, system-PATH node/pnpm) is part
@@ -639,27 +649,17 @@ async function runStartUnlocked(
         await ensureInfraUp(
           io,
           resolved,
-          applianceComposeArgs(resolved.layout, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+          applianceComposeArgs(resolved.layout, "up", "-d", ...composeInfraServices(database)),
         );
       }
       // The Dashboard is a host systemd unit: build it here, once, instead
       // of rebuilding it inside a container on every start.
-      await runBootstrapPrepare(deps, envFile, {
-        buildWeb: true,
-        pgReadyCommand: applianceComposeArgs(
-          resolved.layout,
-          "exec",
-          "-T",
-          "postgres",
-          "pg_isready",
-          "-U",
-          "eveland",
-        ),
-      });
+      await runBootstrapPrepare(deps, envFile, { buildWeb: true });
       await mkdir(resolved.layout.logsDir, { recursive: true });
       const started = await startViaSystemd(context, {
         skipInfra: true,
         dataDir: resolvedDataDir(resolved, envFile),
+        database,
       });
       if (started !== 0) return started;
       await finishBootstrap(io, resolved, envFile);
@@ -671,21 +671,10 @@ async function runStartUnlocked(
       await ensureInfraUp(
         io,
         resolved,
-        composeArgs(envFile.path, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+        composeArgs(envFile.path, "up", "-d", ...composeInfraServices(database)),
       );
     }
-    await runBootstrapPrepare(deps, envFile, {
-      buildWeb: true,
-      pgReadyCommand: composeArgs(
-        envFile.path,
-        "exec",
-        "-T",
-        "postgres",
-        "pg_isready",
-        "-U",
-        "eveland",
-      ),
-    });
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
   } else {
     envFile = await requirePlatformEnvFile(io, resolved);
     const problems = await preflightStart(resolved, { requireWebBuild: true });
@@ -697,7 +686,7 @@ async function runStartUnlocked(
       await ensureInfraUp(
         io,
         resolved,
-        composeArgs(envFile.path, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+        composeArgs(envFile.path, "up", "-d", ...composeInfraServices(database)),
       );
     }
   }

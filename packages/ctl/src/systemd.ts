@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { loadPlatformEnvFile } from "./env-file.ts";
-import { readInstallMetadata } from "./home.ts";
+import { databaseMode, readInstallMetadata } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { resolveLifecycle, runStop, systemdModeContext } from "./lifecycle.ts";
 import { detectDockerBridgeHost } from "./docker-bridge.ts";
@@ -69,6 +69,7 @@ export async function runInstallCommand(args: string[], io: LifecycleIo): Promis
   if (installed !== 0) return installed;
   const started = await startViaSystemd(context, {
     dataDir: envFile.values.EVELAND_DATA_DIR?.trim() || resolved.layout.dataDir,
+    database: databaseMode(metadata),
   });
   if (started !== 0) return started;
 

@@ -19,6 +19,8 @@ function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
       },
     },
     supervisorRunning: false,
+    database: "bundled",
+    pgJournalProbe: async () => ({ status: "migrated", count: 42 }),
     execCommand: async (argv) => {
       if (argv[0] === "pnpm") return { code: 0, output: "11.7.0\n" };
       if (argv[0] === "docker" && argv[1] === "info") return { code: 0, output: "27.0\n" };
@@ -136,38 +138,61 @@ describe("collectDoctorChecks", () => {
     expect(byName(checks, "sharp-libvips")?.status).toBe("warn");
   });
 
-  test("a reachable Postgres whose compose container is missing hints at a hijack", async () => {
+  test("a database with no migration journal names the hijack, not just the migration", async () => {
+    // Something answering on the platform's Postgres port proves only that a
+    // Postgres is there. A Lima VM port-forward hijack and another project's
+    // cluster both look exactly like a fresh database from outside.
     const checks = await collectDoctorChecks(
-      makeDeps({
-        tcpProbe: async (host, port) => host === "127.0.0.1" && port === POSTGRES_HOST_PORT,
-        execCommand: async (argv) => {
-          if (argv[1] === "compose")
-            return { code: 1, output: 'service "postgres" is not running' };
-          if (argv[0] === "docker") return { code: 0, output: "27.0\n" };
-          if (argv[0] === "pnpm") return { code: 0, output: "11.7.0\n" };
-          return { code: 0, output: "Info-ZIP" };
-        },
-      }),
+      makeDeps({ pgJournalProbe: async () => ({ status: "unmigrated" }) }),
     );
     const check = byName(checks, "postgres");
     expect(check?.status).toBe("warn");
+    expect(check?.detail).toContain("db:migrate");
     expect(check?.detail).toContain("Lima");
   });
 
-  test("an unmigrated database points at db:migrate", async () => {
+  test("an unreachable database fails with the reason, and never echoes the DSN", async () => {
     const checks = await collectDoctorChecks(
       makeDeps({
-        tcpProbe: async (host, port) => host === "127.0.0.1" && port === POSTGRES_HOST_PORT,
-        execCommand: async (argv) => {
-          if (argv[1] === "compose")
-            return { code: 1, output: 'relation "drizzle.__drizzle_migrations" does not exist' };
-          if (argv[0] === "docker") return { code: 0, output: "27.0\n" };
-          if (argv[0] === "pnpm") return { code: 0, output: "11.7.0\n" };
-          return { code: 0, output: "Info-ZIP" };
+        envFile: {
+          path: "/repo/.env",
+          values: {
+            NODE_ENV: "development",
+            DATABASE_URL: "postgres://eveland:s3cr3t@db.internal:6543/eveland",
+            APP_SECRET_KEY: "k".repeat(32),
+            BETTER_AUTH_SECRET: "s".repeat(32),
+            EVELAND_ADMIN_PASSWORD: "long-enough-password",
+          },
         },
+        pgJournalProbe: async () => ({ status: "unreachable", detail: "connection refused" }),
       }),
     );
-    expect(byName(checks, "postgres")?.detail).toContain("db:migrate");
+    const check = byName(checks, "postgres");
+    expect(check?.status).toBe("fail");
+    expect(check?.detail).toContain("db.internal:6543");
+    expect(check?.detail).toContain("connection refused");
+    expect(check?.detail).not.toContain("s3cr3t");
+  });
+
+  test("pg_dump is only required of an installation that brought its own PostgreSQL", async () => {
+    // The bundled database is dumped inside its own container, at a version
+    // that matches by construction.
+    const missingPgDump = async (argv: string[]) => {
+      if (argv[0] === "pg_dump") return { code: null, output: "" };
+      if (argv[0] === "pnpm") return { code: 0, output: "11.7.0\n" };
+      if (argv[0] === "docker") return { code: 0, output: "27.0\n" };
+      return { code: 0, output: "Info-ZIP" };
+    };
+
+    expect(
+      byName(await collectDoctorChecks(makeDeps({ execCommand: missingPgDump })), "pg_dump"),
+    ).toBeUndefined();
+
+    const external = await collectDoctorChecks(
+      makeDeps({ database: "external", execCommand: missingPgDump }),
+    );
+    expect(byName(external, "pg_dump")?.status).toBe("fail");
+    expect(byName(external, "pg_dump")?.detail).toContain("eveland-ctl update");
   });
 
   test("a broken pinned EVELAND_NODE is reported with the nvm-uninstall hint", async () => {

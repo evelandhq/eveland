@@ -1,7 +1,7 @@
 import { access, chmod, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { PlatformEnvFile } from "./env-file.ts";
-import { readInstallMetadata, type ApplianceLayout } from "./home.ts";
+import { readInstallMetadata, type ApplianceLayout, type DatabaseMode } from "./home.ts";
 import { writeInstallMetadata } from "./bootstrap.ts";
 import type { ExecCommand, FetchLike, LifecycleIo } from "./io.ts";
 import { GATEWAY_INTERNAL_URL_FALLBACK, GATEWAY_PORT } from "@evelandhq/core/ports";
@@ -54,10 +54,22 @@ export const SYSTEMD_HOST_UNITS = [
 /**
  * What Docker still runs in the production form. The Collector stays a
  * container on purpose: it is stateless, and the Docker runtime attaches it
- * to every Agent's telemetry network. `postgres` is the installation's own
- * bundled database.
+ * to every Agent's telemetry network. `postgres` is only there for an
+ * installation that did not bring its own — see `composeInfraServices`.
  */
 export const INFRA_COMPOSE_SERVICES = ["postgres", "otel-collector"] as const;
+
+/**
+ * The infrastructure this installation actually starts, from what it recorded
+ * at first boot — never from the DSN's shape. An external database that got
+ * a bundled container started alongside it is the failure this branch exists
+ * to prevent: two clusters, one of them holding half the data.
+ */
+export function composeInfraServices(database: DatabaseMode): string[] {
+  return INFRA_COMPOSE_SERVICES.filter(
+    (service) => service !== "postgres" || database === "bundled",
+  );
+}
 
 /**
  * Compose services this form used to run and no longer does, with the profile
@@ -642,18 +654,18 @@ async function probeReady(fetchImpl: FetchLike, url: string): Promise<boolean> {
 /** Compose up (infra) + systemctl start + readiness. */
 export async function startViaSystemd(
   context: SystemdModeContext,
-  options: { skipInfra?: boolean; dataDir: string },
+  options: { skipInfra?: boolean; dataDir: string; database: DatabaseMode },
 ): Promise<number> {
   const { io, layout } = context;
   // `--skip-infra` means the same thing it always did: this installation is
   // not the one that starts the containers. There is simply less behind that
   // flag now — the Collector, and the bundled database when there is one.
+  const infra = composeInfraServices(options.database);
   if (!options.skipInfra) {
-    io.stdout(`Starting the infrastructure containers (${INFRA_COMPOSE_SERVICES.join(", ")})...`);
-    const up = await context.execCommand(
-      applianceComposeArgs(layout, "up", "-d", ...INFRA_COMPOSE_SERVICES),
-      { cwd: context.repoRootDir },
-    );
+    io.stdout(`Starting the infrastructure containers (${infra.join(", ")})...`);
+    const up = await context.execCommand(applianceComposeArgs(layout, "up", "-d", ...infra), {
+      cwd: context.repoRootDir,
+    });
     if (up.code !== 0) {
       io.stderr(`docker compose up failed:\n${up.output.trim()}`);
       return 1;

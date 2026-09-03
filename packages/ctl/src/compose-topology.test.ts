@@ -84,7 +84,7 @@ function requiredService(config: ComposeConfig, name: string): ComposeService {
   return service;
 }
 
-function mergedConfig(files: string[]): ComposeConfig {
+function mergedConfig(files: string[], profiles: string[] = []): ComposeConfig {
   const stdout = execFileSync(
     "docker",
     [
@@ -92,6 +92,7 @@ function mergedConfig(files: string[]): ComposeConfig {
       "--env-file",
       placeholderEnvFile,
       ...files.flatMap((file) => ["-f", file]),
+      ...profiles.flatMap((profile) => ["--profile", profile]),
       "config",
       "--format",
       "json",
@@ -131,10 +132,12 @@ const composeCliAvailable = (() => {
 describe.skipIf(!composeCliAvailable && !process.env.CI)(
   "the merged Compose topology reaches the API from the Collector",
   () => {
+    const BUNDLED_DB = "bundled-postgres";
     const forms = {
       development: () => mergedConfig([baseCompose]),
-      production: () => mergedConfig([baseCompose, productionCompose]),
-      appliance: () => mergedConfig([baseCompose, productionCompose, applianceOverlayPath()]),
+      production: () => mergedConfig([baseCompose, productionCompose], [BUNDLED_DB]),
+      appliance: () =>
+        mergedConfig([baseCompose, productionCompose, applianceOverlayPath()], [BUNDLED_DB]),
     };
 
     describe("development (every service containerized)", () => {
@@ -218,6 +221,19 @@ describe.skipIf(!composeCliAvailable && !process.env.CI)(
           expect(collector.environment?.EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT).toBe(
             `http://host.docker.internal:${API_PORT}/internal/observability/destinations`,
           );
+        });
+
+        test("the bundled database is behind a profile, so it cannot start beside an external one", () => {
+          // Every platform process reads one DSN. An installation that brought
+          // its own PostgreSQL and got a container started next to it has two
+          // clusters, one of them holding half the data.
+          const withoutProfile = mergedConfig(
+            form === "production"
+              ? [baseCompose, productionCompose]
+              : [baseCompose, productionCompose, applianceOverlayPath()],
+          );
+
+          expect(Object.keys(withoutProfile.services)).not.toContain("postgres");
         });
 
         test("the bundled database publishes to host loopback only", () => {

@@ -3,7 +3,12 @@
 # docs/en/production/core-services.md). What is left here is the OTLP Collector, plus the bundled
 # Postgres for installations that did not bring their own.
 #
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d otel-collector
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d otel-collector postgres
+#
+# The second form is for the bundled database; naming the service enables its profile. An
+# installation on its own PostgreSQL uses the first, and a bare `up -d` starts neither a platform
+# service nor a second cluster.
 #
 # Set the two public URLs in a local .env (gitignored) for the target environment:
 #   EVELAND_PUBLIC_ORIGIN=https://your-host    # the single browser-visible origin (front door)
@@ -51,6 +56,12 @@ services:
 
   postgres:
     restart: unless-stopped
+    # Behind a profile because an installation that brought its own PostgreSQL
+    # must not get a second cluster started alongside it by a bare
+    # `docker compose up`. eveland-ctl names this service explicitly when the
+    # installation is the bundled kind, which enables the profile for that
+    # command alone.
+    profiles: ["bundled-postgres"]
 
   api:
     # The Platform API is a host systemd unit (eveland-api.service). It was the

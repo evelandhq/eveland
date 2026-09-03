@@ -13,6 +13,13 @@ export type BootstrapInputs = {
   publicOrigin: string;
   adminEmail: string;
   adminPassword: string;
+  /**
+   * An operator's own PostgreSQL, or undefined to run the bundled one. It
+   * becomes BOTH the platform database and the shared workflow world: those
+   * have always been one database for a ctl-rendered installation, and giving
+   * an external server two would be a schema split nothing asked for.
+   */
+  databaseUrl?: string;
   /** Optional model keys forwarded to the built-in agent's environment at seeding time. */
   anthropicApiKey?: string;
   openaiApiKey?: string;
@@ -36,11 +43,15 @@ export function renderPlatformEnv(options: {
   random?: (size: number) => Buffer;
 }): RenderedConfig {
   const { platform, applianceRoot, inputs } = options;
-  const databaseUrl = `postgres://eveland:eveland@127.0.0.1:${POSTGRES_HOST_PORT}/eveland`;
+  const bundledDatabaseUrl = `postgres://eveland:eveland@127.0.0.1:${POSTGRES_HOST_PORT}/eveland`;
+  const databaseUrl = inputs.databaseUrl ?? bundledDatabaseUrl;
   // Deployed Agents run in Docker on macOS (they reach the host through
-  // host.docker.internal) and as host systemd units on Linux (loopback).
+  // host.docker.internal) and as host systemd units on Linux (loopback). An
+  // external server has one address that means the same thing everywhere.
   const deploymentHost = platform === "darwin" ? "host.docker.internal" : "127.0.0.1";
-  const workflowWorldUrl = `postgres://eveland:eveland@${deploymentHost}:${POSTGRES_HOST_PORT}/eveland`;
+  const workflowWorldUrl =
+    inputs.databaseUrl ??
+    `postgres://eveland:eveland@${deploymentHost}:${POSTGRES_HOST_PORT}/eveland`;
   const schedulerRedeemUrl = `http://${deploymentHost}:${API_PORT}/internal/scheduler/dispatch`;
   const gatewayServiceToken = generateHexSecret(options.random);
 
@@ -57,7 +68,9 @@ export function renderPlatformEnv(options: {
     // the platform's own host processes cannot use; Linux Deployments are host
     // processes too, so there both views are the same loopback address and no
     // second DSN exists at all.
-    ...(platform === "darwin" ? { EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: databaseUrl } : {}),
+    ...(platform === "darwin" && inputs.databaseUrl === undefined
+      ? { EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: bundledDatabaseUrl }
+      : {}),
     WORKFLOW_DISPATCHER_ACTIVATION_API_URL: `http://127.0.0.1:${API_PORT}`,
     // The API validates dispatcher activations against the gateway service
     // token (apps/api/src/app-internal-routes.ts), so this is the same
@@ -98,6 +111,10 @@ export function defaultBootstrapInputs(env: NodeJS.ProcessEnv): BootstrapInputs 
     // An operator-provided EVELAND_ADMIN_PASSWORD in the environment wins;
     // otherwise generate. Either way the value never crosses stdout.
     adminPassword: env.EVELAND_ADMIN_PASSWORD?.trim() || generateAdminPassword(),
+    // A DATABASE_URL already in the environment is an operator saying "use
+    // this one" -- and it is how a non-interactive install answers the
+    // bundled-or-external question without a prompt.
+    databaseUrl: env.DATABASE_URL?.trim() || undefined,
     anthropicApiKey: env.ANTHROPIC_API_KEY?.trim() || undefined,
     openaiApiKey: env.OPENAI_API_KEY?.trim() || undefined,
   };

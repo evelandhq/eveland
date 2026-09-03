@@ -816,11 +816,20 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
 });
 
 describe("defaultPgDump", () => {
+  const DSN = "postgres://eveland:eveland@127.0.0.1:17310/eveland";
+
   test("a backup exists complete or not at all: partial file, fsync, rename, 0600", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-pgdump-"));
     const backupPath = path.join(dir, "eveland-v0.48.0.sql");
     const ok = defaultPgDump({ argv: ["sh", "-c", "printf -- '-- dump\\nSELECT 1;\\n'"] });
-    expect(await ok(backupPath, { cwd: dir, envFilePath: "/dev/null" })).toBe(0);
+    expect(
+      await ok(backupPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "bundled",
+        databaseUrl: DSN,
+      }),
+    ).toBe(0);
     const { stat } = await import("node:fs/promises");
     expect(await readFile(backupPath, "utf8")).toContain("SELECT 1;");
     expect((await stat(backupPath)).mode & 0o777).toBe(0o600);
@@ -829,14 +838,67 @@ describe("defaultPgDump", () => {
     // A failing dump leaves nothing behind that could pass for a backup.
     const failing = defaultPgDump({ argv: ["sh", "-c", "printf 'half'; exit 3"] });
     const failedPath = path.join(dir, "failed.sql");
-    expect(await failing(failedPath, { cwd: dir, envFilePath: "/dev/null" })).toBe(3);
+    expect(
+      await failing(failedPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "bundled",
+        databaseUrl: DSN,
+      }),
+    ).toBe(3);
     await expect(stat(failedPath)).rejects.toThrow();
     await expect(stat(`${failedPath}.partial`)).rejects.toThrow();
 
     // A "successful" dump with no output is not a backup either.
     const empty = defaultPgDump({ argv: ["true"] });
     const emptyPath = path.join(dir, "empty.sql");
-    expect(await empty(emptyPath, { cwd: dir, envFilePath: "/dev/null" })).toBeNull();
+    expect(
+      await empty(emptyPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "bundled",
+        databaseUrl: DSN,
+      }),
+    ).toBeNull();
     await expect(stat(emptyPath)).rejects.toThrow();
+  });
+
+  test("an external database is dumped from the host, with the password out of argv", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-pgdump-env-"));
+    const backupPath = path.join(dir, "external.sql");
+    // Stand in for pg_dump: print the libpq variables it would have been
+    // handed, which is exactly what must carry the connection.
+    const dump = defaultPgDump({
+      argv: ["sh", "-c", 'printf -- "-- %s %s %s\\n" "$PGHOST" "$PGPORT" "$PGDATABASE"'],
+    });
+
+    expect(
+      await dump(backupPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "external",
+        databaseUrl: "postgres://ops:s3cr3t@db.internal:6543/eveland",
+      }),
+    ).toBe(0);
+    expect(await readFile(backupPath, "utf8")).toContain("db.internal 6543 eveland");
+  });
+
+  test("a DSN that cannot be split is a failed backup, not a dump of the wrong database", async () => {
+    // Without libpq variables pg_dump falls back to a local socket and the
+    // connecting user's own database, and "succeeds".
+    const dir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-pgdump-bad-"));
+    const backupPath = path.join(dir, "bad.sql");
+    const dump = defaultPgDump();
+    const { stat } = await import("node:fs/promises");
+
+    expect(
+      await dump(backupPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "external",
+        databaseUrl: "not-a-dsn",
+      }),
+    ).toBeNull();
+    await expect(stat(backupPath)).rejects.toThrow();
   });
 });

@@ -30,6 +30,7 @@ function scriptedPrompter(answers: Array<string | boolean>): Prompter {
 }
 
 async function makeDeps(options: {
+  platform?: "darwin" | "linux";
   prompter?: Prompter;
   env?: NodeJS.ProcessEnv;
   webBuildExists?: boolean;
@@ -50,7 +51,7 @@ async function makeDeps(options: {
     },
     layout,
     repoRootDir: repo,
-    platform: "darwin",
+    platform: options.platform ?? "linux",
     prompter: options.prompter ?? scriptedPrompter([]),
     streamCommand: async (argv) => {
       commands.push(argv);
@@ -63,12 +64,10 @@ async function makeDeps(options: {
           ? { code: 128, output: "fatal: no tag exactly matches" }
           : { code: 0, output: "v0.48.0\n" };
       }
-      if (argv.includes("pg_isready")) {
-        return { code: (options.postgresUp ?? true) ? 0 : 1, output: "" };
-      }
       return { code: 0, output: "" };
     },
     tcpProbe: async () => options.postgresUp ?? true,
+    pgReady: async () => options.postgresUp ?? true,
     sleep: async () => {},
     fileExists: async (filePath) => {
       if (filePath.endsWith("BUILD_ID")) return options.webBuildExists ?? false;
@@ -98,6 +97,7 @@ describe("gatherBootstrapInputs", () => {
       prompter: scriptedPrompter([
         "https://eveland.example.com/", // origin (trailing slash normalized away)
         "Ops@Example.com ", // email (lowercased, trimmed)
+        false, // no existing PostgreSQL: run the bundled one
         "sk-ant-typed", // anthropic key (interactive ask)
       ]),
     });
@@ -118,15 +118,86 @@ describe("gatherBootstrapInputs", () => {
   test("a shell ANTHROPIC_API_KEY is offered and can be declined", async () => {
     const accepted = await makeDeps({
       env: { ANTHROPIC_API_KEY: "sk-ant-shell" },
-      prompter: scriptedPrompter(["", "", true]),
+      prompter: scriptedPrompter(["", "", false, true]),
     });
     expect((await gatherBootstrapInputs(accepted.deps)).anthropicApiKey).toBe("sk-ant-shell");
 
     const declined = await makeDeps({
       env: { ANTHROPIC_API_KEY: "sk-ant-shell" },
-      prompter: scriptedPrompter(["", "", false]),
+      prompter: scriptedPrompter(["", "", false, false]),
     });
     expect((await gatherBootstrapInputs(declined.deps)).anthropicApiKey).toBeUndefined();
+  });
+
+  test("macOS is never asked: its Deployments need the bundled database's two views", async () => {
+    const { deps } = await makeDeps({
+      platform: "darwin",
+      env: { DATABASE_URL: "postgres://ops:pw@db.internal:5432/eveland" },
+      prompter: scriptedPrompter(["", "", "sk-ant-typed"]),
+    });
+    const inputs = await gatherBootstrapInputs(deps);
+    expect(inputs.databaseUrl).toBeUndefined();
+    // And the queue was not consumed by a question that never ran.
+    expect(inputs.anthropicApiKey).toBe("sk-ant-typed");
+  });
+
+  test("the bundled database is the default, and needs no connection check", async () => {
+    const probed: string[] = [];
+    const { deps } = await makeDeps({});
+    deps.pgReady = async (url) => {
+      probed.push(url);
+      return true;
+    };
+    expect((await gatherBootstrapInputs(deps)).databaseUrl).toBeUndefined();
+    // Nothing exists to connect to yet: the bundled container starts later.
+    expect(probed).toEqual([]);
+  });
+
+  test("an operator's own PostgreSQL is taken, and proved reachable before anything is written", async () => {
+    const dsn = "postgres://ops:s3cr3t@db.internal:5432/eveland";
+    const probed: string[] = [];
+    const { deps, out } = await makeDeps({
+      prompter: scriptedPrompter(["", "", true, dsn, false]),
+    });
+    deps.pgReady = async (url) => {
+      probed.push(url);
+      return true;
+    };
+
+    expect((await gatherBootstrapInputs(deps)).databaseUrl).toBe(dsn);
+    expect(probed).toEqual([dsn]);
+    // The address, never the DSN: this output is teed into the install log.
+    expect(out.join("\n")).toContain("db.internal:5432");
+    expect(out.join("\n")).not.toContain("s3cr3t");
+  });
+
+  test("a named server that does not answer stops the install rather than falling back", async () => {
+    // An automatic fall back to the bundled database is how an installation
+    // ends up with a second cluster holding half its data.
+    const { deps } = await makeDeps({
+      prompter: scriptedPrompter(["", "", true, "postgres://ops@db.internal:5432/eveland"]),
+      postgresUp: false,
+    });
+    await expect(gatherBootstrapInputs(deps)).rejects.toThrow(/No PostgreSQL answered/);
+  });
+
+  test("a DATABASE_URL already in the shell is offered, and can be declined", async () => {
+    const dsn = "postgres://ops:pw@db.internal:5432/eveland";
+    const accepted = await makeDeps({ env: { DATABASE_URL: dsn } });
+    expect((await gatherBootstrapInputs(accepted.deps)).databaseUrl).toBe(dsn);
+
+    const declined = await makeDeps({
+      env: { DATABASE_URL: dsn },
+      prompter: scriptedPrompter(["", "", false]),
+    });
+    expect((await gatherBootstrapInputs(declined.deps)).databaseUrl).toBeUndefined();
+  });
+
+  test("what is not a connection URL is refused, not written into the configuration", async () => {
+    const { deps } = await makeDeps({
+      prompter: scriptedPrompter(["", "", true, "localhost:5432"]),
+    });
+    await expect(gatherBootstrapInputs(deps)).rejects.toThrow(/connection URL/);
   });
 
   test("a too-short environment-provided admin password is rejected before anything is written", async () => {
@@ -138,7 +209,7 @@ describe("gatherBootstrapInputs", () => {
 describe("runBootstrapConfig", () => {
   test("renders etc/eveland.env once (0600); the password never crosses stdout", async () => {
     const { deps, out, layout } = await makeDeps({});
-    const envFile = await runBootstrapConfig(deps);
+    const { envFile } = await runBootstrapConfig(deps);
     expect(envFile.path).toBe(layout.envFilePath);
     const mode = (await stat(layout.envFilePath)).mode & 0o777;
     expect(mode).toBe(0o600);
@@ -150,7 +221,7 @@ describe("runBootstrapConfig", () => {
     expect(out.join("\n")).toContain("grep EVELAND_ADMIN_PASSWORD");
 
     // Second run reuses the file verbatim: secrets are minted exactly once.
-    const again = await runBootstrapConfig(deps);
+    const { envFile: again } = await runBootstrapConfig(deps);
     expect(again.values.APP_SECRET_KEY).toBe(envFile.values.APP_SECRET_KEY);
     expect(out.join("\n")).toContain("Reusing existing configuration");
   });
@@ -171,7 +242,7 @@ describe("runBootstrapConfig with an installer-pre-seeded file", () => {
     await mkdir(layout.etcDir, { recursive: true });
     await writeFile(layout.envFilePath, "EVELAND_NODE=/opt/eveland/node/bin/node\n", "utf8");
 
-    const envFile = await runBootstrapConfig(deps);
+    const { envFile } = await runBootstrapConfig(deps);
     // The render happened (a pre-seeded file has no APP_SECRET_KEY)...
     expect(envFile.values.APP_SECRET_KEY).toBeTruthy();
     expect(envFile.values.NODE_ENV).toBe("production");
@@ -182,7 +253,7 @@ describe("runBootstrapConfig with an installer-pre-seeded file", () => {
     expect(onDisk.APP_SECRET_KEY).toBe(envFile.values.APP_SECRET_KEY);
 
     // A third run now sees a rendered config and reuses it verbatim.
-    const again = await runBootstrapConfig(deps);
+    const { envFile: again } = await runBootstrapConfig(deps);
     expect(again.values.APP_SECRET_KEY).toBe(envFile.values.APP_SECRET_KEY);
     expect(again.values.EVELAND_NODE).toBe("/opt/eveland/node/bin/node");
   });
@@ -191,8 +262,8 @@ describe("runBootstrapConfig with an installer-pre-seeded file", () => {
 describe("runBootstrapPrepare", () => {
   test("builds the Dashboard when missing and applies migrations with the rendered env", async () => {
     const { deps, commands } = await makeDeps({ webBuildExists: false });
-    const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
+    const { envFile } = await runBootstrapConfig(deps);
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
     expect(commands).toEqual([
       ["pnpm", "--filter", "@evelandhq/web", "build"],
       ["pnpm", "--filter", "@evelandhq/api", "db:migrate"],
@@ -201,15 +272,15 @@ describe("runBootstrapPrepare", () => {
 
   test("skips the Dashboard build when one exists", async () => {
     const { deps, commands } = await makeDeps({ webBuildExists: true });
-    const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
+    const { envFile } = await runBootstrapConfig(deps);
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
     expect(commands).toEqual([["pnpm", "--filter", "@evelandhq/api", "db:migrate"]]);
   });
 
   test("pins release identity: exact short SHA, and stable only on an exact release tag", async () => {
     const { deps, layout } = await makeDeps({ webBuildExists: true });
-    const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
+    const { envFile } = await runBootstrapConfig(deps);
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
     expect(envFile.values.EVELAND_REVISION).toBe("abc1234");
     expect(envFile.values.EVELAND_RELEASE_CHANNEL).toBe("stable");
     const onDisk = parseEnvFile(await readFile(layout.envFilePath, "utf8"));
@@ -218,28 +289,28 @@ describe("runBootstrapPrepare", () => {
     expect(onDisk.APP_SECRET_KEY).toBe(envFile.values.APP_SECRET_KEY);
   });
 
-  test("an unreachable Postgres fails with a compose hint instead of a migrate stack trace", async () => {
+  test("an unreachable Postgres fails with a repair hint instead of a migrate stack trace", async () => {
     const { deps } = await makeDeps({ webBuildExists: true, postgresUp: false });
-    const envFile = await runBootstrapConfig(deps);
-    await expect(
-      runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] }),
-    ).rejects.toThrow(/docker compose ps/);
+    const { envFile } = await runBootstrapConfig(deps);
+    await expect(runBootstrapPrepare(deps, envFile, { buildWeb: true })).rejects.toThrow(
+      /did not become ready/,
+    );
   });
 
   test("a failing migration is a clear error", async () => {
     const { deps } = await makeDeps({ webBuildExists: true, commandExit: 1 });
-    const envFile = await runBootstrapConfig(deps);
-    await expect(
-      runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] }),
-    ).rejects.toThrow(/migration failed/);
+    const { envFile } = await runBootstrapConfig(deps);
+    await expect(runBootstrapPrepare(deps, envFile, { buildWeb: true })).rejects.toThrow(
+      /migration failed/,
+    );
   });
 });
 
 describe("runBootstrapPrepare on a non-release checkout", () => {
   test("a bare SHA / branch checkout is `edge`, never impersonating a stable release", async () => {
     const { deps } = await makeDeps({ webBuildExists: true, onTag: false });
-    const envFile = await runBootstrapConfig(deps);
-    await runBootstrapPrepare(deps, envFile, { buildWeb: true, pgReadyCommand: ["pg_isready"] });
+    const { envFile } = await runBootstrapConfig(deps);
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
     expect(envFile.values.EVELAND_RELEASE_CHANNEL).toBe("edge");
     expect(envFile.values.EVELAND_REVISION).toBe("abc1234");
   });

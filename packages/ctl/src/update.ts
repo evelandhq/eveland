@@ -6,8 +6,9 @@ import { parseArgs } from "node:util";
 import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
 import { breakingChangesBetween } from "./changelog.ts";
 import { detectDockerBridgeHost } from "./docker-bridge.ts";
+import { libpqEnvironment } from "./pg-probe.ts";
 import { loadPlatformEnvFile } from "./env-file.ts";
-import { readInstallMetadata } from "./home.ts";
+import { databaseMode, readInstallMetadata, type DatabaseMode } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { resolveLifecycle, runStart, runStop, systemdModeContext } from "./lifecycle.ts";
 import {
@@ -39,18 +40,30 @@ import { installSystemdArtifacts } from "./systemd-mode.ts";
 
 export type PgDump = (
   backupPath: string,
-  options: { cwd: string; envFilePath: string },
+  options: {
+    cwd: string;
+    envFilePath: string;
+    /** Bundled: dump inside the container. External: dump from the host. */
+    database: DatabaseMode;
+    databaseUrl: string;
+  },
 ) => Promise<number | null>;
 
 /**
- * pg_dump through Compose into a `.partial` file that is fsync'd and only
- * then renamed to the final name: a backup either exists complete or not
- * at all. A failed dump, a write error (disk full), or an empty result
- * leaves no file behind and reports failure; the file is 0600.
+ * pg_dump into a `.partial` file that is fsync'd and only then renamed to the
+ * final name: a backup either exists complete or not at all. A failed dump, a
+ * write error (disk full), or an empty result leaves no file behind and
+ * reports failure; the file is 0600.
+ *
+ * Where it runs follows the installation's own record. The bundled database is
+ * dumped inside its container, where the client version matches the server by
+ * construction and no credential is needed. An operator's own server is dumped
+ * from the host — with the connection split into libpq variables, because a
+ * DSN in argv is a password every process on the machine can read.
  */
 export function defaultPgDump(options: { argv?: string[] } = {}): PgDump {
-  return async (backupPath, { cwd, envFilePath }) => {
-    const argv = options.argv ?? [
+  return async (backupPath, { cwd, envFilePath, database, databaseUrl }) => {
+    const bundledArgv = [
       "docker",
       // --env-file: compose interpolates the whole file even for one exec.
       "compose",
@@ -65,12 +78,25 @@ export function defaultPgDump(options: { argv?: string[] } = {}): PgDump {
       "-d",
       "eveland",
     ];
+    const argv = options.argv ?? (database === "bundled" ? bundledArgv : ["pg_dump"]);
+    let childEnv = process.env;
+    if (database === "external") {
+      const libpq = libpqEnvironment(databaseUrl);
+      // Without this pg_dump falls back to a local socket and the connecting
+      // user's own database, and "succeeds" at backing up the wrong thing.
+      if (!libpq) return null;
+      childEnv = { ...process.env, ...libpq };
+    }
     const partialPath = `${backupPath}.partial`;
     await rm(partialPath, { force: true });
     const result = await new Promise<{ code: number | null; writeError: Error | null }>(
       (resolve) => {
         const [command, ...rest] = argv;
-        const child = spawn(command!, rest, { cwd, stdio: ["ignore", "pipe", "inherit"] });
+        const child = spawn(command!, rest, {
+          cwd,
+          env: childEnv,
+          stdio: ["ignore", "pipe", "inherit"],
+        });
         const out = createWriteStream(partialPath, { mode: 0o600, flags: "wx" });
         let writeError: Error | null = null;
         let code: number | null | undefined;
@@ -376,14 +402,21 @@ async function runUpdateLocked(
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     backupPath = path.join(resolved.layout.backupsDir, `eveland-v${currentVersion}-${stamp}.sql`);
     io.stdout(`Backing up the database to ${backupPath}...`);
+    const database = databaseMode(await readInstallMetadata(resolved.layout));
     const dump = await (io.pgDump ?? defaultPgDump())(backupPath, {
       cwd: repo,
       envFilePath: envFile.path,
+      database,
+      databaseUrl: envFile.values.DATABASE_URL ?? "",
     });
     if (dump !== 0) {
       io.stderr(
         "pg_dump failed — refusing to update without a backup. " +
-          "Fix the database (is the postgres container running?) or pass --skip-backup.",
+          (database === "bundled"
+            ? "Fix the database (is the postgres container running?) "
+            : "Check that pg_dump is installed on this host and that the configured " +
+              "PostgreSQL is reachable (`eveland-ctl doctor`) ") +
+          "or pass --skip-backup.",
       );
       return 1;
     }

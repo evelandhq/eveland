@@ -71,6 +71,16 @@ describe("renderPlatformEnv", () => {
     expect(values.EVELAND_SCHEDULER_REDEEM_URL).toContain("127.0.0.1");
   });
 
+  test("an operator's own PostgreSQL becomes both the platform database and the world", () => {
+    // Those have always been one database for a ctl-rendered installation;
+    // giving an external server two would be a schema split nothing asked for.
+    const dsn = "postgres://ops:pw@db.internal:6543/eveland";
+    const { values } = render("linux", { ...INPUTS, databaseUrl: dsn });
+    expect(values.DATABASE_URL).toBe(dsn);
+    expect(values.EVELAND_WORKFLOW_WORLD_URL).toBe(dsn);
+    expect(values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBeUndefined();
+  });
+
   test("Linux renders exactly ONE address for the shared workflow world", () => {
     // Every Linux reader of it -- the API, the worker, the dispatcher, and
     // every Deployment -- is a host process in the same network namespace, so
