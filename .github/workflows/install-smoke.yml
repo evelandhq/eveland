@@ -2,11 +2,12 @@ name: install smoke
 
 # The one-line installer's real-machine gate: a fresh Ubuntu runner (a full
 # systemd VM) runs install.sh non-interactively from this very checkout with
-# NO pre-provisioning beyond what any GitHub runner ships — the installer and
-# the ctl bootstrap own the whole host contract themselves (Node resolution,
-# sandbox toolchain via apt, bwrap AppArmor profile, service users,
-# /workspace, system-PATH toolchain). The run must end with doctor green,
-# working implicit login, a seeded built-in agent path, and a clean stop.
+# no pre-provisioning beyond the external Postgres this topology takes as a
+# prerequisite — the installer and the ctl bootstrap own the rest of the host
+# contract themselves (Node resolution, sandbox toolchain via apt, bwrap
+# AppArmor profile, service users, /workspace, system-PATH toolchain). The run
+# must end with doctor green, working implicit login, a seeded built-in agent
+# path, and a clean stop.
 #
 # Runs nightly, on demand, and on PRs that touch the installer surface.
 
@@ -66,6 +67,39 @@ jobs:
             if [ -e "$plugin" ]; then echo "compose plugin still present: $plugin"; exit 1; fi
           done
 
+      - name: Provision the external Postgres the production form requires
+        run: |
+          # Production runs code in three network namespaces at once — the
+          # Compose bridge (API), the host (Gateway, Dashboard, Worker,
+          # dispatcher) and every Deployment — so the database it dials has
+          # to sit outside the installation, under one address that resolves
+          # the same in all three. Here the runner plays that external host.
+          # It ships PostgreSQL but leaves the service stopped and bound to
+          # loopback, which is the container's own loopback inside the API.
+          sudo apt-get update
+          sudo apt-get install -y postgresql postgresql-client
+          read -r version cluster port < <(pg_lsclusters -h | awk 'NR==1 {print $1, $2, $3}')
+          sudo pg_conftool "$version" "$cluster" set listen_addresses '*'
+          # Docker is not installed yet, so its bridges have no addresses to
+          # name here; admit the private ranges they will be numbered from.
+          printf '%s\n' \
+            'host all all 10.0.0.0/8 scram-sha-256' \
+            'host all all 172.16.0.0/12 scram-sha-256' \
+            'host all all 192.168.0.0/16 scram-sha-256' \
+            | sudo tee -a "/etc/postgresql/$version/$cluster/pg_hba.conf" >/dev/null
+          sudo pg_ctlcluster "$version" "$cluster" stop || true
+          sudo pg_ctlcluster "$version" "$cluster" start
+          # Exactly what docs/en/production/prerequisites.md asks an operator
+          # for: two databases owned by one role, and no CREATEDB — a Project
+          # is a tenant partition inside the shared World, not a database.
+          sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
+          create role eveland login password 'eveland';
+          create database eveland owner eveland;
+          create database eveland_workflow owner eveland;
+          SQL
+          host=$(ip -4 route get 1.1.1.1 | awk '{print $7; exit}')
+          echo "EVELAND_SMOKE_DB_ADDR=$host:$port" >> "$GITHUB_ENV"
+
       - name: Run the installer non-interactively
         run: |
           # Root installs to /opt/eveland exactly like a real Linux box; the
@@ -74,11 +108,14 @@ jobs:
           # runner-owned workspace. Deliberately NO setup-node / pnpm /
           # apt steps here: resolving Node (the runner's is < 24, so the
           # tarball tier runs) and provisioning the host is the product's
-          # own job.
+          # own job. Both DSNs are exported because a non-interactive Linux
+          # install has no one to ask, and ctl invents neither.
           sudo git config --global --add safe.directory '*'
           sudo -E env "PATH=$PATH" \
             EVELAND_REPO_URL="$GITHUB_WORKSPACE" \
             EVELAND_VERSION="$GITHUB_SHA" \
+            DATABASE_URL="postgres://eveland:eveland@${EVELAND_SMOKE_DB_ADDR}/eveland" \
+            EVELAND_WORKFLOW_WORLD_URL="postgres://eveland:eveland@${EVELAND_SMOKE_DB_ADDR}/eveland_workflow" \
             bash apps/docs/public/install.sh --no-prompt
 
       - name: Doctor must be green
@@ -116,4 +153,5 @@ jobs:
           cd /opt/eveland/source || exit 0
           COMPOSE="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml -f /opt/eveland/etc/compose.appliance.yml --env-file /opt/eveland/etc/eveland.env"
           $COMPOSE ps || true
-          $COMPOSE logs --tail 80 api gateway web postgres otel-collector || true
+          $COMPOSE logs --tail 80 api gateway web otel-collector || true
+          sudo tail -n 80 /var/log/postgresql/*.log || true
