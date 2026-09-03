@@ -1,0 +1,16 @@
+# Host-native development overlay, for macOS and Linux alike. The API and the
+# other platform processes run on the host under `pnpm dev`, so the Collector
+# cannot reach the API by Compose service name; it dials the host gateway
+# instead. The Collector itself stays bridged either way, so the Docker runtime
+# can attach it to every Agent telemetry network.
+#
+# macOS needs nothing further: Docker Desktop and OrbStack proxy
+# host.docker.internal to the host's loopback, where the API already listens.
+# Linux has no such proxy, so the API separately binds its runtime-only ingress
+# to the private Docker bridge address configured by
+# EVELAND_API_DOCKER_BRIDGE_HOST.
+services:
+  otel-collector:
+    environment:
+      EVELAND_BUILTIN_OTLP_ENDPOINT: http://host.docker.internal:17301/internal/otel
+      EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT: http://host.docker.internal:17301/internal/observability/destinations

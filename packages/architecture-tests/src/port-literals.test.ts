@@ -33,7 +33,7 @@ const RETIRED_PORT = /(?<!\d)(3000|3001|4000|4080|4090|41000|55432)(?!\d)/;
 
 const DEPLOYMENT_CONFIGURATION = [
   "docker-compose.yml",
-  "docker-compose.native-linux.yml",
+  "docker-compose.native.yml",
   "docker-compose.prod.yml",
   ".env.example",
   "infra/otel/collector.yaml",
