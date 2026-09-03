@@ -4,42 +4,64 @@ import type { PlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata, type ApplianceLayout } from "./home.ts";
 import { writeInstallMetadata } from "./bootstrap.ts";
 import type { ExecCommand, FetchLike, LifecycleIo } from "./io.ts";
-import { WEB_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
-import { refreshSystemToolchain } from "./linux-host.ts";
-import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
+import { GATEWAY_PORT } from "@evelandhq/core/ports";
+import {
+  PLATFORM_SERVICE_HOME,
+  PLATFORM_SERVICE_USER,
+  refreshSystemToolchain,
+} from "./linux-host.ts";
+import {
+  directExecArgv,
+  PLATFORM_PROCESSES,
+  processByKey,
+  systemdUnitName,
+  type ProcessKey,
+  type ProcessSpec,
+} from "./processes.ts";
 
 /**
  * The Linux production form — the same topology docs/en/production documents,
- * orchestrated by the ctl instead of by hand:
+ * orchestrated by the ctl instead of by hand.
  *
- * - Core services (API, Agent Gateway, Dashboard) and infra run in Docker
- *   Compose with the production overlay: the containers ARE the privilege
- *   boundary, exactly as the deployment docs prescribe. No public-facing
- *   process runs as a host root process, and none can read the host source
- *   tree or data dir beyond its explicit binds.
- * - Exactly two systemd units exist, converging with the long-documented
- *   ones: eveland-worker (root on purpose — it drives systemd-run/systemctl/
- *   chown; every deployed Agent still gets its own unprivileged DynamicUser)
- *   and eveland-workflow-dispatcher (DynamicUser, reading a NARROWED env
- *   file carrying only what its documented env.example carries — never the
- *   admin password or APP_SECRET_KEY).
+ * Every platform process that has a listener or a job to do runs on the host
+ * under systemd; Docker holds only what genuinely wants to be a container.
+ * The privilege boundary is the unit, not the image: `DynamicUser` or a fixed
+ * unprivileged system user, `ProtectSystem=strict` over a read-only source
+ * tree, and an explicit `ReadWritePaths` per service. That is strictly
+ * stronger than the containerized form it replaces, where each service ran as
+ * container root with the whole host source tree bind-mounted in.
  *
- * On Linux this is the first-boot default; `install --systemd` promotes an
- * older or --foreground install onto it. This module is a leaf so both the
- * lifecycle and the install command can share it.
+ * The worker is the one deliberate exception: it must be root, because it
+ * drives systemd-run, systemctl and chown to give every deployed Agent its
+ * OWN unprivileged DynamicUser.
  */
 
 export const SYSTEMD_UNIT_DIR = "/etc/systemd/system";
 
-/** The two host units. Core services deliberately have none. */
-export const SYSTEMD_HOST_UNITS = ["worker", "workflow-dispatcher"] as const;
+/**
+ * Platform processes supervised as host systemd units, in start order.
+ * `COMPOSE_CORE_SERVICES` holds the remainder; the two lists together must
+ * cover `PLATFORM_PROCESSES` exactly, which `systemd.test.ts` asserts.
+ */
+export const SYSTEMD_HOST_UNITS = ["gateway", "web", "worker", "workflow-dispatcher"] as const;
 
-/** Core services managed through Compose in the systemd form. */
-export const COMPOSE_CORE_SERVICES = ["api", "gateway", "web"] as const;
+/** Core services still managed through Compose in the systemd form. */
+export const COMPOSE_CORE_SERVICES = ["api"] as const;
 
-// Generous on purpose: the first `compose up` of this form runs each core
-// service's in-container pnpm install, and the Dashboard container also
-// builds .next before listening.
+/**
+ * Compose services this form used to run and no longer does, with the profile
+ * that now hides each from the merged production configuration. A promotion
+ * (or an update) must actively remove their containers: a leftover Dashboard
+ * container still holds the Dashboard's port, and the host unit taking over
+ * would fail to bind.
+ */
+export const RETIRED_COMPOSE_SERVICES: ReadonlyArray<{ service: string; profile: string }> = [
+  { service: "gateway", profile: "dev-gateway" },
+  { service: "web", profile: "dev-web" },
+];
+
+// Generous on purpose while the API still runs a container install of its own
+// on first `compose up`. The host units themselves are ready in seconds.
 export const SYSTEMD_READINESS_DEADLINE_MS = 900_000;
 export const SYSTEMD_READINESS_POLL_MS = 500;
 
@@ -72,13 +94,9 @@ export const DISPATCHER_ENV_KEYS = [
   "EVELAND_OTLP_SERVICE_TOKEN",
 ];
 
-export function dispatcherEnvFilePath(etcDir: string): string {
-  return path.join(etcDir, "eveland-workflow-dispatcher.env");
-}
-
 /**
  * The public Agent Gateway's env allowlist — exactly the variables the
- * compose service definitions hand it. Never the admin password,
+ * compose service definitions handed it. Never the admin password,
  * APP_SECRET_KEY, BETTER_AUTH_SECRET, or model API keys: a public proxy's
  * trust boundary must not contain them.
  */
@@ -101,15 +119,43 @@ export const GATEWAY_ENV_KEYS = [
   "EVELAND_API_SESSION_IDLE_TTL_MS",
 ];
 
-/** The Dashboard container's env allowlist (it only talks to the API). */
+/** The Dashboard's env allowlist (it only talks to the API). */
 export const WEB_ENV_KEYS = ["NODE_ENV", "EVELAND_RELEASE_CHANNEL", "EVELAND_REVISION", "API_URL"];
 
+/** `etc/eveland-<service>.env` — a unit's own environment. */
+export function serviceEnvFilePath(etcDir: string, service: string): string {
+  return path.join(etcDir, `eveland-${service}.env`);
+}
+
+export function dispatcherEnvFilePath(etcDir: string): string {
+  return serviceEnvFilePath(etcDir, "workflow-dispatcher");
+}
+
 export function gatewayEnvFilePath(etcDir: string): string {
-  return path.join(etcDir, "eveland-gateway.env");
+  return serviceEnvFilePath(etcDir, "gateway");
 }
 
 export function webEnvFilePath(etcDir: string): string {
-  return path.join(etcDir, "eveland-web.env");
+  return serviceEnvFilePath(etcDir, "web");
+}
+
+/**
+ * Values no operator writes and every host-native unit needs: the front
+ * door's advertised scheme and port, derived from the one origin the
+ * installation was configured with. The containerized form injected these
+ * through Compose; a unit gets them here.
+ */
+export function derivedServiceValues(values: Record<string, string>): Record<string, string> {
+  const origin = new URL(
+    values.EVELAND_PUBLIC_ORIGIN?.trim() || `http://localhost:${GATEWAY_PORT}`,
+  );
+  const scheme = origin.protocol.replace(":", "");
+  return {
+    EVELAND_GATEWAY_PUBLIC_SCHEME: scheme,
+    // "0" means "the scheme's default port": an https origin with no explicit
+    // port must not advertise the front door's bind port.
+    EVELAND_GATEWAY_PUBLIC_PORT: origin.port === "" ? "0" : origin.port,
+  };
 }
 
 export function renderServiceEnv(
@@ -118,9 +164,10 @@ export function renderServiceEnv(
   values: Record<string, string>,
 ): string {
   const lines = [
-    `# Rendered by eveland-ctl. The ${service} service's OWN environment: the`,
-    "# allowlisted subset of etc/eveland.env its compose definition hands it.",
-    "# Nothing else from the platform configuration reaches this container.",
+    `# Rendered by eveland-ctl on every start. The ${service} service's OWN`,
+    "# environment: the allowlisted subset of etc/eveland.env its systemd unit",
+    "# reads. Nothing else from the platform configuration reaches this process.",
+    "# Edit etc/eveland.env, not this file.",
     "",
   ];
   for (const key of keys) {
@@ -153,74 +200,145 @@ export function applianceComposeArgs(layout: ApplianceLayout, ...rest: string[])
 }
 
 export function renderDispatcherEnv(values: Record<string, string>): string {
-  const lines = [
-    "# Rendered by eveland-ctl. The workflow dispatcher's OWN environment:",
-    "# the allowlisted subset of etc/eveland.env its documented env.example",
-    "# carries. The DynamicUser service never sees the rest.",
-    "",
-  ];
-  for (const key of DISPATCHER_ENV_KEYS) {
-    const value = values[key];
-    if (value !== undefined && value !== "") lines.push(`${key}=${value}`);
-  }
-  lines.push("");
-  return lines.join("\n");
+  return renderServiceEnv("workflow-dispatcher", DISPATCHER_ENV_KEYS, values);
 }
 
-export function renderWorkerUnit(options: {
-  sourceDir: string;
-  envFilePath: string;
-  nodeBinDir: string;
-}): string {
-  return [
-    "[Unit]",
-    "Description=eveland worker (systemd runtime)",
-    "Wants=network-online.target",
-    "After=network-online.target",
-    "",
-    "[Service]",
-    "Type=exec",
-    "# Root on purpose: the worker drives systemd-run, systemctl and chown.",
-    "# Each deployed Agent runs under its own unprivileged systemd DynamicUser.",
-    "User=root",
-    `WorkingDirectory=${path.join(options.sourceDir, "apps/worker")}`,
-    `EnvironmentFile=${options.envFilePath}`,
-    `Environment=PATH=${options.nodeBinDir}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
-    // tsx directly, not through pnpm: corepack's pnpm shim needs a writable
-    // HOME cache, which a unit environment does not guarantee.
-    `ExecStart=${path.join(options.sourceDir, "node_modules/.bin/tsx")} src/worker.ts`,
-    "Restart=on-failure",
-    "RestartSec=5",
-    "",
-    "[Install]",
-    "WantedBy=multi-user.target",
-    "",
-  ].join("\n");
-}
-
-export function renderDispatcherUnit(options: {
+export type UnitRenderOptions = {
+  /** The checkout the units run from. */
   sourceDir: string;
   etcDir: string;
+  /** Absolute EVELAND_DATA_DIR; the only tree the API writes outside its own home. */
+  dataDir: string;
+  /** etc/eveland.env — the full configuration, read only by the worker. */
+  envFilePath: string;
   nodeBinDir: string;
-}): string {
+};
+
+type UnitIdentity = "root" | "dynamic-user" | "platform-user";
+
+type UnitProfile = {
+  identity: UnitIdentity;
+  /** Why this identity and not a weaker one; rendered into the unit. */
+  rationale: string[];
+  envFile: (options: UnitRenderOptions) => string;
+  /**
+   * Absolute paths this unit must write under `ProtectSystem=strict`. Only
+   * meaningful for the platform-user identity; root is unconfined and
+   * DynamicUser gets its own sandbox.
+   */
+  readWritePaths?: (options: UnitRenderOptions) => string[];
+  environment?: (options: UnitRenderOptions) => string[];
+};
+
+const UNIT_PROFILES: Record<ProcessKey, UnitProfile> = {
+  api: {
+    identity: "platform-user",
+    rationale: [
+      "# Unprivileged: the API extracts operator-supplied zip archives and is",
+      "# the one process reachable (behind the front door) from a browser. It",
+      "# writes nothing outside its data dir.",
+    ],
+    envFile: (options) => serviceEnvFilePath(options.etcDir, "api"),
+    readWritePaths: (options) => [options.dataDir],
+  },
+  gateway: {
+    identity: "platform-user",
+    rationale: [
+      "# Unprivileged: this is the installation's only public listener. It",
+      "# proxies and writes nothing to disk at all.",
+    ],
+    envFile: (options) => gatewayEnvFilePath(options.etcDir),
+  },
+  web: {
+    identity: "platform-user",
+    rationale: ["# Unprivileged: the Dashboard serves a build and proxies to the API."],
+    envFile: (options) => webEnvFilePath(options.etcDir),
+    // `next start` writes .next/cache (and .next/trace) at runtime; under
+    // ProtectSystem=strict the whole checkout is read-only without this, and
+    // the server dies on its first cache write.
+    readWritePaths: (options) => [path.join(options.sourceDir, "apps/web/.next")],
+    environment: () => [
+      // No writable config dir to phone home from, and nothing to send.
+      "Environment=NEXT_TELEMETRY_DISABLED=1",
+    ],
+  },
+  worker: {
+    identity: "root",
+    rationale: [
+      "# Root on purpose: the worker drives systemd-run, systemctl and chown.",
+      "# Each deployed Agent runs under its own unprivileged systemd DynamicUser.",
+    ],
+    envFile: (options) => options.envFilePath,
+  },
+  "workflow-dispatcher": {
+    identity: "dynamic-user",
+    rationale: [
+      "# Unprivileged on purpose: unlike the worker this never drives systemd or",
+      "# touches deployment files. It talks to Postgres and to loopback HTTP only,",
+      "# and it must never load tenant code.",
+    ],
+    envFile: (options) => dispatcherEnvFilePath(options.etcDir),
+  },
+};
+
+function identityLines(profile: UnitProfile, options: UnitRenderOptions): string[] {
+  switch (profile.identity) {
+    case "root":
+      return [...profile.rationale, "User=root"];
+    case "dynamic-user":
+      // DynamicUser implies ProtectSystem=strict, PrivateTmp and friends.
+      return [...profile.rationale, "DynamicUser=yes"];
+    case "platform-user": {
+      const readWrite = [PLATFORM_SERVICE_HOME, ...(profile.readWritePaths?.(options) ?? [])];
+      return [
+        ...profile.rationale,
+        `User=${PLATFORM_SERVICE_USER}`,
+        `Group=${PLATFORM_SERVICE_USER}`,
+        // A real home: corepack, npm and Next all fall back to $HOME, and
+        // DynamicUser's HOME=/ is exactly what breaks them.
+        `Environment=HOME=${PLATFORM_SERVICE_HOME}`,
+        "NoNewPrivileges=yes",
+        "PrivateTmp=yes",
+        // The checkout, /etc and everything else become read-only; only the
+        // paths below are writable. This is the boundary the containerized
+        // form claimed and did not have.
+        "ProtectSystem=strict",
+        "ProtectHome=read-only",
+        "ProtectKernelTunables=yes",
+        "ProtectControlGroups=yes",
+        "RestrictSUIDSGID=yes",
+        `ReadWritePaths=${readWrite.join(" ")}`,
+      ];
+    }
+  }
+}
+
+/**
+ * One renderer for every platform unit. The command comes from
+ * `PLATFORM_PROCESSES` — never retyped here — so a unit and a ctl-supervised
+ * child can never drift apart.
+ */
+export function renderPlatformUnit(spec: ProcessSpec, options: UnitRenderOptions): string {
+  const profile = UNIT_PROFILES[spec.key];
+  const after = ["network-online.target"];
   return [
     "[Unit]",
-    "Description=eveland workflow dispatcher",
+    `Description=eveland ${spec.label}`,
     "Wants=network-online.target",
-    "After=network-online.target",
+    `After=${after.join(" ")}`,
     "",
     "[Service]",
     "Type=exec",
-    "# Unprivileged on purpose: unlike the worker this never drives systemd or",
-    "# touches deployment files. It talks to Postgres and to loopback HTTP only,",
-    "# and it must never load tenant code.",
-    "DynamicUser=yes",
-    `WorkingDirectory=${path.join(options.sourceDir, "apps/workflow-dispatcher")}`,
-    `EnvironmentFile=${dispatcherEnvFilePath(options.etcDir)}`,
+    ...identityLines(profile, options),
+    `WorkingDirectory=${path.join(options.sourceDir, spec.dir)}`,
+    `EnvironmentFile=${profile.envFile(options)}`,
+    // The pinned interpreter leads PATH: workspace binaries are `#!/usr/bin/env
+    // node` shebangs, and a unit environment carries no shell profile.
     `Environment=PATH=${options.nodeBinDir}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
-    // tsx directly, not through pnpm: corepack's pnpm shim wants a writable
-    // HOME cache, which DynamicUser (HOME=/) hard-fails on.
-    `ExecStart=${path.join(options.sourceDir, "node_modules/.bin/tsx")} src/main.ts`,
+    ...(profile.environment?.(options) ?? []),
+    // The workspace binary directly, never `pnpm exec`: corepack's pnpm shim
+    // wants a writable HOME cache that a unit environment does not guarantee.
+    `ExecStart=${directExecArgv(options.sourceDir, spec).join(" ")}`,
     "Restart=on-failure",
     "RestartSec=5",
     "# A crash loop burns one restart every RestartSec; cap it so a broken",
@@ -234,28 +352,36 @@ export function renderDispatcherUnit(options: {
   ].join("\n");
 }
 
+function unitRenderOptions(
+  context: SystemdModeContext,
+  envFile: PlatformEnvFile,
+  nodeBinDir: string,
+): UnitRenderOptions {
+  return {
+    sourceDir: context.repoRootDir,
+    etcDir: context.layout.etcDir,
+    dataDir: envFile.values.EVELAND_DATA_DIR ?? context.layout.dataDir,
+    envFilePath: context.layout.envFilePath,
+    nodeBinDir,
+  };
+}
+
 /**
  * The appliance Compose overlay, applied on top of docker-compose.prod.yml:
  * repoints the hardcoded /var/lib/eveland binds at the appliance data dir,
  * derives the public scheme/port from the configured origin instead of the
- * overlay's https assumption, masks node_modules and the Dashboard build
- * with named volumes (the host checkout carries a NATIVE install for the
- * ctl/worker; the alpine containers must never write their musl artifacts
- * into it), and keeps worker/dispatcher out of Compose entirely — they are
- * the two host units.
+ * overlay's https assumption, and masks the API container's node_modules with
+ * a named volume (the host checkout carries a NATIVE install for the ctl and
+ * the host units; the alpine container must never write its musl artifacts
+ * into it).
  */
 export function renderApplianceOverlay(options: {
   dataDir: string;
   publicOrigin: string;
   /** Full configuration — the API's; it seeds the admin and holds the app secret. */
   envFilePath: string;
-  /** Narrowed files for the public Gateway and the Dashboard. */
-  gatewayEnvFilePath: string;
-  webEnvFilePath: string;
 }): string {
-  const origin = new URL(options.publicOrigin);
-  const scheme = origin.protocol.replace(":", "");
-  const publicPort = origin.port === "" ? "0" : origin.port;
+  const derived = derivedServiceValues({ EVELAND_PUBLIC_ORIGIN: options.publicOrigin });
   return [
     "# Rendered by eveland-ctl. Appliance adjustments on top of",
     "# docker-compose.prod.yml — see packages/ctl/src/systemd-mode.ts.",
@@ -270,26 +396,8 @@ export function renderApplianceOverlay(options: {
     `      - ${options.dataDir}:${options.dataDir}`,
     "    environment:",
     `      EVELAND_DATA_DIR: ${options.dataDir}`,
-    `      EVELAND_GATEWAY_PUBLIC_SCHEME: ${scheme}`,
-    `      EVELAND_GATEWAY_PUBLIC_PORT: "${publicPort}"`,
-    "  gateway:",
-    "    volumes: !override",
-    "      - .:/workspace",
-    // The public proxy gets its allowlisted env, never the full config.
-    `      - ${options.gatewayEnvFilePath}:/workspace/.env:ro`,
-    "      - eveland-appliance-gateway-node-modules:/workspace/node_modules",
-    "      - eveland-gateway-data-mask:/workspace/.eveland-data",
-    "    environment:",
-    `      EVELAND_GATEWAY_PUBLIC_SCHEME: ${scheme}`,
-    // Host networking kills the compose service DNS: the base file's
-    // service-named front-door web upstream must become loopback.
-    `      EVELAND_WEB_INTERNAL_URL: ${WEB_INTERNAL_URL_FALLBACK}`,
-    "  web:",
-    "    volumes: !override",
-    "      - .:/workspace",
-    `      - ${options.webEnvFilePath}:/workspace/.env:ro`,
-    "      - eveland-appliance-web-node-modules:/workspace/node_modules",
-    "      - eveland-appliance-web-next:/workspace/apps/web/.next",
+    `      EVELAND_GATEWAY_PUBLIC_SCHEME: ${derived.EVELAND_GATEWAY_PUBLIC_SCHEME}`,
+    `      EVELAND_GATEWAY_PUBLIC_PORT: "${derived.EVELAND_GATEWAY_PUBLIC_PORT}"`,
     "  otel-config-init:",
     "    volumes: !override",
     "      - ./infra/otel/collector.yaml:/seed/collector.yaml:ro",
@@ -299,21 +407,83 @@ export function renderApplianceOverlay(options: {
     `      - ${options.dataDir}/otel:/var/lib/eveland/otel:ro`,
     "      - eveland-otel-collector:/var/lib/otelcol",
     "volumes:",
-    "  # One node_modules volume PER service: their in-container installs run",
-    "  # concurrently and must never share a store.",
     "  eveland-appliance-api-node-modules:",
-    "  eveland-appliance-gateway-node-modules:",
-    "  eveland-appliance-web-node-modules:",
-    "  eveland-appliance-web-next:",
     "",
   ].join("\n");
 }
 
 /**
- * Writes the two units, the dispatcher's narrowed env file, and the
- * appliance Compose overlay; reloads systemd and enables (without starting)
- * the units; records systemd supervision in install.json. Starting is
- * `startViaSystemd`'s job so first boot and promotion share one path.
+ * Every unit's environment file, rendered fresh. This runs on every `start`,
+ * not only at install: these files are DERIVED from etc/eveland.env, and an
+ * operator who edits that file and restarts must see the change.
+ */
+export async function writeServiceEnvFiles(
+  context: SystemdModeContext,
+  envFile: PlatformEnvFile,
+): Promise<void> {
+  const { io, layout } = context;
+  const values = { ...envFile.values, ...derivedServiceValues(envFile.values) };
+  const writeTextFile =
+    io.writeTextFile ??
+    (async (filePath: string, content: string) => writeFile(filePath, content, "utf8"));
+  const files: Array<{ service: string; keys: readonly string[]; label: string }> = [
+    { service: "workflow-dispatcher", keys: DISPATCHER_ENV_KEYS, label: "dispatcher-only" },
+    { service: "gateway", keys: GATEWAY_ENV_KEYS, label: "gateway-only" },
+    { service: "web", keys: WEB_ENV_KEYS, label: "dashboard-only" },
+  ];
+  for (const { service, keys, label } of files) {
+    const filePath = serviceEnvFilePath(layout.etcDir, service);
+    await writeTextFile(filePath, renderServiceEnv(service, keys, values));
+    await chmod(filePath, 0o600).catch(() => {});
+    io.stdout(`Wrote ${filePath} (${label} environment)`);
+  }
+}
+
+/**
+ * Ownership the host units need before they can run, reconciled on every
+ * start rather than once at install: an update rebuilds the Dashboard as
+ * root, and the unprivileged Dashboard has to be able to write its cache
+ * again afterwards.
+ */
+export async function reconcileHostOwnership(context: SystemdModeContext): Promise<number> {
+  const { io } = context;
+  const nextDir = path.join(context.repoRootDir, "apps/web/.next");
+  const chown = await context.execCommand(
+    ["chown", "-R", `${PLATFORM_SERVICE_USER}:${PLATFORM_SERVICE_USER}`, nextDir],
+    { cwd: context.repoRootDir },
+  );
+  if (chown.code !== 0) {
+    io.stderr(
+      `Could not give ${PLATFORM_SERVICE_USER} ownership of ${nextDir}:\n${chown.output.trim()}`,
+    );
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * Containers this form no longer runs. Removed actively, not left to the
+ * operator: a leftover container still holds the port its host unit is about
+ * to bind. Failures are reported and tolerated — on a fresh install there is
+ * nothing to remove.
+ */
+async function removeRetiredComposeServices(context: SystemdModeContext): Promise<void> {
+  if (RETIRED_COMPOSE_SERVICES.length === 0) return;
+  const profiles = RETIRED_COMPOSE_SERVICES.flatMap(({ profile }) => ["--profile", profile]);
+  const services = RETIRED_COMPOSE_SERVICES.map(({ service }) => service);
+  const removed = await context.execCommand(
+    applianceComposeArgs(context.layout, ...profiles, "rm", "--stop", "--force", ...services),
+    { cwd: context.repoRootDir },
+  );
+  if (removed.code === 0) {
+    context.io.stdout(`Removed the retired Compose services: ${services.join(", ")}.`);
+  }
+}
+
+/**
+ * Writes the units and their env files, reloads systemd and enables (without
+ * starting) the units; records systemd supervision in install.json. Starting
+ * is `startViaSystemd`'s job so first boot and promotion share one path.
  */
 export async function installSystemdArtifacts(
   context: SystemdModeContext,
@@ -344,18 +514,7 @@ export async function installSystemdArtifacts(
     stdout: io.stdout,
   });
 
-  const dispatcherEnv = dispatcherEnvFilePath(layout.etcDir);
-  await writeTextFile(dispatcherEnv, renderDispatcherEnv(envFile.values));
-  await chmod(dispatcherEnv, 0o600).catch(() => {});
-  io.stdout(`Wrote ${dispatcherEnv} (dispatcher-only environment)`);
-  const gatewayEnv = gatewayEnvFilePath(layout.etcDir);
-  await writeTextFile(gatewayEnv, renderServiceEnv("gateway", GATEWAY_ENV_KEYS, envFile.values));
-  await chmod(gatewayEnv, 0o600).catch(() => {});
-  io.stdout(`Wrote ${gatewayEnv} (gateway-only environment)`);
-  const webEnv = webEnvFilePath(layout.etcDir);
-  await writeTextFile(webEnv, renderServiceEnv("web", WEB_ENV_KEYS, envFile.values));
-  await chmod(webEnv, 0o600).catch(() => {});
-  io.stdout(`Wrote ${webEnv} (dashboard-only environment)`);
+  await writeServiceEnvFiles(context, envFile);
 
   const overlay = applianceOverlayPath(layout.etcDir);
   await writeTextFile(
@@ -364,26 +523,20 @@ export async function installSystemdArtifacts(
       dataDir: envFile.values.EVELAND_DATA_DIR ?? path.join(layout.root, "data"),
       publicOrigin: envFile.values.EVELAND_PUBLIC_ORIGIN ?? "http://localhost",
       envFilePath: layout.envFilePath,
-      gatewayEnvFilePath: gatewayEnv,
-      webEnvFilePath: webEnv,
     }),
   );
   io.stdout(`Wrote ${overlay}`);
 
-  await writeTextFile(
-    path.join(unitDir, systemdUnitName("worker")),
-    renderWorkerUnit({
-      sourceDir: context.repoRootDir,
-      envFilePath: layout.envFilePath,
-      nodeBinDir,
-    }),
-  );
-  await writeTextFile(
-    path.join(unitDir, systemdUnitName("workflow-dispatcher")),
-    renderDispatcherUnit({ sourceDir: context.repoRootDir, etcDir: layout.etcDir, nodeBinDir }),
-  );
-  io.stdout(`Wrote ${path.join(unitDir, systemdUnitName("worker"))}`);
-  io.stdout(`Wrote ${path.join(unitDir, systemdUnitName("workflow-dispatcher"))}`);
+  const options = unitRenderOptions(context, envFile, nodeBinDir);
+  for (const key of SYSTEMD_HOST_UNITS) {
+    const spec = processByKey(key);
+    if (!spec) throw new Error(`No platform process named '${key}'.`);
+    const unitPath = path.join(unitDir, systemdUnitName(key));
+    await writeTextFile(unitPath, renderPlatformUnit(spec, options));
+    io.stdout(`Wrote ${unitPath}`);
+  }
+
+  await removeRetiredComposeServices(context);
 
   const reload = await context.execCommand(["systemctl", "daemon-reload"], {
     cwd: context.repoRootDir,
@@ -427,7 +580,7 @@ export async function startViaSystemd(
   const services = options.skipInfra
     ? [...COMPOSE_CORE_SERVICES]
     : ["postgres", "otel-collector", ...COMPOSE_CORE_SERVICES];
-  io.stdout("Starting the Compose services (this runs their in-container install)...");
+  io.stdout("Starting the Compose services...");
   const up = await context.execCommand(applianceComposeArgs(layout, "up", "-d", ...services), {
     cwd: context.repoRootDir,
   });
@@ -435,6 +588,8 @@ export async function startViaSystemd(
     io.stderr(`docker compose up failed:\n${up.output.trim()}`);
     return 1;
   }
+  const owned = await reconcileHostOwnership(context);
+  if (owned !== 0) return owned;
   for (const key of SYSTEMD_HOST_UNITS) {
     const result = await context.execCommand(["systemctl", "start", systemdUnitName(key)], {
       cwd: context.repoRootDir,
@@ -475,13 +630,13 @@ export async function startViaSystemd(
   const missing = PLATFORM_PROCESSES.filter((spec) => !ready.has(spec.key)).map((s) => s.label);
   io.stderr(
     `Timed out waiting for: ${missing.join(", ")}. ` +
-      "Check `docker compose ps`, `systemctl status eveland-worker eveland-workflow-dispatcher`, " +
+      `Check \`docker compose ps\`, \`systemctl status ${SYSTEMD_HOST_UNITS.map(systemdUnitName).join(" ")}\`, ` +
       "and `journalctl -u eveland-worker`.",
   );
   return 1;
 }
 
-/** systemctl stop for the two units + compose stop for the core services. */
+/** systemctl stop for the host units + compose stop for the core services. */
 export async function stopViaSystemd(context: SystemdModeContext): Promise<number> {
   const { io, layout } = context;
   let failed = false;
@@ -494,13 +649,15 @@ export async function stopViaSystemd(context: SystemdModeContext): Promise<numbe
       failed = true;
     }
   }
-  const stop = await context.execCommand(
-    applianceComposeArgs(layout, "stop", ...COMPOSE_CORE_SERVICES),
-    { cwd: context.repoRootDir },
-  );
-  if (stop.code !== 0) {
-    io.stderr(`docker compose stop failed:\n${stop.output.trim()}`);
-    failed = true;
+  if (COMPOSE_CORE_SERVICES.length > 0) {
+    const stop = await context.execCommand(
+      applianceComposeArgs(layout, "stop", ...COMPOSE_CORE_SERVICES),
+      { cwd: context.repoRootDir },
+    );
+    if (stop.code !== 0) {
+      io.stderr(`docker compose stop failed:\n${stop.output.trim()}`);
+      failed = true;
+    }
   }
   if (!failed) {
     io.stdout("Stopped the platform. Infrastructure containers keep running.");

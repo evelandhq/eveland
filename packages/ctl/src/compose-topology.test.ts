@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { API_PORT } from "@evelandhq/core/ports";
 import { describe, expect, test } from "vitest";
-import { renderApplianceOverlay } from "./systemd-mode.js";
+import { renderApplianceOverlay, SYSTEMD_HOST_UNITS } from "./systemd-mode.js";
 
 /**
  * The Observation path crosses a Compose boundary: the Collector holds every
@@ -123,8 +123,6 @@ function applianceOverlayPath(): string {
       dataDir,
       publicOrigin: "https://eveland.example.com",
       envFilePath: "/opt/eveland/etc/eveland.env",
-      gatewayEnvFilePath: "/opt/eveland/etc/eveland-gateway.env",
-      webEnvFilePath: "/opt/eveland/etc/eveland-web.env",
     }),
     "utf8",
   );
@@ -228,23 +226,18 @@ describe.skipIf(!composeCliAvailable && !process.env.CI)(
       }
     });
 
-    test("the front door keeps the host network in production", () => {
-      // The Agent Gateway reaches Deployments on the host's 127.0.0.1:18xxx
-      // and is the installation's only non-loopback listener; moving the API
-      // off host networking must not move it too.
-      expect(requiredService(forms.production(), "gateway").network_mode).toBe("host");
-      expect(requiredService(forms.appliance(), "gateway").network_mode).toBe("host");
-    });
-
-    test("no production form starts a second Worker or workflow dispatcher", () => {
-      // Both are host systemd units, and exactly one of each may drive an
-      // installation. The base file's development Worker and dispatcher carry
-      // no profile, so deleting the overlay blocks that gate them -- rather
-      // than reducing each to a `profiles:` entry -- silently returns a second
-      // controller to the merged production configuration.
+    test("no production form starts a second copy of a host systemd unit", () => {
+      // Every one of these is a host systemd unit, and exactly one of each may
+      // drive an installation: a second front door fights for 17300, a second
+      // Dashboard for 17302, and a second Worker or dispatcher for the same
+      // jobs. The base file's development copies carry no profile, so deleting
+      // the overlay blocks that gate them -- rather than reducing each to a
+      // `profiles:` entry -- silently returns a second controller to the
+      // merged production configuration.
       for (const form of [forms.production(), forms.appliance()]) {
-        expect(Object.keys(form.services)).not.toContain("worker");
-        expect(Object.keys(form.services)).not.toContain("workflow-dispatcher");
+        for (const unit of SYSTEMD_HOST_UNITS) {
+          expect(Object.keys(form.services)).not.toContain(unit);
+        }
       }
     });
 

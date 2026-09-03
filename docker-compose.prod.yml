@@ -1,6 +1,6 @@
-# Production overlay for a single-box (Linux) deployment. API/Dashboard/Postgres run in Docker
-# Compose; the worker runs on the host as a systemd service (infra/systemd/eveland-worker.service,
-# see docs/en/production/core-services.md).
+# Production overlay for a single-box (Linux) deployment. The API, Postgres and the OTLP
+# Collector run in Docker Compose; the Agent Gateway, Dashboard, worker and workflow dispatcher
+# run on the host as systemd services (see docs/en/production/core-services.md).
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
@@ -14,19 +14,17 @@
 # Deployed agent data lives under /var/lib/eveland on the host, bind-mounted into the API at the
 # same absolute path so database sourcePath values are valid in both places.
 #
-# Why host networking: production runs every Deployment as a host systemd process bound to the
-# host's 127.0.0.1:PORT (loopback, not public), so the Agent Gateway (public proxy + internal
-# Playground) reaches an Agent only by sharing the host's network. On host network the compose
-# service DNS (postgres/api) is gone, so services talk over localhost; postgres stays bridged but
-# publishes host port 17310. `ports: !override []` clears base published ports (incompatible with
-# host net).
+# Why the Agent Gateway and the Dashboard are not here: production runs every Deployment as a host
+# systemd process bound to the host's 127.0.0.1:PORT (loopback, not public), so the Agent Gateway
+# (public proxy + internal Playground) reaches an Agent only from the host's own network namespace
+# -- which is to say, as a host process. It and the Dashboard are systemd units
+# (packages/ctl/src/systemd-mode.ts), and this file gates the base file's development copies behind
+# profiles the production command never enables.
 #
-# Why the API is NOT on the host network: it dials no Deployment port (its only outbound call is
-# the Gateway's cache invalidation), and the Collector must reach it to deliver every Agent event.
-# On the bridge it keeps the base file's service DNS name for the Collector while publishing 17301
-# to host loopback for the host-network Gateway and Dashboard, the host worker, and the dispatcher
-# -- so the network contract holds (17301 loopback-only) and the Observation path stays connected.
-# A host-network API can satisfy only one of the two.
+# Why the API is still here: the Collector must reach it to deliver every Agent event, and on the
+# bridge it keeps the base file's service DNS name for exactly that while publishing 17301 to host
+# loopback for the host units, the host worker, and the dispatcher -- so the network contract holds
+# (17301 loopback-only) and the Observation path stays connected.
 #
 # NODE_ENV=production is set only on the runtime command — setting it container-wide makes
 # `pnpm install` skip devDependencies (tsx / the next build toolchain) and the stack fails to start.
@@ -51,6 +49,10 @@ services:
     restart: unless-stopped
     # No network_mode/ports override: the API stays on the compose network and
     # keeps the base file's loopback publish (see the header).
+    # The base file's gateway dependency is gone with the gateway container;
+    # a depends_on naming a profiled-out service is an invalid project.
+    depends_on: !override
+      - postgres
     command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && cd apps/api && NODE_ENV=production pnpm exec tsx --import=@evelandhq/platform-observability/register --env-file=../../.env src/server.ts"
     extra_hosts:
       - host.docker.internal:host-gateway
@@ -86,28 +88,12 @@ services:
       - /var/lib/eveland:/var/lib/eveland
 
   gateway:
-    restart: unless-stopped
-    network_mode: host
-    ports: !override []
-    command: sh -lc "corepack enable && pnpm install && cd apps/gateway && NODE_ENV=production pnpm exec tsx --import=@evelandhq/platform-observability/register --env-file=../../.env src/server.ts"
-    environment:
-      CI: "true"
-      DATABASE_URL: postgres://eveland:eveland@localhost:17310/eveland
-      GATEWAY_PORT: 17300
-      EVELAND_AGENT_BASE_DOMAINS: "${EVELAND_AGENT_BASE_DOMAINS:?set EVELAND_AGENT_BASE_DOMAINS}"
-      EVELAND_GATEWAY_SERVICE_TOKEN: "${EVELAND_GATEWAY_SERVICE_TOKEN:?set EVELAND_GATEWAY_SERVICE_TOKEN}"
-      EVELAND_GATEWAY_AFFINITY_SECRET: "${EVELAND_GATEWAY_AFFINITY_SECRET:?set EVELAND_GATEWAY_AFFINITY_SECRET}"
-      EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES: "${EVELAND_GATEWAY_MAX_REQUEST_BODY_BYTES:-10485760}"
-      EVELAND_GATEWAY_PUBLIC_SCHEME: https
-      EVELAND_API_INTERNAL_URL: http://127.0.0.1:17301
-      # Host networking has no compose service DNS: the base file's
-      # http://web:17302 front-door upstream must become loopback here too.
-      EVELAND_WEB_INTERNAL_URL: http://127.0.0.1:17302
-      EVELAND_OTLP_ENDPOINT: http://127.0.0.1:17312
-      EVELAND_OTLP_SERVICE_TOKEN: "${EVELAND_OTLP_SERVICE_TOKEN:?set EVELAND_OTLP_SERVICE_TOKEN}"
-      EVELAND_ACTIVATION_RENEW_INTERVAL_MS: "${EVELAND_ACTIVATION_RENEW_INTERVAL_MS:-60000}"
-      EVELAND_RELEASE_CHANNEL: "${EVELAND_RELEASE_CHANNEL:-stable}"
-      EVELAND_REVISION: "${EVELAND_REVISION:-unknown}"
+    # The public front door is a host systemd unit (eveland-gateway.service):
+    # it must reach every Deployment on the host's 127.0.0.1:18xxx, and the
+    # host IS its network. Gate the base file's development gateway behind a
+    # profile the production command never enables so the merged config cannot
+    # start a second front door on 17300.
+    profiles: ["dev-gateway"]
 
   workflow-dispatcher:
     # Exactly one dispatcher may drive the production shared workflow database:
@@ -117,15 +103,10 @@ services:
     profiles: ["dev-dispatcher"]
 
   web:
-    restart: unless-stopped
-    network_mode: host
-    ports: !override []
-    command: sh -lc "corepack enable && pnpm install && NODE_ENV=production pnpm --filter @evelandhq/web build && NODE_ENV=production pnpm --filter @evelandhq/web exec next start --port 17302 --hostname 127.0.0.1"
-    environment:
-      CI: "true"
-      API_URL: http://localhost:17301
-      EVELAND_RELEASE_CHANNEL: "${EVELAND_RELEASE_CHANNEL:-stable}"
-      EVELAND_REVISION: "${EVELAND_REVISION:-unknown}"
+    # The Dashboard is a host systemd unit (eveland-web.service), built once on
+    # the host instead of rebuilt inside a container on every start. Same
+    # profile gate as the gateway above.
+    profiles: ["dev-web"]
 
   worker:
     # Production runs the host systemd Worker (docs/en/production/worker.md).

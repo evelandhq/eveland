@@ -129,6 +129,9 @@ describe("provisionLinuxHost", () => {
     ]);
     expect(harness.execCalls).toContainEqual(["install", "-d", "-m", "0755", "/workspace"]);
     expect(
+      harness.execCalls.some((argv) => argv[0] === "useradd" && argv.includes("eveland-platform")),
+    ).toBe(true);
+    expect(
       harness.execCalls.some((argv) => argv[0] === "useradd" && argv.includes("eveland-app")),
     ).toBe(true);
     expect(
@@ -302,7 +305,7 @@ describe("provisionLinuxHost", () => {
 
   test("existing users and an existing profile are left alone", async () => {
     const harness = await makeDeps({
-      existingUsers: ["eveland-app", "eveland-build"],
+      existingUsers: ["eveland-platform", "eveland-app", "eveland-build"],
       existingPaths: ["/etc/apparmor.d", "/etc/apparmor.d/bwrap", "/node-bin/node"],
       existingCommands: ["pnpm"],
     });
@@ -344,7 +347,7 @@ describe("provisionLinuxHost", () => {
         "bwrap",
         "pnpm",
       ],
-      existingUsers: ["eveland-app", "eveland-build"],
+      existingUsers: ["eveland-platform", "eveland-app", "eveland-build"],
     });
     await expect(provisionLinuxHost(harness.deps)).resolves.toBeUndefined();
   });

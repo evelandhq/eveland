@@ -45,8 +45,6 @@ export type DoctorDeps = {
   repoRootDir: string;
   envFile: PlatformEnvFile | null;
   supervisorRunning: boolean;
-  /** systemd production form: the Dashboard builds inside its container. */
-  systemdForm?: boolean;
   execCommand: ExecCommand;
   tcpProbe: TcpProbe;
   fetchImpl: FetchLike;
@@ -316,11 +314,9 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
     add("disk", "ok", `${formatGiB(freeBytes)} free`);
   }
 
-  // Dashboard production build (ctl-supervisor form only: the systemd form
-  // builds it inside the web container).
-  if (deps.systemdForm) {
-    // no host build needed
-  } else if (await deps.fileExists(path.join(deps.repoRootDir, "apps/web/.next/BUILD_ID"))) {
+  // Dashboard production build: a host artifact in BOTH forms now — the
+  // systemd form runs `next start` as a host unit, not inside a container.
+  if (await deps.fileExists(path.join(deps.repoRootDir, "apps/web/.next/BUILD_ID"))) {
     add("web-build", "ok", "Dashboard production build present");
   } else {
     add(
@@ -455,7 +451,6 @@ export async function runDoctor(
     repoRootDir: resolved.repoRootDir,
     envFile,
     supervisorRunning: supervisorPid !== null || metadata?.supervision === "systemd",
-    systemdForm: metadata?.supervision === "systemd",
     execCommand: resolved.execCommand,
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
     fetchImpl: resolved.fetchImpl,

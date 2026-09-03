@@ -13,6 +13,7 @@ import {
   writeSupervisorRecord,
   writeSupervisorState,
 } from "./state-files.ts";
+import { COMPOSE_CORE_SERVICES, SYSTEMD_HOST_UNITS } from "./systemd-mode.ts";
 
 // The fake identity convention shared by every harness: an alive pid has a
 // stable ps-style identity; a dead one reads null.
@@ -537,18 +538,19 @@ describe("systemd supervision mode", () => {
     expect(daemonSpawned).toBe(false);
     const composeUp = harness.execCalls.find((argv) => argv.includes("up"));
     expect(composeUp!.join(" ")).toContain("docker-compose.prod.yml");
-    for (const service of ["api", "gateway", "web"]) {
+    for (const service of COMPOSE_CORE_SERVICES) {
       expect(composeUp).toContain(service);
     }
-    // Only the two host units are systemctl-managed; core services are not.
-    for (const key of ["worker", "workflow-dispatcher"]) {
+    // Host units are systemctl-managed; what Compose still runs is not.
+    for (const key of SYSTEMD_HOST_UNITS) {
       expect(harness.execCalls).toContainEqual(["systemctl", "start", `eveland-${key}.service`]);
+      expect(composeUp).not.toContain(key);
     }
-    for (const key of ["gateway", "api", "web"]) {
+    for (const service of COMPOSE_CORE_SERVICES) {
       expect(harness.execCalls).not.toContainEqual([
         "systemctl",
         "start",
-        `eveland-${key}.service`,
+        `eveland-${service}.service`,
       ]);
     }
     expect(harness.out.join("\n")).toContain("Eveland is running at http://localhost:17300");
@@ -557,14 +559,14 @@ describe("systemd supervision mode", () => {
   test("stop delegates to systemctl for the host units and compose stop for the core", async () => {
     const harness = await makeSystemdHarness();
     expect(await runStop([], harness.io)).toBe(0);
-    for (const key of ["worker", "workflow-dispatcher"]) {
+    for (const key of SYSTEMD_HOST_UNITS) {
       expect(harness.execCalls).toContainEqual(["systemctl", "stop", `eveland-${key}.service`]);
     }
     const composeStop = harness.execCalls.find(
       (argv) => argv.includes("stop") && argv[0] === "docker",
     );
     expect(composeStop).toBeDefined();
-    for (const service of ["api", "gateway", "web"]) {
+    for (const service of COMPOSE_CORE_SERVICES) {
       expect(composeStop).toContain(service);
     }
     expect(harness.out.join("\n")).toContain("Stopped the platform");

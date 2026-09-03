@@ -119,6 +119,22 @@ export async function dockerPackagesToInstall(deps: LinuxHostDeps): Promise<stri
   );
 }
 
+/**
+ * The unprivileged system user the three listening platform services (API,
+ * Agent Gateway, Dashboard) run as.
+ *
+ * Deliberately NOT `eveland-app`: that identity exists so a deployed Agent's
+ * artifacts can be read by tenant code, and giving the platform's own trust
+ * root the same uid would put the API's uploads and the tenant artifact tree
+ * under one owner. Deliberately not `DynamicUser=yes` either: these three own
+ * files that outlive one start (the Dashboard build cache, uploaded sources),
+ * and a uid that changes every boot orphans them.
+ */
+export const PLATFORM_SERVICE_USER = "eveland-platform";
+
+/** Its home; the units point HOME here so nothing falls back to an unwritable one. */
+export const PLATFORM_SERVICE_HOME = "/var/lib/eveland-platform";
+
 async function userExists(deps: LinuxHostDeps, user: string): Promise<boolean> {
   const result = await deps.execCommand(["id", "-u", user], { cwd: deps.repoRootDir });
   return result.code === 0;
@@ -207,7 +223,26 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
     throw new Error(`Could not create /workspace:\n${workspace.output.trim()}`);
   }
 
-  // 4. The two service users, exactly as the preflight prescribes them.
+  // 4. The service users: the two the worker's preflight prescribes, plus the
+  // platform's own unprivileged identity for API/Gateway/Dashboard.
+  if (!(await userExists(deps, PLATFORM_SERVICE_USER))) {
+    deps.stdout(`Creating the ${PLATFORM_SERVICE_USER} platform service user...`);
+    const result = await deps.execCommand(
+      [
+        "useradd",
+        "--system",
+        "--user-group",
+        "--home-dir",
+        PLATFORM_SERVICE_HOME,
+        "--create-home",
+        PLATFORM_SERVICE_USER,
+      ],
+      { cwd: deps.repoRootDir },
+    );
+    if (result.code !== 0) {
+      throw new Error(`useradd ${PLATFORM_SERVICE_USER} failed:\n${result.output.trim()}`);
+    }
+  }
   if (!(await userExists(deps, "eveland-app"))) {
     deps.stdout("Creating the eveland-app artifact-access user...");
     const result = await deps.execCommand(

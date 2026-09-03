@@ -50,6 +50,7 @@ import {
   installSystemdArtifacts,
   startViaSystemd,
   stopViaSystemd,
+  writeServiceEnvFiles,
   type SystemdModeContext,
 } from "./systemd-mode.ts";
 
@@ -495,7 +496,18 @@ async function runStartUnlocked(
   if ((await systemdSupervised(resolved)) && !(await detectBootstrapNeeded(resolved))) {
     const envFile = await requirePlatformEnvFile(io, resolved);
     await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
-    const code = await startViaSystemd(systemdModeContext(io, resolved), {
+    // The Dashboard is a host unit now: its build is a host artifact, and a
+    // missing one has to fail here rather than as a unit that will not start.
+    const problems = await preflightStart(resolved, { requireWebBuild: true });
+    if (problems.length > 0) {
+      for (const problem of problems) io.stderr(problem);
+      return 1;
+    }
+    const context = systemdModeContext(io, resolved);
+    // Env files are derived from etc/eveland.env; re-render them so an
+    // operator edit takes effect on the next start, not the next install.
+    await writeServiceEnvFiles(context, envFile);
+    const code = await startViaSystemd(context, {
       skipInfra: Boolean(parsed.values["skip-infra"]),
     });
     if (code !== 0) return code;
@@ -594,9 +606,10 @@ async function runStartUnlocked(
           applianceComposeArgs(resolved.layout, "up", "-d", ...INFRA_COMPOSE_SERVICES),
         );
       }
-      // The Dashboard builds inside its own container in this form.
+      // The Dashboard is a host systemd unit: build it here, once, instead
+      // of rebuilding it inside a container on every start.
       await runBootstrapPrepare(deps, envFile, {
-        buildWeb: false,
+        buildWeb: true,
         pgReadyCommand: applianceComposeArgs(
           resolved.layout,
           "exec",
