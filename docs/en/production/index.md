@@ -13,7 +13,7 @@ The Dashboard, API, Agent Gateway, Postgres, and the managed OpenTelemetry Colle
 
 ## Host runtime controller
 
-Worker runs directly on the Linux host as a root-owned systemd service. It is the only component allowed to build untrusted project code and control systemd units (`systemd-run`, `systemctl`, `chown`). Builds run as a separate unprivileged build user inside a bubblewrap sandbox; each Eve Deployment runs under its own systemd `DynamicUser` and binds a private `127.0.0.1:41xxx` port. Worker has no public listener.
+Worker runs directly on the Linux host as a root-owned systemd service. It is the only component allowed to build untrusted project code and control systemd units (`systemd-run`, `systemctl`, `chown`). Builds run as a separate unprivileged build user inside a bubblewrap sandbox; each Eve Deployment runs under its own systemd `DynamicUser` and binds a private port in the `127.0.0.1:18000–18999` range. Worker has no public listener.
 
 ## Workflow dispatcher
 
