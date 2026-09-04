@@ -13,9 +13,15 @@ export async function writeConfigurationSnapshotFile(
     directory,
     `.${snapshot.component}-configuration-${randomUUID()}.tmp`,
   );
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+  // 0750/0640 rather than 0700/0600: the writer and the reader are different
+  // identities in the production form — the worker publishes this as root and
+  // the API reads it as the unprivileged platform user — and a shared group is
+  // how they meet without it becoming world-readable. `mkdir` leaves an
+  // existing directory's mode alone, so an installation that sets the setgid
+  // bit (eveland-ctl does) keeps it.
+  await mkdir(directory, { recursive: true, mode: 0o750 });
   try {
-    await writeFile(temporary, `${JSON.stringify(snapshot)}\n`, { encoding: "utf8", mode: 0o600 });
+    await writeFile(temporary, `${JSON.stringify(snapshot)}\n`, { encoding: "utf8", mode: 0o640 });
     await rename(temporary, destination);
   } finally {
     await unlink(temporary).catch(() => undefined);

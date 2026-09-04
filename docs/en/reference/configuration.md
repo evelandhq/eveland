@@ -35,6 +35,6 @@ Never copy a development fallback into production. Admins can compare the allowl
 
 - [Environment variables](/docs/reference/environment-variables): complete dictionary of platform variable names, defaults, and consumers
 - [Production architecture](/docs/production): core services, host Worker, and Dispatcher topology
-- [Install the core services](/docs/production/core-services): Compose production environment variable configuration
+- [Install the core services](/docs/production/core-services): production environment variable configuration
 - [Install the host Worker](/docs/production/worker): Worker systemd environment variable configuration
 - [Install the workflow dispatcher](/docs/production/workflow-dispatcher): Dispatcher environment variables and concurrency tuning

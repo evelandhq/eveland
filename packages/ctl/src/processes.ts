@@ -23,6 +23,18 @@ export type ProcessSpec = {
   /** Working directory relative to the repository root. */
   dir: string;
   argv: string[];
+  /**
+   * Workspace whose `node_modules/.bin` holds `argv`'s binary, relative to the
+   * repository root ("" is the root itself). A fact about the dependency
+   * graph, not a preference: `tsx` is a root devDependency and `next` belongs
+   * to apps/web, and pnpm links each only where it is declared.
+   *
+   * `directExecArgv` needs it because a systemd unit must not go through
+   * `pnpm exec` — corepack's pnpm shim wants a writable HOME cache that a
+   * unit environment does not guarantee (and that DynamicUser, HOME=/, hard-
+   * fails on).
+   */
+  binWorkspace: string;
   /** Loopback URL whose 2xx response marks the process ready; null when the process has no listener. */
   readinessUrl: string | null;
 };
@@ -39,6 +51,7 @@ export const PLATFORM_PROCESSES: ProcessSpec[] = [
       "--import=@evelandhq/platform-observability/register",
       "src/server.ts",
     ],
+    binWorkspace: "",
     readinessUrl: `${GATEWAY_INTERNAL_URL_FALLBACK}/health`,
   },
   {
@@ -52,6 +65,7 @@ export const PLATFORM_PROCESSES: ProcessSpec[] = [
       "--import=@evelandhq/platform-observability/register",
       "src/server.ts",
     ],
+    binWorkspace: "",
     readinessUrl: `${API_INTERNAL_URL_FALLBACK}/health`,
   },
   {
@@ -59,6 +73,7 @@ export const PLATFORM_PROCESSES: ProcessSpec[] = [
     label: "Dashboard",
     dir: "apps/web",
     argv: ["pnpm", "exec", "next", "start", "--port", String(WEB_PORT), "--hostname", "127.0.0.1"],
+    binWorkspace: "apps/web",
     readinessUrl: WEB_INTERNAL_URL_FALLBACK,
   },
   {
@@ -66,6 +81,7 @@ export const PLATFORM_PROCESSES: ProcessSpec[] = [
     label: "Worker",
     dir: "apps/worker",
     argv: ["pnpm", "exec", "tsx", "src/worker.ts"],
+    binWorkspace: "",
     readinessUrl: null,
   },
   {
@@ -73,6 +89,7 @@ export const PLATFORM_PROCESSES: ProcessSpec[] = [
     label: "Workflow dispatcher",
     dir: "apps/workflow-dispatcher",
     argv: ["pnpm", "exec", "tsx", "src/main.ts"],
+    binWorkspace: "",
     readinessUrl: null,
   },
 ];
@@ -116,4 +133,21 @@ export function childEnvironment(
 
 export function absoluteProcessDir(repoRootDir: string, spec: ProcessSpec): string {
   return path.join(repoRootDir, spec.dir);
+}
+
+/**
+ * The same process invoked WITHOUT pnpm: the workspace binary by absolute
+ * path, with the rest of the argv untouched. Every systemd unit runs this
+ * form, so a unit's command and a ctl-supervised child's command cannot drift
+ * apart — `PLATFORM_PROCESSES` stays the one place a platform process is
+ * defined.
+ */
+export function directExecArgv(repoRootDir: string, spec: ProcessSpec): string[] {
+  const [runner, subcommand, binary, ...rest] = spec.argv;
+  if (runner !== "pnpm" || subcommand !== "exec" || binary === undefined) {
+    throw new Error(
+      `Cannot derive a direct invocation for ${spec.key}: expected \`pnpm exec <binary> ...\`, got \`${spec.argv.join(" ")}\`.`,
+    );
+  }
+  return [path.join(repoRootDir, spec.binWorkspace, "node_modules", ".bin", binary), ...rest];
 }

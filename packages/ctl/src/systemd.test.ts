@@ -5,50 +5,164 @@ import { describe, expect, test } from "vitest";
 import { writeInstallMetadata } from "./bootstrap.ts";
 import { applianceLayout, readInstallMetadata } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
-import { systemdUnitName } from "./processes.ts";
+import { PLATFORM_PROCESSES, processByKey, systemdUnitName } from "./processes.ts";
 import {
   DISPATCHER_ENV_KEYS,
   GATEWAY_ENV_KEYS,
   renderApplianceOverlay,
   renderDispatcherEnv,
-  renderDispatcherUnit,
+  hostUnitsArmedPath,
+  renderPlatformUnit,
   renderServiceEnv,
-  renderWorkerUnit,
+  RETIRED_COMPOSE_SERVICES,
+  INFRA_COMPOSE_SERVICES,
   SYSTEMD_HOST_UNITS,
   WEB_ENV_KEYS,
 } from "./systemd-mode.ts";
+import { HOST_SERVICE_ACCOUNTS } from "./linux-host.ts";
 import { runInstallCommand } from "./systemd.ts";
 
+const UNIT_OPTIONS = {
+  sourceDir: "/opt/eveland/source",
+  etcDir: "/opt/eveland/etc",
+  dataDir: "/opt/eveland/data",
+  envFilePath: "/opt/eveland/etc/eveland.env",
+  nodeBinDir: "/opt/eveland/node/bin",
+  armedMarkerPath: "/opt/eveland/run/host-units-armed",
+};
+
+function unitFor(key: string): string {
+  const spec = processByKey(key);
+  if (!spec) throw new Error(`no process ${key}`);
+  return renderPlatformUnit(spec, UNIT_OPTIONS);
+}
+
 describe("the systemd form's units", () => {
-  test("exactly two host units exist — core services stay behind the Compose boundary", () => {
-    expect([...SYSTEMD_HOST_UNITS]).toEqual(["worker", "workflow-dispatcher"]);
+  test("every platform process has a unit, and nothing else does", () => {
+    // The unit list IS the topology now. A process missing from it is a
+    // process nothing starts.
+    expect([...SYSTEMD_HOST_UNITS].sort()).toEqual(
+      PLATFORM_PROCESSES.map((spec) => spec.key).sort(),
+    );
+  });
+
+  test("Docker is left holding only the Collector and the bundled database", () => {
+    expect([...INFRA_COMPOSE_SERVICES]).toEqual(["postgres", "otel-collector"]);
+  });
+
+  test("the API unit reads the whole configuration and can write only its data dir", () => {
+    const unit = unitFor("api");
+    expect(unit).toContain("User=eveland-platform");
+    expect(unit).not.toContain("User=root");
+    expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland-api.env");
+    expect(unit).toContain("ProtectSystem=strict");
+    expect(unit).toContain("ReadWritePaths=/var/lib/eveland-platform /opt/eveland/data");
+    expect(unit).toContain(
+      "ExecStart=/opt/eveland/source/node_modules/.bin/tsx --import=@evelandhq/platform-observability/register src/server.ts",
+    );
+    // Nothing orders itself after itself.
+    expect(unit).not.toContain("eveland-api.service");
   });
 
   test("the worker unit is root on purpose and reads the full configuration", () => {
-    const unit = renderWorkerUnit({
-      sourceDir: "/opt/eveland/source",
-      envFilePath: "/opt/eveland/etc/eveland.env",
-      nodeBinDir: "/opt/eveland/node/bin",
-    });
+    const unit = unitFor("worker");
     expect(unit).toContain("User=root");
     expect(unit).toContain("WorkingDirectory=/opt/eveland/source/apps/worker");
-    expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland.env");
+    expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland-worker.env");
     expect(unit).toContain("ExecStart=/opt/eveland/source/node_modules/.bin/tsx src/worker.ts");
     expect(unit).toContain("Restart=on-failure");
+    // Root drives systemd-run, systemctl, chown and mounts: sandboxing it
+    // would break every deployment it starts.
+    expect(unit).not.toContain("ProtectSystem=");
   });
 
   test("the dispatcher unit is DynamicUser with crash-loop caps and its OWN env file", () => {
-    const unit = renderDispatcherUnit({
-      sourceDir: "/opt/eveland/source",
-      etcDir: "/opt/eveland/etc",
-      nodeBinDir: "/opt/eveland/node/bin",
-    });
+    const unit = unitFor("workflow-dispatcher");
     expect(unit).toContain("DynamicUser=yes");
     expect(unit).not.toContain("User=root");
     expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland-workflow-dispatcher.env");
     expect(unit).toContain("StartLimitIntervalSec=300");
     expect(unit).toContain("StartLimitBurst=10");
     expect(unit).toContain("ExecStart=/opt/eveland/source/node_modules/.bin/tsx src/main.ts");
+  });
+
+  test("the front door runs on a throwaway uid of its own", () => {
+    const unit = unitFor("gateway");
+    // It owns no file that outlives a restart, so it needs no stable
+    // identity — and a uid nobody else uses is what keeps a compromised
+    // public proxy from reading the API's /proc/<pid>/environ.
+    expect(unit).toContain("DynamicUser=yes");
+    expect(unit).not.toContain("User=root");
+    expect(unit).not.toContain("User=eveland-platform");
+    expect(unit).not.toContain("ReadWritePaths=");
+    expect(unit).toContain("ProtectProc=invisible");
+    expect(unit).toContain("NoNewPrivileges=yes");
+    expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland-gateway.env");
+    expect(unit).toContain(
+      "ExecStart=/opt/eveland/source/node_modules/.bin/tsx --import=@evelandhq/platform-observability/register src/server.ts",
+    );
+  });
+
+  test("the Dashboard unit can write .next/cache and nothing else in the checkout", () => {
+    const unit = unitFor("web");
+    // Its own uid, not the API's: the Dashboard must not be one /proc read
+    // away from APP_SECRET_KEY.
+    expect(unit).toContain("User=eveland-web");
+    expect(unit).not.toContain("eveland-platform");
+    expect(unit).toContain("ProtectSystem=strict");
+    // `next start` writes .next/cache on its first request; without this the
+    // read-only checkout kills it.
+    expect(unit).toContain(
+      "ReadWritePaths=/var/lib/eveland-web /opt/eveland/source/apps/web/.next",
+    );
+    expect(unit).toContain("Environment=NEXT_TELEMETRY_DISABLED=1");
+    // `next` is a web dependency, so its bin lives in that workspace.
+    expect(unit).toContain(
+      "ExecStart=/opt/eveland/source/apps/web/node_modules/.bin/next start --port 17302 --hostname 127.0.0.1",
+    );
+  });
+
+  test("no unit goes through pnpm — corepack needs a writable HOME a unit does not have", () => {
+    for (const key of SYSTEMD_HOST_UNITS) {
+      expect(unitFor(key)).not.toMatch(/ExecStart=.*\bpnpm\b/);
+    }
+  });
+
+  test("no two units share a uid", () => {
+    // The whole point of the per-service env allowlists. Same-uid processes
+    // read each other's /proc/<pid>/environ (PTRACE_MODE_READ_FSCREDS, which
+    // Yama's ptrace_scope does not restrict), so one uid for two services
+    // means the narrower service's allowlist buys nothing.
+    const identities = SYSTEMD_HOST_UNITS.map((key) => {
+      const unit = unitFor(key);
+      if (unit.includes("DynamicUser=yes")) return `dynamic:${key}`;
+      const user = /^User=(.+)$/m.exec(unit)?.[1];
+      expect(user, `${key} declares no identity`).toBeDefined();
+      return user!;
+    });
+    expect(new Set(identities).size).toBe(identities.length);
+  });
+
+  test("every unprivileged unit hides the rest of the process table", () => {
+    for (const key of SYSTEMD_HOST_UNITS) {
+      const unit = unitFor(key);
+      if (unit.includes("User=root")) continue;
+      expect(unit, key).toContain("ProtectProc=invisible");
+    }
+  });
+
+  test("the crash-loop cap sits in [Unit], where systemd reads it", () => {
+    // StartLimitIntervalSec/StartLimitBurst moved out of [Service] in systemd
+    // v229; left there they are logged as unknown keys and ignored, and with
+    // RestartSec=5 the default 10s/5 window never trips either — so a broken
+    // config would restart forever instead of failing.
+    for (const key of SYSTEMD_HOST_UNITS) {
+      const unit = unitFor(key);
+      const unitSection = unit.slice(unit.indexOf("[Unit]"), unit.indexOf("[Service]"));
+      expect(unitSection, key).toContain("StartLimitIntervalSec=300");
+      expect(unitSection, key).toContain("StartLimitBurst=10");
+      expect(unit.slice(unit.indexOf("[Service]")), key).not.toContain("StartLimit");
+    }
   });
 });
 
@@ -128,47 +242,16 @@ describe("the public Gateway's and the Dashboard's narrowed environments", () =>
 
 describe("the appliance Compose overlay", () => {
   test("repoints data binds, masks native artifacts, and derives scheme/port from the origin", () => {
-    const overlay = renderApplianceOverlay({
-      dataDir: "/opt/eveland/data",
-      publicOrigin: "http://localhost:17300",
-      envFilePath: "/opt/eveland/etc/eveland.env",
-      gatewayEnvFilePath: "/opt/eveland/etc/eveland-gateway.env",
-      webEnvFilePath: "/opt/eveland/etc/eveland-web.env",
-    });
-    expect(overlay).toContain("- /opt/eveland/data:/opt/eveland/data");
-    expect(overlay).toContain("EVELAND_DATA_DIR: /opt/eveland/data");
-    expect(overlay).toContain("eveland-appliance-api-node-modules:/workspace/node_modules");
-    // The prod commands read /workspace/.env at runtime. Only the API gets
-    // the full configuration; the public Gateway and the Dashboard get their
-    // allowlisted files — the full file must appear exactly once.
-    expect(overlay).toContain("- /opt/eveland/etc/eveland.env:/workspace/.env:ro");
-    expect(overlay.split("/opt/eveland/etc/eveland.env:/workspace/.env").length - 1).toBe(1);
-    expect(overlay).toContain("- /opt/eveland/etc/eveland-gateway.env:/workspace/.env:ro");
-    expect(overlay).toContain("- /opt/eveland/etc/eveland-web.env:/workspace/.env:ro");
-    expect(overlay).toContain("eveland-appliance-gateway-node-modules:/workspace/node_modules");
-    expect(overlay).toContain("eveland-appliance-web-node-modules:/workspace/node_modules");
-    expect(overlay).toContain("eveland-appliance-web-next:/workspace/apps/web/.next");
-    expect(overlay).toContain("eveland-gateway-data-mask:/workspace/.eveland-data");
-    expect(overlay).toContain("EVELAND_GATEWAY_PUBLIC_SCHEME: http");
-    // Host networking has no service DNS; the front door's web upstream
-    // must be loopback.
-    expect(overlay).toContain("EVELAND_WEB_INTERNAL_URL: http://127.0.0.1:17302");
-    expect(overlay).toContain('EVELAND_GATEWAY_PUBLIC_PORT: "17300"');
+    const overlay = renderApplianceOverlay({ dataDir: "/opt/eveland/data" });
     expect(overlay).toContain("/opt/eveland/data/otel:/var/lib/eveland/otel");
-    // Worker and dispatcher never appear: they are host units, not services.
-    expect(overlay).not.toContain("worker");
-  });
-
-  test("an https origin on the default port drops the public port", () => {
-    const overlay = renderApplianceOverlay({
-      dataDir: "/opt/eveland/data",
-      publicOrigin: "https://eveland.example.com",
-      envFilePath: "/opt/eveland/etc/eveland.env",
-      gatewayEnvFilePath: "/opt/eveland/etc/eveland-gateway.env",
-      webEnvFilePath: "/opt/eveland/etc/eveland-web.env",
-    });
-    expect(overlay).toContain("EVELAND_GATEWAY_PUBLIC_SCHEME: https");
-    expect(overlay).toContain('EVELAND_GATEWAY_PUBLIC_PORT: "0"');
+    // Only the Collector is left to adjust. Every platform process is a host
+    // unit, so nothing here may mention one -- and no bind may hand a
+    // container the appliance source tree or its configuration.
+    for (const gone of ["api", "worker", "gateway", "web"]) {
+      expect(overlay).not.toContain(`  ${gone}:`);
+    }
+    expect(overlay).not.toContain("/workspace");
+    expect(overlay).not.toContain("eveland.env");
   });
 });
 
@@ -207,6 +290,7 @@ async function makeHarness(options: { uid?: number; bootstrapped?: boolean } = {
   const err: string[] = [];
   const execCalls: string[][] = [];
   const written: Record<string, string> = {};
+  const writtenAfterCall: Record<string, number> = {};
   const io: InstallIo = {
     env: { EVELAND_HOME: home },
     platform: "linux",
@@ -221,17 +305,23 @@ async function makeHarness(options: { uid?: number; bootstrapped?: boolean } = {
       execCalls.push(argv);
       if (argv[0] === "systemctl" && argv[1] === "is-active")
         return { code: 0, output: "active\n" };
+      // A host that has none of the service accounts yet, like the machine an
+      // older installation updates from.
+      if (argv[0] === "id") return { code: 1, output: "no such user\n" };
       return { code: 0, output: "" };
     },
     getuid: () => options.uid ?? 0,
     systemdUnitDir: unitDir,
     writeTextFile: async (filePath, content) => {
       written[filePath] = content;
+      // How many commands had already run when this file appeared, so a test
+      // can assert ordering between a write and the systemctl calls.
+      writtenAfterCall[filePath] = execCalls.length;
       const { writeFile: write } = await import("node:fs/promises");
       await write(filePath, content, "utf8");
     },
   };
-  return { io, out, err, execCalls, written, layout, unitDir };
+  return { io, out, err, execCalls, written, writtenAfterCall, layout, unitDir };
 }
 
 describe("runInstallCommand", () => {
@@ -273,17 +363,14 @@ describe("runInstallCommand", () => {
     expect(harness.execCalls.some((argv) => argv[0] === "systemctl")).toBe(false);
   });
 
-  test("promotes: TWO units, dispatcher env, overlay, compose core up, units started", async () => {
+  test("promotes: one unit per platform process, narrowed env, overlay, infra up, units started", async () => {
     const harness = await makeHarness({});
     expect(await runInstallCommand(["--systemd"], harness.io)).toBe(0);
 
-    // Exactly the two documented units; nothing for gateway/api/web.
+    // Exactly one unit per platform process.
     const unitPaths = Object.keys(harness.written).filter((p) => p.startsWith(harness.unitDir));
     expect(unitPaths.sort()).toEqual(
-      [
-        path.join(harness.unitDir, systemdUnitName("worker")),
-        path.join(harness.unitDir, systemdUnitName("workflow-dispatcher")),
-      ].sort(),
+      SYSTEMD_HOST_UNITS.map((key) => path.join(harness.unitDir, systemdUnitName(key))).sort(),
     );
     const workerUnit = harness.written[path.join(harness.unitDir, systemdUnitName("worker"))]!;
     expect(workerUnit).toContain("User=root");
@@ -307,16 +394,33 @@ describe("runInstallCommand", () => {
     const webEnv = await readFile(path.join(harness.layout.etcDir, "eveland-web.env"), "utf8");
     expect(webEnv).not.toContain("APP_SECRET_KEY");
     expect(webEnv).not.toContain("WORKFLOW_DISPATCHER_ACTIVATION_TOKEN");
+    // The API's file is the whole configuration plus what this form derives.
+    const apiEnv = await readFile(path.join(harness.layout.etcDir, "eveland-api.env"), "utf8");
+    expect(apiEnv).toContain("APP_SECRET_KEY=k");
+    expect(apiEnv).toContain("EVELAND_GATEWAY_PUBLIC_SCHEME=http");
+    expect(apiEnv).toContain("EVELAND_API_BIND_HOST=127.0.0.1");
+    expect(apiEnv).toContain("EVELAND_GATEWAY_INTERNAL_URL=");
 
-    // Compose brings up infra + core services with the three-file stack.
+    // Compose brings up the infrastructure, and only that, with the
+    // three-file stack.
     const composeUp = harness.execCalls.find((argv) => argv.includes("up"));
     expect(composeUp).toBeDefined();
     expect(composeUp!.join(" ")).toContain("docker-compose.prod.yml");
     expect(composeUp!.join(" ")).toContain("compose.appliance.yml");
-    for (const service of ["postgres", "otel-collector", "api", "gateway", "web"]) {
+    for (const service of INFRA_COMPOSE_SERVICES) {
       expect(composeUp).toContain(service);
     }
-    expect(composeUp!.join(" ")).not.toMatch(/ worker/);
+    for (const key of SYSTEMD_HOST_UNITS) expect(composeUp).not.toContain(key);
+
+    // Containers this form no longer runs are actively removed: a leftover
+    // one still holds the port its host unit is about to bind.
+    const removal = harness.execCalls.find((argv) => argv.includes("rm"));
+    expect(removal).toBeDefined();
+    for (const { service, profile } of RETIRED_COMPOSE_SERVICES) {
+      expect(removal!.join(" ")).toContain(`--profile ${profile}`);
+      expect(removal).toContain(service);
+    }
+    expect(removal!.join(" ")).toContain("--stop --force");
 
     // Both units enabled and started; supervision recorded.
     for (const key of SYSTEMD_HOST_UNITS) {
@@ -324,5 +428,41 @@ describe("runInstallCommand", () => {
       expect(harness.execCalls).toContainEqual(["systemctl", "start", systemdUnitName(key)]);
     }
     expect((await readInstallMetadata(harness.layout))?.supervision).toBe("systemd");
+  });
+
+  test("the accounts the units name are created before the units that name them", async () => {
+    // An installation made before a service had its own identity first meets
+    // those units on an update, which never re-runs the first-boot host
+    // provisioning. A unit whose User= does not exist fails to start.
+    const harness = await makeHarness({});
+    expect(await runInstallCommand(["--systemd"], harness.io)).toBe(0);
+    for (const account of HOST_SERVICE_ACCOUNTS) {
+      expect(
+        harness.execCalls.some((argv) => argv[0] === "useradd" && argv.includes(account.user)),
+      ).toBe(true);
+    }
+    const firstUseradd = harness.execCalls.findIndex((argv) => argv[0] === "useradd");
+    const webUnit = path.join(harness.unitDir, systemdUnitName("web"));
+    expect(harness.writtenAfterCall[webUnit]).toBeGreaterThan(firstUseradd);
+  });
+
+  test("the units are armed for unattended boot only once everything else has run", async () => {
+    const harness = await makeHarness({});
+    expect(await runInstallCommand(["--systemd"], harness.io)).toBe(0);
+
+    // Every unit gates on the marker...
+    const markerPath = hostUnitsArmedPath(harness.layout);
+    for (const key of SYSTEMD_HOST_UNITS) {
+      const unit = harness.written[path.join(harness.unitDir, systemdUnitName(key))]!;
+      expect(unit, key).toContain(`ConditionPathExists=${markerPath}`);
+    }
+    // ...and it is written, but only after the enable/build/migrate steps: a
+    // reboot before this point must leave the units skipped, not running new
+    // code against an old schema.
+    await expect(readFile(markerPath, "utf8")).resolves.toContain("ConditionPathExists");
+    const enabledAt = harness.execCalls.findIndex(
+      (argv) => argv[0] === "systemctl" && argv[1] === "enable",
+    );
+    expect(harness.writtenAfterCall[markerPath]).toBeGreaterThan(enabledAt);
   });
 });

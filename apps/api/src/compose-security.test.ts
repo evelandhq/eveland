@@ -87,22 +87,38 @@ describe("Compose production runtime environment", () => {
     expect(serviceBlock(developmentCompose, "worker")).not.toContain("profiles:");
   });
 
-  it("runs the production web build and server under NODE_ENV=production", () => {
-    const web = serviceBlock(productionCompose, "web");
+  it("gates every platform service out of the production stack", () => {
+    // Production runs all five as host systemd units, and exactly one of each
+    // may drive an installation. As with the Worker above, each has to be
+    // reduced to a profile gate rather than deleted: a deleted block lets the
+    // base file's development definition merge straight through.
+    for (const [service, profile] of [
+      ["api", "dev-api"],
+      ["gateway", "dev-gateway"],
+      ["web", "dev-web"],
+    ] as const) {
+      const block = serviceBlock(productionCompose, service);
 
-    // The base file's NODE_ENV=development merges into the production web service,
-    // so both steps need an explicit override on the command.
-    expect(web).toContain("NODE_ENV=production pnpm --filter @evelandhq/web build");
-    expect(web).toContain("NODE_ENV=production pnpm --filter @evelandhq/web exec next start");
+      expect(block).toContain(`profiles: ["${profile}"]`);
+      // Nothing but the gate: a leftover command or environment block would be
+      // configuration for a container this form never starts.
+      expect(block).not.toContain("command:");
+      expect(block).not.toContain("environment:");
+      expect(serviceBlock(developmentCompose, service)).not.toContain("profiles:");
+    }
+  });
 
-    // Never container-wide: NODE_ENV=production makes `pnpm install` skip the
-    // devDependencies the Next build needs (see the overlay header comment).
-    expect(web).not.toContain("NODE_ENV:");
+  it("keeps the bundled database off a bare production `up`", () => {
+    // An installation that brought its own PostgreSQL must not get a second
+    // cluster started beside it; eveland-ctl names the service, which enables
+    // the profile for that command alone.
+    expect(serviceBlock(productionCompose, "postgres")).toContain('profiles: ["bundled-postgres"]');
+    expect(serviceBlock(developmentCompose, "postgres")).not.toContain("profiles:");
   });
 });
 
 describe("Compose Observation path", () => {
-  it("addresses the API by compose service name from the Collector", () => {
+  it("addresses the API by compose service name from the Collector in development", () => {
     const collector = serviceBlock(developmentCompose, "otel-collector");
 
     // The Collector holds the only copy of an Agent's events until the API
@@ -118,6 +134,21 @@ describe("Compose Observation path", () => {
     );
     expect(collector).toContain(
       `EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT: http://api:${API_PORT}/internal/observability/destinations`,
+    );
+  });
+
+  it("addresses the API through the host gateway in production", () => {
+    // There is no `api` service to name in the production stack: the API is a
+    // host process, and a host-native API is unreachable from a bridge over
+    // loopback. So the Collector dials Docker's host-gateway, where the API
+    // binds its path-allowlisted second listener.
+    const collector = serviceBlock(productionCompose, "otel-collector");
+
+    expect(collector).toContain(
+      `EVELAND_BUILTIN_OTLP_ENDPOINT: http://host.docker.internal:${API_PORT}/internal/otel`,
+    );
+    expect(collector).toContain(
+      `EVELAND_EXTERNAL_OTLP_PROXY_ENDPOINT: http://host.docker.internal:${API_PORT}/internal/observability/destinations`,
     );
   });
 });

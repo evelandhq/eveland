@@ -20,9 +20,12 @@ import { repoRoot } from "./scan-support.js";
  * start.
  *
  * So: any documented command that starts the Collector without also starting
- * the API must merge the host-native overlay.
+ * the API must merge an overlay that points the Collector at the host. There
+ * are two, for the two forms where the API is a host process: the development
+ * overlay, and the production one -- where the API is a systemd unit and no
+ * platform service is a container at all.
  */
-const HOST_NATIVE_OVERLAY = "docker-compose.native.yml";
+const HOST_DIALING_OVERLAYS = ["docker-compose.native.yml", "docker-compose.prod.yml"];
 
 type ComposeCommand = {
   source: string;
@@ -123,17 +126,19 @@ describe("documented Compose topology", () => {
     expect(violations).toEqual([]);
   });
 
-  test("a documented stack that starts the Collector without the API merges the host-native overlay", () => {
+  test("a documented stack that starts the Collector without the API points it at the host", () => {
     const violations: string[] = [];
     for (const command of allComposeCommands()) {
-      // No service operands starts every service, the API included.
+      // No service operands starts every service, the API included -- in the
+      // forms that still have one.
       if (command.services.length === 0) continue;
       if (!command.services.includes("otel-collector")) continue;
       if (command.services.includes("api")) continue;
-      if (command.files.includes(HOST_NATIVE_OVERLAY)) continue;
+      if (command.files.some((file) => HOST_DIALING_OVERLAYS.includes(file))) continue;
 
       violations.push(
-        `${command.source}:${command.line} starts the Collector without the API and without ${HOST_NATIVE_OVERLAY}: ${command.text}`,
+        `${command.source}:${command.line} starts the Collector without the API and without one of ` +
+          `${HOST_DIALING_OVERLAYS.join(" / ")}: ${command.text}`,
       );
     }
 

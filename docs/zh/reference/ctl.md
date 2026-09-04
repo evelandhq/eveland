@@ -35,16 +35,16 @@ curl -fsSL https://eveland.ai/install.sh | bash
 
 ## 命令
 
-| 命令                                                           | 行为                                                                                                                                                                                       |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `eveland-ctl start [--foreground] [--skip-infra]`              | 先拉起 infra 容器(Postgres、OTLP Collector),再在 ctl 监督下拉起五个平台进程。幂等:平台已在运行则直接短路。`--foreground` 让监督进程留在前台(Ctrl-C 即停);`--skip-infra` 表示容器由别处管理 |
-| `eveland-ctl stop`                                             | 向监督进程发 SIGTERM 并确认进程树退出(必要时升级为 SIGKILL)。infra 容器保持运行                                                                                                            |
-| `eveland-ctl restart`                                          | 先 `stop` 再 `start`                                                                                                                                                                       |
-| `eveland-ctl status`                                           | 监督进程视图 ⊕ 实时健康探测 ⊕ infra 可达性;全部健康才退出 0                                                                                                                                |
-| `eveland-ctl logs [process] [-f] [--tail N]`                   | 平台进程自己的 stdout/stderr(来自 `logs/`)。已部署项目的日志属于 `eveland logs`                                                                                                            |
-| `eveland-ctl doctor`                                           | 完整机器体检(见下);一次收集所有问题,任何 failure 都退出 1                                                                                                                                  |
-| `eveland-ctl update [--version <tag>] [--yes] [--skip-backup]` | 升级 appliance 到某个 release tag(见下)                                                                                                                                                    |
-| `eveland-ctl install --systemd`                                | 仅 Linux、仅 root:把安装转正为 systemd 系统服务(见下)                                                                                                                                      |
+| 命令                                                           | 行为                                                                                                                                                                                                       |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eveland-ctl start [--foreground] [--skip-infra]`              | 先拉起 infra 容器(OTLP Collector,以及自带数据库的安装还有 Postgres),再拉起五个平台进程。幂等:平台已在运行则直接短路。`--foreground` 让 ctl 监督进程留在前台(Ctrl-C 即停);`--skip-infra` 表示容器由别处管理 |
+| `eveland-ctl stop`                                             | 停止平台——systemd 形态按启动的逆序停 unit,否则向监督进程发 SIGTERM 并确认进程树退出(必要时升级为 SIGKILL)。infra 容器保持运行                                                                              |
+| `eveland-ctl restart`                                          | 先 `stop` 再 `start`                                                                                                                                                                                       |
+| `eveland-ctl status`                                           | 监督进程视图 ⊕ 实时健康探测 ⊕ infra 可达性;全部健康才退出 0                                                                                                                                                |
+| `eveland-ctl logs [process] [-f] [--tail N]`                   | 平台进程自己的 stdout/stderr(来自 `logs/`)。已部署项目的日志属于 `eveland logs`                                                                                                                            |
+| `eveland-ctl doctor`                                           | 完整机器体检(见下);一次收集所有问题,任何 failure 都退出 1                                                                                                                                                  |
+| `eveland-ctl update [--version <tag>] [--yes] [--skip-backup]` | 升级 appliance 到某个 release tag(见下)                                                                                                                                                                    |
+| `eveland-ctl install --systemd`                                | 仅 Linux、仅 root:把安装转正为 systemd 系统服务(见下)                                                                                                                                                      |
 
 ## 首次引导
 
@@ -70,7 +70,7 @@ macOS 没有 systemd,所以 `start` 把一个监督进程 daemon 化,由它拥�
 2. **备份**:`pg_dump` 落进 `backups/`,文件名带着它保护的版本号——先写 `.partial`、fsync、再 rename,备份要么完整存在要么不存在(失败、中断或空的 dump 不会留下任何能被当成备份的文件;文件权限 `0600`)。dump 失败拒绝继续(`--skip-backup` 是逃生口)。
 3. **先停再动**:整个平台在 checkout 之前停止——在运行中的进程脚下替换源码、`node_modules` 和 Dashboard 构建,会让它们从半更新的树重启。此后任何一步失败都刻意让平台保持停止,并打印一份明确的恢复方案:重试,或**按该版本的回滚说明**回滚(运维升级指南里的"Rollback boundary")——只有在说明宣称旧版本与已应用的迁移兼容时,才给出 checkout 旧 tag 的命令;否则方案是先从命名的数据库备份恢复。它从不宣称迁移向前兼容。进行中的更新会被记录(`run/update-pending.json`,在 checkout 移动之前写入,携带源版本、目标、备份、stash **commit** 与更新前的 eve pin),**重跑 `update` 即从该记录续跑**——checkout 已经报告目标版本,绝不会在平台停机时被误判为"已是最新";记录只在最后一个恢复动作完成后才清除(中断的一次还欠着的动作不会随之丢失);续跑完成时 eve 窗口警告照样触发;stash 按记录的 sha 恢复——sha 没记下来时按它在 stash 列表里的唯一名字找——而不是"最新的那个"。
 4. **脏树处理**:unmerged index 先 reset(stash 会被它噎住);真实的本地改动进**带名** stash(`eveland-ctl-update-<ts>`),checkout 之后、`pnpm install` _之前_(本地改动可能碰到它读取的 manifest)、也在启动任何东西之前交互式询问是否恢复;apply 不干净就是失败门(stash 保留,冲突由你解决或丢弃,重跑从这里续),记录会记住已恢复的 stash,续跑不会再找它。ignored 文件不受影响。
-5. checkout → `pnpm install --frozen-lockfile`,然后第一阶段——仍是**旧**代码——把控制权交给**新 checkout 自己的** `eveland-ctl`(隐藏的 `_finish-update`),因为旧版本不该替新版本决定其产物和启动序列。新 ctl 刷新发布身份;在 systemd 形态下重新生成并 reload 自己的产物(两个 unit、各服务的 env 白名单、Compose overlay),让拓扑或权限修复真正到达已安装的机器,否则构建 Dashboard;随后 `db:migrate` 与 start(带常规就绪门)。start 失败落入同一份恢复方案。
+5. checkout → `pnpm install --frozen-lockfile`,然后第一阶段——仍是**旧**代码——把控制权交给**新 checkout 自己的** `eveland-ctl`(隐藏的 `_finish-update`),因为旧版本不该替新版本决定其产物和启动序列。新 ctl 刷新发布身份;在 systemd 形态下重新生成并 reload 自己的产物(各个 unit、各服务的 env 文件、Compose overlay),让拓扑或权限修复真正到达已安装的机器,否则构建 Dashboard;随后 `db:migrate` 与 start(带常规就绪门)。start 失败落入同一份恢复方案。
 6. **eve 窗口检测**:若本次更新移动了受支持的 eve 窗口(比较两个_提交_里 starter 模板的 pin,绝不读可能被恢复的 stash 改过的工作树),ctl 大声警告:按旧窗口构建的 Release 会 attest 为 unknown、其 schedule 进死信,直到每个项目 rebuild 并 promote。
 7. 重启后探测固化的 `EVELAND_NODE`——被 `nvm uninstall` 无声移除的解释器会得到明确的"重跑安装脚本"指引,而不是一个谜。
 
@@ -80,10 +80,14 @@ macOS 没有 systemd,所以 `start` 把一个监督进程 daemon 化,由它拥�
 
 Linux 上平台运行在**文档化的生产拓扑**里,由 ctl 代为编排——root 首次引导即默认落此形态,`eveland-ctl install --systemd` 用于把更早的或 `--foreground` 的安装转正:
 
-- **核心服务留在 Compose 隔离边界内**:API、Agent Gateway、Dashboard 经 `docker-compose.prod.yml` 加一份渲染的 appliance overlay(`etc/compose.appliance.yml`)运行——overlay 把数据 bind 指向 appliance 数据目录、从配置的 origin 派生公开 scheme/port、并用 named volume 遮蔽 `node_modules`/`.next`,让 alpine 容器永远写不进宿主的原生 checkout。每个容器从 bind 到 `/workspace/.env` 的文件读配置,而**只有 API 拿到完整的 `etc/eveland.env`**:面向公网的 Agent Gateway 读收窄的 `etc/eveland-gateway.env`,Dashboard 读收窄的 `etc/eveland-web.env`——各自恰好是 `docker-compose.yml` 为该服务声明的那些变量(ctl 的白名单与之手工同步)——所以暴露在互联网上的进程永远拿不到 admin 密码、`APP_SECRET_KEY`、`BETTER_AUTH_SECRET`、模型 key 或 scheduler secrets。没有任何面向公网的进程以宿主 root 运行,也没有任何一个能越过显式 bind 读到源码树或数据目录。
-- **恰好两个 systemd unit**,与文档已久的两个收敛:`eveland-worker.service`(刻意 `User=root`——它驱动 `systemd-run`/`systemctl`/`chown`;每个部署的 Agent 仍有自己的非特权 `DynamicUser`)读取完整 `etc/eveland.env`;`eveland-workflow-dispatcher.service`(`DynamicUser=yes`,带 crash-loop 上限)读取**收窄的** `etc/eveland-workflow-dispatcher.env`——只含其文档化 env.example 携带的变量,永远见不到 admin 密码、`APP_SECRET_KEY` 或平台 `DATABASE_URL`。
+- **每个平台进程一个 unit**,五个都在,并且由 macOS supervisor 同一张 `PLATFORM_PROCESSES` 表渲染——unit 与被监督的子进程不可能各写一份;两者都不走 `pnpm exec`(corepack 的 shim 需要一个可写的 HOME cache,而 unit 环境不保证有)。
+- **隔离边界是 unit,不是镜像,而且每个 unit 各有各的 uid。** `eveland-api` 跑在 `eveland-platform`,`eveland-web` 跑在 `eveland-web`,`eveland-gateway` 用 `DynamicUser`——公网前门没有任何跨重启存活的文件。三者都配 `ProtectSystem=strict`(源码树只读)、`ProtectProc=invisible` 与显式 `ReadWritePaths`:API 是数据目录,Dashboard 是 `apps/web/.next`,前门什么都不能写。身份分开才让「每服务一份环境文件」真正成立——同 uid 的进程能互读 `/proc/<pid>/environ`,共用一个「平台用户」等于把 API 的 `APP_SECRET_KEY` 直接交给被攻陷的前门。`eveland-worker` 刻意 `User=root`——它驱动 `systemd-run`/`systemctl`/`chown`,每个部署的 Agent 正是因此才有自己的非特权 `DynamicUser`;`eveland-workflow-dispatcher` 是 `DynamicUser=yes`,带 crash-loop 上限。这比它取代的容器化形态严格更强:那里每个服务都是容器 root,并且整棵宿主源码树被 bind 进去。
+- **每个 unit 读自己的 env 文件**,并且**每次启动**都从 `etc/eveland.env` 重新渲染——运维改了那个文件,下次重启就生效,而不是等下次安装。API 与 worker 拿到完整配置(两者按设计就是信任根,收窄它们只会静默丢掉运维手工添加的变量);面向公网的 Agent Gateway、Dashboard 与 Dispatcher 拿收窄的白名单,永远不含 admin 密码、`APP_SECRET_KEY`、`BETTER_AUTH_SECRET`、模型 key 或 scheduler secrets。
+- **Docker 只留 Collector**(无状态,且 Docker Runtime 需要把它接入每个 Agent 的遥测网络)**与自带数据库**(如果这套安装有的话)。Collector 通过 `host.docker.internal` 访问宿主机上的 API,API 在同一地址绑定第二个 Listener,只接受 Health、Collector Observation、Agent JWKS 与 Scheduler Channel 路径;ctl 每次启动都重新探测这个地址——Docker 会按自己的节奏给 Bridge 重新编号。开机自启时没有 ctl 在场重新探测,所以 API 把这个 Listener 的绑定失败当作「Observation 通路降级」处理——日志事件 `eveland.api.docker_bridge_unavailable`,跑一次 `eveland-ctl start` 即可修复——而不是让整个 API 一起挂掉。
+- **开机自启由标记文件把关,而不是 `systemctl enable`。** 每个 unit 都带 `ConditionPathExists=<root>/run/host-units-armed`。ctl 在启动 unit 之前的最后一刻写下它——此时 Dashboard 已构建、数据库已迁移;update 在移动 unit 所指向的那份 checkout 之前先删掉它。在这两个窗口内重启,systemd 会**跳过**这些 unit(`systemctl status` 会写明并给出该路径),而不是拿新代码去跑旧 schema;重新执行 `eveland-ctl start` 或 `eveland-ctl update` 会补完剩余步骤并重新置位。
+- **所有权每次启动都对账**,而不是安装时做一次:`apps/web/.next` 归 Dashboard 用户,`<dataDir>/uploads` 归 API 用户,`<dataDir>/diagnostics` 归 `root:eveland-platform` `2750`——这就是 root worker 与非特权服务之间全部的文件级契约,也是 worker 的配置快照能被 API 读到、却不至于全局可读的原因。
 
-此后 `start`/`stop`/`restart`/`status` 一并管理 Compose 与两个 unit(systemd 快路径只对*已完成*的安装生效:unit 装好之后才中断的首次引导,下一次 `start` 会续跑引导),`logs` 对 unit 读 journald、对核心服务读 `docker compose logs`(`-f` 直接指向这两个工具)。平台随机器重启。
+此后 `start`/`stop`/`restart`/`status` 一并管理这些 unit(systemd 快路径只对*已完成*的安装生效:unit 装好之后才中断的首次引导,下一次 `start` 会续跑引导),`logs` 读 journald(`-f` 直接指向 `journalctl`)。平台随机器重启。
 
 ## Doctor
 
@@ -97,5 +101,6 @@ Linux 上平台运行在**文档化的生产拓扑**里,由 ctl 代为编排—�
 - **proxy-env** — 设了代理变量就警告:不可达的代理会让安装与构建以"网络抖动"的假面目失败。
 - **sharp-libvips** — macOS 上存在全局 Homebrew libvips 而未设 `SHARP_IGNORE_GLOBAL_LIBVIPS=1`,新装的 sharp 构建会失败。
 - **disk / web-build** — 磁盘余量阈值与 Dashboard 生产构建。
-- **postgres** — 可达不等于可信:doctor 直接问 Compose 容器本体要迁移账本,把"平台端口上有个外来 Postgres 应答"(Lima 端口转发劫持)与"是我们的库但没迁移"区分开。
+- **postgres** — 可达不等于可信:doctor 用配置的 `DATABASE_URL` 建立连接并读取迁移账本,把"平台端口上有个外来 Postgres 应答"(Lima 端口转发劫持)与"是我们的库但没迁移"区分开。输出里只会出现地址——DSN 携带口令。
+- **pg_dump** — 只对使用自己 PostgreSQL 的安装检查,因为那种形态下 `update` 的升级前备份从宿主机执行。与其升级到一半失败,不如先给出一条检查结果。
 - **platform** — 监督进程在跑时,Agent Gateway 与 Platform API 的健康端点必须应答。

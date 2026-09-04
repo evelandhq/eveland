@@ -73,10 +73,12 @@ Open the Dashboard at `http://localhost:17300` and the public documentation site
   API, Playground/public Agent traffic goes through Agent Gateway, imports, builds,
   and deploys are executed by the worker's job polling, and durable workflow wake
   and continuation need exactly one workflow dispatcher.
-- Linux native development requires `EVELAND_API_DOCKER_BRIDGE_HOST` to be the
-  private gateway reported by Docker's built-in `bridge` network. That listener
-  accepts only health, Collector Observation, Agent JWKS, and Scheduler Channel
-  paths; the platform control plane remains loopback-only.
+- On Linux `EVELAND_API_DOCKER_BRIDGE_HOST` must be the private gateway
+  reported by Docker's built-in `bridge` network. That listener accepts only
+  health, Collector Observation, Agent JWKS, and Scheduler Channel paths; the
+  platform control plane remains loopback-only. The production form needs the
+  same listener for the same reason and sets it itself — `eveland-ctl`
+  re-detects the address on every `start`.
 - Use `pnpm dev:api`, `pnpm dev:gateway`, `pnpm dev:web`, `pnpm dev:worker`,
   `pnpm dev:workflow-dispatcher`, and `pnpm dev:docs` in separate terminals when
   isolated logs are more useful. `dev:worker` does not start the dispatcher.

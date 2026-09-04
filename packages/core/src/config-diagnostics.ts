@@ -464,7 +464,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     name: "EVELAND_API_DOCKER_BRIDGE_HOST",
     components: ["api"],
     purpose:
-      "Optional private Docker bridge address for Linux-native container-to-API runtime paths.",
+      "Private Docker bridge address the API binds a second, allowlisted listener on, so bridged containers (the managed Collector) can reach a host-native API on Linux.",
   },
   entry(
     "EVELAND_ACTIVATION_LEASE_TTL_MS",

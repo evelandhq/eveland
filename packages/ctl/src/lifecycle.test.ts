@@ -13,6 +13,7 @@ import {
   writeSupervisorRecord,
   writeSupervisorState,
 } from "./state-files.ts";
+import { INFRA_COMPOSE_SERVICES, SYSTEMD_HOST_UNITS } from "./systemd-mode.ts";
 
 // The fake identity convention shared by every harness: an alive pid has a
 // stable ps-style identity; a dead one reads null.
@@ -58,6 +59,13 @@ async function makeHarness(options: HarnessOptions = {}) {
     stderr: (line) => err.push(line),
     repoRootDir: repo,
     sleep: async () => {},
+    // Every IO seam is stubbed HERE, not per test: the first-boot readiness
+    // gate opens a real Postgres connection through this one, so a harness
+    // that leaves it out passes on a developer's machine (which has a
+    // database on the platform port) and burns the full 120-second deadline
+    // in CI, which does not.
+    pgReady: async () => true,
+    tcpProbe: async () => true,
     fetchImpl: async () =>
       (options.fetchOk ?? true)
         ? new Response("{}", { status: 200 })
@@ -202,7 +210,6 @@ describe("runStart first boot", () => {
     const configHome = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
     harness.io.env.XDG_CONFIG_HOME = configHome;
     harness.io.fetchImpl = deviceFlowFetch();
-    harness.io.tcpProbe = async () => true;
     const streamed: string[][] = [];
     harness.io.streamCommand = async (argv) => {
       streamed.push(argv);
@@ -260,7 +267,6 @@ describe("runStart first boot", () => {
       }
       return new Response("{}", { status: 200 });
     };
-    harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
 
     expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
@@ -273,7 +279,6 @@ describe("runStart first boot", () => {
   test("a completed install with pending seeding retries it on the next start until it sticks", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
-    harness.io.tcpProbe = async () => true;
     // First boot: readiness fine, but every auth call fails -> seed pending.
     harness.io.fetchImpl = async (url) =>
       new URL(url).pathname.startsWith("/api/auth/")
@@ -313,7 +318,6 @@ describe("runStart first boot", () => {
   test("a bootstrap interrupted after the supervisor came up is FINISHED by the next start, not swallowed by 'already running'", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
-    harness.io.tcpProbe = async () => true;
     const streamed: string[][] = [];
     harness.io.streamCommand = async (argv) => {
       streamed.push(argv);
@@ -345,7 +349,6 @@ describe("runStart first boot", () => {
   test("pending seeding is retried even when the platform is already running", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
-    harness.io.tcpProbe = async () => true;
     harness.io.fetchImpl = async (url) =>
       new URL(url).pathname.startsWith("/api/auth/")
         ? new Response("{}", { status: 500 })
@@ -383,7 +386,6 @@ describe("runStart first boot", () => {
     harness.io.platform = "linux";
     harness.io.env.XDG_CONFIG_HOME = configHome;
     harness.io.fetchImpl = deviceFlowFetch();
-    harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
     const io = harness.io as typeof harness.io & {
       getuid: () => number;
@@ -428,14 +430,13 @@ describe("runStart first boot", () => {
     expect(harness.out.join("\n")).toContain("Eveland is running at");
   });
 
-  test("Linux root first boot lands directly on the production form (systemd + compose core)", async () => {
+  test("Linux root first boot lands directly on the production form (all five as systemd units)", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     const configHome = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
     const unitDir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-units-"));
     harness.io.platform = "linux";
     harness.io.env.XDG_CONFIG_HOME = configHome;
     harness.io.fetchImpl = deviceFlowFetch();
-    harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
     const io = harness.io as typeof harness.io & {
       getuid: () => number;
@@ -466,8 +467,13 @@ describe("runStart first boot", () => {
 
     expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
 
-    // The production form, not the ctl supervisor: no daemon, two units.
-    expect(Object.keys(written).some((p) => p.startsWith(unitDir))).toBe(true);
+    // The production form, not the ctl supervisor: no daemon, one unit per
+    // platform process.
+    expect(
+      Object.keys(written)
+        .filter((p) => p.startsWith(unitDir))
+        .sort(),
+    ).toEqual(SYSTEMD_HOST_UNITS.map((key) => path.join(unitDir, `eveland-${key}.service`)).sort());
     expect(written[path.join(unitDir, "eveland-worker.service")]).toContain("User=root");
     expect(written[path.join(unitDir, "eveland-workflow-dispatcher.service")]).toContain(
       "DynamicUser=yes",
@@ -476,18 +482,18 @@ describe("runStart first boot", () => {
     expect(metadata?.supervision).toBe("systemd");
     expect(metadata?.bootstrapCompleted).toBe(true);
     expect(metadata?.seedCompleted).toBe(true);
-    // Core services came up through the appliance compose stack.
-    const composeUp = harness.execCalls.find(
-      (argv) => argv[0] === "docker" && argv.includes("up") && argv.includes("api"),
-    );
+    // The infrastructure came up through the appliance compose stack, and
+    // nothing else did.
+    const composeUp = harness.execCalls.find((argv) => argv[0] === "docker" && argv.includes("up"));
     expect(composeUp!.join(" ")).toContain("compose.appliance.yml");
+    for (const service of INFRA_COMPOSE_SERVICES) expect(composeUp).toContain(service);
+    for (const key of SYSTEMD_HOST_UNITS) expect(composeUp).not.toContain(key);
   });
 
   test("an interrupted bootstrap resumes without re-rendering secrets", async () => {
     const harness = await makeHarness({ env: undefined, webBuild: false });
     harness.io.env.XDG_CONFIG_HOME = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-xdg-"));
     harness.io.fetchImpl = deviceFlowFetch();
-    harness.io.tcpProbe = async () => true;
     harness.io.streamCommand = async () => 0;
     expect(await runStart(["--no-prompt"], harness.io)).toBe(0);
     const first = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
@@ -537,36 +543,28 @@ describe("systemd supervision mode", () => {
     expect(daemonSpawned).toBe(false);
     const composeUp = harness.execCalls.find((argv) => argv.includes("up"));
     expect(composeUp!.join(" ")).toContain("docker-compose.prod.yml");
-    for (const service of ["api", "gateway", "web"]) {
+    // Compose starts the infrastructure and nothing else.
+    for (const service of INFRA_COMPOSE_SERVICES) {
       expect(composeUp).toContain(service);
     }
-    // Only the two host units are systemctl-managed; core services are not.
-    for (const key of ["worker", "workflow-dispatcher"]) {
+    for (const key of SYSTEMD_HOST_UNITS) {
       expect(harness.execCalls).toContainEqual(["systemctl", "start", `eveland-${key}.service`]);
-    }
-    for (const key of ["gateway", "api", "web"]) {
-      expect(harness.execCalls).not.toContainEqual([
-        "systemctl",
-        "start",
-        `eveland-${key}.service`,
-      ]);
+      expect(composeUp).not.toContain(key);
     }
     expect(harness.out.join("\n")).toContain("Eveland is running at http://localhost:17300");
   });
 
-  test("stop delegates to systemctl for the host units and compose stop for the core", async () => {
+  test("stop delegates to systemctl for every host unit and leaves the containers up", async () => {
     const harness = await makeSystemdHarness();
     expect(await runStop([], harness.io)).toBe(0);
-    for (const key of ["worker", "workflow-dispatcher"]) {
+    for (const key of SYSTEMD_HOST_UNITS) {
       expect(harness.execCalls).toContainEqual(["systemctl", "stop", `eveland-${key}.service`]);
     }
-    const composeStop = harness.execCalls.find(
-      (argv) => argv.includes("stop") && argv[0] === "docker",
-    );
-    expect(composeStop).toBeDefined();
-    for (const service of ["api", "gateway", "web"]) {
-      expect(composeStop).toContain(service);
-    }
+    // Nothing is stopped through Compose any more: the infrastructure
+    // containers deliberately keep running while the platform is down.
+    expect(
+      harness.execCalls.find((argv) => argv[0] === "docker" && argv.includes("stop")),
+    ).toBeUndefined();
     expect(harness.out.join("\n")).toContain("Stopped the platform");
   });
 });

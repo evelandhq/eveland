@@ -1,16 +1,21 @@
 import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { POSTGRES_HOST_PORT } from "@evelandhq/core/ports";
 import {
   defaultBootstrapInputs,
-  migratedWorkflowWorldComposeUrl,
   renderPlatformEnv,
   type BootstrapInputs,
 } from "./config-render.ts";
 import { parseEnvFile, upsertEnvFileValue, type PlatformEnvFile } from "./env-file.ts";
+import { describeDatabaseAddress, type PgReady } from "./pg-probe.ts";
 import { deriveReleaseIdentity } from "./release-identity.ts";
-import type { ApplianceLayout, InstallMetadata } from "./home.ts";
+import {
+  databaseMode,
+  readInstallMetadata,
+  type ApplianceLayout,
+  type DatabaseMode,
+  type InstallMetadata,
+} from "./home.ts";
 import type { ExecCommand, LifecycleIo, StreamCommand } from "./io.ts";
 import type { Prompter } from "./prompt.ts";
 import type { TcpProbe } from "./net-probe.ts";
@@ -63,6 +68,8 @@ export type BootstrapDeps = {
   tcpProbe: TcpProbe;
   sleep: (ms: number) => Promise<void>;
   fileExists: (filePath: string) => Promise<boolean>;
+  /** A real connection + query against a DSN; a port probe is a false ready signal. */
+  pgReady: PgReady;
   random?: (size: number) => Buffer;
 };
 
@@ -93,6 +100,8 @@ export async function gatherBootstrapInputs(deps: BootstrapDeps): Promise<Bootst
     throw new Error("The admin password must be at least 12 characters.");
   }
 
+  const databaseUrl = await chooseDatabase(deps, defaults);
+
   let anthropicApiKey = defaults.anthropicApiKey;
   if (anthropicApiKey) {
     const use = await prompter.confirm(
@@ -114,7 +123,69 @@ export async function gatherBootstrapInputs(deps: BootstrapDeps): Promise<Bootst
     if (!use) openaiApiKey = undefined;
   }
 
-  return { publicOrigin, adminEmail, adminPassword, anthropicApiKey, openaiApiKey };
+  return { publicOrigin, adminEmail, adminPassword, databaseUrl, anthropicApiKey, openaiApiKey };
+}
+
+/**
+ * Bundled or external Postgres — asked once, at first boot, and answered by
+ * the operator rather than guessed.
+ *
+ * Deliberately not "probe the usual port and use whatever answers": an
+ * automatic fallback to the bundled database is how an installation ends up
+ * with a second cluster nobody knows about, holding half the data. If an
+ * operator names a server, it has to be reachable now, or the install stops
+ * here instead of failing later inside a migration.
+ */
+async function chooseDatabase(
+  deps: BootstrapDeps,
+  defaults: BootstrapInputs,
+): Promise<string | undefined> {
+  const { io, prompter } = deps;
+  // macOS is not asked. There, deployed Agents are Docker containers that
+  // reach Postgres through host.docker.internal while the platform's own
+  // processes use loopback -- an external server would reintroduce exactly
+  // the two-addresses-for-one-database split the Linux form just removed.
+  if (deps.platform !== "linux") return undefined;
+  let databaseUrl = defaults.databaseUrl;
+  if (databaseUrl) {
+    const use = await prompter.confirm(
+      `Found DATABASE_URL in your shell (${describeDatabaseAddress(databaseUrl) ?? "unparseable"}) — use it?`,
+      true,
+    );
+    if (!use) databaseUrl = undefined;
+  } else if (prompter.interactive) {
+    const external = await prompter.confirm(
+      "Use an existing PostgreSQL server? (answering no runs one alongside eveland in Docker)",
+      false,
+    );
+    if (external) {
+      databaseUrl =
+        (
+          await prompter.ask(
+            "PostgreSQL connection URL (postgres://user:password@host:port/db)",
+            "",
+          )
+        ).trim() || undefined;
+    }
+  }
+  if (!databaseUrl) return undefined;
+
+  const address = describeDatabaseAddress(databaseUrl);
+  if (!address) {
+    throw new Error(
+      "That is not a PostgreSQL connection URL. Expected postgres://user:password@host:port/database.",
+    );
+  }
+  io.stdout(`Checking the database at ${address}...`);
+  if (!(await deps.pgReady(databaseUrl))) {
+    throw new Error(
+      `No PostgreSQL answered at ${address}. Check that it is running, that it accepts ` +
+        "connections from this host (listen_addresses and pg_hba.conf), and that the role, " +
+        "password and database in the URL exist.",
+    );
+  }
+  io.stdout(`  connected to ${address}`);
+  return databaseUrl;
 }
 
 export async function writeInstallMetadata(
@@ -125,8 +196,14 @@ export async function writeInstallMetadata(
   await writeFile(layout.installJsonPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
 }
 
+export type BootstrapConfig = {
+  envFile: PlatformEnvFile;
+  /** Recorded in install.json: every later command branches on it. */
+  database: DatabaseMode;
+};
+
 /** Directory scaffolding + configuration rendering. Returns the env file to run with. */
-export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformEnvFile> {
+export async function runBootstrapConfig(deps: BootstrapDeps): Promise<BootstrapConfig> {
   const { io, layout } = deps;
   for (const dir of [
     layout.etcDir,
@@ -150,7 +227,27 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
       io.stdout(
         `Reusing existing configuration at ${layout.envFilePath} (secrets are minted once).`,
       );
-      return { path: layout.envFilePath, values: existing };
+      // A resumed bootstrap already answered the question, and the answer was
+      // recorded BEFORE this file was written (see below), so a record is
+      // guaranteed here for anything this code path created. A completed
+      // install from before the question existed runs the bundled database.
+      // Anything else is a half-finished bootstrap whose answer is gone, and
+      // guessing "bundled" there starts a second cluster next to the
+      // operator's own and makes every later `update` back up the wrong one.
+      const metadata = await readInstallMetadata(layout);
+      if (!metadata?.database && metadata?.bootstrapCompleted !== true) {
+        throw new Error(
+          `${layout.envFilePath} exists but ${layout.installJsonPath} does not record which ` +
+            "database this installation uses, so its first boot did not finish. Re-run the " +
+            "bootstrap against an empty appliance root, or add " +
+            '`"database": "bundled"` or `"database": "external"` to install.json by hand — ' +
+            "whichever matches the DATABASE_URL already in the configuration.",
+        );
+      }
+      return {
+        envFile: { path: layout.envFilePath, values: existing },
+        database: databaseMode(metadata),
+      };
     }
     preSeeded = existing;
   }
@@ -158,6 +255,13 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
   io.stdout("");
   io.stdout("First boot: this machine has no eveland configuration yet.");
   const inputs = await gatherBootstrapInputs(deps);
+  const database: DatabaseMode = inputs.databaseUrl ? "external" : "bundled";
+  // Recorded BEFORE the configuration it describes. The two writes are not
+  // atomic together, and this is the order that makes a crash between them
+  // recoverable: a record with no configuration is re-asked from scratch,
+  // whereas a configuration with no record is a machine that cannot tell an
+  // operator's own Postgres from one it is about to start alongside it.
+  await recordDatabaseMode(deps, database);
   const rendered = renderPlatformEnv({
     platform: deps.platform,
     applianceRoot: layout.root,
@@ -181,7 +285,25 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<PlatformE
   io.stdout("  The generated password is recorded only in that file — read it with:");
   io.stdout(`  grep EVELAND_ADMIN_PASSWORD ${layout.envFilePath}`);
   io.stdout("");
-  return { path: layout.envFilePath, values: rendered.values };
+  return { envFile: { path: layout.envFilePath, values: rendered.values }, database };
+}
+
+/**
+ * Persists the bundled-or-external answer on its own, ahead of everything it
+ * gates. Merges into whatever the installer already left in install.json so
+ * this never has to invent the fields it does not own.
+ */
+async function recordDatabaseMode(deps: BootstrapDeps, database: DatabaseMode): Promise<void> {
+  const existing = await readInstallMetadata(deps.layout);
+  await writeInstallMetadata(deps.layout, {
+    version: 1,
+    installedAt: new Date().toISOString(),
+    method: deps.io.env.EVELAND_INSTALL_METHOD === "install.sh" ? "install.sh" : "manual",
+    osMode: deps.platform,
+    bootstrapCompleted: false,
+    ...existing,
+    database,
+  });
 }
 
 /** Writes the checkout's channel + revision into the env file (and the in-memory values). */
@@ -198,64 +320,20 @@ export async function pinReleaseIdentity(
   envFile.values.EVELAND_REVISION = identity.revision;
 }
 
-/**
- * An installation rendered before EVELAND_WORKFLOW_WORLD_COMPOSE_URL existed
- * carries only the host view of the shared workflow database, which the
- * containerized Linux API cannot dial — and the production overlay requires
- * the Compose view, so every Compose command would refuse to interpolate. So
- * every path that starts or updates an existing installation runs this first,
- * before any Compose invocation or artifact generation.
- *
- * It fills in only what this installer itself rendered, never overwrites a
- * value the operator set, and says so plainly when an installation's own world
- * topology is the one thing it must not guess at.
- */
-export async function backfillWorkflowWorldComposeUrl(
-  io: LifecycleIo,
-  platform: NodeJS.Platform,
-  envFile: PlatformEnvFile,
-): Promise<void> {
-  // Only the Linux form runs the API in Compose; darwin runs it on the host,
-  // where the world's loopback address is the reachable one.
-  if (platform !== "linux") return;
-  if (envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL) return;
-  const worldUrl = envFile.values.EVELAND_WORKFLOW_WORLD_URL;
-  if (!worldUrl) return;
-  const composeUrl = migratedWorkflowWorldComposeUrl(worldUrl);
-  if (composeUrl === null) {
-    io.stderr(
-      `EVELAND_WORKFLOW_WORLD_COMPOSE_URL is not set in ${envFile.path}, and this ` +
-        "installation's EVELAND_WORKFLOW_WORLD_URL is not one eveland-ctl rendered, so the " +
-        "address its containerized API should use cannot be derived from it. Set it to the " +
-        "same shared workflow database, reachable from the Compose network.",
-    );
-    return;
-  }
-  await upsertEnvFileValue(envFile.path, "EVELAND_WORKFLOW_WORLD_COMPOSE_URL", composeUrl);
-  envFile.values.EVELAND_WORKFLOW_WORLD_COMPOSE_URL = composeUrl;
-}
-
 /** Build + database preparation. Idempotent; safe to re-run after a failure. */
 export async function runBootstrapPrepare(
   deps: BootstrapDeps,
   envFile: PlatformEnvFile,
-  options: {
-    buildWeb: boolean;
-    /** Full argv whose exit 0 means Postgres actually accepts connections. */
-    pgReadyCommand: string[];
-  },
+  options: { buildWeb: boolean },
 ): Promise<void> {
   const { io } = deps;
 
   // Release identity: the exact short SHA, and a channel that is `stable`
   // only on an exact vX.Y.Z tag. Refreshed again by update.
   await pinReleaseIdentity(deps.execCommand, deps.repoRootDir, envFile);
-  await backfillWorkflowWorldComposeUrl(io, deps.platform, envFile);
 
   const childEnv = { ...io.env, ...envFile.values };
 
-  // The systemd production form builds the Dashboard inside its own
-  // container; only the ctl-supervised form needs a host build.
   if (
     options.buildWeb &&
     !(await deps.fileExists(path.join(deps.repoRootDir, "apps/web/.next/BUILD_ID")))
@@ -268,16 +346,19 @@ export async function runBootstrapPrepare(
     if (code !== 0) throw new Error("The Dashboard build failed; see the output above.");
   }
 
-  // A bare TCP probe is a FALSE ready signal here: Docker's port proxy
-  // accepts connections before postgres inside finishes starting, and the
-  // migration then dies on "the database system is starting up". Ask
-  // postgres itself.
-  io.stdout("Waiting for Postgres...");
+  // Through the DSN the platform itself will use, not a port: Docker's port
+  // proxy accepts connections before the postgres inside it finishes
+  // starting, and the migration then dies on "the database system is starting
+  // up". The same probe serves a bundled container and an operator's own
+  // server, which is the point -- one gate, one truth.
+  const databaseUrl = envFile.values.DATABASE_URL;
+  if (!databaseUrl) throw new Error("DATABASE_URL is not set in the platform configuration.");
+  const address = describeDatabaseAddress(databaseUrl) ?? "the configured address";
+  io.stdout(`Waiting for Postgres at ${address}...`);
   const deadlineMs = 120_000;
   let up = false;
   for (let waited = 0; waited < deadlineMs; waited += 2_000) {
-    const ready = await deps.execCommand(options.pgReadyCommand, { cwd: deps.repoRootDir });
-    if (ready.code === 0) {
+    if (await deps.pgReady(databaseUrl)) {
       up = true;
       break;
     }
@@ -285,7 +366,9 @@ export async function runBootstrapPrepare(
   }
   if (!up) {
     throw new Error(
-      `Postgres did not become ready on 127.0.0.1:${POSTGRES_HOST_PORT}. Check \`docker compose ps\` and \`docker compose logs postgres\` in ${deps.repoRootDir}.`,
+      `Postgres did not become ready at ${address} within ${deadlineMs / 1_000}s. ` +
+        "For the bundled database check `docker compose ps` and `docker compose logs postgres`; " +
+        "for your own server check that it is running and accepts connections from this host.",
     );
   }
 

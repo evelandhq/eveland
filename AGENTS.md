@@ -274,11 +274,12 @@ corresponding tests and docs are updated.
 - Persist and honor each Deployment's `runtimeKind`. Stop/restart/delete must
   use the adapter that owns that Deployment, not merely the worker's current
   default.
-- Docker remains the local-development runtime. The current Linux production
-  topology uses Docker Compose for API/Agent Gateway/Dashboard/Postgres and a host systemd
-  worker with a shared absolute data root. Do not globally flip runtime or path
-  defaults without updating preflight, Compose, env examples, and deployment
-  docs.
+- Docker remains the local-development runtime. The Linux production topology
+  is host-native: every platform process (API, Agent Gateway, Dashboard,
+  worker, workflow dispatcher) is a systemd unit sharing one absolute data
+  root, and Docker holds only the OTLP Collector plus an optional bundled
+  Postgres. Do not globally flip runtime or path defaults without updating
+  preflight, Compose, env examples, and deployment docs.
 - API and worker must agree on absolute source, release, and telemetry policy paths. Treat
   build lifecycle scripts and imported project code as untrusted across the
   documented sandbox boundary.
@@ -334,13 +335,19 @@ Choose exactly one development mode. Do not alternate a native macOS install
 and full Compose in the same working tree: Compose installs Linux dependencies
 into the mounted workspace and can clobber native `node_modules`.
 
-Native apps with only Postgres and the OTLP Collector in Compose:
+Native apps with only Postgres and the OTLP Collector in Compose. The
+host-native overlay is required, not optional: without it the Collector
+addresses the API by a Compose service name that resolves to nothing, and the
+Observation path fails silently.
 
 ```bash
-docker compose up -d postgres otel-collector
+docker compose -f docker-compose.yml -f docker-compose.native.yml up -d postgres otel-collector
 pnpm --filter @evelandhq/api db:migrate
 pnpm dev
 ```
+
+On Linux also export `EVELAND_API_DOCKER_BRIDGE_HOST` before `pnpm dev` — see
+the README quickstart.
 
 Use the individual `pnpm dev:api`, `dev:gateway`, `dev:web`, `dev:worker`, and
 `dev:workflow-dispatcher` scripts in separate terminals when isolated logs are

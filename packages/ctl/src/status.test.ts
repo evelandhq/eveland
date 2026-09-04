@@ -17,7 +17,14 @@ async function makeHarness(options: {
 }) {
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-status-"));
   const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-statusrepo-"));
-  await writeFile(path.join(repo, ".env"), "EVELAND_PUBLIC_ORIGIN=http://localhost:17300", "utf8");
+  await writeFile(
+    path.join(repo, ".env"),
+    [
+      "EVELAND_PUBLIC_ORIGIN=http://localhost:17300",
+      "DATABASE_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
+    ].join("\n"),
+    "utf8",
+  );
   const layout = applianceLayout(home);
   const alivePids = new Set<number>();
   if (options.supervisorAlive) {
@@ -50,6 +57,7 @@ async function makeHarness(options: {
         ? new Response("{}", { status: 200 })
         : new Response("no", { status: 503 }),
     tcpProbe: async () => options.tcpOk ?? true,
+    pgReady: async () => options.tcpOk ?? true,
   };
   return { io, out };
 }
@@ -62,6 +70,10 @@ describe("runStatus", () => {
     expect(output).toContain("Supervisor: running (pid 4242");
     expect(output).toContain("✓ Agent Gateway");
     expect(output).toContain("✓ Postgres");
+    // The address and the kind, never the DSN: this output ends up in issue
+    // reports.
+    expect(output).toContain("127.0.0.1:17310 (bundled)");
+    expect(output).not.toContain("postgres://");
     expect(output).toContain("Origin: http://localhost:17300");
   });
 

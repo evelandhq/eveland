@@ -38,7 +38,7 @@ sudo systemctl enable --now eveland-worker
 `infra/systemd/eveland-worker.env.example` 注释了每一项。必须与其他组件保持一致的值：
 
 - `EVELAND_RUNTIME=systemd` 与 `NODE_ENV=production`。`NODE_ENV=production` 本身就会把 Runtime 默认为 systemd，但保留显式值，让该文件无歧义地记录宿主机的 Runtime。
-- `EVELAND_DATA_DIR=/var/lib/eveland`——与 API 容器挂载完全相同的绝对路径。
+- `EVELAND_DATA_DIR=/var/lib/eveland`——与 API 读取的完全相同的绝对路径。
 - `DATABASE_URL`——平台数据库。
 - `EVELAND_WORKFLOW_WORLD_URL`（必要时加 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`）——共享 Workflow 数据库；必须与 Dispatcher 的值相同。
 - `APP_SECRET_KEY`——必须与 API 的值一致。轮换后需重新部署每个 Agent Deployment，使其遥测凭证由新 Key 签名。

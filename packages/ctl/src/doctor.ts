@@ -12,7 +12,8 @@ import {
   WEB_PORT,
 } from "@evelandhq/core/ports";
 import { loadPlatformEnvFile, type PlatformEnvFile } from "./env-file.ts";
-import { readInstallMetadata } from "./home.ts";
+import { databaseMode, readInstallMetadata, type DatabaseMode } from "./home.ts";
+import { defaultPgJournalProbe, describeDatabaseAddress, type PgJournalProbe } from "./pg-probe.ts";
 import {
   resolveLifecycle,
   type ExecCommand,
@@ -21,6 +22,7 @@ import {
 } from "./lifecycle.ts";
 import { verifiedSupervisorPid } from "./state-files.ts";
 import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
+import { detectDockerBridgeHost } from "./docker-bridge.ts";
 
 /**
  * `eveland-ctl doctor`: every check this installation has historically been
@@ -45,14 +47,21 @@ export type DoctorDeps = {
   repoRootDir: string;
   envFile: PlatformEnvFile | null;
   supervisorRunning: boolean;
-  /** systemd production form: the Dashboard builds inside its container. */
-  systemdForm?: boolean;
+  /** Bundled or external Postgres; some checks only apply to one. */
+  database: DatabaseMode;
   execCommand: ExecCommand;
+  pgJournalProbe: PgJournalProbe;
   tcpProbe: TcpProbe;
   fetchImpl: FetchLike;
   fileExists: (filePath: string) => Promise<boolean>;
   freeDiskBytes: (dir: string) => Promise<number | null>;
   nonLoopbackAddresses: () => string[];
+  /**
+   * Docker's default-bridge gateway, or null. The API binds it deliberately
+   * (the Collector's only route to a host-native API), so it is the one
+   * non-loopback address the exposure check must not fault the API for.
+   */
+  dockerBridgeHost: () => Promise<string | null>;
   readTextFile: (filePath: string) => Promise<string | null>;
 };
 
@@ -159,7 +168,8 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
     add(
       "docker",
       "fail",
-      "Docker daemon is not reachable; Postgres and the OTLP Collector run in Compose.",
+      "Docker daemon is not reachable; the OTLP Collector (and the bundled database, if this " +
+        "installation has one) run in Compose.",
     );
   }
 
@@ -249,9 +259,31 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
   }
 
   // Loopback exposure: only the Agent Gateway may be reachable off-host.
+  //
+  // With one deliberate exception: the host-native API binds Docker's bridge
+  // gateway on purpose, so the managed Collector — a container, with no route
+  // to the host's loopback — can deliver Agent events. That listener serves
+  // an explicit path allowlist (apps/api/src/docker-bridge-ingress.ts), not
+  // the control plane.
+  //
+  // The clash is intermittent rather than constant, which is worse. libuv
+  // lists an interface only when it is both UP and RUNNING, and a bridge with
+  // no attached container is UP without carrier — so `docker0` is normally
+  // absent from this list even though its address is perfectly local and the
+  // API is bound to it. (The platform's own containers all sit on Compose
+  // networks, not the default bridge.) Let anything ordinary attach to it —
+  // one `docker run` with no `--network` — and docker0 gains carrier, its
+  // address joins this list, and a correct production install starts failing
+  // doctor over a listener it is supposed to have.
+  //
+  // The exemption is narrow on both axes: this address only, the API's port
+  // only. The Dashboard or Postgres on the very same bridge is still a
+  // finding, and every other interface is still checked.
+  const bridgeHost = await deps.dockerBridgeHost();
   const exposures: string[] = [];
   for (const address of deps.nonLoopbackAddresses()) {
     for (const { port, label } of LOOPBACK_ONLY_PORTS) {
+      if (address === bridgeHost && port === API_PORT) continue;
       if (await deps.tcpProbe(address, port)) exposures.push(`${label} on ${address}:${port}`);
     }
   }
@@ -262,7 +294,13 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
       `Loopback-only services are reachable from the network: ${exposures.join("; ")}. Postgres ships well-known default credentials — fix the bind/forwarding.`,
     );
   } else {
-    add("loopback-exposure", "ok", "loopback-only services are not reachable off-host");
+    add(
+      "loopback-exposure",
+      "ok",
+      bridgeHost
+        ? `loopback-only services are not reachable off-host (the API's ${bridgeHost} Collector listener is by design)`
+        : "loopback-only services are not reachable off-host",
+    );
   }
 
   // Proxy environment (a fresh VM inheriting an unreachable host proxy breaks
@@ -316,11 +354,9 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
     add("disk", "ok", `${formatGiB(freeBytes)} free`);
   }
 
-  // Dashboard production build (ctl-supervisor form only: the systemd form
-  // builds it inside the web container).
-  if (deps.systemdForm) {
-    // no host build needed
-  } else if (await deps.fileExists(path.join(deps.repoRootDir, "apps/web/.next/BUILD_ID"))) {
+  // Dashboard production build: a host artifact in BOTH forms now — the
+  // systemd form runs `next start` as a host unit, not inside a container.
+  if (await deps.fileExists(path.join(deps.repoRootDir, "apps/web/.next/BUILD_ID"))) {
     add("web-build", "ok", "Dashboard production build present");
   } else {
     add(
@@ -330,57 +366,49 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
     );
   }
 
-  // Postgres content: reachable is not enough — a foreign Postgres on the
+  // Postgres content: reachable is not enough -- a foreign Postgres on the
   // platform port (a Lima VM's forward, another project) answers TCP just
-  // fine. Ask the Compose container itself for the migration journal.
-  const postgresReachable = await deps.tcpProbe("127.0.0.1", POSTGRES_HOST_PORT);
-  if (postgresReachable && dockerOk) {
-    // --env-file: compose interpolates the whole file even for one service,
-    // and an appliance's configuration is not a ./.env in the compose cwd.
-    const envFileArgs = deps.envFile ? ["--env-file", deps.envFile.path] : [];
-    const result = await deps.execCommand(
-      [
-        "docker",
-        "compose",
-        ...envFileArgs,
-        "exec",
-        "-T",
-        "postgres",
-        "psql",
-        "-U",
-        "eveland",
-        "-d",
-        "eveland",
-        "-tAc",
-        "select count(*) from drizzle.__drizzle_migrations",
-      ],
-      { cwd: deps.repoRootDir },
-    );
-    if (result.code === 0) {
-      add("postgres", "ok", `${result.output.trim()} migrations applied`);
-    } else if (/no such service|not running|no container/i.test(result.output)) {
+  // fine. Ask the database this installation is configured with for the
+  // migration journal, through the DSN every platform process uses.
+  const databaseUrl = deps.envFile?.values.DATABASE_URL?.trim();
+  const databaseLabel = databaseUrl ? describeDatabaseAddress(databaseUrl) : null;
+  if (!databaseUrl) {
+    // config-required already reported the missing value.
+  } else if (!databaseLabel) {
+    add("postgres", "fail", "DATABASE_URL is not a PostgreSQL connection URL.");
+  } else {
+    const journal = await deps.pgJournalProbe(databaseUrl);
+    if (journal.status === "migrated") {
+      add("postgres", "ok", `${databaseLabel}: ${journal.count} migrations applied`);
+    } else if (journal.status === "unmigrated") {
       add(
         "postgres",
         "warn",
-        `Something answers on 127.0.0.1:${POSTGRES_HOST_PORT} but the Compose postgres container is not running — check for a foreign Postgres (a Lima VM port-forward hijack looks exactly like this).`,
-      );
-    } else if (/does not exist/i.test(result.output)) {
-      add(
-        "postgres",
-        "warn",
-        "Postgres is running but not migrated. Run `pnpm --filter @evelandhq/api db:migrate`.",
+        `${databaseLabel} answers but carries no migration journal. Either it is a fresh database ` +
+          "(run `pnpm --filter @evelandhq/api db:migrate`) or it is not this installation's -- a " +
+          "Lima VM port-forward hijack looks exactly like this.",
       );
     } else {
-      add("postgres", "warn", `Could not verify migrations: ${result.output.trim().slice(0, 200)}`);
+      add("postgres", "fail", `${databaseLabel} is unreachable: ${journal.detail}`);
     }
-  } else if (postgresReachable) {
-    add(
-      "postgres",
-      "warn",
-      "Postgres port answers but Docker is unreachable; cannot verify it is ours.",
-    );
-  } else {
-    add("postgres", "ok", "not running (started by `eveland-ctl start`)");
+  }
+
+  // pg_dump, but only where an upgrade actually needs it on the host: the
+  // bundled database is dumped inside its own container, at a version that
+  // matches by construction. Better here than halfway through an upgrade.
+  if (deps.database === "external") {
+    const pgDump = await deps.execCommand(["pg_dump", "--version"], { cwd: deps.repoRootDir });
+    if (pgDump.code === 0) {
+      add("pg_dump", "ok", pgDump.output.trim().split("\n")[0] ?? "present");
+    } else {
+      add(
+        "pg_dump",
+        "fail",
+        "pg_dump is not installed, and this installation uses its own PostgreSQL, so " +
+          "`eveland-ctl update` cannot take its pre-upgrade backup. Install the PostgreSQL " +
+          "client package (Debian/Ubuntu: apt-get install postgresql-client).",
+      );
+    }
   }
 
   // Live platform health, when it is up.
@@ -455,13 +483,16 @@ export async function runDoctor(
     repoRootDir: resolved.repoRootDir,
     envFile,
     supervisorRunning: supervisorPid !== null || metadata?.supervision === "systemd",
-    systemdForm: metadata?.supervision === "systemd",
+    database: databaseMode(metadata),
     execCommand: resolved.execCommand,
+    pgJournalProbe: defaultPgJournalProbe(),
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
     fetchImpl: resolved.fetchImpl,
     fileExists: resolved.fileExists,
     freeDiskBytes: defaultFreeDiskBytes,
     nonLoopbackAddresses: defaultNonLoopbackAddresses,
+    dockerBridgeHost: () =>
+      detectDockerBridgeHost({ execCommand: resolved.execCommand, cwd: resolved.repoRootDir }),
     readTextFile: (filePath) => readFile(filePath, "utf8").catch(() => null),
     ...io.doctorDeps,
   };

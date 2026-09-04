@@ -31,6 +31,10 @@ describe("configuration snapshot files", () => {
     expect(snapshotPath).toBe(path.join(dataDir, "diagnostics", "worker-configuration.json"));
     expect(await readConfigurationSnapshotFile(dataDir, "worker")).toEqual(snapshot);
     expect(await readFile(snapshotPath, "utf8")).not.toContain("never-write-this-value");
-    expect((await stat(snapshotPath)).mode & 0o777).toBe(0o600);
+    // Group-readable, never world-readable: in the production form the worker
+    // writes this as root and the API reads it as the unprivileged platform
+    // user, and a shared group is how the two meet.
+    expect((await stat(snapshotPath)).mode & 0o777).toBe(0o640);
+    expect((await stat(path.dirname(snapshotPath))).mode & 0o007).toBe(0);
   });
 });

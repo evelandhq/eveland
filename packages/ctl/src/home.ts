@@ -37,7 +37,25 @@ export type InstallMetadata = {
   seedCompleted?: boolean;
   /** Who owns the platform processes; absent means the ctl supervisor. */
   supervision?: "ctl" | "systemd";
+  /**
+   * Where this installation's Postgres comes from. Recorded at first boot and
+   * read by start/stop/doctor/status/update, which each behave differently
+   * for the two — rather than inferred from the DSN's shape, which cannot
+   * tell a bundled container from a host Postgres, an SSH tunnel, or another
+   * project's cluster on the same loopback port.
+   *
+   * Absent on installations made before the question existed: those all run
+   * the bundled database, which is what `databaseMode` answers for them.
+   */
+  database?: DatabaseMode;
 };
+
+/** Bundled: the Compose `postgres` service. External: an operator's own server. */
+export type DatabaseMode = "bundled" | "external";
+
+export function databaseMode(metadata: InstallMetadata | null): DatabaseMode {
+  return metadata?.database ?? "bundled";
+}
 
 export function resolveApplianceRoot(env: NodeJS.ProcessEnv, platform = process.platform): string {
   const explicit = env.EVELAND_HOME?.trim();

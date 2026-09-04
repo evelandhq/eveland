@@ -27,13 +27,39 @@ describe("Docker bridge API ingress", () => {
     ).toThrow(/separate loopback EVELAND_API_BIND_HOST/);
   });
 
-  test("rejects the bridge listener in production", () => {
-    expect(() =>
+  test("serves the same listener in production — the invariants, not NODE_ENV, are the boundary", () => {
+    // The Linux production form runs the API as a host process, so this is
+    // the ONLY path from the bridged Collector to the API. What keeps it safe
+    // there is what keeps it safe in development: a private address, a
+    // separate loopback primary, and the path allowlist below.
+    expect(
       resolveDockerBridgeBindHost({
         NODE_ENV: "production",
         EVELAND_API_DOCKER_BRIDGE_HOST: "172.17.0.1",
       }),
-    ).toThrow(/only supported for Linux native development/);
+    ).toBe("172.17.0.1");
+  });
+
+  test.each(["0.0.0.0", "127.0.0.1", "8.8.8.8", "host.docker.internal"])(
+    "still rejects unsafe bind host %s in production",
+    (host) => {
+      expect(() =>
+        resolveDockerBridgeBindHost({
+          NODE_ENV: "production",
+          EVELAND_API_DOCKER_BRIDGE_HOST: host,
+        }),
+      ).toThrow(/private Docker bridge IPv4 address/);
+    },
+  );
+
+  test("still requires a separate loopback primary listener in production", () => {
+    expect(() =>
+      resolveDockerBridgeBindHost({
+        NODE_ENV: "production",
+        EVELAND_API_BIND_HOST: "0.0.0.0",
+        EVELAND_API_DOCKER_BRIDGE_HOST: "172.17.0.1",
+      }),
+    ).toThrow(/separate loopback EVELAND_API_BIND_HOST/);
   });
 
   test.each([

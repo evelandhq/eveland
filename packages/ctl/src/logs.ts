@@ -3,7 +3,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { resolveLifecycle, systemdSupervised, type LifecycleIo } from "./lifecycle.ts";
 import { PLATFORM_PROCESSES, systemdUnitName } from "./processes.ts";
-import { applianceComposeArgs, SYSTEMD_HOST_UNITS } from "./systemd-mode.ts";
+import { SYSTEMD_HOST_UNITS } from "./systemd-mode.ts";
 
 /**
  * `eveland-ctl logs`: the supervised processes' log files under the appliance
@@ -35,30 +35,23 @@ export async function runCtlLogs(
     return 1;
   }
 
-  // In the systemd production form, worker/dispatcher logs live in the
-  // journal and the core services' logs live in Compose.
+  // In the systemd production form every platform process is a unit, so every
+  // platform log lives in the journal.
   if (await systemdSupervised(resolved)) {
     if (parsed.values.follow) {
       io.stderr(
         "Following is best done directly: " +
-          `journalctl -f ${SYSTEMD_HOST_UNITS.map((key) => `-u ${systemdUnitName(key)}`).join(" ")} ` +
-          "or `docker compose logs -f` in the source tree.",
+          `journalctl -f ${SYSTEMD_HOST_UNITS.map((key) => `-u ${systemdUnitName(key)}`).join(" ")}`,
       );
       return 1;
     }
-    const hostUnits = new Set<string>(SYSTEMD_HOST_UNITS);
     const keys = name ? [name] : PLATFORM_PROCESSES.map((spec) => spec.key);
     for (const key of keys) {
       if (key === "supervisor") continue;
-      const result = hostUnits.has(key)
-        ? await resolved.execCommand(
-            ["journalctl", "-u", systemdUnitName(key), "-n", String(tailLines), "--no-pager"],
-            { cwd: resolved.repoRootDir },
-          )
-        : await resolved.execCommand(
-            applianceComposeArgs(resolved.layout, "logs", "--tail", String(tailLines), key),
-            { cwd: resolved.repoRootDir },
-          );
+      const result = await resolved.execCommand(
+        ["journalctl", "-u", systemdUnitName(key), "-n", String(tailLines), "--no-pager"],
+        { cwd: resolved.repoRootDir },
+      );
       if (keys.length > 1) io.stdout(`==> ${key} <==`);
       for (const line of result.output.split("\n")) {
         if (line !== "") io.stdout(line);

@@ -81,6 +81,35 @@ jobs:
             EVELAND_VERSION="$GITHUB_SHA" \
             bash apps/docs/public/install.sh --no-prompt
 
+      - name: The rendered units must be valid systemd
+        # systemd ignores unknown keys with only a log line, so a directive in
+        # the wrong section (StartLimit* belongs to [Unit], not [Service])
+        # silently does nothing at all. `verify` is the only thing that says
+        # so -- and it says it on stdout while still EXITING 0, so the exit
+        # code is not the gate: any diagnostic naming one of our units is.
+        # Diagnostics about units we do not own (docker.service and the other
+        # dependencies verify pulls in) are not our business. sudo because
+        # verify reads the units' ExecStart binaries.
+        run: |
+          out="$(sudo systemd-analyze verify /etc/systemd/system/eveland-*.service 2>&1)" || {
+            echo "$out"; exit 1;
+          }
+          echo "${out:-(no diagnostics)}"
+          if echo "$out" | grep -E '^/etc/systemd/system/eveland-[a-z-]+\.service:'; then
+            echo "::error::systemd rejected a directive in a generated unit (see above)"
+            exit 1
+          fi
+
+      - name: Each platform service has its own uid
+        # The per-service env allowlists are only a boundary if no two
+        # services share a uid: same-uid processes read each other's
+        # /proc/<pid>/environ.
+        run: |
+          users="$(sudo sed -n 's/^User=//p' /etc/systemd/system/eveland-*.service | sort)"
+          echo "$users"
+          test "$(echo "$users" | wc -l)" = "$(echo "$users" | uniq | wc -l)"
+          sudo grep -q '^DynamicUser=yes' /etc/systemd/system/eveland-gateway.service
+
       - name: Doctor must be green
         run: |
           sudo -E env "PATH=$PATH" EVELAND_HOME=/opt/eveland /opt/eveland/bin/eveland-ctl doctor
@@ -98,10 +127,43 @@ jobs:
           curl -fsS http://localhost:17300/health
           curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:17300/
 
-      - name: Collector can reach the API
+      - name: Collector can reach the API, and only on the allowlisted paths
+        # The API is a host process now, so the Collector reaches it at the
+        # bridge address eveland-ctl detected -- which is what this probes,
+        # rather than a name it would have to trust Docker to inject
+        # (`--add-host` is rejected outright alongside `--network container:`).
+        # Both halves matter: the runtime path answers, and the control plane
+        # is not served there at all.
         run: |
+          BRIDGE="$(sudo sed -n 's/^EVELAND_API_DOCKER_BRIDGE_HOST=//p' /opt/eveland/etc/eveland-api.env)"
+          test -n "$BRIDGE"
+          echo "detected bridge address: $BRIDGE"
           sudo docker run --rm --network container:eveland-otel-collector \
-            curlimages/curl:8.11.1 -fsS -o /dev/null http://api:17301/health
+            curlimages/curl:8.11.1 -fsS -o /dev/null "http://$BRIDGE:17301/health"
+          code="$(sudo docker run --rm --network container:eveland-otel-collector \
+            curlimages/curl:8.11.1 -s -o /dev/null -w '%{http_code}' \
+            "http://$BRIDGE:17301/api/projects")"
+          echo "control plane through the bridge listener: $code"
+          test "$code" = 404
+
+      - name: Agent telemetry actually landed
+        # The Observation path end to end, not just its last hop: the host
+        # worker exports host metrics over OTLP, the bridged Collector
+        # forwards them to the API, and the API projects them into Postgres.
+        # A silently disconnected Collector fills its queue and looks healthy.
+        run: |
+          # The ctl's own three-file stack from the ctl's own source tree: a
+          # bare `docker compose` here would resolve a different project (the
+          # runner workspace) and find no such service.
+          cd /opt/eveland/source
+          sudo docker compose \
+            -f docker-compose.yml -f docker-compose.prod.yml \
+            -f /opt/eveland/etc/compose.appliance.yml \
+            --env-file /opt/eveland/etc/eveland.env --profile bundled-postgres \
+            exec -T postgres psql -U eveland -d eveland -tAc \
+            "select count(*) from host_metric_samples where observed_at > now() - interval '10 minutes'" \
+            | tee /tmp/samples
+          test "$(tr -d '[:space:]' < /tmp/samples)" -gt 0
 
       - name: Stop cleanly
         run: |
@@ -112,8 +174,9 @@ jobs:
         run: |
           sudo tail -n 100 /opt/eveland/logs/*.log || true
           sudo tail -n 50 /opt/eveland/logs/install.log || true
-          sudo journalctl -u eveland-worker -u eveland-workflow-dispatcher -n 120 --no-pager || true
+          sudo journalctl -u eveland-api -u eveland-gateway -u eveland-web \
+            -u eveland-worker -u eveland-workflow-dispatcher -n 200 --no-pager || true
           cd /opt/eveland/source || exit 0
-          COMPOSE="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml -f /opt/eveland/etc/compose.appliance.yml --env-file /opt/eveland/etc/eveland.env"
+          COMPOSE="sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml -f /opt/eveland/etc/compose.appliance.yml --env-file /opt/eveland/etc/eveland.env --profile bundled-postgres"
           $COMPOSE ps || true
-          $COMPOSE logs --tail 80 api gateway web postgres otel-collector || true
+          $COMPOSE logs --tail 80 postgres otel-collector || true

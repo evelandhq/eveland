@@ -1,16 +1,18 @@
 import { parseArgs } from "node:util";
 import { loadPlatformEnvFile } from "./env-file.ts";
-import { readInstallMetadata } from "./home.ts";
+import { databaseMode, readInstallMetadata } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { resolveLifecycle, runStop, systemdModeContext } from "./lifecycle.ts";
+import { detectDockerBridgeHost } from "./docker-bridge.ts";
 import { installSystemdArtifacts, startViaSystemd } from "./systemd-mode.ts";
 
 /**
  * `eveland-ctl install --systemd`: promote a Linux install from the ctl's
- * own supervisor to the documented production form — core services in
- * Compose, worker (root) + workflow dispatcher (DynamicUser) as the two
- * systemd units. On Linux, first boot already lands here; this command
- * exists for --foreground players and installs from before the form.
+ * own supervisor to the documented production form — every platform process
+ * as a host systemd unit, with Docker left holding the OTLP Collector and,
+ * where the installation has one, the bundled database. On Linux, first boot
+ * already lands here; this command exists for --foreground players and
+ * installs from before the form.
  */
 export async function runInstallCommand(args: string[], io: LifecycleIo): Promise<number> {
   const parsed = parseArgs({
@@ -59,14 +61,22 @@ export async function runInstallCommand(args: string[], io: LifecycleIo): Promis
   }
 
   const context = systemdModeContext(io, resolved);
-  const installed = await installSystemdArtifacts(context, envFile);
+  const dockerBridgeHost = await detectDockerBridgeHost({
+    execCommand: resolved.execCommand,
+    cwd: resolved.repoRootDir,
+  });
+  const installed = await installSystemdArtifacts(context, envFile, { dockerBridgeHost });
   if (installed !== 0) return installed;
-  const started = await startViaSystemd(context);
+  const started = await startViaSystemd(context, {
+    dataDir: envFile.values.EVELAND_DATA_DIR?.trim() || resolved.layout.dataDir,
+    database: databaseMode(metadata),
+  });
   if (started !== 0) return started;
 
   io.stdout("");
-  io.stdout("The platform now runs in the documented production form: core services in");
-  io.stdout("Compose, the worker and workflow dispatcher as systemd units, restarting");
-  io.stdout("with the machine. `eveland-ctl start/stop/restart/status/logs` manage it.");
+  io.stdout("The platform now runs in the documented production form: every platform");
+  io.stdout("process is a systemd unit restarting with the machine, and Docker holds");
+  io.stdout("only the OTLP Collector and the bundled database.");
+  io.stdout("`eveland-ctl start/stop/restart/status/logs` manage it.");
   return 0;
 }

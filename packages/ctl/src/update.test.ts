@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -8,6 +8,7 @@ import { applianceLayout } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
 import type { Prompter } from "./prompt.ts";
+import { hostUnitsArmedPath } from "./systemd-mode.ts";
 import { writeSupervisorRecord, writeSupervisorState } from "./state-files.ts";
 import { runStart } from "./lifecycle.ts";
 import { acquireMutex } from "./state-files.ts";
@@ -144,6 +145,7 @@ async function makeHarness(
     },
     fetchImpl: async () => new Response("{}", { status: 200 }),
     tcpProbe: async () => true,
+    pgReady: async () => true,
     getuid: () => 0,
     systemdUnitDir: unitDir,
     writeTextFile: async (filePath, content) => {
@@ -236,6 +238,9 @@ async function makeHarness(
       if (argv[0] === "systemctl") {
         timeline.push(`systemctl ${argv[1]}`);
         if (argv[1] === "is-active") return { code: 0, output: "active\n" };
+      }
+      if (argv[1] === "network" && argv[2] === "inspect") {
+        return { code: 0, output: "172.17.0.1\n" };
       }
       // docker info / compose during start
       return { code: 0, output: "ok" };
@@ -580,6 +585,20 @@ describe("runUpdate (phase 1, the old code)", () => {
     expect(checkoutIndex).toBeLessThan(finishIndex);
   });
 
+  test("the host units are disarmed before the working tree moves under them", async () => {
+    // The units name this checkout by absolute path, so the moment it holds
+    // the new revision a reboot would start it — against the old schema,
+    // since migrations run later. Phase 2 re-arms once it is built, migrated
+    // and started.
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    const marker = hostUnitsArmedPath(harness.layout);
+    await mkdir(path.dirname(marker), { recursive: true });
+    await writeFile(marker, "armed\n", "utf8");
+    expect(await runUpdate([], harness.io)).toBe(0);
+    // The harness stops at the handover, so nothing re-arms it here.
+    await expect(stat(marker)).rejects.toThrow();
+  });
+
   test("a failed pnpm install leaves the platform stopped with the safe recovery plan", async () => {
     const harness = await makeHarness({ confirmAnswers: [true] });
     harness.io.streamCommand = async (argv) => {
@@ -754,57 +773,33 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
     );
     const etc = await readdir(harness.layout.etcDir);
     expect(etc).toContain("compose.appliance.yml");
+    expect(etc).toContain("eveland-api.env");
     expect(etc).toContain("eveland-gateway.env");
     expect(etc).toContain("eveland-web.env");
     expect(etc).toContain("eveland-workflow-dispatcher.env");
     expect(harness.timeline).toContain("systemctl daemon-reload");
-    // No host-side Dashboard build (the web container builds its own), but
-    // migrations still run, and the start goes through systemd.
+    // The Dashboard is a host artifact in BOTH forms now, and `.next` is
+    // gitignored: a checkout onto the new tag leaves the OLD build in place,
+    // so an update that skipped this would serve a Dashboard a release behind
+    // forever.
     const flat = harness.streamed.map((argv) => argv.join(" "));
-    expect(flat.some((line) => line.includes("@evelandhq/web build"))).toBe(false);
+    expect(flat.some((line) => line.includes("@evelandhq/web build"))).toBe(true);
     expect(flat.some((line) => line.includes("db:migrate"))).toBe(true);
     expect(harness.timeline).toContain("systemctl start");
     expect(harness.timeline).not.toContain("start-daemon");
   });
 
-  test("systemd form: the API's Compose view of the world lands before anything runs Compose", async () => {
-    // The production overlay requires it, so an installation older than the
-    // variable cannot run a single Compose command until this is on disk.
-    // Failing the migration cuts the run off before the start step, so only
-    // update's own backfill can have written it -- starting the platform is
-    // far too late to be the thing that makes starting possible.
+  test("systemd form: the regenerated units carry a freshly detected Docker bridge address", async () => {
+    // Docker renumbers its bridge on its own schedule, and the address is
+    // where the API binds the listener the Collector delivers Agent events
+    // to. An update that carried the old one forward would leave a unit that
+    // fails to bind -- so the new checkout detects it again.
     const harness = await makeHarness({ supervision: "systemd" });
-    harness.io.streamCommand = async (argv) => {
-      harness.streamed.push(argv);
-      return argv.includes("db:migrate") ? 1 : 0;
-    };
-
-    expect(await runFinishUpdate(FROM, harness.io)).toBe(1);
-    expect(harness.timeline).not.toContain("start-daemon");
-
-    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
-    expect(onDisk.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBe(
-      "postgres://eveland:eveland@postgres:5432/eveland",
-    );
-  });
-
-  test("systemd form: a world this installer did not render is named, never guessed at", async () => {
-    const harness = await makeHarness({ supervision: "systemd" });
-    const existing = await readFile(harness.layout.envFilePath, "utf8");
-    await writeFile(
-      harness.layout.envFilePath,
-      existing.replace(
-        "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
-        "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
-      ),
-      "utf8",
-    );
 
     expect(await runFinishUpdate(FROM, harness.io), harness.err.join("\n")).toBe(0);
 
-    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
-    expect(onDisk.EVELAND_WORKFLOW_WORLD_COMPOSE_URL).toBeUndefined();
-    expect(harness.err.join("\n")).toContain("EVELAND_WORKFLOW_WORLD_COMPOSE_URL");
+    const apiEnv = await readFile(path.join(harness.layout.etcDir, "eveland-api.env"), "utf8");
+    expect(apiEnv).toContain("EVELAND_API_DOCKER_BRIDGE_HOST=172.17.0.1");
   });
 
   test("a failed migration leaves the platform stopped, with the safe recovery plan", async () => {
@@ -840,11 +835,20 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
 });
 
 describe("defaultPgDump", () => {
+  const DSN = "postgres://eveland:eveland@127.0.0.1:17310/eveland";
+
   test("a backup exists complete or not at all: partial file, fsync, rename, 0600", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-pgdump-"));
     const backupPath = path.join(dir, "eveland-v0.48.0.sql");
     const ok = defaultPgDump({ argv: ["sh", "-c", "printf -- '-- dump\\nSELECT 1;\\n'"] });
-    expect(await ok(backupPath, { cwd: dir, envFilePath: "/dev/null" })).toBe(0);
+    expect(
+      await ok(backupPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "bundled",
+        databaseUrl: DSN,
+      }),
+    ).toBe(0);
     const { stat } = await import("node:fs/promises");
     expect(await readFile(backupPath, "utf8")).toContain("SELECT 1;");
     expect((await stat(backupPath)).mode & 0o777).toBe(0o600);
@@ -853,14 +857,67 @@ describe("defaultPgDump", () => {
     // A failing dump leaves nothing behind that could pass for a backup.
     const failing = defaultPgDump({ argv: ["sh", "-c", "printf 'half'; exit 3"] });
     const failedPath = path.join(dir, "failed.sql");
-    expect(await failing(failedPath, { cwd: dir, envFilePath: "/dev/null" })).toBe(3);
+    expect(
+      await failing(failedPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "bundled",
+        databaseUrl: DSN,
+      }),
+    ).toBe(3);
     await expect(stat(failedPath)).rejects.toThrow();
     await expect(stat(`${failedPath}.partial`)).rejects.toThrow();
 
     // A "successful" dump with no output is not a backup either.
     const empty = defaultPgDump({ argv: ["true"] });
     const emptyPath = path.join(dir, "empty.sql");
-    expect(await empty(emptyPath, { cwd: dir, envFilePath: "/dev/null" })).toBeNull();
+    expect(
+      await empty(emptyPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "bundled",
+        databaseUrl: DSN,
+      }),
+    ).toBeNull();
     await expect(stat(emptyPath)).rejects.toThrow();
+  });
+
+  test("an external database is dumped from the host, with the password out of argv", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-pgdump-env-"));
+    const backupPath = path.join(dir, "external.sql");
+    // Stand in for pg_dump: print the libpq variables it would have been
+    // handed, which is exactly what must carry the connection.
+    const dump = defaultPgDump({
+      argv: ["sh", "-c", 'printf -- "-- %s %s %s\\n" "$PGHOST" "$PGPORT" "$PGDATABASE"'],
+    });
+
+    expect(
+      await dump(backupPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "external",
+        databaseUrl: "postgres://ops:s3cr3t@db.internal:6543/eveland",
+      }),
+    ).toBe(0);
+    expect(await readFile(backupPath, "utf8")).toContain("db.internal 6543 eveland");
+  });
+
+  test("a DSN that cannot be split is a failed backup, not a dump of the wrong database", async () => {
+    // Without libpq variables pg_dump falls back to a local socket and the
+    // connecting user's own database, and "succeeds".
+    const dir = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-pgdump-bad-"));
+    const backupPath = path.join(dir, "bad.sql");
+    const dump = defaultPgDump();
+    const { stat } = await import("node:fs/promises");
+
+    expect(
+      await dump(backupPath, {
+        cwd: dir,
+        envFilePath: "/dev/null",
+        database: "external",
+        databaseUrl: "not-a-dsn",
+      }),
+    ).toBeNull();
+    await expect(stat(backupPath)).rejects.toThrow();
   });
 });

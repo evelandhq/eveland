@@ -68,9 +68,9 @@ Channel 路径；Control Plane 仍然只绑定 Loopback。生产环境的核心�
 - Secret 以 root 属主的 `0600` 环境文件送达 Agent，而不是 systemd 的
   `LoadCredential`，因为 Eve 应用从 `process.env` 读取——环境文件注入与
   `docker --env` 即插即用等价，不需要应用侧改动。
-- 共享数据根 `/var/lib/eveland` 成为跨服务硬契约：API 容器必须以完全相同
-  的绝对路径 Bind Mount 它，存储的源码路径才能对容器和宿主机 Worker 同时
-  解析。
+- 共享数据根 `/var/lib/eveland` 成为跨服务硬契约：每个平台进程都在这一个
+  绝对路径上读取它，写下源码路径的 API 与之后据此构建的 Worker 才会解析到
+  同一处。
 
 ## 深入参考
 

@@ -119,9 +119,93 @@ export async function dockerPackagesToInstall(deps: LinuxHostDeps): Promise<stri
   );
 }
 
-async function userExists(deps: LinuxHostDeps, user: string): Promise<boolean> {
-  const result = await deps.execCommand(["id", "-u", user], { cwd: deps.repoRootDir });
-  return result.code === 0;
+/**
+ * The unprivileged system user the API runs as.
+ *
+ * Deliberately NOT `eveland-app`: that identity exists so a deployed Agent's
+ * artifacts can be read by tenant code, and giving the platform's own trust
+ * root the same uid would put the API's uploads and the tenant artifact tree
+ * under one owner. Deliberately not `DynamicUser=yes` either: the API owns
+ * files that outlive one start (uploaded sources), and a uid that changes
+ * every boot orphans them.
+ *
+ * It is the API's uid ALONE. The API's environment is the whole platform
+ * configuration, and same-uid processes read each other's
+ * `/proc/<pid>/environ` — Linux gates that on `PTRACE_MODE_READ_FSCREDS`,
+ * which Yama's ptrace_scope does not restrict. Sharing this uid with the
+ * public front door would hand a compromised proxy exactly the secrets
+ * `GATEWAY_ENV_KEYS` exists to withhold.
+ */
+export const PLATFORM_SERVICE_USER = "eveland-platform";
+
+/** Its home; the units point HOME here so nothing falls back to an unwritable one. */
+export const PLATFORM_SERVICE_HOME = "/var/lib/eveland-platform";
+
+/**
+ * The Dashboard's own unprivileged user — separate from the API's for the
+ * reason above, and a fixed uid rather than `DynamicUser=yes` because
+ * `next start` owns a build cache (`apps/web/.next`) that outlives one boot.
+ *
+ * The Agent Gateway needs no entry here: it writes nothing that survives a
+ * restart, so its unit takes `DynamicUser=yes` and a fresh uid every boot.
+ */
+export const WEB_SERVICE_USER = "eveland-web";
+export const WEB_SERVICE_HOME = "/var/lib/eveland-web";
+
+/** Every system account `provisionLinuxHost` guarantees, in creation order. */
+export const HOST_SERVICE_ACCOUNTS: ReadonlyArray<{
+  user: string;
+  home: string;
+  purpose: string;
+  ownGroup: boolean;
+}> = [
+  {
+    user: PLATFORM_SERVICE_USER,
+    home: PLATFORM_SERVICE_HOME,
+    purpose: "platform API service",
+    ownGroup: true,
+  },
+  { user: WEB_SERVICE_USER, home: WEB_SERVICE_HOME, purpose: "Dashboard service", ownGroup: true },
+  { user: "eveland-app", home: "/var/lib/eveland-app", purpose: "artifact-access", ownGroup: true },
+  { user: "eveland-build", home: "/var/lib/eveland-build", purpose: "build", ownGroup: false },
+];
+
+/**
+ * Every account in `HOST_SERVICE_ACCOUNTS`, created if missing.
+ *
+ * Called from the first-boot provisioning AND from every render of the
+ * systemd units, because those are two different moments: an installation
+ * provisioned before a service gained its own identity gets the new units
+ * from an update, and a unit naming a user this host does not have fails to
+ * start with "Failed to determine user credentials".
+ */
+export async function ensureHostServiceAccounts(deps: {
+  execCommand: ExecCommand;
+  repoRootDir: string;
+  stdout: (line: string) => void;
+}): Promise<void> {
+  for (const account of HOST_SERVICE_ACCOUNTS) {
+    const exists = await deps.execCommand(["id", "-u", account.user], { cwd: deps.repoRootDir });
+    if (exists.code === 0) continue;
+    deps.stdout(`Creating the ${account.user} ${account.purpose} user...`);
+    const result = await deps.execCommand(
+      [
+        "useradd",
+        "--system",
+        // Its own group, so one service's files are never group-readable by
+        // another's. eveland-build is the exception the worker prescribes.
+        ...(account.ownGroup ? ["--user-group"] : []),
+        "--home-dir",
+        account.home,
+        "--create-home",
+        account.user,
+      ],
+      { cwd: deps.repoRootDir },
+    );
+    if (result.code !== 0) {
+      throw new Error(`useradd ${account.user} failed:\n${result.output.trim()}`);
+    }
+  }
 }
 
 export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
@@ -207,40 +291,9 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
     throw new Error(`Could not create /workspace:\n${workspace.output.trim()}`);
   }
 
-  // 4. The two service users, exactly as the preflight prescribes them.
-  if (!(await userExists(deps, "eveland-app"))) {
-    deps.stdout("Creating the eveland-app artifact-access user...");
-    const result = await deps.execCommand(
-      [
-        "useradd",
-        "--system",
-        "--user-group",
-        "--home-dir",
-        "/var/lib/eveland-app",
-        "--create-home",
-        "eveland-app",
-      ],
-      { cwd: deps.repoRootDir },
-    );
-    if (result.code !== 0) throw new Error(`useradd eveland-app failed:\n${result.output.trim()}`);
-  }
-  if (!(await userExists(deps, "eveland-build"))) {
-    deps.stdout("Creating the eveland-build build user...");
-    const result = await deps.execCommand(
-      [
-        "useradd",
-        "--system",
-        "--home-dir",
-        "/var/lib/eveland-build",
-        "--create-home",
-        "eveland-build",
-      ],
-      { cwd: deps.repoRootDir },
-    );
-    if (result.code !== 0) {
-      throw new Error(`useradd eveland-build failed:\n${result.output.trim()}`);
-    }
-  }
+  // 4. The service users: the two the worker's preflight prescribes, plus one
+  // unprivileged identity per platform service that owns files.
+  await ensureHostServiceAccounts(deps);
 
   // 5. The system-PATH toolchain: deployment units and bwrap sandboxes run
   // with a plain system PATH, so the pinned node (and pnpm via corepack)

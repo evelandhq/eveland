@@ -8,7 +8,6 @@ import { API_INTERNAL_URL_FALLBACK, PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/co
 import {
   defaultStreamCommand,
   runBootstrapConfig,
-  backfillWorkflowWorldComposeUrl,
   runBootstrapPrepare,
   writeInstallMetadata,
   type BootstrapDeps,
@@ -17,6 +16,7 @@ import type { ExecCommand, FetchLike, LifecycleIo, SpawnDaemon } from "./io.ts";
 import { loadPlatformEnvFile, type PlatformEnvFile } from "./env-file.ts";
 import {
   applianceLayout,
+  databaseMode,
   readInstallMetadata,
   repoRoot,
   resolveApplianceRoot,
@@ -25,6 +25,7 @@ import {
 import { runImplicitLogin } from "./implicit-login.ts";
 import { provisionLinuxHost } from "./linux-host.ts";
 import { defaultTcpProbe } from "./net-probe.ts";
+import { defaultPgReady } from "./pg-probe.ts";
 import { runSeedAgent } from "./seed-agent.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
 import { absoluteProcessDir, childEnvironment, PLATFORM_PROCESSES } from "./processes.ts";
@@ -47,11 +48,14 @@ import {
 import { Supervisor, type SupervisedProcess } from "./supervisor.ts";
 import {
   applianceComposeArgs,
+  composeInfraServices,
   installSystemdArtifacts,
   startViaSystemd,
   stopViaSystemd,
+  writeServiceEnvFiles,
   type SystemdModeContext,
 } from "./systemd-mode.ts";
+import { detectDockerBridgeHost } from "./docker-bridge.ts";
 
 export type { ExecCommand, FetchLike, LifecycleIo, SpawnDaemon } from "./io.ts";
 
@@ -60,7 +64,8 @@ export const READINESS_POLL_MS = 500;
 export const STOP_WAIT_MS = 15_000;
 export const STOP_KILL_WAIT_MS = 5_000;
 
-export const INFRA_COMPOSE_SERVICES = ["postgres", "otel-collector"];
+/** Re-exported so the ctl-supervised form and the systemd form cannot disagree. */
+export { INFRA_COMPOSE_SERVICES } from "./systemd-mode.ts";
 
 function defaultFileExists(filePath: string): Promise<boolean> {
   return access(filePath).then(
@@ -152,6 +157,36 @@ export function publicOrigin(envFile: PlatformEnvFile): string {
   return envFile.values.EVELAND_PUBLIC_ORIGIN?.trim() || PUBLIC_ORIGIN_FALLBACK;
 }
 
+function resolvedDataDir(resolved: ResolvedLifecycle, envFile: PlatformEnvFile): string {
+  return envFile.values.EVELAND_DATA_DIR?.trim() || resolved.layout.dataDir;
+}
+
+/**
+ * Docker's bridge gateway, which is where the host-native API binds the
+ * listener the managed Collector delivers Agent events to. Re-detected on
+ * every start (Docker renumbers its bridge on its own schedule), and a
+ * failure is loud: without it the Observation path silently stops
+ * delivering, which reads downstream as a Worker that will not start.
+ */
+async function detectApiBridgeHost(
+  io: LifecycleIo,
+  resolved: ResolvedLifecycle,
+): Promise<string | null> {
+  if (resolved.platform !== "linux") return null;
+  const host = await detectDockerBridgeHost({
+    execCommand: resolved.execCommand,
+    cwd: resolved.repoRootDir,
+  });
+  if (host === null) {
+    io.stderr(
+      "Could not read Docker's bridge gateway address, so the API will run without its " +
+        "Collector-facing listener and Agent events will not be delivered. Check " +
+        "`docker network inspect bridge`.",
+    );
+  }
+  return host;
+}
+
 async function preflightStart(
   resolved: ResolvedLifecycle,
   options: { requireWebBuild: boolean },
@@ -195,11 +230,12 @@ async function ensureInfraUp(
   });
   if (probe.code !== 0) {
     throw new Error(
-      "Docker is not reachable, and Postgres and the OTLP Collector run in Docker Compose. " +
+      "Docker is not reachable, and the OTLP Collector runs in Docker Compose. " +
         "Start Docker and retry, or pass --skip-infra if the containers are managed elsewhere.",
     );
   }
-  io.stdout("Starting infrastructure (postgres, otel-collector)...");
+  const services = upArgs.slice(upArgs.indexOf("-d") + 1);
+  io.stdout(`Starting infrastructure (${services.join(", ")})...`);
   const result = await resolved.execCommand(upArgs, { cwd: resolved.repoRootDir });
   if (result.code !== 0) {
     throw new Error(`docker compose up failed:\n${result.output.trim()}`);
@@ -322,6 +358,7 @@ function bootstrapDeps(
     tcpProbe: io.tcpProbe ?? defaultTcpProbe(),
     sleep: resolved.sleep,
     fileExists: resolved.fileExists,
+    pgReady: io.pgReady ?? defaultPgReady(),
     random: io.random,
   };
 }
@@ -494,9 +531,23 @@ async function runStartUnlocked(
   // bootstrap (idempotent all the way) rather than be swallowed here.
   if ((await systemdSupervised(resolved)) && !(await detectBootstrapNeeded(resolved))) {
     const envFile = await requirePlatformEnvFile(io, resolved);
-    await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
-    const code = await startViaSystemd(systemdModeContext(io, resolved), {
+    // The Dashboard is a host unit now: its build is a host artifact, and a
+    // missing one has to fail here rather than as a unit that will not start.
+    const problems = await preflightStart(resolved, { requireWebBuild: true });
+    if (problems.length > 0) {
+      for (const problem of problems) io.stderr(problem);
+      return 1;
+    }
+    const context = systemdModeContext(io, resolved);
+    // Env files are derived from etc/eveland.env; re-render them so an
+    // operator edit takes effect on the next start, not the next install.
+    await writeServiceEnvFiles(context, envFile, {
+      dockerBridgeHost: await detectApiBridgeHost(io, resolved),
+    });
+    const code = await startViaSystemd(context, {
       skipInfra: Boolean(parsed.values["skip-infra"]),
+      dataDir: resolvedDataDir(resolved, envFile),
+      database: databaseMode(await readInstallMetadata(resolved.layout)),
     });
     if (code !== 0) return code;
     await retrySeedIfPending(io, resolved, envFile);
@@ -537,6 +588,7 @@ async function runStartUnlocked(
 
   const bootstrapping = await detectBootstrapNeeded(resolved);
   let envFile: PlatformEnvFile;
+  let database = databaseMode(await readInstallMetadata(resolved.layout));
   if (bootstrapping) {
     const deps = bootstrapDeps(io, resolved, Boolean(parsed.values["no-prompt"]));
     const problems = await preflightStart(resolved, { requireWebBuild: false });
@@ -544,17 +596,21 @@ async function runStartUnlocked(
       for (const problem of problems) io.stderr(problem);
       return 1;
     }
-    envFile = await runBootstrapConfig(deps);
+    const configured = await runBootstrapConfig(deps);
+    envFile = configured.envFile;
+    database = configured.database;
     const existingMetadata = await readInstallMetadata(resolved.layout);
-    if (!existingMetadata) {
-      await writeInstallMetadata(resolved.layout, {
-        version: 1,
-        installedAt: new Date().toISOString(),
-        method: io.env.EVELAND_INSTALL_METHOD === "install.sh" ? "install.sh" : "manual",
-        osMode: deps.platform,
-        bootstrapCompleted: false,
-      });
-    }
+    await writeInstallMetadata(resolved.layout, {
+      version: 1,
+      installedAt: new Date().toISOString(),
+      method: io.env.EVELAND_INSTALL_METHOD === "install.sh" ? "install.sh" : "manual",
+      osMode: deps.platform,
+      bootstrapCompleted: false,
+      ...existingMetadata,
+      // The answer to bundled-or-external, recorded before the first Compose
+      // command that depends on it.
+      database,
+    });
     if (deps.platform === "linux") {
       // The production-host contract (sandbox toolchain, bwrap AppArmor
       // profile, service users, /workspace, system-PATH node/pnpm) is part
@@ -585,30 +641,26 @@ async function runStartUnlocked(
       (io.getuid ?? process.getuid ?? (() => -1))() === 0;
     const context = systemdModeContext(io, resolved);
     if (linuxProductionForm) {
-      const installed = await installSystemdArtifacts(context, envFile);
+      const installed = await installSystemdArtifacts(context, envFile, {
+        dockerBridgeHost: await detectApiBridgeHost(io, resolved),
+      });
       if (installed !== 0) return installed;
       if (!parsed.values["skip-infra"]) {
         await ensureInfraUp(
           io,
           resolved,
-          applianceComposeArgs(resolved.layout, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+          applianceComposeArgs(resolved.layout, "up", "-d", ...composeInfraServices(database)),
         );
       }
-      // The Dashboard builds inside its own container in this form.
-      await runBootstrapPrepare(deps, envFile, {
-        buildWeb: false,
-        pgReadyCommand: applianceComposeArgs(
-          resolved.layout,
-          "exec",
-          "-T",
-          "postgres",
-          "pg_isready",
-          "-U",
-          "eveland",
-        ),
-      });
+      // The Dashboard is a host systemd unit: build it here, once, instead
+      // of rebuilding it inside a container on every start.
+      await runBootstrapPrepare(deps, envFile, { buildWeb: true });
       await mkdir(resolved.layout.logsDir, { recursive: true });
-      const started = await startViaSystemd(context, { skipInfra: true });
+      const started = await startViaSystemd(context, {
+        skipInfra: true,
+        dataDir: resolvedDataDir(resolved, envFile),
+        database,
+      });
       if (started !== 0) return started;
       await finishBootstrap(io, resolved, envFile);
       io.stdout("");
@@ -619,24 +671,12 @@ async function runStartUnlocked(
       await ensureInfraUp(
         io,
         resolved,
-        composeArgs(envFile.path, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+        composeArgs(envFile.path, "up", "-d", ...composeInfraServices(database)),
       );
     }
-    await runBootstrapPrepare(deps, envFile, {
-      buildWeb: true,
-      pgReadyCommand: composeArgs(
-        envFile.path,
-        "exec",
-        "-T",
-        "postgres",
-        "pg_isready",
-        "-U",
-        "eveland",
-      ),
-    });
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
   } else {
     envFile = await requirePlatformEnvFile(io, resolved);
-    await backfillWorkflowWorldComposeUrl(io, resolved.platform, envFile);
     const problems = await preflightStart(resolved, { requireWebBuild: true });
     if (problems.length > 0) {
       for (const problem of problems) io.stderr(problem);
@@ -646,7 +686,7 @@ async function runStartUnlocked(
       await ensureInfraUp(
         io,
         resolved,
-        composeArgs(envFile.path, "up", "-d", ...INFRA_COMPOSE_SERVICES),
+        composeArgs(envFile.path, "up", "-d", ...composeInfraServices(database)),
       );
     }
   }
@@ -716,7 +756,7 @@ export async function runStop(_args: string[], io: LifecycleIo): Promise<number>
     return 1;
   }
   await removeSupervisorFiles(resolved.layout);
-  io.stdout("Stopped. Infrastructure containers (postgres, otel-collector) keep running;");
+  io.stdout("Stopped. The infrastructure containers keep running;");
   io.stdout("use `docker compose stop` in the source tree to stop them too.");
   return 0;
 }
