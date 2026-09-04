@@ -1,52 +1,67 @@
 ---
 title: Architecture reference
-description: Review application ownership, dependency direction, data paths, and the public request path.
+description: Review application ownership, dependency direction, data paths, and the public request flow.
 ---
 
 ![Eveland production topology](../../assets/topology-en.svg)
 
-## Application ownership
+## 1. Component ownership and roles
 
-| Component               | Responsibility                                                                                |
-| ----------------------- | --------------------------------------------------------------------------------------------- |
-| Dashboard               | Authenticated team console                                                                    |
-| API                     | Platform contract, persistence, auth, import handling, and Built-in OTLP ingest               |
-| Agent Gateway           | Public Agent data plane, trusted routing, affinity, streaming, and private Playground path    |
-| Worker                  | Import, build, systemd runtime control, schedules, recovery, and cleanup                      |
-| OpenTelemetry Collector | OTLP receive, domain filtering, retry queues, and destination fan-out                         |
-| Workflow Dispatcher     | Durable timers, wake, and continuation dispatch; runs as its own systemd service or container |
-| Postgres                | Platform state plus the single shared workflow database                                       |
+| Component               | Execution Model               | Core Responsibility                                                                                |
+| :---------------------- | :---------------------------- | :------------------------------------------------------------------------------------------------- |
+| **Dashboard**           | Host process (unprivileged)   | Authenticated web console and interactive debugging interface.                                     |
+| **API**                 | Host process (unprivileged)   | Platform contracts, metadata persistence, team auth, source imports, and built-in OTLP projection. |
+| **Agent Gateway**       | Host process (`DynamicUser`)  | Public agent data plane, trusted routing, session affinity, and streaming transport.               |
+| **Worker**              | Host service (`root`)         | Sandboxed build execution, systemd transient lifecycle, schedules, and orphan recovery.            |
+| **Workflow Dispatcher** | Host service (`DynamicUser`)  | Singleton external scheduler driving durable timers, wake-ups, and step continuations.             |
+| **OTel Collector**      | Container                     | Managed OTLP receiver, persistent disk queues, and fan-out to sinks.                               |
+| **PostgreSQL**          | Container or external cluster | Control plane metadata and the single shared workflow world (tenant-partitioned).                  |
 
-## Dependency direction
+---
 
-```text
-apps → packages
-session-collector → core + db
-db → core
-core → no other Eveland package
-apps -X→ apps
-```
+## 2. Dependency direction constraints
 
-## Public request path
+Eveland enforces strict one-way architectural boundaries, guarded by ratchet test suites:
 
 ```text
-Client
-  → wildcard HTTPS Host
-  → Traefik
-  → Agent Gateway
-  → route policy / SessionBinding
-  → private loopback Deployment
-  → Eve HTTP channel
+apps (Web, API, Gateway, Worker) ──> packages
+packages/session-collector ─────────> packages/core + packages/db
+packages/db ────────────────────────> packages/core
+packages/core ──────────────────────> No internal Eveland package dependencies (Root package)
+apps -X-> apps (Strictly forbidden: no app-to-app cross imports)
 ```
 
-## Observation path
+---
 
-Injected Eve hooks use Eveland-private OpenTelemetry providers without changing user instrumentation. API, Agent Gateway, Worker, and Agent signals enter the managed Collector over OTLP. Built-in is always enabled and projects Agent logs and Worker capacity metrics into Sessions, Usage, and Instance Health; it stores no raw spans, LogRecords, or Metric Points. When configured, Elastic receives all Eveland signals, while Langfuse receives Agent traces only. External destinations have isolated queues and empty-OTLP health probes. Capacity samples retain 30 days, derived Session and Usage data retain 90 days, and batch receipts retain 24 hours. Playground streaming is not the authoritative collection path.
+## 3. Public request flow
+
+```text
+External client request
+  → Wildcard HTTPS host (*.agents.example.com)
+  → Reverse proxy (Traefik terminates TLS)
+  → Agent Gateway (Host port 17300, validates Host & Auth)
+  → Routing policy / SessionBinding resolution
+  → Private loopback deployment (127.0.0.1:18000–18999)
+  → Eve HTTP channel execution
+```
+
+---
+
+## 4. Observability and telemetry flow
+
+```text
+Agent execution / Platform service logs
+  → Injected private OTel provider (preserves user instrumentation)
+  → Pushed via OTLP to managed Collector
+  → Built-in projection persists data to Postgres (Sessions, Usage, Instance Health)
+  → (Optional) Fan-out to external telemetry stores (e.g. Elastic, Langfuse)
+```
+
+- **Retention windows**: Capacity metrics are retained for 30 days; derived Session and Usage records are kept for 90 days.
 
 ## Deeper reference
 
-- [Production architecture](/docs/production): supported core services, host Worker, and systemd topology
-- [Design decisions overview](/docs/reference/design): full collection of architectural trade-offs behind structural choices
+- [Production architecture overview](/docs/production): supported core services, host Worker, and systemd topology
+- [Design decisions overview](/docs/reference/design): full collection of architectural trade-offs
 - [Why systemd, not Docker](/docs/reference/design/runtime): runtime selection and host density rationale
-- [Agent Gateway invariants](/docs/reference/design/gateway): data-plane rules and security isolation boundaries
-- [Observability architecture decisions](/docs/reference/design/observability): why OpenTelemetry is the sole telemetry transport
+- [Agent Gateway invariants](/docs/reference/design/gateway): data-plane rules and security boundaries

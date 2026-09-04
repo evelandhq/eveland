@@ -1,37 +1,53 @@
 ---
-title: Releases and traffic
-description: Understand immutable previews, stable routes, weighted targets, session affinity, and retention.
+title: Releases and traffic routing
+description: Understand immutable previews, production routes, weighted traffic splitting, session affinity, and retention policies.
 ---
 
-Eveland separates authored source, build output, route identity, and running processes so a release can be tested beside production.
+Eveland decouples authored source code, release artifacts, runtime deployments, and public routes, allowing you to deploy and test new versions without risking production availability:
 
 ```text
 Project
   └─ Source Revision
-       └─ Release
+       └─ Immutable Release
             └─ Deployment
-                 ├─ immutable Preview Host
-                 └─ mutable Stable / Alias Routes
+                 ├─ Dedicated Preview Host (Immutable)
+                 └─ Stable & Alias Routes (Mutable)
 ```
 
-## Preview and promotion
+## 1. Immutable previews and atomic promotion
 
-Every successful Build & Deploy creates a new Release and concurrent preview Deployment. Promote updates a route; it does not rebuild or mutate the Release. Rollback selects another retained healthy Deployment and moves the route back.
+- **Immutable previews**: Each **Build & Deploy** triggers a brand-new immutable Release and starts a separate Preview Deployment with a unique, permanent preview URL.
+- **Atomic promotion**: Once verified, clicking **Promote** atomically re-points the production route (Stable Route) to the new deployment at the gateway layer — **without needing to rebuild the codebase**.
+- **Instant rollbacks**: If an issue arises post-release, you can immediately point the route back to any retained healthy historical deployment for instant recovery.
 
-## Weighted traffic
+## 2. Canary releases and weighted routing
 
-A mutable route selects one target or at most two targets whose basis-point weights total 10,000. New root sessions use deterministic affinity. Each multi-target policy revision creates a distinct experiment identity for comparison.
+Routes can be configured with weighted splitting across two active deployments:
 
-## Session affinity
+- **Dual-target splitting**: Allocate traffic between two deployments using basis points (summing to 10,000, representing 100%). For instance, `9000 : 1000` splits traffic 90% to 10%.
+- **Deterministic session bucketing**: Newly initiated root conversations are assigned to a target via deterministic hashing, ensuring accurate statistical distribution.
+- **Automatic failover**: If one of the targets in a weighted split is unhealthy or starting up, the gateway automatically directs unpinned incoming traffic to the surviving healthy target, avoiding client-facing errors.
 
-After Eve returns a session ID, Eveland persists a binding to the owning Deployment. Continue, cancel, and stream requests return to that exact target after promotion, rollback, or a zero traffic weight. A Deployment can therefore drain after leaving new traffic.
+## 3. Session affinity and graceful draining
 
-## Retention
+For multi-turn conversations and interactive sessions, route changes must never break active user dialogues:
 
-Eveland protects at least the newest configured Release count. A mutable route target, a non-expired SessionBinding, an active request lease, or other lifecycle protection can keep an older Release from archive independently of age. Playground bindings expire after 24 hours idle and public API bindings after 7 days idle by default; each successful bound request refreshes that deadline. A request for a known expired binding receives `410 session_expired` and is never routed to a different Deployment. The Worker automatically archives older unprotected Deployments after their RuntimeInstance has stopped, removing both the runtime artifact and its build directory. A build that fails before its Deployment is recorded is cleaned up immediately.
+- **Durable SessionBinding**: Once an Agent generates a session ID, Eveland persists an explicit binding between that session and the handling Deployment.
+- **Affinity persistence**: Follow-up turns (Continue), cancellations (Cancel), or streaming listeners (Stream) are **always forwarded to the originally bound Deployment**, even if that deployment was rolled back or had its traffic weight reduced to 0%.
+- **Graceful draining**: Superseded deployments remain in a `draining` state, finishing in-flight conversations before cleanly shutting down.
 
-## Deeper reference
+## 4. Retention and automatic archiving
 
-- [Routing and traffic policy contract](/docs/reference/routing): route policies, two-target basis-point weights, and SessionBinding lifecycle
-- [Agent Gateway design decisions](/docs/reference/design/gateway): data-plane invariants, Host validation, and reverse proxy security
-- [Scale-to-zero and cold activation](/docs/reference/design/scale-to-zero): activation leases, idle reaping, and retention safeguards
+To balance audit history with host disk capacity, Eveland enforces automated lifecycle safeguards:
+
+- **Protected releases**:
+  - The latest N releases per project (based on retention policies);
+  - Any deployment currently targeted by a production or alias route;
+  - Any deployment maintaining unexpired session bindings (SessionBinding) or active request leases (ActivationLease).
+- **Automated archiving**: Once an unprotected deployment stops, the background Worker purges its cached runtime artifacts and build directories to prevent disk accumulation.
+
+## Related references
+
+- [Routing and deployment lifecycle contract](/docs/reference/routing)
+- [Agent Gateway design and security model](/docs/reference/design/gateway)
+- [Scale-to-zero and cold activation](/docs/reference/design/scale-to-zero)

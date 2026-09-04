@@ -1,51 +1,52 @@
 ---
-title: Agent environment
-description: Behavioral reference for project Variables/Secrets, the Shared Agent Environment, and build-visible variables.
+title: Agent environment and variable hierarchy contract
+description: Specification for project variables/secrets, the Shared Agent Environment, build-visible variables, and persistent memory storage.
 ---
 
-An agent process's runtime environment comes from three layers with deterministic precedence: Shared Agent Environment < project Secret/Variable < Eveland reserved variables. This page is the behavioral contract for those layers: the Environment page semantics, the Shared Agent Environment singleton, and the rules for `variable` entries participating in Release builds. Trust boundaries and encryption details live in the [security model](/docs/operations/security); the operator facts of the build trust boundary and the reserved-name list in [Worker and builds](/docs/production/worker); the distinction between the three credential kinds in [Secrets and Connections](/docs/agents/secrets-connections).
+An agent process's runtime environment combines three distinct layers with deterministic precedence:
 
-## Project Variables and Secrets (/projects/:projectId/settings)
+$$\text{Shared Agent Environment} < \text{Project Variables \& Secrets} < \text{Platform Reserved Variables}$$
 
-Configures the runtime variables and external keys a project needs. The page shares the unified Type/Name/Value table and dialog interaction with project creation and the Shared Agent Environment; Type distinguishes `variable` from `secret`, both value kinds are stored encrypted, and after saving only the configured state is shown — original values never return to the browser. The old `/projects/:projectId/secrets` path redirects here.
+---
 
-Supported: adding a Variable or Secret; pasting `.env` content or uploading a `.env` file with a preview to bulk add or override at most 50 entries; changing an entry's Type or Name with optional value rotation; deleting an entry (with explicit confirmation); and viewing Type, Name, and configured state.
+## 1. Project variables and secrets (Project Settings)
 
-Bulk import shares the browser-side parsing and preview flow with project creation (parsing and per-line error rules: see [Source import](/docs/reference/source-import)). Before confirmation each entry defaults to `secret`, can be switched to `variable` per row, and shows whether the name is an addition or an override. Project settings upsert the validated entries atomically through a single bulk API call; the API enforces the 50-entry cap against the post-write name set, and enqueues exactly one restart task per live deployment only after the whole batch succeeds.
+Configures environment variables and credentials specific to an individual project:
 
-The new-project naming screen can also write the same set of project secrets before the first deploy; those initial secrets must commit atomically with the project and the initial import job — never deploying first and backfilling through later requests.
+- **Type distinctions**:
+  - `variable`: Non-sensitive configuration (e.g. `LOG_LEVEL`, `MODEL_NAME`). Exposed to build scripts (`npx eve build`) to compile release manifests.
+  - `secret`: Sensitive credentials (e.g. API keys, database URLs). Injected exclusively into running processes, **never leaking into archives, build logs, or client responses**.
+- **Limits and bulk import**: Supports up to 50 variables per project; supports pasting `.env` files for batch preview and saving.
+- **Asynchronous reload**: Mutating variables queues rolling restarts for all active (`running` or `draining`) deployments, reloading environment variables while reusing the immutable release artifact.
 
-After adding, changing, or deleting runtime entries, the API enqueues a restart task with an explicit deployment ID for each of the project's `running` or `draining` deployments. Project Variables/Secrets are runtime configuration and cannot modify a started process's environment in place; the restart keeps the original Release and re-decrypts and injects the full configuration set when the new process starts. The refresh scope must not rely solely on the transitional `projects.currentDeploymentId` field, because stable, preview, or A/B targets may run simultaneously. The Environment page must state clearly whether a restart was enqueued; with no live deployment, entries take effect from the next deploy.
+---
 
-Project secrets inject at runtime only and never enter: the Git repo, the zip, the build log, the Source page, or session logs. Project variables are explicitly declared non-secret configuration — equally absent from the Git repo, zip, Source page, and session logs — but additionally participate in Release builds (below).
+## 2. Shared Agent Environment
 
-## Shared Agent Environment (/settings/shared-agent-environment)
+Centrally managed by administrators under `/settings/shared-agent-environment`:
 
-The system has exactly one operator-owned Shared Agent Environment, primarily holding LLM keys and runtime defaults shared by multiple agents. It is not a user-nameable, creatable, or selectable profile collection. Entries distinguish `variable` from `secret`, but both value kinds are encrypted with `APP_SECRET_KEY`; the API/dashboard return only key, kind, configured state, and a monotonic revision — never ciphertext, plaintext, lengths, or recoverable fragments. Only admins may view or maintain the shared environment. The dashboard presents entries as a table of Type, Name, value state, and row-level actions; adding and editing use dialogs, and deletion requires explicit confirmation.
+- **Universal inheritance**: Automatically inherited by all agents across the platform, ideal for universal foundation model keys (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
+- **Project-level overrides**: Project-specific variables take precedence over matching keys in the shared environment.
+- **Secure injection**: Values are encrypted at rest with `APP_SECRET_KEY` and materialized only as root-owned, mode `0600` files read by systemd, avoiding command-line (argv) exposure.
 
-The shared environment applies automatically to every agent deployment of every project — there is no project/deployment binding. The deterministic precedence Shared Agent Environment < project Secret < Eveland reserved lets a project override a same-named shared default with its own key. A shared `secret` decrypts only at the process-start boundary of deploy, restart, cold activation, or schedule activation; it must never enter the source snapshot, the Release, Docker build layers, the generated Dockerfile, OTLP signals, logs, or dashboard payloads. Decrypted values reach the runtime only through a root-owned 0600 environment file (systemd `EnvironmentFile`, Docker `--env-file`) and must never appear on process argv — argv is readable by any same-host user via `/proc/<pid>/cmdline` and is permanently retained by `docker inspect`. The file must be deleted when the process stops or fails to start. The complete set of project/shared environment values must participate in runtime/build diagnostic masking.
+---
 
-The internal revision increments only on semantic entry changes. When the shared environment is updated or cleared, the API enqueues targeted restarts for every project's `running`/`draining` deployments; with no live deployment, changes take effect from the next start. The Shared Agent Environment belongs to the agent runtime only and must not serve as a Playground authentication credential. Basic, Bearer, Vercel OIDC, and confidential OIDC configurations resolve lazily through project secret references; a missing, deleted, or undecryptable reference must fail closed — never falling back to an old value or an inline copy. The system provides no named profiles, runtime bindings, platform secret references, or corresponding compatibility APIs. The Shared Agent Environment uses independent singleton storage and inherits no profile data model.
+## 3. Build-visible variables
 
-## Build-visible variables
+Eve projects statically resolve certain configuration during compilation (`npx eve build`):
 
-A Release build runs pre-discovery, the Extension integrator, `npx eve build`, and the final `eve info` after installation; each of these stages imports the project's own agent config or installed Extension modules to compile the manifest. Values the config reads from `process.env` at module-load time (most typically a model id) are frozen into the Release: if the build cannot see the entry, it compiles the config's fallback, and every turn that Release later reports carries that stale value.
+- The build sandbox receives only non-sensitive `variable` entries from project and shared environments;
+- Sensitive `secret` entries are **strictly withheld from the build environment**, preventing untrusted npm lifecycle scripts (`postinstall`) from exfiltrating credentials.
 
-The build environment therefore receives, beyond the platform's own toolchain allowlist, the project's effective `variable` entries with the same precedence as runtime (Shared Agent Environment < project Variable). `secret` never enters a build: install/build lifecycle scripts are untrusted project code and can read the build process's own environment via `/proc/self/environ` regardless of user.
+---
 
-Two groups of platform-reserved names are dropped from builds with a `WARNING` in the build log (never silently) while still injecting normally into deployed processes: the build toolchain's own `PATH`, `HOME`, `NPM_CONFIG_CACHE`, and every name in the runtime reserved layer — the runtime applies those last, so a build adopting a project's value would compile something the deployed process immediately overrides. The complete reserved list with per-name reasoning lives in [Worker and builds](/docs/production/worker); the list must stay in sync with the runtime reserved layer and is locked by a test.
+## 4. Persistent agent memory (`EVELAND_MEMORY_ROOT`)
 
-Releases are immutable, so changing a `variable` refreshes the compiled output only on the next deploy; a plain environment change still only enqueues restarts for live deployments on the existing Release. The Environment page must make this visible to operators. The Docker runtime passes these variables via the generated Dockerfile's `ARG` and `docker build --build-arg`, and their values appear in that image's build metadata — a direct consequence of the `variable`/`secret` tiering; the `ARG` declarations sit after the dependency-install layer, so on Docker only pre-discovery, the Extension integrator, `npx eve build`, and the final discovery can read them, while systemd runs install and build in one shell where both can. The build log still masks the complete set of project/shared environment values.
-
-## Agent memory storage (`EVELAND_MEMORY_ROOT`)
-
-One reserved name is a storage contract rather than platform plumbing: `EVELAND_MEMORY_ROOT` is where a deployed agent persists Eve `fileMemory()` documents, backed by the SDK's `evelandMemoryBackend()` (`eveland/memory`). The worker derives a per-project directory under its own data root — `<EVELAND_DATA_DIR>/memory/<projectId>` — provisions it on every launch, and injects the runtime-visible path: the systemd unit gets the host directory granted through its mount mask, a Docker container gets the directory mounted at a fixed in-container path. There is no operator configuration for it, and agent code must read only the injected variable — `EVELAND_DATA_DIR` itself is deliberately absent from deployment environments, so nothing agent-side can derive platform paths from it.
-
-The directory is keyed by project, not deployment, so memories survive redeploys and restarts; it is removed when the project is deleted. Because the name is runtime-reserved, a project entry can neither redirect an agent's persistent memory nor point it at another tenant's directory — Eve memory scope keys carry no project identity, so this per-project directory layout is the tenant isolation.
+- **Memory contract**: Eveland automatically injects `EVELAND_MEMORY_ROOT` into agent processes, designating the root directory where Eve persists `fileMemory()` documents.
+- **Tenant isolation**: The Worker binds this to a dedicated host path: `<EVELAND_DATA_DIR>/memory/<projectId>`. The directory persists across redeployments and restarts, and is cleaned up only upon project deletion.
 
 ## Deeper reference
 
-- [Secrets and Connections](/docs/agents/secrets-connections): developer guide to runtime secrets and Playground credentials
-- [Security model and isolation boundaries](/docs/operations/security): environment materialization, masking, and process privileges
-- [Install the host Worker](/docs/production/worker): build-time allowlists, environment filtering, and reserved variable rules
-- [Environment variables](/docs/reference/environment-variables): platform-wide configuration and runtime-reserved variables
+- [Secrets and Connections](/docs/agents/secrets-connections): developer guide to credentials and interactive auth
+- [Security model](/docs/operations/security): encryption at rest and process privilege models
+- [Install the host Worker](/docs/production/worker): build sandboxes and variable filtering allowlists

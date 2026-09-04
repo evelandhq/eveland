@@ -1,75 +1,47 @@
 ---
 title: Why OpenTelemetry is the transport
-description: Push-first, OTel-only observability with private providers — and the trust boundaries around Agent telemetry.
+description: Push-first, OTel-only observability architecture with private providers and rigorous agent telemetry trust boundaries.
 ---
 
-## The decision
+## The Decision
 
-Eveland's telemetry uses the OpenTelemetry API, semantic conventions, and
-OTLP as its **only** transport. There is no private telemetry envelope, no
-bespoke wire protocol, and no scraping pipeline; fan-out is the stock
-OpenTelemetry Collector, not a custom daemon.
+Eveland relies on the **OpenTelemetry API, standard semantic conventions, and OTLP** as its sole telemetry transport. The platform does not introduce proprietary telemetry envelopes or bespoke wire protocols, relying on the stock OpenTelemetry Collector for reliable fan-out and retries.
 
-## Why push, injected at release time
+---
 
-The platform promise is that Sessions cover _every_ entry point. Capture
-that lives on the Playground path silently misses direct port access,
-schedules, channels (Slack, webhooks), and subagent traffic.
+## 1. Why push-first, injected at release time
 
-Pulling the Eve event stream instead was considered and rejected on a trust
-argument: if an Agent defines custom route auth, the platform cannot read
-the stream without storing end-user credentials — which is unacceptable —
-and cron, channel, and subagent flows have no HTTP credential at all. So
-telemetry is pushed from inside the Agent process by an observer injected at
-Release preparation time, and stream reading survives only as optional
-reconciliation, never a correctness precondition.
+Eveland guarantees that **conversation and turn tracking covers every interaction entrypoint**:
 
-Injection follows the same rules as the [sandbox](/docs/reference/design/sandbox):
-the source snapshot is never modified, the user's `package.json` never gains
-platform dependencies, and the injected module is self-contained.
+- **Limitations of gateway-only capture**: Inspecting traffic exclusively at the edge proxy misses direct port invocations, background cron schedules, webhook channels, and internal subagent-to-subagent delegations.
+- **Why event-stream scraping failed**: If an agent implements custom authentication, external pull scrapers require storing end-user credentials. Furthermore, internal cron and subagent traffic carry no external HTTP credentials to scrape with.
+- **Release-time injection**: Eveland injects an observer hook during compilation, pushing structured events directly from within the agent process via standard OTLP. The injection is self-contained and never alters user source code.
 
-## Private providers, never the user's globals
+---
 
-The injected observer creates Eveland-private OTel providers and takes
-tracers/loggers directly from those instances. It never registers a global
-provider, never installs a context manager, and never flushes or shuts down
-the user's own OTel setup — an Agent that brings its own observability keeps
-it, untouched. (This is also why off-the-shelf wrappers were rejected: they
-assume global provider ownership.)
+## 2. Private providers: Zero intrusion into user globals
 
-## Trust boundaries
+The injected observer instantiates private, isolated OpenTelemetry providers:
 
-- **Two receivers, two trust levels.** The platform receiver requires a
-  service token Agents cannot obtain. The Agent receiver force-overrides
-  attribution attributes and accepts only the runtime instrumentation scope
-  — an Agent cannot impersonate the platform.
-- **Identity is assigned, not claimed.** The Worker signs a per-Deployment
-  credential; ingest verifies it and overrides self-reported identity, so an
-  Agent cannot attribute data to another Deployment.
-- **The honest limit is stated:** nothing prevents an Agent from fabricating
-  telemetry _about itself_. Resisting that would require out-of-process
-  provenance the current design does not provide.
-- **Egress is a chokepoint.** Agents and platform services hold no external
-  destination credentials; the Collector knows destination IDs only, and the
-  API-side proxy re-applies policy, strips internal credentials, and
-  enforces SSRF checks.
+- Does not register global `TracerProvider` or `MeterProvider` instances;
+- Never flushes, alters, or terminates user-defined OTel instrumentation;
+- User application telemetry continues reporting to user-configured backends independently.
 
-## Accepted trade-offs
+---
 
-- **Availability beats observability.** Observer failures degrade telemetry;
-  they must never fail a turn. Flushes are time-bounded; nothing fails
-  closed.
-- **At-least-once delivery**, so projection is idempotent and ordering leans
-  on Eve's per-session sequence numbers.
-- **Built-in storage is a summary, not a trace store.** Span-level detail
-  exists only in external destinations; with none enabled, detailed traces
-  are retained nowhere.
-- **Observability is not a billing ledger.** If loss-free token accounting
-  is ever required, it must be a separate domain ledger — not a re-purposed
-  telemetry spool.
-- **Reconstructions are labeled.** A model call's recorded input is
-  reconstructed from the Eve event stream, and marked as such, rather than
-  presented as the verbatim prompt.
+## 3. Trust boundaries and provenance integrity
+
+- **Two receivers, tiered trust**: The Collector publishes separate platform receivers (`17311`/`17312`) and agent receivers (`17313`/`17314`). The agent receiver accepts only restricted instrumentation scopes, preventing agents from impersonating platform services.
+- **Server-side provenance verification**: The Worker signs unique deployment credentials; the built-in ingest service verifies attribution upon receipt, preventing agents from attributing telemetry to arbitrary projects.
+- **External sink credential isolation**: Agents hold no external destination credentials (e.g. Elastic or Langfuse API keys); outbound fan-out is handled securely by the Collector through authenticated internal proxies.
+
+---
+
+## 4. Accepted engineering trade-offs
+
+- **Availability over observability**: Telemetry pipeline backpressure gracefully degrades; **telemetry hiccups must never fail an active conversation turn**.
+- **At-least-once delivery**: Network retries mean ingestion logic is designed to be fully idempotent.
+- **Built-in storage as structured summary**: The built-in PostgreSQL store retains conversation trees, token usage, and instance metrics; deep span-level trace analysis is delegated to external APM destinations.
 
 ## Deeper reference
 

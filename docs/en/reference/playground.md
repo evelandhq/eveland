@@ -1,71 +1,43 @@
 ---
-title: Playground
-description: Behavioral reference for the Playground transport, session lifecycle, authentication method matrix, and managed Eve Connection validation.
+title: Playground contract
+description: Specification for Playground transport protocols, streaming lifecycles, authentication methods, and managed connection validation.
 ---
 
-The Playground tests the current deployment directly. This page is its behavioral contract: the transport and session lifecycle, the eight client authentication methods, the OIDC client flow, and the managed Eve Connection validation matrix. The distinction between the three credential kinds (Eve Connections, injected runtime values, Playground client credentials) is explained in [Secrets and Connections](/docs/agents/secrets-connections); the operator-side rules for the credential envelope and network boundary live in the [security model](/docs/operations/security).
+The Playground provides an interactive in-dashboard debugging environment directly connected to target deployments. This document defines its behavioral contract and authentication specifications.
 
-## Transport and session lifecycle
+---
 
-When the user sends a message, the dashboard speaks the Eve canonical session protocol to the current deployment through the API and the internal-only, service-credentialed Agent Gateway Playground path. Conversation content, reasoning, tool calls, and human input all stream incrementally as NDJSON. Public agent traffic uses the canonical stable/preview host; the Agent Gateway never substitutes for the agent's own Authorization/Cookie authentication.
+## 1. Transport and session lifecycle
 
-Every open or refresh of the Playground creates a fresh Eve session from a blank state; subsequent messages, HITL answers, and recovered tool results within the same page continue that session, and there is no history switching or in-page conversation reset control. On page leave it best-effort resets via a keepalive request and must not depend on the response completing. The platform records a Session for this page session, viewable on the Sessions page (`trigger = playground`), but the Playground transport does not replace Eveland's private OTLP signals as the authoritative observation path.
+- **Streaming transport**: The frontend communicates via internal, service-authenticated gateway paths, consuming NDJSON streams incrementally (text chunks, reasoning blocks, tool executions, and human-in-the-loop HITL prompts).
+- **Session mapping**: Opening or refreshing the Playground creates a new clean Eve Session. Subsequent turns, approvals, and tool outputs within that page remain attached to this session.
+- **Cooperative turn cancellation**: Clicking cancel during streaming issues a canonical `cancel()` command to the server and keeps the stream attached until confirmation boundaries arrive, maintaining server-side state integrity.
+- **Attachment limits**: Supports up to 4 attachments per turn (text, code, images, or PDFs), maximum 5 MiB per file and 10 MiB total per turn.
 
-The first message carries a stable create-operation identity: the dashboard mints an operation ID per initial turn and sends it on the reserved `x-eveland-operation-id` header, which the API folds into the Eve create body as `operationId`; Eve deduplicates creates on it per authenticated principal. A create that fails without a definite verdict — an opaque 500 carrying a correlation ID, a transport error, a local abort — is an **unknown outcome**, not a failure: the durable workflow may already be committed, so the pending message persists with its identity, nothing is re-sent automatically (page mount and reconnect included), unrelated input is blocked, and the one offered action is an explicit retry of the identical message under the same identity. A retry that Eve resolves to a committed Session attaches from the beginning of its stream instead of creating a replacement; the platform closes its placeholder Session rather than double-tracking an Eve Session another record already owns. A definite up-front rejection (validation, authentication, size limits) discards the pending create. Eve refuses `operationId` from anonymous principals; the API then replays the create once without it, before any workflow starts — create-once protection simply does not apply to agents whose session route accepts anonymous callers. The platform Session recorded for an unknown-outcome create stores an explicit unknown-outcome reason that includes Eve's correlation ID.
+---
 
-The dashboard presents the Playground as a full-page chat surface. The transcript participates in the page's normal scroll instead of creating a nested scrolling panel, while the composer remains available at the bottom of the viewport. Its compact actions directly open the attachment picker and Playground authentication settings.
+## 2. Interactive debugging authentication matrix
 
-The Playground shows, for the current session: conversation content; live reasoning/thinking (raw reasoning is not persisted by the Playground); tool calls and results; errors; HITL (confirm/deny, options, free text, and external authorization prompts); and the current turn's image, PDF, text, and code attachments.
+When an agent enforces route-level authentication, configure credentials in the Playground:
 
-The Playground accepts at most 4 attachments per turn, each up to 5 MiB and 10 MiB combined; archives and executables are rejected. Attachments are passed to Eve as data URLs; the original files are not persisted by the Playground transport.
+| Authentication Method  | Protocol Behavior                                                                      | Target Use Case                                       |
+| :--------------------- | :------------------------------------------------------------------------------------- | :---------------------------------------------------- |
+| **`none`**             | Sends no authentication headers, querying via the canonical project host.              | Public, unauthenticated agents.                       |
+| **`eveland-identity`** | Transmits an ephemeral platform-issued Caller Token recognized by `evelandIdentity()`. | Agents protected by Eveland identity.                 |
+| **`basic`**            | Transmits HTTP Basic username and referenced project secret password.                  | Agents requiring HTTP Basic authentication.           |
+| **`bearer`**           | Transmits an externally issued Bearer token (supports secret references).              | Agents using static bearer tokens.                    |
+| **`oidc`**             | Full Authorization Code + PKCE flow to acquire and refresh access tokens.              | Agents integrating with corporate IdPs (e.g. Auth0).  |
+| **`headers`**          | Transmits explicit custom HTTP headers.                                                | Agents expecting proprietary headers or proxy tokens. |
 
-A generating turn can be stopped. Stopping must request cooperative server-side cancellation through the canonical cancel route and keep the current NDJSON stream open until `turn.cancelled` and the subsequent session boundary are observed; merely closing the browser stream is not enough. The frontend binding uses the asynchronous `cancel()`, which waits for the exact durable turn id and keeps the stream attached until settlement; the platform must not fall back to the removed synchronous `stop()`. The client auto-reconnects after transient disconnects from the last absolute cursor; Eveland neither depends on nor exposes the removed `maxReconnectAttempts`. Callers may explicitly disable auto-reconnect; the Playground keeps the default reconnect policy. An opening NDJSON stream may first emit blank bytes; the Agent Gateway must pass them through immediately, and the API monitor and any platform parser must ignore blank lines. When a turn is cancelled, tool/subagent calls still pending in the transcript display as cancelled.
+---
 
-Clients can perform a bounded catch-up read with `follow: false`: the request uses `includeTailIndex=1` and the agent returns `x-eve-stream-tail-index`. The dashboard rewrite, the API Playground proxy, and the internal and public Agent Gateways must preserve that query, response header, and NDJSON body untouched. The Playground itself keeps the default live follow and does not stop waiting for the current turn's subsequent events.
+## 3. Credential storage and execution envelopes
 
-## Playground authentication
-
-Each managed project has at most one Playground authentication configuration. It is the client configuration the Playground uses to call the agent — not the project, the deployment, an Eve Connection, or the platform login session. Users must explicitly choose the client method in the Playground authentication settings; the platform must not guess credential acquisition from Eve verifier names, source imports, 401s, or `WWW-Authenticate`. The Eveland member id serves only as the Caller Principal isolating future delegated credentials — it is not sent to the agent and is never implicitly mapped to the caller the agent's verifier establishes.
-
-The current generic methods:
-
-- `local-dev`: sends no credential and calls the agent with a loopback host. **It no longer authenticates against any agent in the current window** — `localDev()` only checks whether the process is `eve dev`, and agents on Eveland run under `eve start`, so it admits nothing. The method retains only historical meaning; such projects must switch to `eveland-identity` or the agent's own AuthFn. The Agent Gateway invariant of "never rewriting the host to loopback for public traffic" is unrelated to this point and must be preserved;
-- `none`: sends no credential but still uses the project's canonical agent host;
-- `eveland-identity`: sends an Eveland-issued Caller Token so the agent's `evelandIdentity()` sees an identity consistent with the real caller. No configuration fields: which principal the token represents depends on the instance's Identity Provider — Open mode uses the shared principal, Eveland Internal uses the currently logged-in platform user (hence cached per caller, not per connection), and OIDC is not yet supported;
-- `basic`: sends an HTTP Basic username and a lazily resolved password secret reference;
-- `bearer`: sends a lazily resolved, externally issued Bearer token secret reference;
-- `vercel-oidc`: mirrors the Eve client, sending the Vercel OIDC Bearer and the trusted deployment header together;
-- `oidc`: each Caller Principal independently acquires, verifies, and refreshes a Bearer token via Authorization Code + PKCE;
-- `headers`: sends explicitly configured custom credential headers validated against the reserved-header policy.
-
-`vercel-oidc` is a standalone explicit client provider, not a provider-name branch of generic `oidc`. Following the Eve client's `ClientAuth.vercelOidc` wire behavior, it sends the same short-lived token to both `Authorization: Bearer` and `x-vercel-trusted-oidc-idp-token`, passing Vercel Deployment Protection and reaching the agent verifier in one request. Playground authentication stores only the token secret reference/configured state; the platform never auto-switches methods from agent source or Vercel environments.
-
-The generic `oidc` method uses protocol-level configuration only: an HTTPS issuer, client id, scope, optional audience with its `resource`/`audience` parameter mode, explicit token-endpoint client authentication, extra authorization parameters, and `eve-jwt` or `userinfo` access-token verification. A confidential client secret is referenced through a project secret and must not enter the Playground authentication browser payload. `eve-jwt` must bind the configured issuer/audience; `userinfo` must require the UserInfo `sub` to match the verified ID token `sub`. A provider name can never change scope, prompt, client authentication, or verification behavior.
-
-The OIDC interaction uses a dashboard-owned callback page and a platform-login-authenticated API callback. The state, nonce, PKCE verifier, Caller Principal, authentication revision, and return path live in a ten-minute, single-use, encrypted transaction; expired transactions have a real cleanup path. Access/refresh tokens are stored encrypted per Caller Principal, and are sent to the agent only after JWT/UserInfo verification succeeds. Temporary verification failures stay pending; permanent token rejection does not activate the credential. Refresh uses in-process singleflight plus Postgres lease/rotation fencing; an expired lease writer cannot complete the update.
-
-The first Playground turn lacking an OIDC credential is saved in the current browser session, redirects to authorization, and is claimed and re-sent exactly once after the callback completes; no agent request may be created before authorization. With an existing credential, the first 401 triggers at most one refresh and re-send, a second 401 produces no third agent request, and 403 never refreshes. The Caller Principal is the isolation key of the Eveland member id and may differ entirely from the ID token `sub`, the access-token subject, and the agent-side caller.
-
-## Credential storage and the request path
-
-The normalized Playground authentication config is stored with AES-256-GCM under a purpose key derived from `APP_SECRET_KEY`, with AAD binding the authentication configuration id, the opaque method, and the security revision. The API/dashboard return only the descriptor and the masked configured state — never passwords, tokens, or custom header values. The security revision increments only on semantic changes to the method or normalized config; credentials of an old revision no longer serve new requests.
-
-The API re-resolves the current credential for every initial, continuation, cancel, and stream/reconnect request, and sends a strictly validated versioned envelope over the service-authenticated internal path. The Agent Gateway reads the envelope only after verifying the service token: `local-dev` builds a loopback host, every other method builds the canonical project host, and the credential header is written last. The Agent Gateway never stores, decrypts, or refreshes provider credentials; on the public path, Authorization, Cookie, Origin, Host, abort, and NDJSON streaming continue to be forwarded transparently.
-
-## Managed Eve Connections
-
-Eveland adds no standalone Connections configuration page and does not take over Eve's Connection definitions. Official Eve Connections in project source build with the Source Revision and deploy with the Release; the currently managed integrations explicitly validate:
-
-- `defineMcpClientConnection` and `defineOpenAPIConnection`;
-- Connections of the root agent and of directory-form subagents;
-- `auth.getToken()` reading project secrets at runtime and calling external services with an app-scoped Bearer credential;
-- continued availability after deploys, restarts, and new Releases, with credentials never entering the build log or Release summary.
-
-Connection URLs, inline OpenAPI specs, and module structure remain source/build inputs; project secrets inject at runtime only and cannot be read at build time. Vercel Connect is an external credential helper projects may adopt on their own — neither a prerequisite for Eveland-managed Connections nor a requirement for the Eveland operator or project to hold a Vercel account. Self-hosted interactive user authorization is not yet in the end-to-end support matrix; a Connection marketplace remains a non-goal.
+- **Zero persistence in edge logs**: Passwords, tokens, or custom headers configured for Playground debugging are stored encrypted in the database. API decrypts them into a single-request envelope for internal transmission, leaving no credentials in browser memory or gateway logs.
+- **Isolation from production auth**: Playground authentication applies exclusively to interactive console sessions and does not alter public route behaviors.
 
 ## Deeper reference
 
-- [Secrets, Connections, and Playground authentication](/docs/agents/secrets-connections): developer guide to credentials and authentication methods
-- [Security model](/docs/operations/security): credential envelopes, security revisions, and network egress policies
-- [Agent Gateway invariants](/docs/reference/design/gateway): `/internal/*` privileged isolation and data-plane rules
-- [Agent identity](/docs/reference/identity): Eveland Identity, OIDC, and Caller Token mechanics
+- [Secrets and Connections](/docs/agents/secrets-connections): developer guide to credentials and interactive auth
+- [Security model](/docs/operations/security): encryption at rest and request envelope mechanics
+- [Agent identity contract](/docs/reference/identity): Caller Token and identity verification specifications

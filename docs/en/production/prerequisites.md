@@ -1,99 +1,104 @@
 ---
-title: Prepare the host
-description: Prepare Linux users, directories, the sandbox toolchain, storage, and database access before installation.
+title: Host prerequisites
+description: Prepare Linux host dependencies, bubblewrap sandboxing, dedicated system users, and PostgreSQL planning.
 ---
 
-Use a Linux host with systemd; Eveland is verified on Ubuntu 24.04. Worker treats the complete toolchain below as a deployment contract and refuses to start while any piece is missing.
+Production environments require a Linux host with systemd (Ubuntu 24.04 LTS recommended). Complete the following preparations before installing Eveland platform services.
 
-## Install the toolchain
+## 1. Install toolchain and dependencies
 
-Install Node.js 24 (e.g. from NodeSource), then the pinned package-manager shim:
+### Node.js and package manager
+
+Install Node.js 24 and enable the required pinned pnpm version via Corepack:
 
 ```bash
 sudo corepack enable
 sudo corepack install --global pnpm@11.7.0
 ```
 
-Install the host-owned sandbox toolchain. Ubuntu's base image happens to include some of these commands, but the Worker preflight checks the complete set:
+### System packages and sandboxing utilities
+
+The host Worker requires basic Linux packages for git imports, packaging, and unprivileged sandboxing:
 
 ```bash
-sudo apt-get install -y apparmor bash bubblewrap ca-certificates curl docker.io findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
+sudo apt-get update && sudo apt-get install -y \
+  apparmor bubblewrap ca-certificates curl docker.io \
+  findutils git grep jq python-is-python3 python3 python3-pip \
+  ripgrep unzip zstd
 ```
 
-`git` is required in any case: Worker shells out to `git clone` for source imports.
+## 2. Configure bubblewrap and AppArmor
 
-## Configure bubblewrap and AppArmor
+Ubuntu 24.04 restricts unprivileged user namespaces by default (`kernel.apparmor_restrict_unprivileged_userns=1`). Because both build sandboxes and runtime exec environments run as unprivileged users, create an AppArmor profile granting `bwrap` necessary permissions:
 
-Ubuntu's packaged bubblewrap ships **no** AppArmor profile, and Ubuntu sets `kernel.apparmor_restrict_unprivileged_userns=1` by default, which blocks an unconfined non-root process from creating a user namespace. Both the build sandbox (running as the unprivileged build user) and the Agent exec sandbox (running as the unprivileged Deployment user) are exactly that, so both need a profile granting `bwrap` the `userns` permission:
+Create `/etc/apparmor.d/bwrap`:
 
-```
+```text
 abi <abi/4.0>,
 include <tunables/global>
 
 profile bwrap /usr/bin/bwrap flags=(unconfined) {
   userns,
-
-  # Site-specific additions and overrides. See local/README for details.
   include if exists <local/bwrap>
 }
 ```
 
-Save this as `/etc/apparmor.d/bwrap` and load it with `apparmor_parser -r -W /etc/apparmor.d/bwrap` (safe to re-run; it replaces an already-loaded profile). A distro whose bubblewrap package ships its own profile, or a host with the sysctl disabled, needs none of this.
+Reload AppArmor to apply the profile:
 
-## Create users and directories
+```bash
+sudo apparmor_parser -r -W /etc/apparmor.d/bwrap
+```
 
-- Create `/workspace` as an empty directory: `sudo install -d -m 0755 /workspace`. bwrap binds each sandbox session directory onto `/workspace` inside the sandbox but cannot create that mountpoint itself, because the sandboxed process bind-mounts the host root read-only first.
-- Create the artifact-access user and same-named group:
-  `sudo useradd --system --user-group --home-dir /var/lib/eveland-app --create-home eveland-app`.
-  Each Deployment runs under its own systemd `DynamicUser`; those identities use `eveland-app` only as their primary access group for the explicitly bound Release, cache, and policy paths.
-- Create a second service user for builds:
-  `sudo useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build`.
-  Dependency lifecycle scripts (`npm ci`/`npx eve build`) run as this user inside the build sandbox, never as root.
-- Create the absolute data root, normally `/var/lib/eveland`. API's mounted path and Worker's `EVELAND_DATA_DIR` must use that exact absolute path.
+_(If your Linux distribution already includes a profile or does not restrict unprivileged user namespaces, you can skip this step.)_
 
-Worker itself must run as root (it drives `systemd-run`, `systemctl`, and `chown`); it is installed as a systemd service in [Install the host Worker](/docs/production/worker).
+## 3. Create dedicated users and directories
 
-## Choose a PostgreSQL
+- **Sandbox mount root**: Create `/workspace` for mounting isolated sandbox sessions:
+  ```bash
+  sudo install -d -m 0755 /workspace
+  ```
+- **Application group user**: Create `eveland-app` for managing release artifacts and deployment caches:
+  ```bash
+  sudo useradd --system --user-group --home-dir /var/lib/eveland-app --create-home eveland-app
+  ```
+- **Dedicated build user**: Create `eveland-build`. Untrusted dependency scripts (`npm ci`, `npx eve build`) always run under this unprivileged account, preventing privilege escalation:
+  ```bash
+  sudo useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
+  ```
+- **Platform data root**: Create the unified platform data directory (default: `/var/lib/eveland`):
+  ```bash
+  sudo install -d -m 0755 /var/lib/eveland
+  ```
 
-An installation either runs the bundled database or uses one you provide. `eveland-ctl` asks once, at first boot, and records the answer in `install.json`; every later command branches on that record rather than guessing from the connection URL.
+## 4. PostgreSQL planning
 
-- **Bundled** — the Compose `postgres` service, published on host loopback `17310`. Nothing to provision, and upgrades dump it inside its own container, where the client and server versions match by construction. Suitable for a single-box installation.
-- **Your own** (recommended for anything you would page someone about) — a managed instance or a server you already operate, so backups, failover, and version upgrades follow the practices you already have. Answer the first-boot prompt with its connection URL, or set `DATABASE_URL` in the environment before the first `eveland-ctl start`.
+Eveland requires two logical databases (which may reside on the same PostgreSQL instance):
 
-There is no automatic fallback in either direction. If you name a server and it does not answer, the install stops there with the connection error rather than quietly starting a bundled container beside it — two clusters, one holding half the data, is not a state worth reaching.
+1. **Platform control plane database** (`DATABASE_URL`): Stores team credentials, project metadata, and session observations.
+2. **Shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`): Backs durable timers and workflows across all platform agents (isolated by `tenant_id`).
 
-What the platform needs from your own server is a role that owns two databases (or, as `eveland-ctl` renders it, one database used for both):
+### Deployment options
 
-- **Platform database** (`DATABASE_URL`) — owns Projects, Deployments, jobs, and auth.
-- **Shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`) — one database backing `@evelandhq/workflow-world` for every Project, scoped internally by `tenant_id`. It is required in production: Worker fails startup closed without it, and API reads the same URL to verify the World's cluster identity. Worker startup and tenant provisioning apply all pending workflow-world migrations automatically, serialized by a PostgreSQL advisory lock.
+- **Bundled container**: Spin up the bundled Postgres container via Compose (listening on `127.0.0.1:17310`). Ideal for single-node setups.
+- **External database**: Connect to an existing managed PostgreSQL cluster. Ensure that:
+  - `postgresql-client` is installed on the host for automated backups.
+  - **Do NOT place a transaction-level connection pooler (e.g. PgBouncer in transaction mode) in front of these databases**, because the durable job queue relies on session-level `LISTEN/NOTIFY` and advisory locks.
 
-Every reader of these — API, Agent Gateway, Worker, dispatcher, and every Deployment — is a host process in one network namespace, so each URL is a single address. `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` exists only for a platform that reaches the database by a different name than its Deployments do, which on Linux is no longer the case.
+## 5. Run automated preflight verification
 
-CREATEDB is not required. A Project is a tenant partition inside the shared World; only the legacy termination path still issues `CREATE DATABASE`. Do not create per-project workflow databases: the shared World replaced them. The legacy `WORKFLOW_POSTGRES_URL` is only relevant to installs still deleting Projects from before the shared World — see [Upgrade and rollback](/docs/operations/upgrades).
-
-Do not put a transaction-pooling proxy (PgBouncer in `transaction` mode, and most "serverless" pool front-ends) in front of either database: the durable job queue depends on session-scoped `LISTEN`/`NOTIFY` and advisory locks, which transaction pooling silently drops.
-
-An installation on its own PostgreSQL also needs `pg_dump` on the host, because `eveland-ctl update` takes a pre-upgrade backup with it (Debian/Ubuntu: `apt-get install postgresql-client`). `eveland-ctl doctor` checks for it, so a missing client is a finding rather than a failure halfway through an upgrade.
-
-Size `max_connections` and per-Deployment pool budgets with [Capacity planning](/docs/operations/capacity) before the first real workload, and put both databases plus the data root on your backup schedule — see [Backup and restore](/docs/operations/backup-restore).
-
-## Run preflight
-
-Run the standalone check from the Worker checkout:
+In the Worker checkout, run the automated verification script:
 
 ```bash
 pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 ```
 
-It verifies the full host contract in one pass: Linux with systemd, running as root, an absolute `EVELAND_DATA_DIR`, `systemd-run`, `systemctl`, `runuser`, `docker`, `ss`, and `ps` on `PATH`, the complete sandbox toolchain (`bash`, `node`, `npm`, `pnpm`, `rg`, GNU `grep`/`find`, `git`, `curl`, `jq`, `python`/`python3`, `pip`/`pip3`, `unzip`, `zstd`), `bwrap` unless `EVELAND_BUILD_SANDBOX=none`, the app and build users existing, `/workspace` existing as a directory, `@evelandhq/sandbox-bwrap` being resolvable, and the app user being able to traverse the data dir.
-
-It reports every failing check at once instead of stopping at the first. Do not continue until it prints `PREFLIGHT OK`.
+The script verifies systemd permissions, sandbox toolchain availability, system user existence, and path permissions in one pass. Proceed only after it reports `PREFLIGHT OK`.
 
 Continue with [Install the core services](/docs/production/core-services).
 
 ## Deeper reference
 
-- [Production architecture](/docs/production): core services, host Worker, and systemd topology
-- [Why a bubblewrap sandbox](/docs/reference/design/sandbox): AppArmor configuration and sandbox self-check rationale
-- [Capacity planning](/docs/operations/capacity): host hardware sizing and Postgres connection budgets
-- [Troubleshooting](/docs/reference/troubleshooting#worker-will-not-start): preflight failure diagnosis and resolution steps
+- [Production architecture overview](/docs/production): core services, host Worker, and systemd topology
+- [Why bubblewrap sandboxing](/docs/reference/design/sandbox): AppArmor configuration and sandbox self-check decisions
+- [Capacity planning](/docs/operations/capacity): host hardware resource estimates and Postgres connection budgets
+- [Troubleshooting](/docs/reference/troubleshooting#worker-will-not-start): common preflight errors and remediation steps

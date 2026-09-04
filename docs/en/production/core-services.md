@@ -1,13 +1,13 @@
 ---
 title: Install the core services
-description: Install a stable Eveland release and run the API, Agent Gateway, Dashboard, Worker, and workflow dispatcher as host systemd units.
+description: Install a stable Eveland release and run the core control plane services as host systemd units.
 ---
 
-Stable installations run an exact `vX.Y.Z` tag, not a mutable `main` checkout. Do not deploy `main` as a stable instance.
+Production deployments should always run a verified stable release tag (e.g. `vX.Y.Z`). Never deploy unverified `main` branch checkouts in production.
 
-Every platform process runs on the host as a systemd unit. Docker is left holding the managed OpenTelemetry Collector and, unless you brought your own PostgreSQL, the bundled database.
+On a Linux host, ancillary containers (the managed OTel Collector and optional Postgres) run via Docker, while all core Eveland services run as native systemd units.
 
-## Install the selected release
+## 1. Checkout stable release and build
 
 ```bash
 git fetch --tags origin
@@ -17,57 +17,75 @@ pnpm --filter @evelandhq/web build
 pnpm --filter @evelandhq/api db:migrate
 ```
 
-Apply database migrations before rolling any process onto the new tag. The Dashboard build is a host artifact: `eveland-web.service` serves it and refuses to start without one.
+_Note: Always apply database migrations (`db:migrate`) before starting or restarting services. The web dashboard artifact (`apps/web/.next`) is served directly by the host unit and must be built beforehand._
 
-## Configure the platform environment
+## 2. Configure platform environment
 
-The installation keeps one configuration file — `/opt/eveland/etc/eveland.env` under `eveland-ctl`, or a local `.env` (gitignored) for a hand-built install. At minimum set the public origin and every production secret:
+For installations managed via `eveland-ctl`, the configuration lives in `/opt/eveland/etc/eveland.env`; for manual setups, use `.env` in the repository root. Core required variables include:
 
-- `EVELAND_PUBLIC_ORIGIN` — the single browser-visible origin (the front door). The Better Auth URL, the authenticated CORS origin, and the Identity issuer all derive from it; individual overrides (`WEB_ORIGIN`, `BETTER_AUTH_URL`, `EVELAND_IDENTITY_ISSUER`) exist but are rarely needed.
-- `EVELAND_IDENTITY_ALLOWED_ORIGINS` — the exact chat browser origin, only with an external chat frontend.
-- `EVELAND_AGENT_BASE_DOMAINS` — the wildcard Agent domain, e.g. `agents.example.com`.
-- `DATABASE_URL` and `EVELAND_WORKFLOW_WORLD_URL` — one address each, because every reader of them is now a host process in the same network namespace. See [Prepare the host](/docs/production/prerequisites) for bundled versus your own PostgreSQL.
-- `BETTER_AUTH_SECRET`, `APP_SECRET_KEY`, `EVELAND_GATEWAY_SERVICE_TOKEN`, `EVELAND_GATEWAY_AFFINITY_SECRET`, `EVELAND_SCHEDULER_RUNTIME_SECRET`, `EVELAND_SCHEDULER_DISPATCH_SECRET`, `EVELAND_OTLP_SERVICE_TOKEN` — long random values, independent of each other. Never reuse the development fallbacks; outside explicit `NODE_ENV=development` the services fail closed without them.
+```ini
+# Public front door origin (no trailing slash)
+EVELAND_PUBLIC_ORIGIN=https://console.example.com
 
-Every variable, default, and consumer is listed in the [environment-variable reference](/docs/reference/environment-variables).
+# Wildcard base domain for agent routing
+EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 
-## Start the infrastructure
+# Database connection strings
+DATABASE_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+
+# Security secrets (generate long, distinct random strings using openssl rand -hex 32)
+BETTER_AUTH_SECRET=your_auth_secret_32_bytes_min
+APP_SECRET_KEY=your_app_encryption_key_32_bytes
+EVELAND_GATEWAY_SERVICE_TOKEN=your_gateway_service_token
+EVELAND_GATEWAY_AFFINITY_SECRET=your_affinity_secret
+EVELAND_SCHEDULER_RUNTIME_SECRET=your_scheduler_runtime_secret
+EVELAND_SCHEDULER_DISPATCH_SECRET=your_scheduler_dispatch_secret
+EVELAND_OTLP_SERVICE_TOKEN=your_otlp_service_token
+```
+
+_For all options and defaults, see the [Environment variable reference](/docs/reference/environment-variables)._
+
+## 3. Start infrastructure containers
+
+Launch the managed OpenTelemetry Collector (and bundled Postgres):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d otel-collector postgres
 ```
 
-Omit `postgres` if this installation uses your own PostgreSQL — it sits behind a Compose profile so a bare `up -d` cannot start a second cluster beside the one you configured.
+_(Omit `postgres` if you are connecting to your own external PostgreSQL cluster)._
 
-This starts the **managed OpenTelemetry Collector**, whose Worker-generated configuration is mounted read-only from `/var/lib/eveland/otel`. The Collector stays on its Docker bridge because the Docker runtime attaches it to each Agent's private telemetry network; it reaches the host-native API through `host.docker.internal`, where the API binds a second listener restricted to health, Collector Observation, Agent JWKS, and Scheduler Channel paths.
+**Security Warning**: The bundled Postgres port `17310` is intended exclusively for loopback access by host processes. **Never expose port 17310 on your public firewall**.
 
-The overlay starts no platform service at all. The base file's development API, Agent Gateway, Dashboard, Worker, and workflow dispatcher each sit behind a profile this command never enables, so the merged production configuration cannot start a second copy of anything.
+## 4. Install and configure systemd units
 
-**A published `17310` must never be reachable from outside the host.** The bundled database exists so host services — the API, the Agent Gateway, the Worker, the workflow dispatcher, and every deployed Agent process — can reach it on loopback, and it ships with well-known default credentials. Block it from every non-local network at the host firewall — see [Networking](/docs/production/networking).
+Platform services run with least-privilege system isolation:
 
-## Install the platform units
+| Unit                                  | User Identity                     | Role & Writable Paths                                    |
+| :------------------------------------ | :-------------------------------- | :------------------------------------------------------- |
+| `eveland-api.service`                 | `eveland-platform` (unprivileged) | Control plane API; writes only to `EVELAND_DATA_DIR`     |
+| `eveland-gateway.service`             | `DynamicUser` (unprivileged)      | Public entry gateway; read-only filesystem               |
+| `eveland-web.service`                 | `eveland-web` (unprivileged)      | Dashboard console; writes only to `.next` runtime cache  |
+| `eveland-worker.service`              | `root` (host controller)          | Sandboxed build and process orchestrator; no public port |
+| `eveland-workflow-dispatcher.service` | `DynamicUser` (unprivileged)      | External workflow scheduler; read-only filesystem        |
 
-`eveland-ctl install --systemd` renders and enables one unit per platform process:
+When using `eveland-ctl`, install and enable all units with one command:
 
-| Unit                                  | Runs as            | Writes                                   |
-| ------------------------------------- | ------------------ | ---------------------------------------- |
-| `eveland-api.service`                 | `eveland-platform` | `EVELAND_DATA_DIR`                       |
-| `eveland-gateway.service`             | `DynamicUser`      | nothing                                  |
-| `eveland-web.service`                 | `eveland-web`      | `apps/web/.next` (its runtime cache)     |
-| `eveland-worker.service`              | `root`             | the data root, systemd, deployment users |
-| `eveland-workflow-dispatcher.service` | `DynamicUser`      | nothing                                  |
+```bash
+eveland-ctl install --systemd
+```
 
-Every listening service runs unprivileged with `ProtectSystem=strict`, a read-only source tree, and an explicit `ReadWritePaths` — and **no two of them share a uid**. That is what makes the per-service environment files a real boundary rather than a convention: same-uid processes can read each other's `/proc/<pid>/environ`, so a public front door sharing the API's user would have had the whole platform configuration one read away. The API and the Dashboard keep fixed users because they own files across restarts; the Gateway owns nothing, so it takes a `DynamicUser` recycled at every boot. The Worker is root on purpose: it is the only component allowed to build untrusted project code and to drive `systemd-run`, `systemctl` and `chown`, which is how each Eve Deployment gets its own unprivileged `DynamicUser`. Each unit reads its own environment file under `etc/`, re-rendered from `etc/eveland.env` on every start — edit that file, not the rendered ones.
+For manual service configuration, see [Install the host Worker](/docs/production/worker) and [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
 
-For a hand-built install the same units are described in [Install the host Worker](/docs/production/worker) and [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
+## 5. Verify release alignment
 
-## Align release identity
+After starting the services, log into the dashboard and navigate to **Settings → About**:
 
-Set `EVELAND_RELEASE_CHANNEL=stable` and `EVELAND_REVISION` to the output of `git rev-parse --short=12 HEAD` in the platform configuration, then restart the units. An instance intentionally testing `main` uses `EVELAND_RELEASE_CHANNEL=edge` and its exact revision instead. `eveland-ctl start` and `eveland-ctl update` both pin this from the checkout for you.
+- Confirm that API, Dashboard, Worker, and Dispatcher report matching `version` and `revision` strings.
+- Verify that all services report `channel: stable`.
 
-The authenticated Dashboard **Settings → About** page compares Dashboard and API build identity; API and Agent Gateway also expose it through their public `/health` responses, Worker prints it on startup, and the dispatcher reports it on its registration. Do not call the installation (or a later upgrade) complete while any of these disagree. Team admins can use the same About page to inspect the allowlisted effective configuration of each component; secrets appear only as a fixed mask.
-
-Next, [install the host Worker](/docs/production/worker).
+Next: [Install the host Worker](/docs/production/worker).
 
 ## Deeper reference
 

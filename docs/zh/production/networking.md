@@ -1,49 +1,81 @@
 ---
-title: 配置 Agent 流量
-description: 配置 Wildcard DNS、TLS、Traefik、Agent Gateway 与私有 Deployment 端口。
+title: 配置网络与反向代理
+description: 配置泛域名 DNS、通配符 TLS 证书、Traefik 反向代理与 Agent Gateway 接入网络。
 ---
 
-Agent Gateway 是 Agent 流量唯一公开入口。原始 Deployment 端口只是私有实现细节。
+在 Eveland 架构中，**Agent Gateway 是所有 Agent 流量唯一公开的入口前门**（监听本地回环端口 `17300`）。Agent 进程的真实动态端口仅绑定在本地回环，绝不直接对外暴露。
 
-## DNS
+## 1. 域名与 DNS 解析规划
 
-为 Agent Base Domain 配置指向宿主机的 Wildcard 记录，例如 `*.agents.example.com`。`EVELAND_AGENT_BASE_DOMAINS` 的第一个值是被物化进路由的 Canonical Domain；生产环境通常只用一个值。
+为 Agent 访问配置一条指向宿主机公网 IP 的泛域名（Wildcard）解析记录：
 
-## Hostname
+```text
+*.agents.example.com  A  <宿主机公网 IP>
+```
 
-- Stable：`<projectSlug>.<agentBaseDomain>`
-- Preview：`<deploymentKey>--<projectSlug>.<agentBaseDomain>`
-- Named Alias 使用相同 Wildcard Domain。
+配置完成后，平台将基于该泛域名自动生成以下访问地址：
 
-Project Slug 全局唯一且不可变。Deployment Key 恰好由八个小写字母或数字组成，在其 Project 内唯一；完整的 `proj_*` 与 `dep_*` ID 始终是内部平台身份。Preview 分隔符 `--` 保持在一个 DNS Label 内，因此一张 Wildcard Certificate 即可覆盖 Stable、Preview 与 Alias Route。
+- **生产稳定路由 (Stable)**：`<projectSlug>.agents.example.com`
+- **专属预览路由 (Preview)**：`<deploymentKey>--<projectSlug>.agents.example.com`
+- **自定义别名路由 (Alias)**：`<aliasName>.agents.example.com`
 
-## Wildcard TLS
+_注：预览地址中的 `--` 分隔符保持在单级子域名内，因此单张 `*.agents.example.com` 证书即可覆盖所有路由。_
 
-公共 CA 只通过 ACME DNS-01 Challenge 签发 Wildcard Certificate——HTTP-01 无法验证 `*.` 名称。在反向代理上使用能通过 DNS 服务商 API 写入 Challenge TXT 记录的 ACME 客户端终止 TLS（Traefik 对应 `dnsChallenge` Certificate Resolver），并让其自动续期。
+## 2. 申请通配符 TLS 证书
 
-## Reverse Proxy
+公共 CA（如 Let's Encrypt）要求通配符证书必须通过 **ACME DNS-01 挑战** 签发（HTTP-01 无法验证 `*.` 规则）。建议在反向代理（如 Traefik 或 Caddy）中配置自动化 DNS 验证插件，实现通配符证书的自动申请与续期。
 
-从 `infra/traefik/agents.yml` 开始配置：替换示例域名，在此终止 TLS，并将 Wildcard Agent Host 转发到宿主机端口 `17300` 上的 Agent Gateway。同一个前门在平台 Host 上还服务 Dashboard 与浏览器 API，整个安装只有一个 upstream。该端口保持宿主机私有，并保留 `!PathPrefix('/internal')` 排除规则。
+## 3. 配置反向代理 (以 Traefik 为例)
 
-保持 Wildcard 规则对路径透明。Eve Task-input Callback 与自定义 MCP Channel 路径必须到达与常规 Session Route 相同的 Agent Gateway Catch-all；不要添加绕过 Agent Gateway 目标选择或冷激活的路径专属代理规则。如果你曾在 Deployment 正前方按路径路由，必须**同时**转发 `/eve/` 与 `/.well-known/workflow/`——Workflow World 把 Run Callback 投递到 `/.well-known/workflow/v1/flow`，只转发 `/eve/` 会让 Session 能启动但所有 Run 静默卡死。
+反向代理负责终止公网 TLS，并将流量转发至宿主机 `127.0.0.1:17300`。参考 `infra/traefik/agents.yml`：
 
-## 私有端口
+```yaml
+http:
+  routers:
+    # 平台控制台与 API
+    eveland-console:
+      rule: "Host(`console.example.com`)"
+      entryPoints: ["websecure"]
+      service: "eveland-gateway"
+      tls: {}
 
-- Agent 进程绑定 `127.0.0.1:18000–18999` 范围内的私有端口。永远不要把这些动态端口加进 Traefik 或防火墙规则。
-- 托管 Collector 的 Receiver（平台侧 Loopback `17311`/`17312`，Agent 侧 `17313`/`17314`）绝不能发布到公开接口。
-- API（`17301`）与 Dashboard（`17302`）仅绑定 Loopback；前门（`17300`）是唯一的非回环监听端口。
-- 自带的 Postgres 在宿主机上发布 `17310`，以便平台服务和已部署的 Agent 进程访问它，而它携带的是众所周知的默认凭据。**必须在宿主机防火墙上阻断所有非本地网络对 `17310` 的访问**（例如 `ufw deny in on <public-interface> to any port 17310`，或等效的安全组规则）；公开接口唯一需要放行的入站端口是反向代理的 `80`/`443`。
+    # Agent 泛域名流量
+    eveland-agents:
+      rule: "HostRegexp(`{sub:[a-z0-9-]+}.agents.example.com`) && !PathPrefix(`/internal`)"
+      entryPoints: ["websecure"]
+      service: "eveland-gateway"
+      tls: {}
 
-## Agent Gateway 边界
+  services:
+    eveland-gateway:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:17300"
+```
 
-Agent Gateway 验证完整 Canonical Host，移除不受信任的 Forwarding Header 与保留的 Eveland Header，再重建可信平台 Header。它保留 Agent 自己的 Authorization、Cookie、Origin 语义、请求流与 NDJSON 响应流。
+### 反向代理关键规则
 
-`/internal/*` 下由 Service Authentication 保护的 Playground 与 Activation Route 必须对公开代理保持不可达。
+1. **全路径透传**：保持规则对路径透明，确保 `/eve/*` 与 `/.well-known/workflow/*` 均能正常到达网关。
+2. **严禁放行 `/internal/*`**：`/internal/*` 属于平台机器间服务认证接口，**严禁从公网代理路由访问**。
 
-下一步[验证平台](/zh/docs/production/verify)。
+## 4. 宿主机内部端口规划与防火墙策略
 
-## 深入参考
+| 端口号          | 绑定接口    | 协议/服务               | 安全策略                           |
+| :-------------- | :---------- | :---------------------- | :--------------------------------- |
+| `80` / `443`    | 公网接口    | HTTP / HTTPS (Traefik)  | **允许公网入站**                   |
+| `17300`         | `127.0.0.1` | Agent Gateway 前门      | 仅本地访问，反向代理转发目标       |
+| `17301`         | `127.0.0.1` | 平台 API                | 仅本地回环访问                     |
+| `17302`         | `127.0.0.1` | Dashboard 控制台        | 仅本地回环访问                     |
+| `17310`         | `127.0.0.1` | 内置 Postgres           | **严禁公网访问**，仅供本地服务连接 |
+| `17311`–`17314` | `127.0.0.1` | OTel Collector 接收端点 | 仅供宿主机进程与 Agent 发送遥测    |
+| `18000`–`18999` | `127.0.0.1` | Agent 实例动态端口      | 仅供 Gateway 内部转发，切勿暴露    |
 
-- [Agent Gateway 不变量与安全设计](/zh/docs/reference/design/gateway)：网关数据面规则与 Host 校验决策
-- [路由与 Deployment 生命周期契约](/zh/docs/reference/routing)：Route Policy、两目标加权与 Session 绑定
-- [安全模型与网络边界](/zh/docs/operations/security)：私有端口保护与证书模型
+在宿主机防火墙（UFW 或安全组）中，通常**仅需开放 `80` 与 `443` 端口**即可。
+
+下一步：[生产链路验证与验收](/zh/docs/production/verify)。
+
+## 相关参考
+
+- [网关数据面设计决策](/zh/docs/reference/design/gateway)：网关不变量、Host 校验与安全代理
+- [路由契约规范](/zh/docs/reference/routing)：域名解析与会话绑定规格
+- [安全模型](/zh/docs/operations/security)：网络边界与凭证隔离

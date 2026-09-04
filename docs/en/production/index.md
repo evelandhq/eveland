@@ -1,42 +1,41 @@
 ---
 title: Production architecture
-description: Understand the supported core services, host Worker, workflow dispatcher, Agent Gateway, and systemd runtime topology.
+description: "Understand Eveland's production topology: core services, host Worker, workflow dispatcher, Agent Gateway, and systemd runtime."
 ---
 
-Eveland's production boundary is intentionally different from its local development stack. Production Eve deployments do not run through the development Docker runtime: they run as unprivileged systemd units on the host, controlled by a single privileged Worker.
+Eveland's production architecture is engineered to maximize host agent density while maintaining strict process isolation. In Linux production environments, agents do not run in container-in-container setups; they run directly on the host as hardened, unprivileged **systemd transient units**, managed by a single privileged host Worker.
 
 ![Eveland production topology](../../assets/topology-en.svg)
 
-## Core services
+## Topology and responsibilities
 
-The API, Agent Gateway, and Dashboard run on the host as systemd units under one unprivileged system user, with `ProtectSystem=strict`, a read-only source tree, and an explicit `ReadWritePaths` each. API owns authenticated team workflows and persistence. The Agent Gateway is the only public Agent data plane; it has neither the Docker socket nor any writable path at all, so sources, Releases, secrets, and Collector configuration are out of its reach. Docker runs the managed OpenTelemetry Collector and, unless the installation brought its own PostgreSQL, the bundled database — and nothing else.
+| Component               | Execution Model              | Core Role                                                                                               |
+| :---------------------- | :--------------------------- | :------------------------------------------------------------------------------------------------------ |
+| **API**                 | systemd (unprivileged user)  | Team auth, metadata persistence, source import pipelines, and built-in OTLP projection.                 |
+| **Agent Gateway**       | systemd (`DynamicUser`)      | Front door for all public agent traffic: host routing, reverse proxying, and streaming transport.       |
+| **Dashboard**           | systemd (unprivileged user)  | Web console for team management and live debugging.                                                     |
+| **Worker**              | systemd (`root`)             | Sole privileged controller: manages sandboxed builds and systemd lifecycle. No public network listener. |
+| **Workflow Dispatcher** | systemd (`DynamicUser`)      | Singleton external scheduler driving durable timers, wake-ups, and step continuations.                  |
+| **Postgres**            | Container or external server | Backing store for platform control plane and shared workflow world (tenant-partitioned).                |
+| **OTel Collector**      | Container                    | Managed ingestion and fan-out of OpenTelemetry logs, metrics, and traces.                               |
 
-## Host runtime controller
+## Core security principles
 
-Worker runs directly on the Linux host as a root-owned systemd service. It is the only component allowed to build untrusted project code and control systemd units (`systemd-run`, `systemctl`, `chown`). Builds run as a separate unprivileged build user inside a bubblewrap sandbox; each Eve Deployment runs under its own systemd `DynamicUser` and binds a private port in the `127.0.0.1:18000–18999` range. Worker has no public listener.
+### 1. Privilege separation
 
-## Workflow dispatcher
+- **Zero-privilege public edge**: The Agent Gateway only handles traffic forwarding. It holds neither the Docker socket nor host write privileges, and has no access to decrypted database credentials or application secrets.
+- **Sandboxed builds**: Although the Worker boots as root to manage system services, untrusted project build scripts (`npm ci`, `npx eve build`) always execute inside an unprivileged bubblewrap sandbox under a dedicated user account.
+- **Dynamic user isolation**: Each agent deployment runs under a disposable systemd `DynamicUser`, binding exclusively to private loopback ports (`127.0.0.1:18000–18999`).
 
-Durable workflows run in external mode: Deployments never claim their own timers. Exactly one workflow dispatcher runs alongside Worker, claims durable workflow jobs from the shared workflow database, and POSTs each step back into the owning Deployment — activating it first when it has been idle-reaped. Without this process, durable timers, wake, and continuation never fire. See [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
+### 2. Unified data root
 
-## Shared data contract
+The API and Worker are host-native processes that share a single absolute filesystem root (defaulting to `/var/lib/eveland`). All imported source trees, compiled releases, sandbox caches, and telemetry policies reside under this directory.
 
-API and Worker must see the same absolute data root, normally `/var/lib/eveland`; both are host processes reading it directly. A Project's stored `sourcePath` is written by whichever side imports the Project and read by whichever side later serves or deploys it, so a mismatched mount leaves one side unable to find files the other wrote. Imported sources, prepared Releases, Agent observability policies, managed Collector configuration, and sandbox caches all live below this root.
+### 3. On-demand cold starts and scale-to-zero
 
-## Telemetry topology
+Deployments are permanent entities, but running processes are ephemeral:
 
-The managed Collector publishes its service-authenticated platform receiver on host loopback ports 17311/17312 and its Agent receiver on 17313/17314. systemd Agents reach host loopback port 17314; each active Docker Deployment instead gets a private network containing only its Agent and the Collector. Never publish either receiver on a public interface.
+- When a public request, cron schedule, or workflow step arrives, Eveland activates the target release in milliseconds via an ActivationLease.
+- When all leases expire and the idle window lapses (default: 5 minutes), the Worker gracefully terminates the process, reclaiming system memory while leaving routes and session states intact.
 
-The Agent receiver is unauthenticated, so each Deployment's telemetry is attributed by a Worker-signed credential written into its read-only `agent-policy.json`; the platform verifies it and replaces Agent-supplied ownership with the Store-owned Deployment identity. Different Agent Deployments cannot resolve or connect to one another through the telemetry path. A missing Collector degrades telemetry but never blocks an Agent start or cold activation, and observability settings changes restart only the Collector, never Agent Deployments.
-
-## Public entry points
-
-Everything enters through the Agent Gateway front door on host port `17300`, behind your TLS reverse proxy: the Dashboard and browser API on the platform host (`EVELAND_PUBLIC_ORIGIN`), Agent traffic on wildcard Agent hosts. Deployment ports stay on loopback. See [Configure Agent traffic](/docs/production/networking).
-
-## Resource lifecycle
-
-A durable Deployment is not the same thing as a permanently running process. Activation leases wake the exact Release for traffic, continuations, or schedules. After the final lease, Worker stops the RuntimeInstance following the configured idle period while the Deployment, preview address, and SessionBindings remain valid.
-
-systemd Deployment processes are transient units and do not restart automatically after a host reboot. The enabled Worker does restart, reconciles stale RuntimeInstances, and the next request or schedule cold-starts the preserved exact Release; only the transient process is absent during the cold interval.
-
-Continue with [Prepare the host](/docs/production/prerequisites).
+Next: [Prepare the host environment](/docs/production/prerequisites).

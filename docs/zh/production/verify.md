@@ -1,65 +1,63 @@
 ---
-title: 验证平台
-description: 用真实 Eve Deployment、稳定请求和已观察 Session 验证完整生产链路。
+title: 验证生产链路
+description: 通过真实 Eve 项目导入、预览测试、生产发布与会话用量追踪，验收完整的生产环境。
 ---
 
-登录页可以打开并不能证明 Runtime 链路正常。使用有代表性的 Eve 项目验收完整系统。
+Web 控制台能打开并不代表完整的底层运行时链路已经就绪。建议使用一个标准的 Eve 示例项目完成端到端链路验收。
 
-## 平台检查
+## 1. 基础服务存活检查
 
-1. 确认 API 与 Agent Gateway `/health` 返回预期的稳定版本和精确 Revision。
-2. 确认 Worker 已启动且生产 Preflight 通过（`journalctl -u eveland-worker`）。
-3. 确认 Workflow Dispatcher 已打印 `workflow-dispatcher: ready` 且其 Registration 心跳保持新鲜——心跳过期时，生产构建与 Workflow Step 激活会以 `workflow_unavailable` 直接失败（Fail Closed）。
-4. 以初始 Admin 登录，在 **Settings → About** 检查已脱敏的组件配置；所有组件必须在版本、Revision 与 Release Channel 上一致。
-5. 邀请第二名团队成员，并确认 Invitation 只能使用一次。
+1. **API 与 Gateway 健康检查**：
+   访问 `http://127.0.0.1:17301/health` 和 `http://127.0.0.1:17300/health`，确认返回状态为 `ok` 且报告了正确的版本号。
+2. **Worker 状态与预检**：
+   执行 `journalctl -u eveland-worker`，确认 Preflight 预检通过无告警。
+3. **Workflow Dispatcher 状态**：
+   执行 `journalctl -u eveland-workflow-dispatcher`，确认输出 `workflow-dispatcher: ready`。
+4. **控制台组件版本核对**：
+   以初始管理员身份登录控制台，进入 **Settings → About**，确认 API、Dashboard、Worker 与 Dispatcher 的 `version`、`revision` 与 `channel` 完全一致。
 
-## Runtime 检查
+## 2. 运行时端到端功能验收
 
-1. 导入依赖版本受支持的 Eve 项目。
-2. 添加最少所需 Project Secrets。
-3. 构建新的不可变 Preview。在构建日志中观察下述 Sandbox 标记。
-4. 通过 Agent Gateway 调用 Preview Host，并完成一次真实 Turn。
-5. 将健康 Deployment Promote 到 Stable Route。
-6. 调用 Stable Host，确认 Session 带有 Deployment Provenance 与 Eve 报告的 Usage。
-7. 等待 Idle Window 到期，再次调用并确认按需唤醒成功。
+按照以下流程验证一条真实的 Agent 交付链路：
 
-## 构建日志标记
+1. **导入项目**：在控制台中通过 Git 或 Zip 导入一个依赖版本受支持的 Eve 项目。
+2. **配置密钥**：添加该 Agent 运行所需的基础 API Key（如 `OPENAI_API_KEY`）。
+3. **构建预览 (Build & Deploy)**：
+   - 触发构建，在构建日志中确认依赖在沙箱中成功安装，并观察到 `Sandbox self-check passed` 标记；
+   - 预览部署状态转为 `healthy`。
+4. **验证交互与流式响应**：
+   - 使用在线 [Playground](/zh/docs/reference/playground) 或直接请求预览域名，发送对话测试；
+   - 确认能收到完整的流式文本输出与工具执行结果。
+5. **发布到生产 (Promote)**：
+   - 点击 **Promote**，将流量切换至生产稳定路由（Stable Route）；
+   - 请求生产域名，确认返回符合预期。
+6. **观测与用量采集**：
+   - 进入 **Sessions** 页面，确认会话列表中记录了对话详情、所属部署版本及模型 Token 消耗。
+7. **验证按需唤醒 (Scale-to-Zero)**：
+   - 等待空闲等待窗口（默认 5 分钟）结束后，在控制台观察到实例进入 `stopped` 状态；
+   - 再次发送请求，验证网关能否在秒级内自动冷启动该部署并正常响应。
 
-systemd Runtime 上的健康构建会记录生成了哪些 Sandbox 模块，例如：
+## 3. 常用服务排障命令
 
-```
-Injected eve sandbox modules: agent/sandbox.js
-Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.
-```
-
-Self-check 之所以存在，是因为 HTTP 健康检查通过并不代表 Sandbox 可用：Eve 惰性预热 Sandbox，损坏的 bubblewrap 环境否则要等到部署宣告成功很久之后、某次 Agent Turn 失败时才暴露。Eveland 改为在每次构建后立即以与部署等价的加固环境运行真实的 Vendored Backend，失败时**让构建本身失败**。失败信息会点名需要检查的宿主机前置条件（AppArmor Profile、`/workspace`、Sandbox 工具链）——参见[准备宿主机](/zh/docs/production/prerequisites)。
-
-## Deployment 日志
-
-每个 Deployment 作为 Transient Unit 运行；读取其 Journal：
-
-```bash
-journalctl -u eveland-<project>-<deployment>.service
-```
-
-Scheduler、Activation 与冷启动故障，从 **Settings → About** 与 Project Sessions 历史下的 ScheduleRun 详情开始排查——参见[故障排查](/zh/docs/reference/troubleshooting)。
-
-## 集成冒烟测试（可选）
-
-在确定生产宿主机模式之前，仓库的 Lima Harness 可在一台一次性 Ubuntu 24.04 VM 上端到端验证同一条 systemd/bwrap 链路：导入 Fixture 项目、在 bwrap 下构建、以 Transient Unit 启动、轮询健康、发起请求并拆除——外加 Scheduler Scale-to-zero 与 Managed Connections Fixture。
+若在验收过程中遇到异常，可通过以下命令查看各服务日志：
 
 ```bash
-brew install lima
-bash infra/integration/run.sh
+# 查看 Worker 调度与构建日志
+sudo journalctl -u eveland-worker -f
+
+# 查看 Workflow Dispatcher 调度日志
+sudo journalctl -u eveland-workflow-dispatcher -f
+
+# 查看指定 Agent 部署的运行日志
+sudo journalctl -u eveland-<projectSlug>-<deploymentId>.service -f
 ```
 
-完全成功的运行以 0 退出并打印 `SMOKE OK`。失败时从宿主侧检查 Guest Unit：`limactl shell eveland-test -- sudo journalctl -u 'eveland-*' --no-pager | tail -50`。
+_(可选) 在 macOS 开发机上，可借助 Lima 虚拟机运行自动化集成验收套件：`bash infra/integration/run.sh`。_
 
-记录本次验收使用的精确 Revision 与配置。继续阅读面向团队成员的[部署第一个 Agent](/zh/docs/agents/first-deployment)。
+至此，Eveland 生产环境已就绪！你可以开始参考 [部署第一个 Agent](/zh/docs/agents/first-deployment) 向团队推广。
 
-## 深入参考
+## 相关参考
 
-- [部署第一个 Agent](/zh/docs/agents/first-deployment)：面向 Agent 开发者的第一次部署指引
-- [健康与诊断](/zh/docs/operations/diagnostics)：组件可用性验证与日志排查矩阵
-- [故障排查](/zh/docs/reference/troubleshooting)：常见报错排查与已知限制说明
-- [安全模型](/zh/docs/operations/security)：生产安装的完整安全边界与特权模型
+- [部署第一个 Agent](/zh/docs/agents/first-deployment)：开发者上手指引
+- [健康诊断与运行状态](/zh/docs/operations/diagnostics)：系统运行状态排查
+- [故障排查手册](/zh/docs/reference/troubleshooting)：常见错误代码与解决方案

@@ -1,40 +1,49 @@
 ---
-title: Secrets、Connections 与 Playground authentication
-description: 区分 Eve Connections、注入 Agent 进程的运行时值与 Eveland 调用受保护 Agent 时使用的 Credential。
+title: 密钥、连接与调试认证
+description: 掌握项目环境变量、Eve 连接（Connections）以及在线调试（Playground）的凭证配置。
 ---
 
-Eveland 从概念上严格区分 Eve Connections、注入 Agent 进程的值，以及 Playground 调用 Agent 自有受保护 Eve Route 时使用的 Credential。
+在 Eveland 中，配置被清晰地划分为三类：**注入 Agent 的环境变量与密钥**、**Agent 访问外部服务的连接（Connections）**，以及 **Playground 调试调用受保护 Agent 时的客户端凭证**。
 
-## Runtime Secrets
+## 1. 项目环境变量与密钥 (Project Secrets)
 
-Project Secret 以密文保存，只为目标进程 Materialize。保存、替换或删除 Secret 会为所有 Running/Draining Deployment 排队 Targeted Restart，避免任何 Route 保留旧环境。
+项目密钥用于保存模型 API 密钥、数据库连接串及各类业务配置：
 
-变更是异步生效的：每次修改为每个 Running/Draining Deployment（Stable、Preview 与 A/B Target 一视同仁）排队一个 `restart_deployment` Job。每次 Restart 复用不可变 Release，只重建进程环境。测试新值前请等待这些 Job 完成；运维细节见[安全模型](/zh/docs/operations/security)。
+- **加密存储**：所有配置值均在数据库中加密保存，仅在 Agent 进程启动时动态解密注入。密钥绝不会出现在源码、构建产物、日志或观测会话中。
+- **自动重启生效**：保存或更新密钥后，平台会异步为该项目当前所有运行中的部署（包括生产、预览及灰度版本）触发环境重载与无损重启（复用已有发布包，仅重构进程环境变量），确保线上不会遗留旧配置。
+- **多层级优先级**：
+  1. **平台共享环境 (Shared Agent Environment)**：由管理员统一维护，包含通用的基础模型 Key 或默认参数，自动应用于全平台 Agent。
+  2. **项目密钥 (Project Secrets)**：项目维度的专属配置。如果与共享环境中的键名冲突，以项目配置为准（支持覆盖）。
+  3. **平台保留配置 (Platform Reserved)**：由系统运行时自动注入的内部参数（如端口、实例 ID 等）。
 
-管理员维护一套带 Revision 的 Shared Agent Environment，用于共用的 LLM Key 和运行时默认值。它自动应用到每个 Agent Deployment。有效优先级为 Shared Agent Environment、Project Secret，最后是 Eveland Reserved Value，因此 Project 可以覆盖同名共享 Key。
+## 2. 外部服务连接 (Eve Connections)
 
-## Eve Connections
+Eve 框架支持在项目源码的 `agent/connections/` 目录下声明外部集成（如 MCP 服务或 OpenAPI 接口）：
 
-Connection 使用 Eve 官方定义：位于 `agent/connections/` 下、供 Agent 访问外部 MCP 或 OpenAPI server 的声明。静态 Connection token 与 API key 可以从 Agent runtime environment 读取 Project Secret；它们不是 Playground credential。
+- 连接的静态 Token 或 API Key 可以直接通过环境变量引用项目密钥。
+- 这些配置属于 Agent **作为客户端**发起出站请求时所用的凭据，与调用 Agent 本身的鉴权无关。
 
-## Playground authentication
+## 3. 在线调试鉴权 (Playground Authentication)
 
-在 Playground 中明确选择 Local Development、None、Eveland Identity、Basic、Bearer、Vercel OIDC、Custom Header 或 Generic OIDC Authorization Code。Eveland 不会根据源码、Provider 名称或 Authentication Challenge 猜测方法。
+如果你的 Agent 代码中启用了认证保护（如使用了鉴权函数），在控制台的 [Playground](/zh/docs/reference/playground) 调试时需要配置调用凭证：
 
-Eveland Identity 发送 Eveland 签发的 Caller Token，让 Agent 的 `evelandIdentity()` AuthFn 看到与真实调用方一致的身份。它没有配置字段：token 代表哪个 Principal 取决于本实例的 Identity Provider。Open 模式用它唯一的共享 Principal；Eveland Internal 用你自己登录的用户，因此同一 Project 的两个成员不会共用 credential。启用 OIDC Provider 时，通过 OIDC 登录的调用方由自己的 Identity Session 签发 Caller Token；Playground 的这一方法本身仍不可用——平台用户与 IdP 用户之间没有可信映射。
+- **Eveland 统一身份 (Eveland Identity)**：直接向 Agent 传递由平台签发的短期 Caller Token，Agent 的 `evelandIdentity()` 守卫能精准识别当前登录调试的团队成员身份。
+- **标准凭证**：支持配置 Basic Auth、Bearer Token、自定义 HTTP Header 或外部 OIDC Token，模拟真实客户端请求。
+- **敏感凭证防泄漏**：Playground 中使用的密码或 Token 会在后端单次请求中临时解析，绝不会持久化保存在浏览器或网关日志中。
 
-含 Secret 的 authentication field 选择 Project Secret。API 在每次 Create、Continue、Cancel 与 Stream 请求时解析当前 Reference；Credential 不进入 Dashboard 或 Agent Gateway 存储。Shared Agent Environment 不能作为 Playground authentication credential。
+## 4. 密钥轮换与安全保障
 
-## 轮换行为
+| 变更类型                     | 生效机制                         | 影响范围                 |
+| :--------------------------- | :------------------------------- | :----------------------- |
+| **修改项目私有密钥**         | 异步重启该项目的所有运行中部署   | 仅当前项目               |
+| **修改平台共享环境变量**     | 异步重启全平台的所有运行中部署   | 所有依赖共享环境的 Agent |
+| **修改 Playground 调试凭证** | 随下一次请求即时生效，不重启进程 | 仅调试请求               |
 
-- Project Secret 变化会重启该 Project 的 Live Deployment；Shared Agent Environment 变化会重启所有 Live Deployment。
-- Playground authentication 的 Project Secret 每次请求解析，不重启 Agent。
-- 已删除的值 Fail Closed，不回退到旧明文副本。
-- Secret 值进入诊断脱敏列表，永远不会通过 Client API 返回。
+所有密钥在系统运行日志与诊断信息中均会被自动脱敏（Masking），防止因异常堆栈打印导致凭证泄露。
 
-## 深入参考
+## 相关参考
 
-- [Agent 环境行为契约](/zh/docs/reference/agent-environment)：三层环境变量优先级与 Build 可见变量规则
-- [身份与 Caller Token 契约](/zh/docs/reference/identity)：Agent 认证、Principal 与 Caller Token 铸造
-- [安全模型与隔离边界](/zh/docs/operations/security)：机密落盘加密、脱敏与进程权限模型
-- [Playground 交互与认证参考](/zh/docs/reference/playground)：各种认证方式在 Playground 中的具体行为与限制
+- [Agent 环境变量层级规范](/zh/docs/reference/agent-environment)
+- [身份中继与 Caller Token 规范](/zh/docs/reference/identity)
+- [安全模型与进程隔离边界](/zh/docs/operations/security)
+- [在线调试台 (Playground) 详细指南](/zh/docs/reference/playground)

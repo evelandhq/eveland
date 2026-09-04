@@ -1,94 +1,41 @@
 ---
 title: Agent Gateway invariants
-description: The data-plane rules the Agent Gateway must never break, and what breaks without each of them.
+description: Core data-plane invariants, Host validation rules, session affinity, and reverse proxy security.
 ---
 
-The Agent Gateway is deliberately dumb: it routes, pins, streams, and
-forwards — it never interprets identity and never owns application state.
-Each invariant below exists because a specific failure was identified at
-design time.
+The Agent Gateway is deliberately lightweight and focused: it routes, pins, streams, and forwards traffic without interfering with agent application state or authorization logic.
 
-## Host-based routing, resolved from the database
+---
 
-Traefik holds exactly one wildcard route to the Gateway. The Gateway
-normalizes the Host, rejects hostnames outside the configured base domain,
-and resolves the **full hostname** against stored Agent routes. It never
-accepts a client-supplied project or deployment header — otherwise a header
-would pick the tenant.
+## 1. Host-based routing resolved from database state
 
-Stable, preview, and alias hosts are all single DNS labels
-(`<slug>` and `<deploymentKey>--<slug>`) so one wildcard certificate covers
-every route shape. Unknown and disabled hosts both return 404 — the error
-surface must not reveal whether a private Project exists; 503 is reserved
-for "route exists, no runnable target."
+- **Single wildcard upstream**: The external reverse proxy (Traefik) maintains a single wildcard route pointing to the Agent Gateway on port `17300`.
+- **Full hostname matching**: The gateway normalizes incoming Host headers and resolves target routes against stored database records. It strictly refuses client-supplied headers (e.g. `X-Project-Id`) to prevent tenant escalation.
+- **DNS label alignment**: Stable routes (`<projectSlug>.<domain>`) and preview routes (`<deploymentKey>--<projectSlug>.<domain>`) are constrained within a single DNS label, allowing a single wildcard certificate to secure all endpoints.
 
-## The header trust boundary
+---
 
-Externally supplied `Forwarded`/`X-Forwarded-*` and every reserved
-`X-Eveland-*` header are stripped and rebuilt from the trusted connection;
-the Agent's own `Authorization`, `Cookie`, `Origin`, and Eve protocol
-headers pass through untouched.
+## 2. Header sanitization and security boundaries
 
-The sharpest rule has a named exploit behind it: **never rewrite a public
-request's Host to loopback.** Eve's `localDev()` grants identity by URL
-hostname — `localhost`, `*.localhost`, `127.0.0.0/8` — so a proxy that
-"helpfully" rewrites Host to match its loopback upstream turns every
-Internet request into a trusted local developer. The Gateway forwards the
-canonical public Host even though the upstream socket is `127.0.0.1`.
+- **Stripping untrusted headers**: Inbound `Forwarded`, `X-Forwarded-*`, and platform-reserved `X-Eveland-*` headers are stripped and rebuilt from verified connection data.
+- **Never rewrite Host to loopback**: The Eve framework's `localDev()` guard automatically trusts requests whose Host matches `localhost` or `127.0.0.1`. If an edge proxy rewrites external Host headers to loopback, external internet traffic inadvertently receives local development privileges. The Gateway always forwards the canonical public Host to upstream agents.
+- **Transparent credential forwarding**: The agent's own `Authorization`, `Cookie`, and Eve protocol headers pass through untouched.
 
-The Gateway is not an identity provider. The one deliberate amendment is
-Open access mode, where it injects a Caller Token into requests that carry
-**no** `Authorization` at all — and still never inspects or replaces one the
-caller sent, because the Gateway cannot validate foreign credentials and
-forwarding a bad token is worse than forwarding none.
+---
 
-## Session pinning beats route weights
+## 3. Session affinity overrides route weights (SessionBinding)
 
-Eve Sessions are durable and multi-turn — the next turn can arrive days
-later. Per-request weighting would land turn two of a conversation on a
-different Release with different code and different durable state. So A/B
-weights choose a Deployment only for a **new root session**; the moment Eve
-returns a session id, the Gateway persists the binding before responding,
-and continuation, cancel, stream, and reset always resolve through it.
-Weight changes never move existing Sessions; a target lowered to zero stops
-receiving new Sessions but keeps serving bound ones.
+Agent conversations are multi-turn and durable — follow-up interactions can arrive hours or days later. Re-evaluating canary weights on every request risks routing subsequent turns to mismatched releases with divergent state:
 
-Pinning is bounded, not eternal: idle TTLs expire bindings, and an expired
-Session gets a stable `410 session_expired` — never a silent re-route onto
-different code.
+- **Durable SessionBinding**: Once an agent issues a session ID, the gateway persists a `SessionBinding`. Follow-up turns, stream listeners, and cancel requests route strictly to the bound deployment.
+- **Graceful draining**: Adjusting traffic weights or rolling back releases leaves existing sessions bound to their original targets, applying new policies only to newly initiated root sessions.
+- **Bounded persistence**: Session bindings expire after an idle TTL (default: 24h for Playground, 7 days for public API). Expired sessions return a clean `410 session_expired`.
 
-## Byte-transparent response streaming
+---
 
-Upstream response bodies pass through as streams; NDJSON is never buffered.
-Beyond user experience, transparency is a compatibility strategy: because the
-Gateway does not parse the stream, roughly fourteen Eve minor releases —
-format tweaks, new headers, a stream-version bump — shipped without needing
-a Gateway adapter branch. (Request bodies are the exception: they are
-buffered up to the configured body limit because routing must inspect
-create/reset bodies.)
+## 4. Byte-transparent response streaming
 
-## The privileged internal path
-
-The Playground reaches Eve through a service-authenticated `/internal/*`
-path that is the _only_ place allowed to use a loopback Host — it exists for
-administrators, who legitimately get Eve's local-dev principal. It is the
-sanctioned twin of the forbidden Host rewrite above, which is precisely why
-it must stay unreachable through the public proxy and separated by network
-and service credential.
-
-## A sliding, fail-closed compatibility window
-
-Eveland supports a sliding window of _fully verified_ Eve minors. Import,
-build, restart, cold activation, Playground, and the scheduler adapter share
-one gate that refuses versions outside the window. The window never widens
-because a new version appeared on npm — it moves only after release-note
-review, a source diff of the coupling surface, and a real published-package
-fixture matrix. Multiple minors stay in the window so upgrading Eveland
-never strands Agents that are still on the previous line; capability floors
-(such as durable routes) return explicit errors rather than degrading.
-
-The current window and per-line status live in
-[Eve compatibility](/docs/reference/eve-compatibility).
+Upstream NDJSON responses stream through to clients with zero buffering. Beyond lower latency, protocol transparency serves as a long-term compatibility hedge: because the gateway does not parse stream bodies, framework minor version updates or event additions require zero gateway adapter changes.
 
 ## Deeper reference
 

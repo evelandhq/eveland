@@ -1,36 +1,39 @@
 ---
 title: 概览
-description: 在你掌控的基础设施上为 Agent 提供自托管生产级基础设施。
+description: 在企业自有基础设施上运行生产级 Agent 舰队。
 ---
 
-一家企业最终运营的 Agent 数量将超过员工人数。Eveland 就是为那个世界而生的基础设施。
+企业运营的 Agent 数量终将超过员工人数。Eveland 就是为那个时代而生的基础设施。
 
-今天，Eveland 从为 [Eve](https://eve.dev) Agents 提供自托管的生产级基础设施开始：为你的 Agent 舰队提供不可变 Release、并发 Preview、稳定流量路由、运行时隔离、持久化 Schedules 与透明的 Session 可观测性。立项论证——为什么要在自己的基础设施上运行 agent——见[为什么有 Eveland](/zh/docs/why)。
+今天，Eveland 为基于 [Eve](https://eve.dev) 框架构建的 Agent 提供自托管的生产基础设施：不可变发布、并行预览、流量灰度切分、宿主机沙箱隔离、可靠定时调度，以及端到端透明的会话追踪。
+
+关于为什么要在自己的基础设施上运行 Agent，详见[为什么有 Eveland](/zh/docs/why)。
 
 ## Eveland 负责什么
 
 ```text
-Eve Project
-  → Source Revision
-  → 不可变 Release
-  → Preview Deployment
-  → Stable Route
-  → Sessions、Usage 与 Schedules
+Eve 项目源码
+  → 源码版本 (Revision)
+  → 不可变发布 (Release)
+  → 预览部署 (Preview Deployment)
+  → 生产路由 (Stable Route)
+  → 会话、用量与自动化 (Sessions, Usage & Schedules)
 ```
 
-Eveland 不替代 Eve 的文件系统优先编写方式，也不接管 Agent 自己的应用认证。它管理的是项目准备好运行之后的部分。
+Eveland 不改变 Eve“文件即 Agent”的开发模式，也不接管应用自身的业务鉴权。当 Agent 代码编写完成、准备走向生产时，Eveland 负责接管后续的所有交付与运行生命周期。
 
-## 为生产环境而设计
+## 生产级架构设计
 
-受支持的生产拓扑将核心服务与宿主机运行权限分开。Dashboard、API、Agent Gateway、Postgres 与托管 OpenTelemetry Collector 组成核心服务；宿主机 Worker 将 Eve Deployment 启动为隔离的 systemd Service，再由恰好一个 Workflow Dispatcher 补齐生产拓扑。Agent 端口只监听私有 Loopback，Agent Gateway 负责稳定与预览 Host。
+在 Linux 生产环境中，Eveland 采用宿主机原生的轻量化拓扑：
 
-该边界使 Docker Controller、源码、解密后的 Secrets 和 Telemetry Policy 数据远离公开 Agent 流量。每个 Deployment 的 CPU/内存限制、空闲停止与按需唤醒让资源使用保持可控。
+- **核心管理服务**：API、Agent Gateway、Web 控制台与托管 OpenTelemetry Collector 负责调度与接入。
+- **高密度运行时**：Worker 调度宿主机 systemd 与轻量沙箱（bubblewrap）运行 Agent 进程，提供毫秒级冷启动与无流量自动休眠（缩容到零）。
+- **安全边界**：公开的 Agent 流量只经过网关，无法触碰宿主机控制器、源代码、解密后的密钥或底层数据库。
 
-## 选择你的路径
+## 文档导航
 
-- **技术评估与架构师：** 阅读[为什么有 Eveland](/zh/docs/why)了解立项论证，并在[设计决策](/zh/docs/reference/design)中查阅运行时密度、bubblewrap 沙箱、缩容至零与网关设计的详细权衡。
-- **Agent 开发者与团队成员：** 如果平台已就绪，直接从[部署第一个 Agent](/zh/docs/agents/first-deployment)开始，依次了解[密钥与 Connection](/zh/docs/agents/secrets-connections)、[Release 与流量路由](/zh/docs/agents/releases-routing)、[会话与用量追踪](/zh/docs/observe/sessions)以及[定时与自动化](/zh/docs/observe/schedules)。
-- **平台管理员：** 从[生产架构](/zh/docs/production)开始，准备 Linux 宿主机，安装核心服务、宿主机 Worker 与 Workflow Dispatcher，最后完成链路验收。
-- **平台运维与 SRE：** 使用[运行时与资源](/zh/docs/operations/runtime)、[健康与诊断](/zh/docs/operations/diagnostics)和[故障排查](/zh/docs/reference/troubleshooting)处理日常运营与排障；[容量规划](/zh/docs/operations/capacity)、[升级指南](/zh/docs/operations/upgrades)、[备份与恢复](/zh/docs/operations/backup-restore)与[环境变量参考](/zh/docs/reference/environment-variables)覆盖更深入的运维场景。
+- **评估与架构设计**：先读[为什么有 Eveland](/zh/docs/why)了解立项初衷，再查阅[设计决策](/zh/docs/reference/design)了解运行时密度、沙箱和缩容至零的权衡。
+- **Agent 开发者**：若平台已就绪，直接上手[部署第一个 Agent](/zh/docs/agents/first-deployment)，接着了解[密钥与连接配置](/zh/docs/agents/secrets-connections)、[发布与灰度路由](/zh/docs/agents/releases-routing)。
+- **平台管理员与 SRE**：从[生产架构概览](/zh/docs/production)开始，按步骤[准备宿主机](/zh/docs/production/prerequisites)并部署平台；日常运维请参考[运行时管理](/zh/docs/operations/runtime)、[健康诊断](/zh/docs/operations/diagnostics)与[故障排查](/zh/docs/reference/troubleshooting)。
 
-本地 Docker 开发和仓库贡献流程继续由仓库 README 承载，不属于生产部署主路径。
+_注：本地容器开发与代码贡献流程请参见代码仓库的 README。_

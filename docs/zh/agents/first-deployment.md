@@ -1,34 +1,55 @@
 ---
 title: 部署第一个 Agent
-description: 导入已有 Eve 项目，构建 Preview，并将其 Promote 到 Stable Route。
+description: 导入已有 Eve 项目，构建预览环境，并平滑发布到生产路由。
 ---
 
-本指南从平台管理员完成[生产验收](/zh/docs/production/verify)后开始。Eveland 部署标准 Eve 项目，不修改项目编写的源码。
+在阅读本指南前，请确保平台管理员已完成[生产环境安装与验收](/zh/docs/production/verify)。Eveland 支持标准的 Eve 项目，无需在项目源码中添加平台专有代码。
 
-## 1. 检查兼容性
+## 1. 确认版本兼容性
 
-项目必须声明位于 Eveland 已验证兼容窗口内的 Eve 依赖。Eveland 检查真实项目结构；版本缺失、超出窗口或无法证明兼容时会 Fail Closed。详细支持版本范围与依赖要求见 [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)。
+Eveland 要求项目声明的 Eve 依赖处于经过验证的兼容版本窗口内。在部署时平台会自动检测依赖项；详细的支持版本范围请查阅 [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)。
 
-## 2. 导入 Source
+## 2. 导入项目源码
 
-使用 HTTPS Git URL 或 Zip Archive 创建 Project。Source Preflight 在提交 Project 和首个 Import Job 前验证 Snapshot。Git 项目以后可以 Sync；Zip Import 始终是固定 Snapshot。导入语法与 Preflight 校验规则见[源码导入](/zh/docs/reference/source-import)。
+在 Web 控制台中点击创建项目（Project），支持两种方式：
 
-## 3. 配置运行时值
+- **Git 仓库**：提供 HTTPS 仓库地址。后续支持一键同步最新提交代码。
+- **Zip 压缩包**：上传代码归档包，作为不可变的代码快照。
 
-添加 Agent 需要的 Provider Key 与应用配置。值会被加密且不再显示，也不会进入导入源码、Release、Log 或 Session Event。配置层级与变量类型见[密钥与 Connection](/zh/docs/agents/secrets-connections)与[Agent 环境](/zh/docs/reference/agent-environment)。
+导入过程中，平台会自动执行预检（Preflight），验证项目目录结构与依赖清单。详细规范参见[源码导入规则](/zh/docs/reference/source-import)。
 
-## 4. 构建 Preview
+## 3. 配置运行时环境变量与密钥
 
-Build & Deploy 会准备独立 Release，安装项目 Lockfile 指定的依赖图，注入私有 Telemetry Hook 与 Sandbox Integration，启动隔离 Deployment 并等待健康检查。成功部署不会停止或复用当前 Stable Target。
+在项目设置中添加 Agent 运行所需的模型提供商密钥（如 `OPENAI_API_KEY`）及其他业务配置：
 
-## 5. 测试并 Promote
+- **安全存储**：所有敏感值均采用密文加密落盘，不会泄露在日志、源码或会话跟踪记录中。
+- **共享环境**：管理员配置的共享环境变量（Shared Agent Environment）会自动注入，项目私有密钥可同名覆盖。
 
-调用不可变 Preview Host 或使用 [Playground](/zh/docs/reference/playground)。检查响应、Streaming、Tool/Subagent Activity、Runtime Diagnostic 与 Usage。只 Promote 健康的 Deployment；Promote 原子更新 Stable Route，不重新构建 Release。
+配置层级与变量生效机制详见[密钥与连接配置](/zh/docs/agents/secrets-connections)。
 
-配置 Rollback 或加权路由前继续阅读[Release 与流量](/zh/docs/agents/releases-routing)。
+## 4. 构建与预览部署
 
-## 深入参考
+点击 **Build & Deploy**，平台将执行以下自动化流程：
 
-- [Playground 行为与认证契约](/zh/docs/reference/playground)
-- [源码导入规则与 Preflight](/zh/docs/reference/source-import)
-- [Release、加权路由与 Session 绑定](/zh/docs/agents/releases-routing)
+1. 创建独立的不可变发布（Release）；
+2. 在受保护的轻量沙箱中安装依赖并执行构建；
+3. 启动隔离的预览环境（Preview Deployment），并等待 HTTP 健康检查通过。
+
+整个构建部署过程完全独立，**不会中断或影响当前线上正在运行的生产流量**。
+
+## 5. 调试验证与正式发布 (Promote)
+
+部署成功后，你可以通过以下方式验证效果：
+
+- **不可变预览域名**：每个部署都会获得一个唯一的预览地址（如 `dep_xxx--project.agents.example.com`），可直接发起 API 或聊天请求。
+- **在线调试台 (Playground)**：在控制台中使用内置的 [Playground](/zh/docs/reference/playground) 测试对话、工具调用及流式响应。
+
+验证无误后，点击 **Promote**。平台将在网关层原子切换生产流量（Stable Route）指向新版本，无需重新构建。
+
+如需配置灰度发布（加权分流）或快速回滚，请继续阅读[发布与流量路由](/zh/docs/agents/releases-routing)。
+
+## 相关参考
+
+- [在线调试台 (Playground) 详细指南](/zh/docs/reference/playground)
+- [源码导入规则与目录结构](/zh/docs/reference/source-import)
+- [发布管理、加权路由与会话保持](/zh/docs/agents/releases-routing)

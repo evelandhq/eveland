@@ -1,66 +1,122 @@
 ---
-title: Troubleshooting
-description: Diagnose production installation, build, runtime, routing, activation, and observation failures.
+title: Troubleshooting reference
+description: Quick diagnostic and remediation guide for common production deployment, routing, cold-start, schedule, and telemetry failures.
 ---
 
-Start with [Health and diagnostics](/docs/operations/diagnostics) so the failure is assigned to the correct surface.
+This guide is organized by observed symptom. Before troubleshooting, inspect overall platform liveness under **Settings → Instance health** in the dashboard.
 
-## Worker will not start
+---
 
-Run standalone preflight and resolve the complete list. Common causes include a relative data directory, missing app/build users, absent `/workspace`, missing bwrap or sandbox commands, an unbuilt backend, or a missing `EVELAND_WORKFLOW_WORLD_URL`. That URL is required in production: every new build uses the shared workflow world, and the legacy `WORKFLOW_POSTGRES_URL` does not satisfy the requirement.
+## 1. Worker fails to start
 
-## A project stays pending
+### Common causes
 
-Confirm Worker is active, reaches the same Postgres database as API, and can resolve the stored source path through the same absolute data root. An accepted API request only means the job was queued.
+- Missing host dependencies (e.g. `bubblewrap`, `apparmor`, or unprivileged `bwrap` user namespace permissions);
+- Absent `/workspace` mount point or missing `eveland-app` / `eveland-build` system users;
+- Unset `EVELAND_WORKFLOW_WORLD_URL` or inability to connect to PostgreSQL.
 
-## Build succeeds but health fails
+### Remediation steps
 
-Inspect the persisted deployment diagnostic and the systemd unit journal. Confirm the Agent binds its allocated loopback port and answers `/eve/v1/health`. The captured diagnostic should preserve the original failure even when cleanup also fails.
+1. Inspect Worker systemd logs:
+   ```bash
+   sudo journalctl -u eveland-worker -n 50 --no-pager
+   ```
+2. Run the automated preflight verification script and address reported errors:
+   ```bash
+   pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
+   ```
 
-## Public Host returns 404, 502, or a cold-start timeout
+---
 
-Verify wildcard DNS/TLS, `EVELAND_AGENT_BASE_DOMAINS`, Traefik's `/internal` exclusion, the route target, and its RuntimeInstance. For continuations, inspect the SessionBinding rather than recalculating route weights.
+## 2. Project import stays in "Pending" status
 
-## Usage is missing
+### Common causes
 
-Check Collector/Built-in liveness under **Settings → Instance health**, external destination probe status under **Settings → Observability**, and the Session's usage completeness. Eveland records only provider usage reported through Eve and never estimates missing values.
+- Worker process is inactive or failed;
+- Worker and API connect to different databases or point to mismatched `EVELAND_DATA_DIR` roots.
 
-## Docker cannot allocate an Agent bridge network
+### Remediation steps
 
-Each active Docker Deployment consumes one bridge subnet, and Docker's built-in address pools are too small for a long-lived multi-Deployment host. When the Worker's Docker-runtime preflight or a deployment fails with an address-pool error ("all predefined address pools are subnetted"), configure a non-overlapping pool and restart Docker:
+1. Verify the Worker service is active:
+   ```bash
+   sudo systemctl status eveland-worker
+   ```
+2. Confirm that `DATABASE_URL` and `EVELAND_DATA_DIR` match exactly between API and Worker configuration files.
 
-```json
-{
-  "default-address-pools": [{ "base": "10.201.0.0/16", "size": 24 }]
-}
-```
+---
 
-Merge this into `/etc/docker/daemon.json`, choosing a base that does not overlap the host, VPN, or deployment networks. The example permits 256 bridge networks. The Docker-runtime startup preflight creates and removes one temporary bridge so address-pool exhaustion is reported before any deployment job is accepted.
+## 3. Build succeeds but health check times out
 
-## Schedule did not run
+### Common causes
 
-Inspect ScheduleVersion, ScheduleRun, pinned target, Worker planner/dispatcher logs, prewarm configuration, and activation state. Do not enable Eve's native cron path in a prepared Release.
+- Agent code fails to bind to the dynamically assigned port;
+- Agent crashes on startup or hangs during initialization;
+- Post-build sandbox self-check failed.
 
-Start in authenticated **Settings → About**: confirm API shows `EVELAND_ACTIVATION_LEASE_TTL_MS` and `EVELAND_COLD_START_TIMEOUT_MS`, Agent Gateway shows `EVELAND_API_INTERNAL_URL` and `EVELAND_ACTIVATION_RENEW_INTERVAL_MS`, and Worker shows the idle/recovery/reconciliation values and `EVELAND_SCHEDULER_PREWARM_MS`.
+### Remediation steps
 
-For a cron or manual failure, open the ScheduleRun detail under the Project's Sessions history. It records status, attempt, missed ticks, the exact Release/Deployment/ScheduleVersion, timings, a sanitized error, aggregate provider usage, and zero or more linked Sessions. `failed` before dispatch has zero fabricated Sessions. `dispatch_unknown` means the credential was redeemed but the result was lost, so Eveland deliberately does not replay the authored side effect automatically. Use the run ID to correlate the Project Runtime log and `journalctl -u eveland-<project>-<deployment>.service`; never paste decrypted Project Secrets, scheduler credentials, affinity cookies, or raw env files into the UI or logs.
+1. Inspect deployment runtime logs:
+   ```bash
+   sudo journalctl -u eveland-<projectSlug>-<deploymentId>.service -n 100 --no-pager
+   ```
+2. Confirm that the process responds to `GET http://127.0.0.1:<port>/eve/v1/health`.
 
-A dispatch that returns Session IDs remains `running` until Built-in projects a root turn boundary for every returned Session; its schedule lease protects the exact RuntimeInstance beyond the normal idle TTL. If that RuntimeInstance disappears, reconciliation records `platform.runtime_lost` and fails the affected Session and ScheduleRun; if no boundary arrives before `EVELAND_SCHEDULE_RUN_MAX_RUNTIME_MS`, it records `platform.runtime_deadline_exceeded` instead. A short `draining` transition is retried before dispatch and should not appear as a terminal ScheduleRun failure.
+---
 
-## Cold start fails or hangs
+## 4. Public host returns 502 Bad Gateway or cold-start timeout
 
-Compare the Deployment and its latest RuntimeInstance: `starting` should have one coalesced `ensure_deployment_running` job, `failed` retains `lastError`, and `stopped` is a normal dormant state. Check API/Agent Gateway service-token agreement and reachability of `EVELAND_API_INTERNAL_URL`, then inspect the owning runtime (`systemctl status` / `journalctl` for systemd). A client abort releases only that request's lease; other active leases must remain.
+### Common causes
 
-## Known limits
+- Agent Gateway service is inactive or port `17300` is blocked;
+- Reverse proxy (Traefik) misconfigured;
+- Agent cold start exceeded the configured readiness timeout (default: 30 seconds).
 
-- Eveland does not automatically prune the sandbox cache under `EVELAND_SANDBOX_CACHE_DIR`; disk usage grows with the number of durable sessions and unique templates. The backend's explicit dry-run/list/prune API is available to an operator.
-- Each active Docker Deployment uses one bridge subnet. Capacity is bounded by Docker's configured `default-address-pools`; the recommended `/16` split into `/24` networks permits 256 concurrent managed networks, including other Docker bridges on the same daemon.
-- An eve project with no `agent/` directory, or a plain Node project, gets no injected sandbox and runs on eve's default sandbox chain. Under production-style `eve start`, the optional `just-bash` peer may be absent; even when installed it cannot run real Node or TypeScript binaries.
-- systemd Deployment processes use `systemd-run --collect` transient units and therefore do not restart automatically after a host reboot. The enabled Worker does restart, reconciles stale `ready` RuntimeInstances to `stopped`/`failed`, and the next cron or Agent Gateway request cold-starts the preserved exact Release. The immutable Deployment, routes, history, and SessionBindings survive; only the transient process is absent during the cold interval.
+### Remediation steps
+
+1. Verify Agent Gateway status and health:
+   ```bash
+   sudo systemctl status eveland-gateway
+   curl -I http://127.0.0.1:17300/health
+   ```
+2. Inspect deployment event logs in the dashboard to determine if model loading or dependency imports caused cold-start delays. Increase `EVELAND_COLD_START_TIMEOUT_MS` if necessary.
+
+---
+
+## 5. Token usage or conversation events are missing
+
+### Common causes
+
+- Managed OTel Collector container is offline or unreachable;
+- Model provider omitted `step.completed.data.usage` in the response stream.
+
+### Remediation steps
+
+1. Check OTel Collector container logs:
+   ```bash
+   docker compose logs otel-collector
+   ```
+2. Check exporter connectivity in **Settings → Observability**. Eveland records real reported token usage and never estimates missing values.
+
+---
+
+## 6. Scheduled tasks (Schedules) do not run
+
+### Common causes
+
+- Workflow Dispatcher is stopped or unable to acquire its advisory lock;
+- Non-standard cron syntax (Eveland strictly requires 5-field minute-resolution UTC cron).
+
+### Remediation steps
+
+1. Check Dispatcher status and heartbeats:
+   ```bash
+   sudo systemctl status eveland-workflow-dispatcher
+   sudo journalctl -u eveland-workflow-dispatcher -n 50 --no-pager
+   ```
+2. Open **Sessions** history for the project, inspect the **ScheduleRun** entry, and review missed ticks or error traces.
 
 ## Deeper reference
 
-- [Health and diagnostics](/docs/operations/diagnostics): component availability monitoring, log collection, and evidence routing
-- [Environment variables](/docs/reference/environment-variables): complete reference of platform environment variables and defaults
-- [Runtime and resources](/docs/operations/runtime): systemd units, bubblewrap processes, and resource quotas
-- [Configuration reference](/docs/reference/configuration): component ownership and configuration application rules
+- [Health and diagnostics](/docs/operations/diagnostics): availability monitoring and triage matrix
+- [Runtime and resources](/docs/operations/runtime): lifecycle management and orphan recovery
+- [Environment variables](/docs/reference/environment-variables): platform-wide configuration reference

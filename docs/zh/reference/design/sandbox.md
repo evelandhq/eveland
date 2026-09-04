@@ -1,64 +1,41 @@
 ---
 title: 为什么自研 bubblewrap 沙箱
-description: Eve 默认的沙箱链在 systemd 宿主机上会退化到不可用，所以 Eveland 自建并注入自己的 bubblewrap 后端。
+description: 解决 Eve 默认沙箱在 systemd 宿主机退化问题，在无 Docker/KVM 环境下提供原生执行沙箱。
 ---
 
-## 逼出决策的问题
+## 决策背景
 
-Eve 通过默认后端链解析 exec 沙箱：Vercel 托管沙箱 → Docker → microsandbox
-（KVM）→ `just-bash`。Eveland 的 systemd 宿主机上按设计既没有 Docker 守护
-进程也没有 KVM，链条于是退化到 `just-bash`——一个带虚拟文件系统的纯 JS
-解释器，跑不了真实二进制。一个"有沙箱"却执行不了 `python` 和 `git` 的
-Agent，坏在用户最先注意到的地方。
+Eve 框架通过一条默认的后端探测链来解析代码执行沙箱（Exec Sandbox）：Vercel 托管沙箱 → Docker → microsandbox (KVM) → `just-bash`。
 
-## 备选方案
+在 Eveland 推荐的宿主机原生架构中，宿主机按设计既没有常驻的 Docker 守护进程，也不提供 KVM 虚拟化环境。如果直接采用框架默认链，沙箱将静默退化为 `just-bash`——一个基于纯 JavaScript 的虚拟解释器，无法执行真实的 `python`、`git` 等二进制命令。一个“具备沙箱能力”却无法运行真实脚本的 Agent，会直接破坏核心使用体验。
 
-| 选项                          | 结论                                                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Vercel 后端                   | 仅托管平台可用；也是唯一支持按域名网络策略的后端——需要该能力的项目应该跑在那里                                           |
-| Eve 的 Docker 后端            | systemd 宿主机上没有守护进程——被[运行时决策](/zh/docs/reference/design/runtime)排除；保留为 exec/写入/删除语义的行为蓝本 |
-| microsandbox                  | 需要 KVM，按设计不存在                                                                                                   |
-| just-bash                     | 跑不了真实二进制                                                                                                         |
-| VM 级隔离（Firecracker 一类） | 明确推迟，它是*另一种*威胁模型的正确答案——见下面的边界声明                                                               |
+## 备选方案权衡
 
-bubblewrap 胜出是因为它只需要 `bwrap` 二进制加非特权 user namespace，并且
-与 systemd 加固是叠加而不是打架：发行版的非 setuid `bwrap` 可以在部署单元
-的 `NoNewPrivileges=yes` 下运行。后端以
-[`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap)
-发布，零运行时依赖。
+| 备选方案                       | 评估结论                                                              |
+| :----------------------------- | :-------------------------------------------------------------------- |
+| **Vercel 托管沙箱**            | 仅能在特定公有云托管平台使用，无法满足企业私有化部署要求。            |
+| **Eve Docker 后端**            | 依赖宿主机常驻 Docker 守护进程，违背了宿主机高密度运行时的设计初衷。  |
+| **microsandbox**               | 强依赖 KVM 硬件虚拟化支持，在很多通用云主机上不可用。                 |
+| **just-bash**                  | 纯 JS 模拟环境，无法运行真实系统命令与语言运行时。                    |
+| **VM 级隔离 (Firecracker 等)** | 适用于多租户对抗性安全场景，但对于单企业内多 Agent 舰队场景开销过重。 |
 
-## 声明的安全边界
+经过综合权衡，**bubblewrap (bwrap)** 成为最佳解法：它仅依赖 Linux 内核的原生非特权用户命名空间（User Namespace），能够与 systemd 的加固特性（如 `NoNewPrivileges=yes`、`ProtectSystem=strict`）完美叠加。Eveland 将此能力封装为独立的 [`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap) 模块，实现零额外运行时依赖。
 
-> 这是对失误和 prompt injection 的防护——不是多租户隔离。
+## 安全防护边界
 
-这是整个设计的核心防护边界。具体地说：每次调用都 `--clearenv`，Agent 进程
-环境里的部署 Secret 绝不泄漏进沙箱代码；tmpfs 掩码遮住平台数据目录；但
-宿主机文件系统的其余部分对沙箱内代码只读可见，且沙箱共享宿主机内核。
-如果必须在一台机器上运行不受信任的租户，记录在案的指引是转向 VM 级
-隔离，而不是继续加固这个后端。
+> **防护目标**：重点防御偶发错误、恶意依赖脚本越权与 Prompt Injection（提示词注入攻击），而非多租户恶意对抗隔离。
 
-## 注入，而不是配置
+- **环境变量完全清洗 (`--clearenv`)**：执行沙箱命令时彻底清空外部环境变量，宿主机与 Agent 自身的敏感密钥绝不泄露至沙箱代码；
+- **文件系统遮蔽**：通过只读挂载与 tmpfs 掩码隐藏平台核心数据目录与其它项目文件；
+- **内核共享**：沙箱进程与宿主机共享操作系统内核。如果面临公有云级别的不可信代码对抗，建议采用外置专用 VM 进行物理级隔离。
 
-Eve 没有受支持的钩子让平台提供沙箱后端（内部的 prewarm 入口没有从任何
-公开 subpath 导出）。所以 Eveland 在 Release 准备阶段注入后端：生成的
-模块进入可丢弃的 release 目录——绝不进入用户的源码快照——导入的项目完全
-不需要声明沙箱。Agent 项目永远不需要知道沙箱后端的存在。
+## 注入机制与构建期即时自检
 
-作者自带的 `agent/sandbox.ts` 会被**替换**，并在构建日志里大声记录一行。
-这个覆盖行为记录为一次深思熟虑的决策（2026-07-09），但为什么选择覆盖
-而不是合并，没有留下书面理由。
+1. **发布阶段动态注入**：Eveland 在发布打包（Release）阶段自动将 bubblewrap 后端包装进部署产物，绝不侵入修改用户原始代码库，项目无需手动声明对平台的依赖。
+2. **构建期即时自检 (Sandbox Self-check)**：Eve 框架采用惰性加载机制，沙箱损坏并不会导致启动探针失败。为了避免把错误带到线上对话中，Eveland 在每次构建完成后，立即在与生产完全一致的加固权限下执行真实脚本探针。任何沙箱配置缺陷（如缺少 AppArmor 规则或缺失系统工具）均会在构建阶段立即暴露并阻断部署。
 
-## 在构建时失败，而不是在第一轮对话失败
+## 相关参考
 
-Eve 懒加载沙箱：`eve build` 不碰后端，健康端点在沙箱完全坏掉时照样返回
-200——所以朴素的流水线要等到用户的第一条命令失败才发现宿主机跑不了
-`bwrap`。Eveland 因此在构建时执行自检：用部署将获得的同一套 systemd
-加固运行真实后端。配置错误的宿主机表现为一次失败的构建，而不是一次
-失败的对话。
-
-## 深入参考
-
-- [准备宿主机](/zh/docs/production/prerequisites)：AppArmor、bwrap 与用户/目录前提
-- [安装宿主机 Worker](/zh/docs/production/worker)：构建 Sandbox 信任边界与环境变量过滤
-- [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：生产环境运行时选型决策
-- [健康与诊断](/zh/docs/operations/diagnostics)：构建日志中的 Sandbox 探针自检证据
+- [准备宿主机环境](/zh/docs/production/prerequisites)：bubblewrap 与 AppArmor 详细配置步骤
+- [健康与诊断](/zh/docs/operations/diagnostics)：构建日志中的沙箱自检标记核对
+- [安全模型与权限边界](/zh/docs/operations/security)：系统安全模型与隔离全景

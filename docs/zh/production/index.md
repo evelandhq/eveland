@@ -1,42 +1,41 @@
 ---
 title: 生产架构
-description: 理解受支持的核心服务、宿主机 Worker、Workflow Dispatcher、Agent Gateway 与 systemd Runtime 拓扑。
+description: 了解 Eveland 生产级拓扑：核心服务、宿主机 Worker、Workflow Dispatcher、Agent Gateway 与 systemd 运行时。
 ---
 
-Eveland 的生产边界刻意不同于本地开发栈。生产 Eve Deployment 不通过开发阶段的 Docker Runtime 运行：它们作为非特权 systemd Unit 直接运行在宿主机上，由唯一的特权 Worker 控制。
+Eveland 的生产架构经过专门设计，旨在最大化宿主机的 Agent 承载密度并确保严格的安全隔离。在 Linux 生产环境中，Agent 不再通过开发阶段的容器运行，而是作为受限的 **systemd 瞬态服务**直接运行在宿主机上，由唯一的特权 Worker 统一编排。
 
 ![Eveland 生产拓扑](../../assets/topology-zh.svg)
 
-## 核心服务
+## 架构组件与分工
 
-API、Agent Gateway 与 Dashboard 以宿主机 systemd unit 运行，共用一个非特权系统用户，各自配以 `ProtectSystem=strict`、只读源码树和显式的 `ReadWritePaths`。API 负责需要团队认证的操作和持久化。Agent Gateway 是唯一公开的 Agent 数据面；它既不持有 Docker Socket，也没有任何可写路径，因此 Source、Release、Secrets 与 Collector 配置都在它够不到的地方。Docker 只运行托管 OpenTelemetry Collector，以及——除非这套安装自带 PostgreSQL——那个自带的数据库。
+| 组件                    | 运行形态                | 核心职责                                                                           |
+| :---------------------- | :---------------------- | :--------------------------------------------------------------------------------- |
+| **API**                 | systemd (非特权用户)    | 负责团队控制台认证、元数据持久化、源码导入及内置 OTLP 遥测收集。                   |
+| **Agent Gateway**       | systemd (`DynamicUser`) | 公开 Agent 流量唯一的网关前门，负责域名解析、反向代理、路由分发与流式转发。        |
+| **Dashboard**           | systemd (非特权用户)    | 基于 Web 的平台控制台，提供图形化操作界面。                                        |
+| **Worker**              | systemd (`root`)        | 唯一的系统特权控制器，负责代码构建（沙箱化）、生命周期编排与进程监控。无公网端口。 |
+| **Workflow Dispatcher** | systemd (`DynamicUser`) | 单例外置调度器，负责持久化工作流的定时器触发、按需唤醒与断点执行分发。             |
+| **Postgres**            | 容器或外部独立集群      | 承载平台控制面状态与共享工作流数据库（按租户逻辑隔离）。                           |
+| **OTel Collector**      | 容器                    | 接收平台与 Agent 的 OpenTelemetry 遥测数据，支持重试队列与多目标分发。             |
 
-## 宿主机运行控制器
+## 核心设计与安全边界
 
-Worker 作为 root 管理的 systemd Service 直接运行在 Linux 宿主机上，是唯一可以构建不受信任项目代码并控制 systemd Unit（`systemd-run`、`systemctl`、`chown`）的组件。构建在 bubblewrap Sandbox 内以独立的非特权构建用户运行；每个 Eve Deployment 使用自己的 systemd `DynamicUser`，只监听 `127.0.0.1:18000–18999` 范围内的私有端口。Worker 没有公开监听端口。
+### 1. 严格权限分离
 
-## Workflow Dispatcher
+- **公网入口零特权**：Agent Gateway 仅处理流量转发，不挂载 Docker Socket，无源码或持久化目录写权限，无法接触解密后的数据库或系统密钥。
+- **构建沙箱化**：Worker 虽以 root 启动，但在构建第三方项目源码时，必须切换至独立的非特权用户并在 bubblewrap 轻量沙箱中执行，杜绝依赖脚本越权。
+- **动态用户隔离**：每个 Agent 部署均运行在各自独立的临时 systemd `DynamicUser` 下，私有端口仅监听本地回环地址（`127.0.0.1:18000–18999`）。
 
-Durable Workflow 以 External 模式运行：Deployment 从不认领自己的 Timer。恰好一个 Workflow Dispatcher 与 Worker 并行运行，从共享 Workflow 数据库认领 Durable Workflow Job，并把每个 Step POST 回所属 Deployment——若该 Deployment 已被空闲回收则先唤醒它。没有这个进程，Durable Timer、唤醒与 Continuation 永远不会触发。参见[安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)。
+### 2. 共享数据目录契约
 
-## 共享数据契约
+API 与 Worker 作为宿主机原生进程，必须挂载并读取完全相同的绝对路径（默认为 `/var/lib/eveland`）。所有项目源码、构建产物、沙箱缓存与遥测配置均存放在该统一根目录下。
 
-API 与 Worker 必须看到相同的绝对数据根目录，通常为 `/var/lib/eveland`；两者都是宿主机进程，直接读取它。Project 存储的 `sourcePath` 由导入 Project 的一侧写入，由之后提供服务或部署的一侧读取，因此挂载不一致会让一侧找不到另一侧写入的文件。导入源码、Prepared Release、Agent Observability Policy、托管 Collector 配置与 Sandbox Cache 全部位于该数据根之下。
+### 3. 按需唤醒与缩容至零 (Scale-to-Zero)
 
-## 遥测拓扑
+持久化部署并不意味着进程必须 7x24 小时常驻内存：
 
-托管 Collector 在宿主机 Loopback 端口 17311/17312 发布经 Service Authentication 保护的平台 Receiver，在 17313/17314 发布 Agent Receiver。systemd Agent 访问宿主机 Loopback 端口 17314；每个活跃的 Docker Deployment 则获得一个只包含其 Agent 与 Collector 的私有网络。任何一个 Receiver 都绝不能发布到公开接口。
+- 当收到公网请求、定时任务或工作流步骤时，平台通过租约（ActivationLease）毫秒级冷启动对应部署。
+- 当流量结束且经过配置的空闲等待时间（默认 5 分钟）后，Worker 会安全停止该进程以释放内存，而版本路由与会话状态完好保留。
 
-Agent Receiver 不做认证，因此每个 Deployment 的遥测由写入其只读 `agent-policy.json` 的 Worker 签名凭证归属；平台校验该凭证并用 Store 持有的 Deployment 身份替换 Agent 自报的归属。不同 Agent Deployment 无法通过遥测路径相互解析或连接。Collector 缺失只会降级遥测，绝不会阻塞 Agent 启动或冷激活；修改可观测性设置只重启 Collector，从不重启 Agent Deployment。
-
-## 公开入口
-
-一切流量都经由 TLS 反向代理进入宿主机端口 `17300` 上的 Agent Gateway 前门：平台 Host（`EVELAND_PUBLIC_ORIGIN`）上是 Dashboard 与浏览器 API，Wildcard Agent Host 上是 Agent 流量。Deployment 端口始终留在 Loopback。参见[配置 Agent 流量](/zh/docs/production/networking)。
-
-## 资源生命周期
-
-持久化 Deployment 不等于永久运行的进程。流量、Continuation 或 Schedule 通过 Activation Lease 唤醒精确 Release。最后一个 Lease 结束后，Worker 在配置的空闲时间后停止 RuntimeInstance，同时保留 Deployment、Preview 地址与 SessionBinding。
-
-systemd Deployment 进程是 Transient Unit，宿主机重启后不会自动恢复。已启用的 Worker 会随宿主机重启，回收过期的 RuntimeInstance；下一次请求或 Schedule 会冷启动保留的精确 Release，冷启动间隙缺失的只有那个瞬态进程。
-
-继续[准备宿主机](/zh/docs/production/prerequisites)。
+下一步：[准备宿主机环境](/zh/docs/production/prerequisites)。
