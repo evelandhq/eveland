@@ -14,6 +14,7 @@ function repositoryFile(relativePath: string): string {
 // the wrong number. Neither shows up in a build.
 
 type ReleaseConfig = {
+  "separate-pull-requests"?: boolean;
   packages: Record<
     string,
     { "release-type"?: string; component?: string; "include-component-in-tag"?: boolean }
@@ -59,5 +60,20 @@ describe("release configuration", () => {
       expect(options["include-component-in-tag"], packagePath).toBe(true);
     }
     expect(config.packages["."]?.["include-component-in-tag"]).toBe(false);
+  });
+
+  // A grouped release PR (the default once a second package is configured)
+  // lives on the branch `release-please--branches--main` and carries no
+  // component in its name. When such a PR turns out to release only the root
+  // — the ordinary case, since the eveland package moves far less often —
+  // Release Please reads it as a standalone release PR and refuses to tag it,
+  // because the branch names no component while the root component resolves to
+  // the package.json name. It logs one warning line and exits 0: the release PR
+  // merges, the version lands in the manifest, and no tag or GitHub Release is
+  // ever created. v0.51.1 was released by hand for exactly this reason.
+  // One PR per component keeps the component in every branch name.
+  test("components release through separate pull requests", () => {
+    if (Object.keys(config.packages).length < 2) return;
+    expect(config["separate-pull-requests"]).toBe(true);
   });
 });
