@@ -122,6 +122,31 @@ describe("the systemd form's units", () => {
     );
   });
 
+  test("every unprivileged unit names a HOME — a transient uid has none", () => {
+    // Node's os.homedir() does not fall back to a default: with $HOME unset
+    // it calls getpwuid_r(), and a DynamicUser uid has no passwd entry, so it
+    // THROWS ENOENT. Any dependency reading a home path at import time then
+    // kills the unit before it starts — which is how the dispatcher crash-
+    // looped into `failed` while every other unit stayed healthy.
+    for (const key of SYSTEMD_HOST_UNITS) {
+      const unit = unitFor(key);
+      if (unit.includes("User=root")) continue;
+      expect(unit, `${key} sets no HOME`).toMatch(/^Environment=HOME=\S+$/m);
+    }
+  });
+
+  test("a DynamicUser unit's HOME is its private tmp, which outlives nothing", () => {
+    // The identity's whole claim is that it owns no file that survives a
+    // restart; a persistent StateDirectory home would quietly retract that.
+    for (const key of SYSTEMD_HOST_UNITS) {
+      const unit = unitFor(key);
+      if (!unit.includes("DynamicUser=yes")) continue;
+      expect(unit).toContain("Environment=HOME=/tmp");
+      expect(unit).toContain("PrivateTmp=yes");
+      expect(unit).not.toContain("StateDirectory=");
+    }
+  });
+
   test("no unit goes through pnpm — corepack needs a writable HOME a unit does not have", () => {
     for (const key of SYSTEMD_HOST_UNITS) {
       expect(unitFor(key)).not.toMatch(/ExecStart=.*\bpnpm\b/);
