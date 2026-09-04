@@ -34,6 +34,6 @@ Eveland 不改变 Eve“文件即 Agent”的开发模式，也不接管应用�
 
 - **评估与架构设计**：先读[为什么有 Eveland](/zh/docs/why)了解立项初衷，再查阅[设计决策](/zh/docs/reference/design)了解运行时密度、沙箱和缩容至零的权衡。
 - **Agent 开发者**：若平台已就绪，直接上手[部署第一个 Agent](/zh/docs/agents/first-deployment)，接着了解[密钥与连接配置](/zh/docs/agents/secrets-connections)、[发布与灰度路由](/zh/docs/agents/releases-routing)。
-- **平台管理员与 SRE**：从[生产架构概览](/zh/docs/production)开始，按步骤[准备宿主机](/zh/docs/production/prerequisites)并部署平台；日常运维请参考[运行时管理](/zh/docs/operations/runtime)、[健康诊断](/zh/docs/operations/diagnostics)与[故障排查](/zh/docs/reference/troubleshooting)。
+- **平台管理员与 SRE**：一条命令[安装 Eveland](/zh/docs/production/install)，再读[生产架构概览](/zh/docs/production)了解装出来的是什么；日常运维请参考[运行时管理](/zh/docs/operations/runtime)、[健康诊断](/zh/docs/operations/diagnostics)与[故障排查](/zh/docs/reference/troubleshooting)。
 
 _注：本地容器开发与代码贡献流程请参见代码仓库的 README。_

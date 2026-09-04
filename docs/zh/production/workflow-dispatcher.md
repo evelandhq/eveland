@@ -3,6 +3,8 @@ title: 安装 Workflow Dispatcher
 description: 安装单例外置 Workflow Dispatcher，负责持久化工作流的定时器触发、按需唤醒与断点续传。
 ---
 
+> **手工安装路径。** 本页所有步骤，[安装脚本](/zh/docs/production/install)都会自动完成。只有在必须手工安装时才需要照做。
+
 在生产环境中，Eveland 的持久化工作流（Durable Workflows）必须以外置模式（External Mode）运行。Agent 部署本身不自行认领工作流任务；每个平台安装中**必须且仅能运行一个 Workflow Dispatcher 实例**，负责从数据库认领任务并按需唤醒对应 Agent 执行后续步骤。
 
 ## 1. 核心职责与工作机制

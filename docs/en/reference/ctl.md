@@ -7,16 +7,15 @@ description: "Host platform management CLI: installation script, appliance layou
 
 ---
 
-## 1. Automated installation
+## 1. Installation
 
-On Linux hosts, prepare the runtime and clone the repository with one command:
+`eveland-ctl` arrives with the platform itself:
 
 ```bash
-curl -fsSL https://eveland.ai/install.sh | bash
+curl -fsSL https://eveland.ai/install.sh | sudo bash
 ```
 
-- **Installer behavior**: Detects operating system and architecture, verifies or installs Node.js 24 and pnpm, and clones the latest stable Eveland release into `/opt/eveland`.
-- **System preparation**: Automatically installs missing system tools (`git`, `curl`, Docker/Compose v2) on Ubuntu systems before handing execution off to `eveland-ctl start`.
+The installer prepares the host and hands off to `eveland-ctl start`, which performs the install. [Install Eveland](/docs/production/install) is the walkthrough; this page is the command reference.
 
 ---
 
@@ -61,6 +60,6 @@ The `EVELAND_HOME` environment variable specifies the appliance root directory (
 
 ## Deeper reference
 
-- [Host prerequisites](/docs/production/prerequisites): toolchain and sandboxing setup
-- [Install core services](/docs/production/core-services): systemd service configuration
+- [Install Eveland](/docs/production/install): the installed path, start to finish
+- [Host prerequisites](/docs/production/prerequisites): what the ctl provisions, if you do it by hand
 - [Upgrades and rollbacks](/docs/operations/upgrades): version upgrade and maintenance workflows

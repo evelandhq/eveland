@@ -17,6 +17,7 @@ export function homeMetadata(lang: Language): Metadata {
 export function HomePage({ lang }: { lang: Language }) {
   const t = getSiteCopy(lang);
   const productionHref = localizedHref(lang, "/docs/production");
+  const installHref = localizedHref(lang, "/docs/production/install");
   const architectureHref = localizedHref(lang, "/docs/reference/architecture");
   const repositoryHref = "https://github.com/evelandhq/eveland";
   const structuredData = {
@@ -53,7 +54,7 @@ export function HomePage({ lang }: { lang: Language }) {
             </h1>
             <p>{t.hero.body}</p>
             <div className="hero-actions">
-              <Link className="button button-primary" href={productionHref}>
+              <Link className="button button-primary" href={installHref}>
                 {t.hero.primary}
                 <ArrowRight aria-hidden="true" />
               </Link>
@@ -64,11 +65,9 @@ export function HomePage({ lang }: { lang: Language }) {
             </div>
             <div className="hero-install">
               <pre>
-                <code>{`git clone https://github.com/evelandhq/eveland && cd eveland
-git checkout $(git describe --tags --abbrev=0)
-pnpm install --frozen-lockfile`}</code>
+                <code>{"curl -fsSL https://eveland.ai/install.sh | sudo bash"}</code>
               </pre>
-              <Link className="hero-install-link" href={productionHref}>
+              <Link className="hero-install-link" href={installHref}>
                 {t.hero.installCaption}
                 <ArrowRight aria-hidden="true" />
               </Link>

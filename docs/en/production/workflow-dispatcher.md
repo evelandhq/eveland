@@ -3,6 +3,8 @@ title: Install the workflow dispatcher
 description: Install the singleton external workflow dispatcher driving durable timers, wake-ups, and step continuations.
 ---
 
+> **Manual installation.** [The installer](/docs/production/install) does everything on this page for you. Follow these steps only if you have to install by hand.
+
 In production environments, Eveland executes durable workflows in external mode. Agent deployments do not claim their own workflow jobs; **exactly one Workflow Dispatcher instance must run per installation**, claiming pending tasks from the database and waking target agents on demand.
 
 ## 1. Role and operational model

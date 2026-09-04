@@ -38,4 +38,4 @@ Deployments are permanent entities, but running processes are ephemeral:
 - When a public request, cron schedule, or workflow step arrives, Eveland activates the target release in milliseconds via an ActivationLease.
 - When all leases expire and the idle window lapses (default: 5 minutes), the Worker gracefully terminates the process, reclaiming system memory while leaving routes and session states intact.
 
-Next: [Prepare the host environment](/docs/production/prerequisites).
+Next: [Install Eveland](/docs/production/install) — one command, or the manual path if your host needs it.

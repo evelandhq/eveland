@@ -3,6 +3,8 @@ title: 安装宿主机 Worker
 description: 将特权 Worker 安装为宿主机 systemd 服务，负责代码沙箱构建与 Agent 进程编排。
 ---
 
+> **手工安装路径。** 本页所有步骤，[安装脚本](/zh/docs/production/install)都会自动完成。只有在必须手工安装时才需要照做。
+
 Worker 是 Eveland 唯一的宿主机运行时控制器（Runtime Controller）。为了严格隔离权限，它作为特权服务仅运行在宿主机上，不对公网开放任何监听端口。
 
 ## 1. 准备代码目录

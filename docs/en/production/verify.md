@@ -7,6 +7,13 @@ A loading dashboard console does not guarantee that the underlying runtime orche
 
 ## 1. Core health checks
 
+```bash
+eveland-ctl status    # processes, health endpoints, database
+eveland-ctl doctor    # host, configuration, ports
+```
+
+That covers the first three checks below in one pass. The equivalents by hand:
+
 1. **API and Gateway health**:
    Query `http://127.0.0.1:17301/health` and `http://127.0.0.1:17300/health`, verifying that both return `status: ok` with matching release versions.
 2. **Worker preflight**:

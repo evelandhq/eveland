@@ -3,6 +3,8 @@ title: Host prerequisites
 description: Prepare Linux host dependencies, bubblewrap sandboxing, dedicated system users, and PostgreSQL planning.
 ---
 
+> **Manual installation.** [The installer](/docs/production/install) does everything on this page for you. Follow these steps only if you have to install by hand.
+
 Production environments require a Linux host with systemd (Ubuntu 24.04 LTS recommended). Complete the following preparations before installing Eveland platform services.
 
 ## 1. Install toolchain and dependencies
