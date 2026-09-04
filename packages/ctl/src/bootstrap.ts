@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { databaseName, resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 import {
   defaultBootstrapInputs,
   renderPlatformEnv,
   type BootstrapInputs,
 } from "./config-render.ts";
 import { parseEnvFile, upsertEnvFileValue, type PlatformEnvFile } from "./env-file.ts";
-import { describeDatabaseAddress, type PgReady } from "./pg-probe.ts";
+import { describeDatabaseAddress, type PgEnsureDatabase, type PgReady } from "./pg-probe.ts";
 import { deriveReleaseIdentity } from "./release-identity.ts";
 import {
   databaseMode,
@@ -70,6 +71,8 @@ export type BootstrapDeps = {
   fileExists: (filePath: string) => Promise<boolean>;
   /** A real connection + query against a DSN; a port probe is a false ready signal. */
   pgReady: PgReady;
+  /** Creates the shared workflow world's database, over the platform's own connection. */
+  pgEnsureDatabase: PgEnsureDatabase;
   random?: (size: number) => Buffer;
 };
 
@@ -370,6 +373,28 @@ export async function runBootstrapPrepare(
         "For the bundled database check `docker compose ps` and `docker compose logs postgres`; " +
         "for your own server check that it is running and accepts connections from this host.",
     );
+  }
+
+  // The shared workflow world lives in its own database on the same server
+  // (config-render.ts derives the name). Creating it here, over the platform's
+  // own connection, is what keeps "one connection to configure" true for an
+  // operator's external server: nobody has to run `createdb` by hand, and the
+  // failure — a role without CREATEDB — surfaces at install time rather than
+  // as a worker crash loop at the first deploy.
+  const worldUrl = resolveWorkflowWorldPlatformUrl(envFile.values);
+  const worldDatabase = worldUrl ? databaseName(worldUrl) : null;
+  if (worldDatabase && worldDatabase !== databaseName(databaseUrl)) {
+    io.stdout(`Ensuring the shared workflow database '${worldDatabase}' exists...`);
+    try {
+      await deps.pgEnsureDatabase(databaseUrl, worldDatabase);
+    } catch (error) {
+      throw new Error(
+        `Could not create the shared workflow database '${worldDatabase}' at ${address}: ` +
+          `${error instanceof Error ? error.message : String(error)}. ` +
+          `Create it yourself (CREATE DATABASE ${worldDatabase} OWNER <the role in DATABASE_URL>) ` +
+          "and re-run this command; a managed server often withholds CREATEDB.",
+      );
+    }
   }
 
   io.stdout("Applying database migrations...");

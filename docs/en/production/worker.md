@@ -47,9 +47,10 @@ NODE_ENV=production
 # Platform data directory (must exactly match API mount path)
 EVELAND_DATA_DIR=/var/lib/eveland
 
-# Database connections
+# Database connections (two databases, one server; the workflow world's DSN
+# reaches every deployment and must not be the platform's own database)
 DATABASE_URL=postgres://eveland:password@127.0.0.1:17310/eveland
-EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland_workflow
 
 # Internal service authentication (must match core services)
 APP_SECRET_KEY=your_app_encryption_key_32_bytes

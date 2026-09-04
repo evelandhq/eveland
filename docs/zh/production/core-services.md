@@ -34,7 +34,7 @@ EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 
 # 数据库连接地址
 DATABASE_URL=postgres://eveland:password@127.0.0.1:17310/eveland
-EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland_workflow
 
 # 平台安全密钥（请使用 openssl rand -hex 32 生成高强度独立随机串）
 BETTER_AUTH_SECRET=your_auth_secret_32_bytes_min

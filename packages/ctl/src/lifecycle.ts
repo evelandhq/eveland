@@ -25,7 +25,7 @@ import {
 import { runImplicitLogin } from "./implicit-login.ts";
 import { provisionLinuxHost } from "./linux-host.ts";
 import { defaultTcpProbe } from "./net-probe.ts";
-import { defaultPgReady } from "./pg-probe.ts";
+import { defaultPgEnsureDatabase, defaultPgReady } from "./pg-probe.ts";
 import { runSeedAgent } from "./seed-agent.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
 import { absoluteProcessDir, childEnvironment, PLATFORM_PROCESSES } from "./processes.ts";
@@ -359,6 +359,7 @@ function bootstrapDeps(
     sleep: resolved.sleep,
     fileExists: resolved.fileExists,
     pgReady: io.pgReady ?? defaultPgReady(),
+    pgEnsureDatabase: io.pgEnsureDatabase ?? defaultPgEnsureDatabase(),
     random: io.random,
   };
 }

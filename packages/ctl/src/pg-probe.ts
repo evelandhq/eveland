@@ -83,6 +83,35 @@ export function defaultPgReady(options: { connectTimeoutSeconds?: number } = {})
   };
 }
 
+export type PgEnsureDatabase = (adminUrl: string, databaseName: string) => Promise<void>;
+
+/**
+ * Creates the shared workflow world's database if the server does not have it
+ * yet, over a connection to the platform's own database on the same server.
+ *
+ * `CREATE DATABASE` neither runs inside a transaction nor takes IF NOT EXISTS,
+ * so existence is probed first and `42P04 duplicate_database` — a concurrent
+ * creator winning the race — counts as success. The name is quoted rather than
+ * bound: it is a database name, not a value, and it is derived from the
+ * configured DSN rather than typed by anyone.
+ */
+export function defaultPgEnsureDatabase(
+  options: { connectTimeoutSeconds?: number } = {},
+): PgEnsureDatabase {
+  const connectTimeout = options.connectTimeoutSeconds ?? CHECK_CONNECT_TIMEOUT;
+  return async (adminUrl, name) => {
+    await withClient(adminUrl, connectTimeout, async (sql) => {
+      const existing = await sql`select 1 from pg_database where datname = ${name}`;
+      if (existing.length > 0) return;
+      try {
+        await sql.unsafe(`create database "${name.replaceAll('"', '""')}"`);
+      } catch (error) {
+        if ((error as { code?: unknown } | null)?.code !== "42P04") throw error;
+      }
+    });
+  };
+}
+
 /**
  * Whether the database at this DSN is the one this installation migrated.
  *

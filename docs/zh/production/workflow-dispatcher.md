@@ -36,7 +36,7 @@ sudo systemctl enable --now eveland-workflow-dispatcher
 
 ```ini
 # 共享工作流数据库（必须与 Worker 注入的值完全一致）
-EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland_workflow
 
 # 内部激活 Control API 地址与凭证（用于冷启动休眠的 Agent）
 WORKFLOW_DISPATCHER_ACTIVATION_API_URL=http://127.0.0.1:17301

@@ -208,6 +208,53 @@ describe("collectDoctorChecks", () => {
     expect(check?.detail).not.toContain("s3cr3t");
   });
 
+  test("a workflow world sharing the platform's database fails in production", async () => {
+    // Every deployment is handed this DSN, so sharing hands user-authored
+    // agent code the accounts, sessions and encrypted project secrets too.
+    const checks = await collectDoctorChecks(
+      makeDeps({
+        envFile: {
+          path: "/etc/eveland/eveland.env",
+          values: {
+            NODE_ENV: "production",
+            DATABASE_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
+            EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
+            APP_SECRET_KEY: "k".repeat(32),
+            BETTER_AUTH_SECRET: "s".repeat(32),
+            EVELAND_ADMIN_PASSWORD: "long-enough-password",
+          },
+        },
+      }),
+    );
+    const check = byName(checks, "workflow-world-database");
+    expect(check?.status).toBe("fail");
+    expect(check?.detail).toContain("eveland_workflow");
+  });
+
+  test("a workflow world in its own database passes, across the two network views", async () => {
+    // macOS renders the deployment's view (host.docker.internal) and the
+    // platform's (loopback); only the database name decides this check.
+    const checks = await collectDoctorChecks(
+      makeDeps({
+        envFile: {
+          path: "/etc/eveland/eveland.env",
+          values: {
+            NODE_ENV: "production",
+            DATABASE_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
+            EVELAND_WORKFLOW_WORLD_URL:
+              "postgres://eveland:eveland@host.docker.internal:17310/eveland_workflow",
+            EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL:
+              "postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
+            APP_SECRET_KEY: "k".repeat(32),
+            BETTER_AUTH_SECRET: "s".repeat(32),
+            EVELAND_ADMIN_PASSWORD: "long-enough-password",
+          },
+        },
+      }),
+    );
+    expect(byName(checks, "workflow-world-database")?.status).toBe("ok");
+  });
+
   test("pg_dump is only required of an installation that brought its own PostgreSQL", async () => {
     // The bundled database is dumped inside its own container, at a version
     // that matches by construction.

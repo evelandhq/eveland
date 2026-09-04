@@ -1,5 +1,5 @@
 import type { TcpProbe } from "./net-probe.ts";
-import type { PgReady } from "./pg-probe.ts";
+import type { PgEnsureDatabase, PgReady } from "./pg-probe.ts";
 import type { Prompter } from "./prompt.ts";
 
 /**
@@ -49,6 +49,8 @@ export type LifecycleIo = {
   tcpProbe?: TcpProbe;
   /** A real Postgres connection + query against a DSN. */
   pgReady?: PgReady;
+  /** Creates a missing database over an existing connection to the same server. */
+  pgEnsureDatabase?: PgEnsureDatabase;
   openUrl?: (url: string) => Promise<void>;
   random?: (size: number) => Buffer;
   getuid?: () => number;

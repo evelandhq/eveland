@@ -36,7 +36,7 @@ In `/etc/eveland/eveland-workflow-dispatcher.env`, ensure the following values a
 
 ```ini
 # Shared workflow database (must match the URL injected into deployments)
-EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland_workflow
 
 # Internal Control API address and token (used to wake dormant agents)
 WORKFLOW_DISPATCHER_ACTIVATION_API_URL=http://127.0.0.1:17301
