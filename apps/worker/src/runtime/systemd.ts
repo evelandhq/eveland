@@ -1,6 +1,6 @@
 import { execa } from "execa";
 import { createHash } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
 import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discovery-artifacts.js";
@@ -115,6 +115,37 @@ export function resolveSandboxCacheRoot(env: NodeJS.ProcessEnv): string {
 export function resolveSystemdDeploymentUser(unitName: string): string {
   const digest = createHash("sha256").update(unitName).digest("hex").slice(0, 20);
   return `eveland-d-${digest}`;
+}
+
+/**
+ * A Release records the absolute path it was BUILT at, and activation replays
+ * that path into WorkingDirectory=, BindPaths= and the rest. Move the data
+ * root -- or restore a database onto a host that never had the old one -- and
+ * every one of those properties becomes a dangling pointer.
+ *
+ * systemd then fails deep inside namespace setup: a missing BindPaths= source
+ * surfaces as "Failed to load environment files: No such file or directory"
+ * and `result 'resources'`, naming neither the Release nor the path that is
+ * actually gone, and the operator sees it as an HTTP 503 on a turn. So the
+ * check happens here, where the Release IS the subject and the remedy can be
+ * named.
+ */
+async function assertReleaseDirectoryPresent(releaseDir: string, dataDir: string): Promise<void> {
+  const present = await access(releaseDir).then(
+    () => true,
+    () => false,
+  );
+  if (present) return;
+  const insideDataRoot = releaseDir === dataDir || releaseDir.startsWith(`${dataDir}${path.sep}`);
+  throw new Error(
+    insideDataRoot
+      ? `Release directory ${releaseDir} is missing: it lies under this host's data root ` +
+          `(EVELAND_DATA_DIR=${dataDir}) but no longer exists. Rebuild the project to produce a new Release.`
+      : `Release directory ${releaseDir} lies outside this host's data root ` +
+          `(EVELAND_DATA_DIR=${dataDir}) and does not exist: this Release was built under a different ` +
+          `data root, and the path it recorded no longer resolves. Rebuild the project to produce a ` +
+          `Release rooted here.`,
+  );
 }
 
 export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
@@ -555,6 +586,7 @@ export function createSystemdAdapter(
       };
     },
     async startProcess(input: ProcessStartInput): Promise<ProcessStartResult> {
+      await assertReleaseDirectoryPresent(input.releaseRef, dataDir);
       await mkdir(envDir, { recursive: true });
       const envFilePath = path.join(envDir, `${input.processName}.env`);
       const accessRepairScriptPath = path.join(envDir, `${input.processName}.prepare-access.sh`);
