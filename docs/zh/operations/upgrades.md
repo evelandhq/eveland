@@ -19,17 +19,19 @@ Eveland 包含五个核心服务组件（API、Gateway、Dashboard、Worker 与 
 
 ## 2. 标准升级流程
 
-### 方式一：使用 `eveland-ctl` 管理的安装（推荐）
+### 用安装脚本装的（常规情况）
 
-如果平台采用 `eveland-ctl` 部署管理，只需一条命令即可自动化完成拉取、迁移与滚动重启：
+一条命令即可完成数据库备份、切换到最新版本、执行迁移并重启平台：
 
 ```bash
 eveland-ctl update
 ```
 
-### 方式二：手动部署的安装
+用 `--version vX.Y.Z` 可以指定版本。在已安装的机器上重新执行 `curl -fsSL https://eveland.ai/install.sh | sudo bash` 效果相同——它会自动转交给 `eveland-ctl update`。
 
-对于手动管理代码与 systemd 服务的环境，请按以下顺序执行：
+### 手工安装的
+
+对于自行管理代码与 systemd 服务的环境，请按以下顺序执行。（想改由安装脚本接管，见[从旧版本迁移](/zh/docs/production/install#从旧版本迁移)。）
 
 ```bash
 # 1. 检出目标稳定版本 Tag

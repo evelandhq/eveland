@@ -2,11 +2,13 @@
   "title": "Deploy Eveland",
   "pages": [
     "index",
+    "install",
+    "networking",
+    "verify",
+    "---Manual installation---",
     "prerequisites",
     "core-services",
     "worker",
-    "workflow-dispatcher",
-    "networking",
-    "verify"
+    "workflow-dispatcher"
   ]
 }

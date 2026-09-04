@@ -3,6 +3,8 @@ title: 安装核心服务
 description: 安装稳定版本 Eveland，并以宿主机 systemd unit 启动核心控制面服务。
 ---
 
+> **手工安装路径。** 本页所有步骤，[安装脚本](/zh/docs/production/install)都会自动完成。只有在必须手工安装时才需要照做。
+
 生产环境请务必运行经过测试的稳定版本（如 `vX.Y.Z` Release Tag），切勿在生产环境中直接部署未经测试的 `main` 分支代码。
 
 在 Linux 宿主机上，除辅助容器（OTel Collector 与可选的 Postgres）运行在 Docker 内外，平台的所有核心进程均作为独立的 systemd 服务运行。

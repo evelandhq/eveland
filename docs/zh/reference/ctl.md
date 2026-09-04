@@ -7,16 +7,15 @@ description: 宿主机平台运维 CLI：安装脚本、appliance 目录布局�
 
 ---
 
-## 1. 一键安装与脚本引导
+## 1. 安装
 
-在 Linux 宿主机上，可以通过官方安装脚本一键完成运行环境准备与代码拉取：
+`eveland-ctl` 随平台一起装好：
 
 ```bash
-curl -fsSL https://eveland.ai/install.sh | bash
+curl -fsSL https://eveland.ai/install.sh | sudo bash
 ```
 
-- **脚本行为**：自动检测宿主机操作系统与架构、探测或安装 Node.js 24、通过 Corepack 锁定 pnpm，并克隆最新稳定版本的 Eveland 代码至 `/opt/eveland`。
-- **环境预备**：在 Ubuntu 等系统上，脚本会自动补齐 `git`、`curl` 以及 Docker/Compose 基础依赖，随后移交 `eveland-ctl start` 引导启动。
+脚本负责准备宿主机，随后移交 `eveland-ctl start` 完成安装。完整安装流程见[安装 Eveland](/zh/docs/production/install)，本页是命令参考。
 
 ---
 
@@ -61,6 +60,6 @@ curl -fsSL https://eveland.ai/install.sh | bash
 
 ## 相关参考
 
-- [准备宿主机环境](/zh/docs/production/prerequisites)：基础工具链与沙箱环境配置
-- [安装核心服务](/zh/docs/production/core-services)：systemd 核心服务配置指南
+- [安装 Eveland](/zh/docs/production/install)：从头到尾的安装流程
+- [准备宿主机](/zh/docs/production/prerequisites)：ctl 自动准备的那些东西，手工怎么做
 - [升级与回滚](/zh/docs/operations/upgrades)：版本迁移与维护流程

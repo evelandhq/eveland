@@ -38,4 +38,4 @@ API 与 Worker 作为宿主机原生进程，必须挂载并读取完全相同�
 - 当收到公网请求、定时任务或工作流步骤时，平台通过租约（ActivationLease）毫秒级冷启动对应部署。
 - 当流量结束且经过配置的空闲等待时间（默认 5 分钟）后，Worker 会安全停止该进程以释放内存，而版本路由与会话状态完好保留。
 
-下一步：[准备宿主机环境](/zh/docs/production/prerequisites)。
+下一步：[安装 Eveland](/zh/docs/production/install)——一条命令即可；宿主机有特殊要求时也可以手工安装。

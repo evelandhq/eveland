@@ -2,11 +2,13 @@
   "title": "部署 Eveland",
   "pages": [
     "index",
+    "install",
+    "networking",
+    "verify",
+    "---手工安装---",
     "prerequisites",
     "core-services",
     "worker",
-    "workflow-dispatcher",
-    "networking",
-    "verify"
+    "workflow-dispatcher"
   ]
 }

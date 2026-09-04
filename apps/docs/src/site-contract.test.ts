@@ -149,6 +149,7 @@ describe("Eveland public website contract", () => {
     const requiredPages = [
       "index.md",
       "production/index.md",
+      "production/install.md",
       "production/prerequisites.md",
       "production/core-services.md",
       "production/worker.md",
@@ -201,6 +202,11 @@ describe("Eveland public website contract", () => {
     expect(page).toContain("<DeploymentFlow");
     expect(page).toContain("productionHref");
     expect(page).toContain("github.com/evelandhq/eveland");
+    // The hero sells the installed path: the published one-liner, linking to
+    // the page that walks it. It must stay the same command the site serves.
+    expect(page).toContain("curl -fsSL https://eveland.ai/install.sh | sudo bash");
+    expect(page).toContain('localizedHref(lang, "/docs/production/install")');
+    expect(source("../public/install.sh")).toContain("eveland-ctl");
     expect(copy).toContain('href: "/docs/production"');
     expect(copy).toContain('href: "/zh/docs/production"');
     expect(copy).toContain("systemd");

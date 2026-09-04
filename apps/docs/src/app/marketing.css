@@ -185,6 +185,9 @@
 
 .hero-install {
   margin-top: 26px;
+  /* The install command is one long line: bound the box to the column and let
+     the pre scroll, instead of letting it size to the command and spill. */
+  width: 100%;
   max-width: 560px;
   border: 1px solid var(--line, #e4e2df);
   border-radius: 14px;

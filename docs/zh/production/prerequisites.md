@@ -3,6 +3,8 @@ title: 准备宿主机
 description: 生产环境前置准备：Linux 基础依赖、bubblewrap 沙箱配置、专用系统用户与数据库规划。
 ---
 
+> **手工安装路径。** 本页所有步骤，[安装脚本](/zh/docs/production/install)都会自动完成。只有在必须手工安装时才需要照做。
+
 生产环境推荐使用支持 systemd 的 Linux 宿主机（推荐 Ubuntu 24.04 LTS）。在安装平台服务前，请先完成以下基础环境准备。
 
 ## 1. 安装基础运行时与工具链
