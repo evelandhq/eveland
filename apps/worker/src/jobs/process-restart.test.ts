@@ -277,7 +277,9 @@ describe("processNextJob", () => {
       status: "draining",
     });
     await expect(store.listLogs(project.id, "deploy")).resolves.toEqual([
-      expect.objectContaining({ line: "Restart requested." }),
+      // The reason travels into the log: a platform-initiated bounce is
+      // otherwise indistinguishable from an operator's click.
+      expect.objectContaining({ line: "Restart requested (shared_agent_environment_changed)." }),
       expect.objectContaining({
         line: `Deployment running on 127.0.0.1:${deployment.hostPort}.`,
       }),
@@ -349,7 +351,7 @@ describe("processNextJob", () => {
       deploymentStatus: "archived",
     });
     await expect(store.listLogs(project.id, "deploy")).resolves.toEqual([
-      expect.objectContaining({ line: "Restart requested." }),
+      expect.objectContaining({ line: "Restart requested (secret_changed)." }),
       expect.objectContaining({
         line: `Restart skipped: deployment ${deployment.deploymentKey} is archived.`,
       }),

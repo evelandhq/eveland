@@ -25,7 +25,6 @@ const FULL_STORE_ALLOWLIST: string[] = [
   "apps/worker/src/jobs/job-registry.ts",
   "apps/worker/src/jobs/process-observability.ts",
   "apps/worker/src/jobs/process.ts",
-  "apps/worker/src/runtime/identity-config-reconciler.ts",
   "apps/worker/src/runtime/idle-reaper.ts",
   "apps/worker/src/runtime/orphan-reaper.ts",
   "apps/worker/src/runtime/release-reaper.ts",

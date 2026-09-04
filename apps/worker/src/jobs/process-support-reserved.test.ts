@@ -2,7 +2,10 @@ import { createTestStore } from "@evelandhq/db/vitest";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { RESERVED_RUNTIME_ENVIRONMENT_KEYS } from "../runtime/reserved-environment.js";
+import {
+  RESERVED_RUNTIME_ENVIRONMENT_KEYS,
+  RESERVED_RUNTIME_ENVIRONMENT_SOURCES,
+} from "../runtime/reserved-environment.js";
 import { resolveDeploymentShutdownTimeoutSeconds } from "../runtime/shutdown-budget.js";
 import { composeDeploymentEnv } from "./process-support.js";
 
@@ -81,6 +84,26 @@ describe("reserved runtime environment names", () => {
     // composed environments came from the reserved layer.
     const reserved = new Set([...Object.keys(legacy.env), ...Object.keys(platform.env)]);
     expect([...reserved].sort()).toEqual([...RESERVED_RUNTIME_ENVIRONMENT_KEYS].sort());
+  });
+
+  // The half of the sync that keeps the drift reconciler honest: a reserved
+  // name whose platform inputs are undeclared is invisible to the fingerprint,
+  // which is precisely how every non-Identity name escaped the check until
+  // issue #477. Declaring an empty list is a legitimate answer -- it says the
+  // value is derived per project and cannot drift -- but it has to be said out
+  // loud.
+  test("every reserved name declares the platform inputs it derives from", () => {
+    const undeclared = RESERVED_RUNTIME_ENVIRONMENT_KEYS.filter(
+      (key) => RESERVED_RUNTIME_ENVIRONMENT_SOURCES[key] === undefined,
+    );
+
+    expect(undeclared).toEqual([]);
+    // EVELAND_PROJECT_ID is the only name that legitimately has no input.
+    expect(
+      RESERVED_RUNTIME_ENVIRONMENT_KEYS.filter(
+        (key) => RESERVED_RUNTIME_ENVIRONMENT_SOURCES[key]?.length === 0,
+      ),
+    ).toEqual(["EVELAND_PROJECT_ID"]);
   });
 
   test("a project entry never wins against a reserved name at runtime", async () => {
