@@ -198,11 +198,13 @@ Releases are automated by [Release Please](https://github.com/googleapis/release
 1. Feature PRs merge to `main` with Conventional Commit titles (`fix:`, `feat:`,
    `feat!:`). Non-conventional messages are silently skipped — they never appear
    in the changelog and do not influence the version.
-2. `.github/workflows/release.yml` maintains a single Release PR with the next
-   version and `CHANGELOG.md` entries.
-3. A maintainer merges that Release PR only after CI and the checklist below are
-   green. Release Please then creates the `vX.Y.Z` tag and GitHub Release. Only
-   `vX.Y.Z` tags are stable releases; `main` is the `edge` channel.
+2. `.github/workflows/release.yml` maintains one Release PR per released
+   component — the platform itself, and the `eveland` npm package — each with
+   its next version and `CHANGELOG.md` entries.
+3. A maintainer merges a Release PR only after CI and the checklist below are
+   green. Release Please then creates the tag and GitHub Release: `vX.Y.Z` for
+   the platform, `eveland-vX.Y.Z` for the package. Only `vX.Y.Z` tags are stable
+   platform releases; `main` is the `edge` channel.
 
 `RELEASE_PLEASE_TOKEN` should be a repository-scoped or GitHub App token that can
 write contents and pull requests. The workflow falls back to `GITHUB_TOKEN`, but
