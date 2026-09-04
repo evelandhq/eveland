@@ -81,6 +81,30 @@ jobs:
             EVELAND_VERSION="$GITHUB_SHA" \
             bash apps/docs/public/install.sh --no-prompt
 
+      - name: The rendered units must be valid systemd
+        # systemd ignores unknown keys with only a log line, so a directive in
+        # the wrong section (StartLimit* belongs to [Unit], not [Service])
+        # silently does nothing. `verify` is the only thing that says so.
+        # It reports the units' ExecStart binaries as unreadable when run
+        # unprivileged, hence sudo.
+        run: |
+          sudo systemd-analyze verify \
+            /etc/systemd/system/eveland-api.service \
+            /etc/systemd/system/eveland-gateway.service \
+            /etc/systemd/system/eveland-web.service \
+            /etc/systemd/system/eveland-worker.service \
+            /etc/systemd/system/eveland-workflow-dispatcher.service
+
+      - name: Each platform service has its own uid
+        # The per-service env allowlists are only a boundary if no two
+        # services share a uid: same-uid processes read each other's
+        # /proc/<pid>/environ.
+        run: |
+          users="$(sudo sed -n 's/^User=//p' /etc/systemd/system/eveland-*.service | sort)"
+          echo "$users"
+          test "$(echo "$users" | wc -l)" = "$(echo "$users" | uniq | wc -l)"
+          sudo grep -q '^DynamicUser=yes' /etc/systemd/system/eveland-gateway.service
+
       - name: Doctor must be green
         run: |
           sudo -E env "PATH=$PATH" EVELAND_HOME=/opt/eveland /opt/eveland/bin/eveland-ctl doctor

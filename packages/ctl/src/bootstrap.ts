@@ -227,11 +227,26 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<Bootstrap
       io.stdout(
         `Reusing existing configuration at ${layout.envFilePath} (secrets are minted once).`,
       );
+      // A resumed bootstrap already answered the question, and the answer was
+      // recorded BEFORE this file was written (see below), so a record is
+      // guaranteed here for anything this code path created. A completed
+      // install from before the question existed runs the bundled database.
+      // Anything else is a half-finished bootstrap whose answer is gone, and
+      // guessing "bundled" there starts a second cluster next to the
+      // operator's own and makes every later `update` back up the wrong one.
+      const metadata = await readInstallMetadata(layout);
+      if (!metadata?.database && metadata?.bootstrapCompleted !== true) {
+        throw new Error(
+          `${layout.envFilePath} exists but ${layout.installJsonPath} does not record which ` +
+            "database this installation uses, so its first boot did not finish. Re-run the " +
+            "bootstrap against an empty appliance root, or add " +
+            '`"database": "bundled"` or `"database": "external"` to install.json by hand — ' +
+            "whichever matches the DATABASE_URL already in the configuration.",
+        );
+      }
       return {
         envFile: { path: layout.envFilePath, values: existing },
-        // A resumed bootstrap already answered the question; an installation
-        // from before it existed runs the bundled database.
-        database: databaseMode(await readInstallMetadata(layout)),
+        database: databaseMode(metadata),
       };
     }
     preSeeded = existing;
@@ -240,6 +255,13 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<Bootstrap
   io.stdout("");
   io.stdout("First boot: this machine has no eveland configuration yet.");
   const inputs = await gatherBootstrapInputs(deps);
+  const database: DatabaseMode = inputs.databaseUrl ? "external" : "bundled";
+  // Recorded BEFORE the configuration it describes. The two writes are not
+  // atomic together, and this is the order that makes a crash between them
+  // recoverable: a record with no configuration is re-asked from scratch,
+  // whereas a configuration with no record is a machine that cannot tell an
+  // operator's own Postgres from one it is about to start alongside it.
+  await recordDatabaseMode(deps, database);
   const rendered = renderPlatformEnv({
     platform: deps.platform,
     applianceRoot: layout.root,
@@ -263,10 +285,25 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<Bootstrap
   io.stdout("  The generated password is recorded only in that file — read it with:");
   io.stdout(`  grep EVELAND_ADMIN_PASSWORD ${layout.envFilePath}`);
   io.stdout("");
-  return {
-    envFile: { path: layout.envFilePath, values: rendered.values },
-    database: inputs.databaseUrl ? "external" : "bundled",
-  };
+  return { envFile: { path: layout.envFilePath, values: rendered.values }, database };
+}
+
+/**
+ * Persists the bundled-or-external answer on its own, ahead of everything it
+ * gates. Merges into whatever the installer already left in install.json so
+ * this never has to invent the fields it does not own.
+ */
+async function recordDatabaseMode(deps: BootstrapDeps, database: DatabaseMode): Promise<void> {
+  const existing = await readInstallMetadata(deps.layout);
+  await writeInstallMetadata(deps.layout, {
+    version: 1,
+    installedAt: new Date().toISOString(),
+    method: deps.io.env.EVELAND_INSTALL_METHOD === "install.sh" ? "install.sh" : "manual",
+    osMode: deps.platform,
+    bootstrapCompleted: false,
+    ...existing,
+    database,
+  });
 }
 
 /** Writes the checkout's channel + revision into the env file (and the in-memory values). */

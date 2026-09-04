@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { POSTGRES_HOST_PORT, WEB_PORT } from "@evelandhq/core/ports";
+import { API_PORT, POSTGRES_HOST_PORT, WEB_PORT } from "@evelandhq/core/ports";
 import { collectDoctorChecks, type DoctorDeps } from "./doctor.ts";
 
 function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
@@ -33,6 +33,7 @@ function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     fileExists: async () => false,
     freeDiskBytes: async () => 100 * 1024 ** 3,
     nonLoopbackAddresses: () => [],
+    dockerBridgeHost: async () => null,
     readTextFile: async () => null,
     ...overrides,
   };
@@ -120,6 +121,39 @@ describe("collectDoctorChecks", () => {
     const check = byName(checks, "loopback-exposure");
     expect(check?.status).toBe("fail");
     expect(check?.detail).toContain("192.168.1.10");
+  });
+
+  test("the API's Collector listener on the Docker bridge is not an exposure", async () => {
+    // The Linux production form binds it on purpose. docker0 only reaches
+    // this list once something attaches to the default bridge network (libuv
+    // omits interfaces that are not UP|RUNNING), so without the exemption a
+    // correct install fails doctor intermittently — which is exactly the kind
+    // of finding that teaches operators to ignore doctor.
+    const checks = await collectDoctorChecks(
+      makeDeps({
+        nonLoopbackAddresses: () => ["172.17.0.1", "192.168.1.10"],
+        dockerBridgeHost: async () => "172.17.0.1",
+        tcpProbe: async (host, port) => host === "172.17.0.1" && port === API_PORT,
+      }),
+    );
+    const check = byName(checks, "loopback-exposure");
+    expect(check?.status).toBe("ok");
+    expect(check?.detail).toContain("172.17.0.1");
+  });
+
+  test("the exemption is the API's port on the bridge and nothing else", async () => {
+    // Postgres or the Dashboard on the very same bridge address is still a
+    // finding: containers on that bridge would reach them too.
+    const checks = await collectDoctorChecks(
+      makeDeps({
+        nonLoopbackAddresses: () => ["172.17.0.1"],
+        dockerBridgeHost: async () => "172.17.0.1",
+        tcpProbe: async (host, port) => host === "172.17.0.1" && port === POSTGRES_HOST_PORT,
+      }),
+    );
+    const check = byName(checks, "loopback-exposure");
+    expect(check?.status).toBe("fail");
+    expect(check?.detail).toContain("Postgres");
   });
 
   test("proxy variables warn with the Lima lesson", async () => {

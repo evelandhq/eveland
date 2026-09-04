@@ -16,6 +16,18 @@ const allowedExactPaths = new Set([
  * the host's loopback, so the managed Collector reaches the API here or not
  * at all.
  *
+ * The address is detected by the ctl at every start, but the unit that reads
+ * it starts again at every boot with no ctl in the loop. Docker renumbering
+ * its bridge (a `bip` change, a reinstall) leaves a perfectly valid private
+ * IPv4 that this host no longer owns, and binding it fails asynchronously
+ * with EADDRNOTAVAIL — which, unhandled, would take the API's PRIMARY
+ * listener down with it. `apps/api/src/server.ts` therefore handles that
+ * server's 'error' event: a degraded Observation path is the honest outcome,
+ * a dead API is not. Note that the address being *bindable* is not the same
+ * as `docker0` being visible in `os.networkInterfaces()`: a bridge with no
+ * attached container is UP but not RUNNING, so libuv omits it while the
+ * address stays perfectly local — do not gate the listener on that lookup.
+ *
  * This is the same listener in development and in production; what keeps it
  * safe is not the environment but three invariants enforced here:
  *

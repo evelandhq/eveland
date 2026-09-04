@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import {
   BWRAP_APPARMOR_PROFILE,
   HOST_APT_PACKAGES,
+  HOST_SERVICE_ACCOUNTS,
   provisionLinuxHost,
   type LinuxHostDeps,
   HOST_REQUIRED_COMMANDS,
@@ -128,15 +129,23 @@ describe("provisionLinuxHost", () => {
       "/etc/apparmor.d/bwrap",
     ]);
     expect(harness.execCalls).toContainEqual(["install", "-d", "-m", "0755", "/workspace"]);
-    expect(
-      harness.execCalls.some((argv) => argv[0] === "useradd" && argv.includes("eveland-platform")),
-    ).toBe(true);
-    expect(
-      harness.execCalls.some((argv) => argv[0] === "useradd" && argv.includes("eveland-app")),
-    ).toBe(true);
-    expect(
-      harness.execCalls.some((argv) => argv[0] === "useradd" && argv.includes("eveland-build")),
-    ).toBe(true);
+    // Every account the table declares, and each with its own home. The
+    // Dashboard's and the API's are separate on purpose: one uid per trust
+    // level is what keeps a service's env allowlist from being decorative.
+    for (const account of HOST_SERVICE_ACCOUNTS) {
+      expect(harness.execCalls).toContainEqual([
+        "useradd",
+        "--system",
+        ...(account.ownGroup ? ["--user-group"] : []),
+        "--home-dir",
+        account.home,
+        "--create-home",
+        account.user,
+      ]);
+    }
+    expect(new Set(HOST_SERVICE_ACCOUNTS.map((account) => account.home)).size).toBe(
+      HOST_SERVICE_ACCOUNTS.length,
+    );
     // The pinned node lands on the system PATH for units and sandboxes.
     expect(harness.execCalls).toContainEqual([
       "ln",
@@ -305,7 +314,7 @@ describe("provisionLinuxHost", () => {
 
   test("existing users and an existing profile are left alone", async () => {
     const harness = await makeDeps({
-      existingUsers: ["eveland-platform", "eveland-app", "eveland-build"],
+      existingUsers: HOST_SERVICE_ACCOUNTS.map((account) => account.user),
       existingPaths: ["/etc/apparmor.d", "/etc/apparmor.d/bwrap", "/node-bin/node"],
       existingCommands: ["pnpm"],
     });
@@ -347,7 +356,7 @@ describe("provisionLinuxHost", () => {
         "bwrap",
         "pnpm",
       ],
-      existingUsers: ["eveland-platform", "eveland-app", "eveland-build"],
+      existingUsers: HOST_SERVICE_ACCOUNTS.map((account) => account.user),
     });
     await expect(provisionLinuxHost(harness.deps)).resolves.toBeUndefined();
   });

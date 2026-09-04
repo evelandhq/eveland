@@ -79,12 +79,37 @@ serve({
 });
 
 if (dockerBridgeBindHost) {
-  serve({
-    fetch: createDockerBridgeIngress((request) => app.fetch(request)),
-    port,
-    hostname: dockerBridgeBindHost,
+  // The ctl re-detects this address on every start, but the unit that reads
+  // it starts again at every boot with no ctl in the loop. If Docker
+  // renumbered its bridge in between, the bind fails with EADDRNOTAVAIL —
+  // asynchronously, on this server's 'error' event, which unhandled would
+  // take the API's primary listener down with it. Losing Agent event
+  // delivery is bad; losing the whole API is worse.
+  const bridge = serve(
+    {
+      fetch: createDockerBridgeIngress((request) => app.fetch(request)),
+      port,
+      hostname: dockerBridgeBindHost,
+    },
+    () =>
+      console.log(
+        `Docker bridge runtime ingress listening on http://${dockerBridgeBindHost}:${port}`,
+      ),
+  );
+  bridge.on("error", (error: NodeJS.ErrnoException) => {
+    const detail =
+      `The Collector-facing listener on ${dockerBridgeBindHost}:${port} failed ` +
+      `(${error.code ?? error.message}), so Agent events will not be delivered. ` +
+      "Docker's bridge has most likely been renumbered since this unit's environment was " +
+      "written: re-run `eveland-ctl start` to re-detect it.";
+    console.error(detail);
+    platformObservability.emitLog({
+      severity: "error",
+      eventName: "eveland.api.docker_bridge_unavailable",
+      body: detail,
+      attributes: { "server.address": dockerBridgeBindHost, "error.type": error.code ?? "unknown" },
+    });
   });
-  console.log(`Docker bridge runtime ingress listening on http://${dockerBridgeBindHost}:${port}`);
 }
 
 console.log(`${formatBuildInfo(buildInfo)} listening on http://localhost:${port}`);

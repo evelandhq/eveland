@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -232,6 +232,44 @@ describe("runBootstrapConfig", () => {
     for (const dir of [layout.dataDir, layout.logsDir, layout.runDir, layout.backupsDir]) {
       await expect(stat(dir)).resolves.toBeDefined();
     }
+  });
+
+  test("the external-database answer is recorded before the configuration it describes", async () => {
+    // The two writes are not atomic. A crash between them used to leave a
+    // rendered eveland.env with no record, and the resume defaulted to
+    // "bundled" — starting a second cluster beside the operator's own and
+    // pointing every later `update` backup at the empty one.
+    const dsn = "postgres://user:pw@db.example.com:5432/eveland";
+    const { deps, layout } = await makeDeps({
+      prompter: scriptedPrompter(["", "", true, dsn]),
+    });
+    const { database } = await runBootstrapConfig(deps);
+    expect(database).toBe("external");
+    expect((await readInstallMetadata(layout))?.database).toBe("external");
+
+    // And the resume reads it back rather than guessing.
+    expect((await runBootstrapConfig(deps)).database).toBe("external");
+  });
+
+  test("a rendered configuration whose answer was never recorded refuses to guess", async () => {
+    const { deps, layout } = await makeDeps({});
+    await runBootstrapConfig(deps);
+    // Exactly the crash window as it looks on a machine bootstrapped by the
+    // older code: configuration on disk, no record of which database it uses.
+    await rm(layout.installJsonPath);
+    await expect(runBootstrapConfig(deps)).rejects.toThrow(/did not finish/);
+  });
+
+  test("a completed install from before the question existed still means bundled", async () => {
+    const { deps, layout } = await makeDeps({});
+    await runBootstrapConfig(deps);
+    const metadata = await readInstallMetadata(layout);
+    await writeInstallMetadata(layout, {
+      ...metadata!,
+      bootstrapCompleted: true,
+      database: undefined,
+    });
+    expect((await runBootstrapConfig(deps)).database).toBe("bundled");
   });
 });
 

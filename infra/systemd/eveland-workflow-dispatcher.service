@@ -16,6 +16,12 @@
 Description=eveland workflow dispatcher
 Wants=network-online.target
 After=network-online.target
+# [Unit], not [Service]: systemd moved these out of [Service] in v229 and
+# silently ignores them there. A crash loop burns one restart every
+# RestartSec; cap it so a broken config surfaces as a failed unit instead of
+# an infinite loop.
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Service]
 Type=exec
@@ -28,10 +34,6 @@ EnvironmentFile=/etc/eveland/eveland-workflow-dispatcher.env
 ExecStart=/usr/bin/env corepack pnpm --filter @evelandhq/workflow-dispatcher exec tsx src/main.ts
 Restart=on-failure
 RestartSec=5
-# A crash loop burns one restart every RestartSec; cap it so a broken config
-# surfaces as a failed unit instead of an infinite loop.
-StartLimitIntervalSec=300
-StartLimitBurst=10
 
 [Install]
 WantedBy=multi-user.target

@@ -52,12 +52,12 @@ The overlay starts no platform service at all. The base file's development API, 
 | Unit                                  | Runs as            | Writes                                   |
 | ------------------------------------- | ------------------ | ---------------------------------------- |
 | `eveland-api.service`                 | `eveland-platform` | `EVELAND_DATA_DIR`                       |
-| `eveland-gateway.service`             | `eveland-platform` | nothing                                  |
-| `eveland-web.service`                 | `eveland-platform` | `apps/web/.next` (its runtime cache)     |
+| `eveland-gateway.service`             | `DynamicUser`      | nothing                                  |
+| `eveland-web.service`                 | `eveland-web`      | `apps/web/.next` (its runtime cache)     |
 | `eveland-worker.service`              | `root`             | the data root, systemd, deployment users |
 | `eveland-workflow-dispatcher.service` | `DynamicUser`      | nothing                                  |
 
-The three listening services run under one unprivileged system user with `ProtectSystem=strict`, a read-only source tree, and an explicit `ReadWritePaths`. The Worker is root on purpose: it is the only component allowed to build untrusted project code and to drive `systemd-run`, `systemctl` and `chown`, which is how each Eve Deployment gets its own unprivileged `DynamicUser`. Each unit reads its own environment file under `etc/`, re-rendered from `etc/eveland.env` on every start — edit that file, not the rendered ones.
+Every listening service runs unprivileged with `ProtectSystem=strict`, a read-only source tree, and an explicit `ReadWritePaths` — and **no two of them share a uid**. That is what makes the per-service environment files a real boundary rather than a convention: same-uid processes can read each other's `/proc/<pid>/environ`, so a public front door sharing the API's user would have had the whole platform configuration one read away. The API and the Dashboard keep fixed users because they own files across restarts; the Gateway owns nothing, so it takes a `DynamicUser` recycled at every boot. The Worker is root on purpose: it is the only component allowed to build untrusted project code and to drive `systemd-run`, `systemctl` and `chown`, which is how each Eve Deployment gets its own unprivileged `DynamicUser`. Each unit reads its own environment file under `etc/`, re-rendered from `etc/eveland.env` on every start — edit that file, not the rendered ones.
 
 For a hand-built install the same units are described in [Install the host Worker](/docs/production/worker) and [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
 

@@ -1,4 +1,4 @@
-import { access, chmod, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { PlatformEnvFile } from "./env-file.ts";
 import { readInstallMetadata, type ApplianceLayout, type DatabaseMode } from "./home.ts";
@@ -6,9 +6,12 @@ import { writeInstallMetadata } from "./bootstrap.ts";
 import type { ExecCommand, FetchLike, LifecycleIo } from "./io.ts";
 import { GATEWAY_INTERNAL_URL_FALLBACK, GATEWAY_PORT } from "@evelandhq/core/ports";
 import {
+  ensureHostServiceAccounts,
   PLATFORM_SERVICE_HOME,
   PLATFORM_SERVICE_USER,
   refreshSystemToolchain,
+  WEB_SERVICE_HOME,
+  WEB_SERVICE_USER,
 } from "./linux-host.ts";
 import {
   directExecArgv,
@@ -89,6 +92,64 @@ export const RETIRED_COMPOSE_SERVICES: ReadonlyArray<{ service: string; profile:
 // `pnpm install` plus `next build` used to need.
 export const SYSTEMD_READINESS_DEADLINE_MS = 180_000;
 export const SYSTEMD_READINESS_POLL_MS = 500;
+
+/**
+ * The file every host unit's `ConditionPathExists=` points at.
+ *
+ * `systemctl enable` and "this checkout is safe to run" are two different
+ * facts, and only the ctl knows the second one. The units are enabled while
+ * the Dashboard is still unbuilt and the schema still unmigrated — during a
+ * first boot, and again during every update, which rewrites the checkout the
+ * units already point at. A machine that reboots inside either window would
+ * otherwise come back running new code against an old schema, with none of
+ * the ctl's `bootstrapCompleted` / `update-pending.json` checks in the way,
+ * because systemd starts units, not `eveland-ctl start`.
+ *
+ * So the marker, not the enablement, is what says "provisioned": the ctl
+ * writes it immediately before it starts the units, and clears it before an
+ * update touches the checkout. Missing, a unit is *skipped* rather than
+ * failed — `systemctl status` says "Condition check resulted in ... being
+ * skipped" and names this path.
+ *
+ * It lives under the appliance root, not /run: it must survive the reboot it
+ * exists to survive.
+ */
+export function hostUnitsArmedPath(layout: Pick<ApplianceLayout, "runDir">): string {
+  return path.join(layout.runDir, "host-units-armed");
+}
+
+const ARMED_MARKER_CONTENT = [
+  "# Written by eveland-ctl. Every eveland-*.service has",
+  "# ConditionPathExists= on this file, so at boot systemd starts the platform",
+  "# only if the ctl last left the checkout built and the schema migrated.",
+  "#",
+  "# An update removes it before it moves the checkout and writes it back once",
+  "# the new revision is built and migrated. If the units are being skipped,",
+  "# the last install or update did not finish: re-run `eveland-ctl update`",
+  "# (or `eveland-ctl start`), which redoes the remaining steps and re-arms.",
+  "",
+].join("\n");
+
+/**
+ * Declares the checkout ready to run unattended. Called immediately before
+ * the ctl starts the units, which is the only moment anything knows it.
+ */
+export async function armHostUnits(context: SystemdModeContext): Promise<void> {
+  const filePath = hostUnitsArmedPath(context.layout);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const writeTextFile =
+    context.io.writeTextFile ?? ((target: string, body: string) => writeFile(target, body, "utf8"));
+  await writeTextFile(filePath, ARMED_MARKER_CONTENT);
+}
+
+/**
+ * Withdraws that declaration. An update calls it before it moves the
+ * checkout: from here until the new revision is built, migrated and started,
+ * a reboot leaves the platform down rather than half-updated.
+ */
+export async function disarmHostUnits(layout: Pick<ApplianceLayout, "runDir">): Promise<void> {
+  await rm(hostUnitsArmedPath(layout), { force: true });
+}
 
 export type SystemdModeContext = {
   io: LifecycleIo;
@@ -255,9 +316,22 @@ export type UnitRenderOptions = {
   /** Absolute EVELAND_DATA_DIR; the only tree the API writes outside its own home. */
   dataDir: string;
   nodeBinDir: string;
+  /** `hostUnitsArmedPath`: the unit's ConditionPathExists. */
+  armedMarkerPath: string;
 };
 
-type UnitIdentity = "root" | "dynamic-user" | "platform-user";
+/**
+ * A unit's identity. `root` is the worker's deliberate exception; every other
+ * unit is unprivileged, and no two of them share a uid.
+ *
+ * The sharing matters more than the privilege level: same-uid processes read
+ * each other's `/proc/<pid>/environ`, so a single "platform" uid would make
+ * every service's env allowlist decorative — the public front door could
+ * simply read APP_SECRET_KEY out of the API's environment. A service that
+ * owns no file that outlives a restart takes `DynamicUser=yes` and a fresh
+ * uid every boot; one that does gets a fixed system user of its own.
+ */
+type UnitIdentity = "root" | "dynamic-user" | { user: string; home: string };
 
 type UnitProfile = {
   identity: UnitIdentity;
@@ -275,7 +349,7 @@ type UnitProfile = {
 
 const UNIT_PROFILES: Record<ProcessKey, UnitProfile> = {
   api: {
-    identity: "platform-user",
+    identity: { user: PLATFORM_SERVICE_USER, home: PLATFORM_SERVICE_HOME },
     rationale: [
       "# Unprivileged: the API extracts operator-supplied zip archives and is",
       "# the one process reachable (behind the front door) from a browser. It",
@@ -285,16 +359,28 @@ const UNIT_PROFILES: Record<ProcessKey, UnitProfile> = {
     readWritePaths: (options) => [options.dataDir],
   },
   gateway: {
-    identity: "platform-user",
+    // DynamicUser precisely because it writes nothing that outlives a
+    // restart: the installation's only public listener gets a uid of its own,
+    // recycled every boot, that owns no file and can read no other service's
+    // process environment.
+    identity: "dynamic-user",
     rationale: [
-      "# Unprivileged: this is the installation's only public listener. It",
-      "# proxies and writes nothing to disk at all.",
+      "# Unprivileged, and on a uid nothing else uses: this is the",
+      "# installation's only public listener. It proxies and writes nothing to",
+      "# disk at all, so it never needs a stable identity — and a compromised",
+      "# front door must not be able to read the API's environment.",
     ],
     envFile: (options) => serviceEnvFilePath(options.etcDir, "gateway"),
   },
   web: {
-    identity: "platform-user",
-    rationale: ["# Unprivileged: the Dashboard serves a build and proxies to the API."],
+    // Its own user, not the API's: it owns the .next cache across restarts,
+    // so DynamicUser would orphan that, and sharing the API's uid would put
+    // the whole platform configuration one /proc read away.
+    identity: { user: WEB_SERVICE_USER, home: WEB_SERVICE_HOME },
+    rationale: [
+      "# Unprivileged, on its own uid: the Dashboard serves a build and proxies",
+      "# to the API. It never reads the platform's secrets.",
+    ],
     envFile: (options) => serviceEnvFilePath(options.etcDir, "web"),
     // `next start` writes .next/cache (and .next/trace) at runtime; under
     // ProtectSystem=strict the whole checkout is read-only without this, and
@@ -324,36 +410,49 @@ const UNIT_PROFILES: Record<ProcessKey, UnitProfile> = {
   },
 };
 
+/**
+ * Hardening every unprivileged unit gets, whatever its identity.
+ *
+ * `ProtectProc=invisible` is the belt to the separate-uid braces: uids alone
+ * already stop one service reading another's `/proc/<pid>/environ`, and this
+ * hides the rest of the host's process table from a service that has no
+ * business reading it. It needs systemd v247; an older systemd logs an
+ * unknown-key warning and falls back to the uid separation, which is what
+ * actually carries the property.
+ */
+const UNPRIVILEGED_HARDENING = [
+  "NoNewPrivileges=yes",
+  "PrivateTmp=yes",
+  "ProtectProc=invisible",
+  "ProtectHome=read-only",
+  "ProtectKernelTunables=yes",
+  "ProtectControlGroups=yes",
+  "RestrictSUIDSGID=yes",
+];
+
 function identityLines(profile: UnitProfile, options: UnitRenderOptions): string[] {
-  switch (profile.identity) {
-    case "root":
-      return [...profile.rationale, "User=root"];
-    case "dynamic-user":
-      // DynamicUser implies ProtectSystem=strict, PrivateTmp and friends.
-      return [...profile.rationale, "DynamicUser=yes"];
-    case "platform-user": {
-      const readWrite = [PLATFORM_SERVICE_HOME, ...(profile.readWritePaths?.(options) ?? [])];
-      return [
-        ...profile.rationale,
-        `User=${PLATFORM_SERVICE_USER}`,
-        `Group=${PLATFORM_SERVICE_USER}`,
-        // A real home: corepack, npm and Next all fall back to $HOME, and
-        // DynamicUser's HOME=/ is exactly what breaks them.
-        `Environment=HOME=${PLATFORM_SERVICE_HOME}`,
-        "NoNewPrivileges=yes",
-        "PrivateTmp=yes",
-        // The checkout, /etc and everything else become read-only; only the
-        // paths below are writable. This is the boundary the containerized
-        // form claimed and did not have.
-        "ProtectSystem=strict",
-        "ProtectHome=read-only",
-        "ProtectKernelTunables=yes",
-        "ProtectControlGroups=yes",
-        "RestrictSUIDSGID=yes",
-        `ReadWritePaths=${readWrite.join(" ")}`,
-      ];
-    }
+  if (profile.identity === "root") return [...profile.rationale, "User=root"];
+  if (profile.identity === "dynamic-user") {
+    // DynamicUser implies ProtectSystem=strict, PrivateTmp and friends, and
+    // hands out a uid that exists only for this boot.
+    return [...profile.rationale, "DynamicUser=yes", ...UNPRIVILEGED_HARDENING];
   }
+  const { user, home } = profile.identity;
+  const readWrite = [home, ...(profile.readWritePaths?.(options) ?? [])];
+  return [
+    ...profile.rationale,
+    `User=${user}`,
+    `Group=${user}`,
+    // A real home: corepack, npm and Next all fall back to $HOME, and
+    // DynamicUser's HOME=/ is exactly what breaks them.
+    `Environment=HOME=${home}`,
+    ...UNPRIVILEGED_HARDENING,
+    // The checkout, /etc and everything else become read-only; only the
+    // paths below are writable. This is the boundary the containerized
+    // form claimed and did not have.
+    "ProtectSystem=strict",
+    `ReadWritePaths=${readWrite.join(" ")}`,
+  ];
 }
 
 /**
@@ -378,6 +477,16 @@ export function renderPlatformUnit(spec: ProcessSpec, options: UnitRenderOptions
     `Description=eveland ${spec.label}`,
     "Wants=network-online.target",
     `After=${after.join(" ")}`,
+    "# Not started unattended unless the ctl last left this checkout built and",
+    "# migrated. Absent, systemd SKIPS the unit instead of running new code",
+    "# against an old schema — see hostUnitsArmedPath.",
+    `ConditionPathExists=${options.armedMarkerPath}`,
+    // [Unit], not [Service]: systemd moved these out of [Service] in v229 and
+    // silently ignores them there ("Unknown key name ... in section
+    // 'Service'"). A crash loop burns one restart every RestartSec; cap it so
+    // a broken config surfaces as a failed unit instead of an infinite loop.
+    "StartLimitIntervalSec=300",
+    "StartLimitBurst=10",
     "",
     "[Service]",
     "Type=exec",
@@ -393,10 +502,6 @@ export function renderPlatformUnit(spec: ProcessSpec, options: UnitRenderOptions
     `ExecStart=${directExecArgv(options.sourceDir, spec).join(" ")}`,
     "Restart=on-failure",
     "RestartSec=5",
-    "# A crash loop burns one restart every RestartSec; cap it so a broken",
-    "# config surfaces as a failed unit instead of an infinite loop.",
-    "StartLimitIntervalSec=300",
-    "StartLimitBurst=10",
     "",
     "[Install]",
     "WantedBy=multi-user.target",
@@ -414,6 +519,7 @@ function unitRenderOptions(
     etcDir: context.layout.etcDir,
     dataDir: envFile.values.EVELAND_DATA_DIR ?? context.layout.dataDir,
     nodeBinDir,
+    armedMarkerPath: hostUnitsArmedPath(context.layout),
   };
 }
 
@@ -453,9 +559,6 @@ export async function writeServiceEnvFiles(
 ): Promise<void> {
   const { io, layout } = context;
   const values = { ...envFile.values, ...derivedServiceValues(envFile.values, options) };
-  const writeTextFile =
-    io.writeTextFile ??
-    (async (filePath: string, content: string) => writeFile(filePath, content, "utf8"));
   // null keys means "the whole configuration": see renderServiceEnv.
   const files: Array<{ service: string; keys: readonly string[] | null; label: string }> = [
     { service: "api", keys: null, label: "full configuration" },
@@ -466,10 +569,25 @@ export async function writeServiceEnvFiles(
   ];
   for (const { service, keys, label } of files) {
     const filePath = serviceEnvFilePath(layout.etcDir, service);
-    await writeTextFile(filePath, renderServiceEnv(service, keys, values));
-    await chmod(filePath, 0o600).catch(() => {});
+    await writeSecretFile(io, filePath, renderServiceEnv(service, keys, values));
     io.stdout(`Wrote ${filePath} (${label})`);
   }
+}
+
+/**
+ * A file only its unit may read. `eveland-api.env` is the whole platform
+ * configuration — APP_SECRET_KEY, BETTER_AUTH_SECRET, the admin password — so
+ * the mode is part of writing it, not an afterthought: created 0600 rather
+ * than created at the ambient umask and narrowed a moment later, and a chmod
+ * that fails is fatal rather than swallowed. The chmod still runs because a
+ * file that already exists keeps the mode it already had.
+ */
+async function writeSecretFile(io: LifecycleIo, filePath: string, content: string): Promise<void> {
+  const writeTextFile =
+    io.writeTextFile ??
+    ((target: string, body: string) => writeFile(target, body, { encoding: "utf8", mode: 0o600 }));
+  await writeTextFile(filePath, content);
+  await chmod(filePath, 0o600);
 }
 
 /**
@@ -479,7 +597,8 @@ export async function writeServiceEnvFiles(
  * to write their own directories again afterwards.
  *
  * Three trees, and only three — this is the whole file-level contract between
- * the root worker and the unprivileged platform services:
+ * the root worker and the unprivileged platform services. Each belongs to ONE
+ * uid; the Gateway appears nowhere because it owns no file at all:
  *
  *   apps/web/.next   the Dashboard's runtime cache, written by `next start`
  *   <dataDir>/uploads   where the API extracts uploaded sources for the
@@ -496,8 +615,10 @@ export async function reconcileHostOwnership(
   const { io } = context;
   const owned: Array<{ path: string; owner: string; mode: string }> = [
     {
+      // The Dashboard's own uid, not the API's: the two units no longer share
+      // an identity, and only `next start` writes here.
       path: path.join(context.repoRootDir, "apps/web/.next"),
-      owner: `${PLATFORM_SERVICE_USER}:${PLATFORM_SERVICE_USER}`,
+      owner: `${WEB_SERVICE_USER}:${WEB_SERVICE_USER}`,
       mode: "0755",
     },
     {
@@ -584,6 +705,15 @@ export async function installSystemdArtifacts(
   // update): the system-PATH node links AND corepack's pnpm shim that
   // deployment units rely on follow the pin, exactly like the units below
   // bake the new bin dir in.
+  // Before the units that name them: an installation from before a service
+  // had its own identity meets those units for the first time on an update,
+  // and a unit whose User= does not exist fails to start.
+  await ensureHostServiceAccounts({
+    execCommand: context.execCommand,
+    repoRootDir: context.repoRootDir,
+    stdout: io.stdout,
+  });
+
   await refreshSystemToolchain({
     execCommand: context.execCommand,
     fileExists: (filePath) =>
@@ -673,6 +803,10 @@ export async function startViaSystemd(
   }
   const owned = await reconcileHostOwnership(context, { dataDir: options.dataDir });
   if (owned !== 0) return owned;
+  // Reaching here means the ctl has done everything a unit assumes: the
+  // Dashboard is built, migrations have run, ownership is reconciled. That is
+  // exactly what the marker asserts, so it is written here and nowhere else.
+  await armHostUnits(context);
   for (const key of SYSTEMD_HOST_UNITS) {
     const result = await context.execCommand(["systemctl", "start", systemdUnitName(key)], {
       cwd: context.repoRootDir,

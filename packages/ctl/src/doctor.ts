@@ -22,6 +22,7 @@ import {
 } from "./lifecycle.ts";
 import { verifiedSupervisorPid } from "./state-files.ts";
 import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
+import { detectDockerBridgeHost } from "./docker-bridge.ts";
 
 /**
  * `eveland-ctl doctor`: every check this installation has historically been
@@ -55,6 +56,12 @@ export type DoctorDeps = {
   fileExists: (filePath: string) => Promise<boolean>;
   freeDiskBytes: (dir: string) => Promise<number | null>;
   nonLoopbackAddresses: () => string[];
+  /**
+   * Docker's default-bridge gateway, or null. The API binds it deliberately
+   * (the Collector's only route to a host-native API), so it is the one
+   * non-loopback address the exposure check must not fault the API for.
+   */
+  dockerBridgeHost: () => Promise<string | null>;
   readTextFile: (filePath: string) => Promise<string | null>;
 };
 
@@ -252,9 +259,31 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
   }
 
   // Loopback exposure: only the Agent Gateway may be reachable off-host.
+  //
+  // With one deliberate exception: the host-native API binds Docker's bridge
+  // gateway on purpose, so the managed Collector — a container, with no route
+  // to the host's loopback — can deliver Agent events. That listener serves
+  // an explicit path allowlist (apps/api/src/docker-bridge-ingress.ts), not
+  // the control plane.
+  //
+  // The clash is intermittent rather than constant, which is worse. libuv
+  // lists an interface only when it is both UP and RUNNING, and a bridge with
+  // no attached container is UP without carrier — so `docker0` is normally
+  // absent from this list even though its address is perfectly local and the
+  // API is bound to it. (The platform's own containers all sit on Compose
+  // networks, not the default bridge.) Let anything ordinary attach to it —
+  // one `docker run` with no `--network` — and docker0 gains carrier, its
+  // address joins this list, and a correct production install starts failing
+  // doctor over a listener it is supposed to have.
+  //
+  // The exemption is narrow on both axes: this address only, the API's port
+  // only. The Dashboard or Postgres on the very same bridge is still a
+  // finding, and every other interface is still checked.
+  const bridgeHost = await deps.dockerBridgeHost();
   const exposures: string[] = [];
   for (const address of deps.nonLoopbackAddresses()) {
     for (const { port, label } of LOOPBACK_ONLY_PORTS) {
+      if (address === bridgeHost && port === API_PORT) continue;
       if (await deps.tcpProbe(address, port)) exposures.push(`${label} on ${address}:${port}`);
     }
   }
@@ -265,7 +294,13 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
       `Loopback-only services are reachable from the network: ${exposures.join("; ")}. Postgres ships well-known default credentials — fix the bind/forwarding.`,
     );
   } else {
-    add("loopback-exposure", "ok", "loopback-only services are not reachable off-host");
+    add(
+      "loopback-exposure",
+      "ok",
+      bridgeHost
+        ? `loopback-only services are not reachable off-host (the API's ${bridgeHost} Collector listener is by design)`
+        : "loopback-only services are not reachable off-host",
+    );
   }
 
   // Proxy environment (a fresh VM inheriting an unreachable host proxy breaks
@@ -456,6 +491,8 @@ export async function runDoctor(
     fileExists: resolved.fileExists,
     freeDiskBytes: defaultFreeDiskBytes,
     nonLoopbackAddresses: defaultNonLoopbackAddresses,
+    dockerBridgeHost: () =>
+      detectDockerBridgeHost({ execCommand: resolved.execCommand, cwd: resolved.repoRootDir }),
     readTextFile: (filePath) => readFile(filePath, "utf8").catch(() => null),
     ...io.doctorDeps,
   };

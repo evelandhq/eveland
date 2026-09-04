@@ -52,12 +52,12 @@ Overlay 不启动任何平台服务。基础文件中的开发版 API、Agent Ga
 | Unit                                  | 运行身份           | 可写路径                             |
 | ------------------------------------- | ------------------ | ------------------------------------ |
 | `eveland-api.service`                 | `eveland-platform` | `EVELAND_DATA_DIR`                   |
-| `eveland-gateway.service`             | `eveland-platform` | 无                                   |
-| `eveland-web.service`                 | `eveland-platform` | `apps/web/.next`（其运行时缓存）     |
+| `eveland-gateway.service`             | `DynamicUser`      | 无                                   |
+| `eveland-web.service`                 | `eveland-web`      | `apps/web/.next`（其运行时缓存）     |
 | `eveland-worker.service`              | `root`             | 数据根目录、systemd、Deployment 用户 |
 | `eveland-workflow-dispatcher.service` | `DynamicUser`      | 无                                   |
 
-三个有监听端口的服务共用一个非特权系统用户，配以 `ProtectSystem=strict`、只读源码树和显式的 `ReadWritePaths`。Worker 是 root 是有意为之：它是唯一被允许构建不可信项目代码、并驱动 `systemd-run`/`systemctl`/`chown` 的组件——每个 Eve Deployment 正是这样获得自己的非特权 `DynamicUser` 的。每个 unit 读取 `etc/` 下自己的环境文件，这些文件在每次启动时都从 `etc/eveland.env` 重新渲染——要改就改后者，不要改渲染产物。
+每个有监听端口的服务都以非特权身份运行，配以 `ProtectSystem=strict`、只读源码树和显式的 `ReadWritePaths`，而且**没有任何两个共用同一个 uid**。这正是「每服务一份环境文件」能成为真实边界、而不只是约定的原因：同 uid 的进程可以互相读取 `/proc/<pid>/environ`，公网前门一旦与 API 共用用户，整份平台配置就只隔着一次读取。API 与 Dashboard 保留固定用户，因为它们拥有跨重启存活的文件；Gateway 什么都不拥有，所以用每次开机回收的 `DynamicUser`。Worker 是 root 是有意为之：它是唯一被允许构建不可信项目代码、并驱动 `systemd-run`/`systemctl`/`chown` 的组件——每个 Eve Deployment 正是这样获得自己的非特权 `DynamicUser` 的。每个 unit 读取 `etc/` 下自己的环境文件，这些文件在每次启动时都从 `etc/eveland.env` 重新渲染——要改就改后者，不要改渲染产物。
 
 手工安装时，同样的 unit 见[安装宿主机 Worker](/zh/docs/production/worker) 与[安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)。
 

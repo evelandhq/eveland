@@ -21,7 +21,7 @@ import {
   type PendingUpdate,
 } from "./state-files.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
-import { installSystemdArtifacts } from "./systemd-mode.ts";
+import { disarmHostUnits, installSystemdArtifacts } from "./systemd-mode.ts";
 
 /**
  * `eveland-ctl update`: move the appliance's source checkout FORWARD to a
@@ -528,6 +528,14 @@ async function completeUpdate(
   const recovery = (failedStep: string) =>
     recoveryPlan({ failedStep, fromVersion: pending.from, backupPath, repo }) +
     "\n              (This update is recorded as in progress: re-running `eveland-ctl update` resumes it.)";
+
+  // Before the checkout moves, not after: the host units point at this
+  // directory by absolute path, so the instant it holds the new revision they
+  // would start it — on the old schema — if the machine rebooted here. Phase
+  // 2 writes the marker back once the new revision is built, migrated and
+  // started. Harmless in the ctl-supervisor form, which has no units.
+  await disarmHostUnits(context.layout);
+
   const checkout = await git(["checkout", "--quiet", target]);
   if (checkout.code !== 0) {
     io.stderr(`git checkout ${target} failed:\n${checkout.output.trim()}`);

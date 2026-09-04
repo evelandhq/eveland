@@ -11,6 +11,7 @@ import {
   GATEWAY_ENV_KEYS,
   renderApplianceOverlay,
   renderDispatcherEnv,
+  hostUnitsArmedPath,
   renderPlatformUnit,
   renderServiceEnv,
   RETIRED_COMPOSE_SERVICES,
@@ -18,6 +19,7 @@ import {
   SYSTEMD_HOST_UNITS,
   WEB_ENV_KEYS,
 } from "./systemd-mode.ts";
+import { HOST_SERVICE_ACCOUNTS } from "./linux-host.ts";
 import { runInstallCommand } from "./systemd.ts";
 
 const UNIT_OPTIONS = {
@@ -26,6 +28,7 @@ const UNIT_OPTIONS = {
   dataDir: "/opt/eveland/data",
   envFilePath: "/opt/eveland/etc/eveland.env",
   nodeBinDir: "/opt/eveland/node/bin",
+  armedMarkerPath: "/opt/eveland/run/host-units-armed",
 };
 
 function unitFor(key: string): string {
@@ -83,28 +86,34 @@ describe("the systemd form's units", () => {
     expect(unit).toContain("ExecStart=/opt/eveland/source/node_modules/.bin/tsx src/main.ts");
   });
 
-  test("the front door runs unprivileged over a read-only source tree", () => {
+  test("the front door runs on a throwaway uid of its own", () => {
     const unit = unitFor("gateway");
-    expect(unit).toContain("User=eveland-platform");
+    // It owns no file that outlives a restart, so it needs no stable
+    // identity — and a uid nobody else uses is what keeps a compromised
+    // public proxy from reading the API's /proc/<pid>/environ.
+    expect(unit).toContain("DynamicUser=yes");
     expect(unit).not.toContain("User=root");
-    expect(unit).toContain("ProtectSystem=strict");
+    expect(unit).not.toContain("User=eveland-platform");
+    expect(unit).not.toContain("ReadWritePaths=");
+    expect(unit).toContain("ProtectProc=invisible");
     expect(unit).toContain("NoNewPrivileges=yes");
     expect(unit).toContain("EnvironmentFile=/opt/eveland/etc/eveland-gateway.env");
     expect(unit).toContain(
       "ExecStart=/opt/eveland/source/node_modules/.bin/tsx --import=@evelandhq/platform-observability/register src/server.ts",
     );
-    // It writes nothing but its own home.
-    expect(unit).toContain("ReadWritePaths=/var/lib/eveland-platform");
   });
 
   test("the Dashboard unit can write .next/cache and nothing else in the checkout", () => {
     const unit = unitFor("web");
-    expect(unit).toContain("User=eveland-platform");
+    // Its own uid, not the API's: the Dashboard must not be one /proc read
+    // away from APP_SECRET_KEY.
+    expect(unit).toContain("User=eveland-web");
+    expect(unit).not.toContain("eveland-platform");
     expect(unit).toContain("ProtectSystem=strict");
     // `next start` writes .next/cache on its first request; without this the
     // read-only checkout kills it.
     expect(unit).toContain(
-      "ReadWritePaths=/var/lib/eveland-platform /opt/eveland/source/apps/web/.next",
+      "ReadWritePaths=/var/lib/eveland-web /opt/eveland/source/apps/web/.next",
     );
     expect(unit).toContain("Environment=NEXT_TELEMETRY_DISABLED=1");
     // `next` is a web dependency, so its bin lives in that workspace.
@@ -116,6 +125,43 @@ describe("the systemd form's units", () => {
   test("no unit goes through pnpm — corepack needs a writable HOME a unit does not have", () => {
     for (const key of SYSTEMD_HOST_UNITS) {
       expect(unitFor(key)).not.toMatch(/ExecStart=.*\bpnpm\b/);
+    }
+  });
+
+  test("no two units share a uid", () => {
+    // The whole point of the per-service env allowlists. Same-uid processes
+    // read each other's /proc/<pid>/environ (PTRACE_MODE_READ_FSCREDS, which
+    // Yama's ptrace_scope does not restrict), so one uid for two services
+    // means the narrower service's allowlist buys nothing.
+    const identities = SYSTEMD_HOST_UNITS.map((key) => {
+      const unit = unitFor(key);
+      if (unit.includes("DynamicUser=yes")) return `dynamic:${key}`;
+      const user = /^User=(.+)$/m.exec(unit)?.[1];
+      expect(user, `${key} declares no identity`).toBeDefined();
+      return user!;
+    });
+    expect(new Set(identities).size).toBe(identities.length);
+  });
+
+  test("every unprivileged unit hides the rest of the process table", () => {
+    for (const key of SYSTEMD_HOST_UNITS) {
+      const unit = unitFor(key);
+      if (unit.includes("User=root")) continue;
+      expect(unit, key).toContain("ProtectProc=invisible");
+    }
+  });
+
+  test("the crash-loop cap sits in [Unit], where systemd reads it", () => {
+    // StartLimitIntervalSec/StartLimitBurst moved out of [Service] in systemd
+    // v229; left there they are logged as unknown keys and ignored, and with
+    // RestartSec=5 the default 10s/5 window never trips either — so a broken
+    // config would restart forever instead of failing.
+    for (const key of SYSTEMD_HOST_UNITS) {
+      const unit = unitFor(key);
+      const unitSection = unit.slice(unit.indexOf("[Unit]"), unit.indexOf("[Service]"));
+      expect(unitSection, key).toContain("StartLimitIntervalSec=300");
+      expect(unitSection, key).toContain("StartLimitBurst=10");
+      expect(unit.slice(unit.indexOf("[Service]")), key).not.toContain("StartLimit");
     }
   });
 });
@@ -244,6 +290,7 @@ async function makeHarness(options: { uid?: number; bootstrapped?: boolean } = {
   const err: string[] = [];
   const execCalls: string[][] = [];
   const written: Record<string, string> = {};
+  const writtenAfterCall: Record<string, number> = {};
   const io: InstallIo = {
     env: { EVELAND_HOME: home },
     platform: "linux",
@@ -258,17 +305,23 @@ async function makeHarness(options: { uid?: number; bootstrapped?: boolean } = {
       execCalls.push(argv);
       if (argv[0] === "systemctl" && argv[1] === "is-active")
         return { code: 0, output: "active\n" };
+      // A host that has none of the service accounts yet, like the machine an
+      // older installation updates from.
+      if (argv[0] === "id") return { code: 1, output: "no such user\n" };
       return { code: 0, output: "" };
     },
     getuid: () => options.uid ?? 0,
     systemdUnitDir: unitDir,
     writeTextFile: async (filePath, content) => {
       written[filePath] = content;
+      // How many commands had already run when this file appeared, so a test
+      // can assert ordering between a write and the systemctl calls.
+      writtenAfterCall[filePath] = execCalls.length;
       const { writeFile: write } = await import("node:fs/promises");
       await write(filePath, content, "utf8");
     },
   };
-  return { io, out, err, execCalls, written, layout, unitDir };
+  return { io, out, err, execCalls, written, writtenAfterCall, layout, unitDir };
 }
 
 describe("runInstallCommand", () => {
@@ -375,5 +428,41 @@ describe("runInstallCommand", () => {
       expect(harness.execCalls).toContainEqual(["systemctl", "start", systemdUnitName(key)]);
     }
     expect((await readInstallMetadata(harness.layout))?.supervision).toBe("systemd");
+  });
+
+  test("the accounts the units name are created before the units that name them", async () => {
+    // An installation made before a service had its own identity first meets
+    // those units on an update, which never re-runs the first-boot host
+    // provisioning. A unit whose User= does not exist fails to start.
+    const harness = await makeHarness({});
+    expect(await runInstallCommand(["--systemd"], harness.io)).toBe(0);
+    for (const account of HOST_SERVICE_ACCOUNTS) {
+      expect(
+        harness.execCalls.some((argv) => argv[0] === "useradd" && argv.includes(account.user)),
+      ).toBe(true);
+    }
+    const firstUseradd = harness.execCalls.findIndex((argv) => argv[0] === "useradd");
+    const webUnit = path.join(harness.unitDir, systemdUnitName("web"));
+    expect(harness.writtenAfterCall[webUnit]).toBeGreaterThan(firstUseradd);
+  });
+
+  test("the units are armed for unattended boot only once everything else has run", async () => {
+    const harness = await makeHarness({});
+    expect(await runInstallCommand(["--systemd"], harness.io)).toBe(0);
+
+    // Every unit gates on the marker...
+    const markerPath = hostUnitsArmedPath(harness.layout);
+    for (const key of SYSTEMD_HOST_UNITS) {
+      const unit = harness.written[path.join(harness.unitDir, systemdUnitName(key))]!;
+      expect(unit, key).toContain(`ConditionPathExists=${markerPath}`);
+    }
+    // ...and it is written, but only after the enable/build/migrate steps: a
+    // reboot before this point must leave the units skipped, not running new
+    // code against an old schema.
+    await expect(readFile(markerPath, "utf8")).resolves.toContain("ConditionPathExists");
+    const enabledAt = harness.execCalls.findIndex(
+      (argv) => argv[0] === "systemctl" && argv[1] === "enable",
+    );
+    expect(harness.writtenAfterCall[markerPath]).toBeGreaterThan(enabledAt);
   });
 });

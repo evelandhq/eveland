@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -8,6 +8,7 @@ import { applianceLayout } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
 import type { Prompter } from "./prompt.ts";
+import { hostUnitsArmedPath } from "./systemd-mode.ts";
 import { writeSupervisorRecord, writeSupervisorState } from "./state-files.ts";
 import { runStart } from "./lifecycle.ts";
 import { acquireMutex } from "./state-files.ts";
@@ -582,6 +583,20 @@ describe("runUpdate (phase 1, the old code)", () => {
     expect(stopIndex).toBeGreaterThanOrEqual(0);
     expect(stopIndex).toBeLessThan(checkoutIndex);
     expect(checkoutIndex).toBeLessThan(finishIndex);
+  });
+
+  test("the host units are disarmed before the working tree moves under them", async () => {
+    // The units name this checkout by absolute path, so the moment it holds
+    // the new revision a reboot would start it — against the old schema,
+    // since migrations run later. Phase 2 re-arms once it is built, migrated
+    // and started.
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    const marker = hostUnitsArmedPath(harness.layout);
+    await mkdir(path.dirname(marker), { recursive: true });
+    await writeFile(marker, "armed\n", "utf8");
+    expect(await runUpdate([], harness.io)).toBe(0);
+    // The harness stops at the handover, so nothing re-arms it here.
+    await expect(stat(marker)).rejects.toThrow();
   });
 
   test("a failed pnpm install leaves the platform stopped with the safe recovery plan", async () => {
