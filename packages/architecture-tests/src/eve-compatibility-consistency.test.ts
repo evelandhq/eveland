@@ -18,6 +18,71 @@ function normalizedWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * The parameter list of a minified top-level function declaration, sliced out
+ * by balancing brackets rather than by regex: default values contain both
+ * parentheses and brackets, so a lazy match stops in the middle of one.
+ */
+function readParameterList(source: string, declaration: string): string {
+  const start = source.indexOf(declaration);
+  if (start === -1) throw new Error(`eve no longer declares \`${declaration}\``);
+  let depth = 0;
+  for (let index = start + declaration.length - 1; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "(" || character === "[") depth += 1;
+    else if (character === ")" || character === "]") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start + declaration.length, index);
+    }
+  }
+  throw new Error(`unbalanced parameter list for \`${declaration}\``);
+}
+
+/**
+ * The workflow names eve leaves unstamped when it bundles a project, read from
+ * the bundler's own default argument.
+ *
+ * `STABLE_WORKFLOW_NAMES` is NOT that list. Eve 0.51.0 added a seventh
+ * unstamped workflow -- `subagentToolExecuteWorkflow`, the shared execute body
+ * behind every subagent tool -- without exporting it from the set, unioning it
+ * into the bundler's default instead. Auditing the exported set alone would
+ * have let the workflow that turns every subagent call into a durable tool run
+ * reach the shared world with nobody having reviewed what it retains. So the
+ * bundler's default is the authority, and an unrecognized shape fails loudly
+ * rather than silently auditing a subset.
+ */
+function readUnstampedWorkflowConstants(dependencyName: string): string[] {
+  const evePackage = `packages/agent-scheduler/node_modules/${dependencyName}/dist/src`;
+  // 0.48.0 moved the exported set out of workflow-runtime.js into its own
+  // module, and the whole window is past that now, so read the module
+  // directly. A future line that moves it again fails here rather than
+  // silently auditing nothing.
+  const namesSource = repositoryFile(`${evePackage}/execution/stable-workflow-names.js`);
+  const exportedSet = /STABLE_WORKFLOW_NAMES=new Set\(\[([^\]]+)\]\)/.exec(namesSource)?.[1];
+  if (exportedSet === undefined) {
+    throw new Error(`${dependencyName}: could not read STABLE_WORKFLOW_NAMES`);
+  }
+  const exported = exportedSet.split(",").map((constant) => constant.trim());
+
+  const builderSource = repositoryFile(
+    `${evePackage}/internal/workflow-bundle/workflow-builders.js`,
+  );
+  const parameters = readParameterList(builderSource, "async function applyWorkflowTransform(");
+  const stableSetDefault = parameters.slice(parameters.lastIndexOf("=") + 1).trim();
+
+  // Through 0.50 the default is the exported set itself; from 0.51 it is a
+  // union with extra constants. Any third shape is a contract change.
+  if (stableSetDefault === "STABLE_WORKFLOW_NAMES") return exported;
+  const union = /^new Set\(\[\.\.\.STABLE_WORKFLOW_NAMES,([A-Z0-9_,]+)\]\)$/.exec(stableSetDefault);
+  if (!union) {
+    throw new Error(
+      `${dependencyName}: unrecognized unstamped-workflow set \`${stableSetDefault}\`; ` +
+        "re-read how eve decides which workflow names stay unstamped",
+    );
+  }
+  return [...exported, ...union[1]!.split(",").map((constant) => constant.trim())];
+}
+
 function englishList(values: readonly string[]): string {
   if (values.length < 2) return values[0] ?? "";
   if (values.length === 2) return `${values[0]} and ${values[1]}`;
@@ -67,16 +132,7 @@ describe("Eve compatibility repository contract", () => {
     // Both 0.49.x and 0.50.x run all six.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
-      // 0.48.0 moved the set out of workflow-runtime.js into its own module,
-      // and the whole window is past that now, so read the module directly. A
-      // future line that moves it again fails here rather than silently
-      // auditing nothing.
-      const runtimeSource = repositoryFile(
-        `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/execution/stable-workflow-names.js`,
-      );
-      const stableSet = /STABLE_WORKFLOW_NAMES=new Set\(\[([^\]]+)\]\)/.exec(runtimeSource)?.[1];
-      expect(stableSet, dependencyName).toBeDefined();
-      for (const constant of stableSet!.split(",")) {
+      for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
         observedConstants.add(constant);
         expect(coveredStableWorkflowConstants, `${dependencyName} runs ${constant}`).toContain(
           constant,
