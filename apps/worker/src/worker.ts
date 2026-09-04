@@ -41,10 +41,7 @@ import {
 } from "./runtime/activation-manager.js";
 import { planDueSchedules } from "./scheduler/planner.js";
 import { createWorkerTelemetry } from "./runtime/worker-telemetry.js";
-import {
-  reconcileIdentityDeploymentConfiguration,
-  resolveIdentityDeploymentConfiguration,
-} from "./runtime/identity-config-reconciler.js";
+import { reconcilePlatformRuntimeConfiguration } from "./runtime/platform-runtime-config-reconciler.js";
 import { createDeploymentObservabilityReconciler } from "./jobs/process-observability.js";
 import { createCollectorObservabilityReconciler } from "./jobs/process-collector-observability.js";
 import { createObservabilityRetentionReconciler } from "./jobs/process-observability-retention.js";
@@ -125,22 +122,14 @@ try {
   if (await bootstrapEvelandWorkflowWorld(process.env)) {
     console.log("Shared workflow-world database schema is ready.");
   }
-  const identityConfiguration = resolveIdentityDeploymentConfiguration({
-    dataDir,
-    nodeEnv: process.env.NODE_ENV,
-    issuer: process.env.EVELAND_IDENTITY_ISSUER || process.env.EVELAND_PUBLIC_ORIGIN,
-    jwksUrl: process.env.EVELAND_IDENTITY_JWKS_URL,
-  });
-  if (identityConfiguration) {
-    const restartJobs = await reconcileIdentityDeploymentConfiguration(
-      storeFactory.store,
-      identityConfiguration,
+  // Unconditional: Identity being unconfigured says nothing about whether the
+  // workflow world moved or the scheduler secret rotated under a Deployment
+  // that has been running across the change.
+  const restartJobs = await reconcilePlatformRuntimeConfiguration(storeFactory.store, { dataDir });
+  if (restartJobs.length > 0) {
+    console.log(
+      `Platform runtime configuration changed; queued ${restartJobs.length} live Deployment restart${restartJobs.length === 1 ? "" : "s"}.`,
     );
-    if (restartJobs.length > 0) {
-      console.log(
-        `Identity configuration changed; queued ${restartJobs.length} live Deployment restart${restartJobs.length === 1 ? "" : "s"}.`,
-      );
-    }
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

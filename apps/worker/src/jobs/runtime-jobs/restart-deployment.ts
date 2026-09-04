@@ -45,7 +45,10 @@ export async function handleRestartDeploymentJob(
   await store.appendLog({
     projectId: job.projectId,
     type: "deploy",
-    line: "Restart requested.",
+    // Carrying the reason is what makes an unexplained bounce legible: a
+    // platform-initiated restart (a rotated secret, a moved workflow world)
+    // looks identical to an operator's click without it.
+    line: job.payload.reason ? `Restart requested (${job.payload.reason}).` : "Restart requested.",
   });
 
   const project = await store.getProject(job.projectId);

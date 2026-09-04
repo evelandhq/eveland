@@ -33,11 +33,14 @@ When an Agent implements route-level authorization guards, configure correspondi
 
 ## 4. Secret rotation and security
 
-| Action                           | Application Mechanism                       | Blast Radius                     |
-| :------------------------------- | :------------------------------------------ | :------------------------------- |
-| **Update Project Secret**        | Rolling restart of active deployments       | Current project only             |
-| **Update Shared Environment**    | Rolling restart of all platform deployments | All agents using shared defaults |
-| **Update Playground Credential** | Applied on next interactive request         | Interactive debugging only       |
+| Action                              | Application Mechanism                                  | Blast Radius                     |
+| :---------------------------------- | :----------------------------------------------------- | :------------------------------- |
+| **Update Project Secret**           | Rolling restart of active deployments                  | Current project only             |
+| **Update Shared Environment**       | Rolling restart of all platform deployments            | All agents using shared defaults |
+| **Update Playground Credential**    | Applied on next interactive request                    | Interactive debugging only       |
+| **Update a platform runtime value** | Restart of all live deployments at Worker's next start | All agents                       |
+
+Platform runtime values are the ones Worker injects and reserves against Project entries: the shared workflow database, the scheduler runtime secret and redeem URL, the Identity issuer and JWKS URL, the memory root, and the sandbox limits. They are restarted rather than left alone because a deployment that stays up across such a change keeps its launch-time values indefinitely and then fails only inside the subsystem behind the changed value, while HTTP and health stay green.
 
 All configured secret values are automatically masked in platform diagnostics and runtime error traces to prevent accidental leakage during debugging.
 

@@ -20,6 +20,7 @@ import {
 } from "./systemd.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { verifySandbox } from "./sandbox-verify.js";
+import { DEPLOYMENT_STOP_TIMEOUT_SECONDS } from "./shutdown-budget.js";
 import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discovery-artifacts.js";
 
 vi.mock("node:fs/promises", () => ({
@@ -92,6 +93,7 @@ describe("buildSystemdRunArgs", () => {
       "--property=RestartSec=2",
       "--property=StartLimitIntervalSec=60",
       "--property=StartLimitBurst=5",
+      `--property=TimeoutStopSec=${DEPLOYMENT_STOP_TIMEOUT_SECONDS}`,
       `--property=User=${resolveSystemdDeploymentUser("eveland-proj_123-dep_456")}`,
       "--property=DynamicUser=yes",
       "--property=Group=eveland-app",

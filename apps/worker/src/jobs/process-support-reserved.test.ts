@@ -2,7 +2,11 @@ import { createTestStore } from "@evelandhq/db/vitest";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { RESERVED_RUNTIME_ENVIRONMENT_KEYS } from "../runtime/reserved-environment.js";
+import {
+  RESERVED_RUNTIME_ENVIRONMENT_KEYS,
+  RESERVED_RUNTIME_ENVIRONMENT_SOURCES,
+} from "../runtime/reserved-environment.js";
+import { resolveDeploymentShutdownTimeoutSeconds } from "../runtime/shutdown-budget.js";
 import { composeDeploymentEnv } from "./process-support.js";
 
 const workflowPostgresUrl = "postgres://platform@host:5432/eveland";
@@ -82,6 +86,26 @@ describe("reserved runtime environment names", () => {
     expect([...reserved].sort()).toEqual([...RESERVED_RUNTIME_ENVIRONMENT_KEYS].sort());
   });
 
+  // The half of the sync that keeps the drift reconciler honest: a reserved
+  // name whose platform inputs are undeclared is invisible to the fingerprint,
+  // which is precisely how every non-Identity name escaped the check until
+  // issue #477. Declaring an empty list is a legitimate answer -- it says the
+  // value is derived per project and cannot drift -- but it has to be said out
+  // loud.
+  test("every reserved name declares the platform inputs it derives from", () => {
+    const undeclared = RESERVED_RUNTIME_ENVIRONMENT_KEYS.filter(
+      (key) => RESERVED_RUNTIME_ENVIRONMENT_SOURCES[key] === undefined,
+    );
+
+    expect(undeclared).toEqual([]);
+    // EVELAND_PROJECT_ID is the only name that legitimately has no input.
+    expect(
+      RESERVED_RUNTIME_ENVIRONMENT_KEYS.filter(
+        (key) => RESERVED_RUNTIME_ENVIRONMENT_SOURCES[key]?.length === 0,
+      ),
+    ).toEqual(["EVELAND_PROJECT_ID"]);
+  });
+
   test("a project entry never wins against a reserved name at runtime", async () => {
     const { env } = await composeOnWorldPostgres();
 
@@ -102,6 +126,9 @@ describe("reserved runtime environment names", () => {
     expect(env.EVELAND_SANDBOX_RUN_TIMEOUT_MS).toBe("600000");
     expect(env.EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES).toBe("64");
     expect(env.EVELAND_SANDBOX_MAX_OUTPUT_BYTES).toBe("16777216");
+    // srvx's own default is 5s; the platform states its budget rather than
+    // inheriting it (../runtime/shutdown-budget.ts).
+    expect(env.SERVER_SHUTDOWN_TIMEOUT).toBe(String(resolveDeploymentShutdownTimeoutSeconds({})));
     expect(env.EVELAND_MEMORY_ROOT).toBe("/var/lib/eveland-memory");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
     // Provisioning a per-project database here would leave an empty one behind

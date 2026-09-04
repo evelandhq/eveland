@@ -9,6 +9,7 @@ import { prepareReleaseTree } from "./prepare-release.js";
 import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { verifySandbox } from "./sandbox-verify.js";
+import { DEPLOYMENT_STOP_TIMEOUT_SECONDS } from "./shutdown-budget.js";
 import {
   processSafeName,
   type PortOwnership,
@@ -128,6 +129,11 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     // give up instead of flapping in auto-restart indefinitely.
     "--property=StartLimitIntervalSec=60",
     "--property=StartLimitBurst=5",
+    // Set rather than inherited: the distribution's DefaultTimeoutStopSec is
+    // not ours to depend on, and this has to outlast every inner shutdown
+    // layer so systemd is never the one that cuts a drain short. See
+    // ./shutdown-budget.ts.
+    `--property=TimeoutStopSec=${DEPLOYMENT_STOP_TIMEOUT_SECONDS}`,
     `--property=User=${resolveSystemdDeploymentUser(input.unitName)}`,
     "--property=DynamicUser=yes",
     `--property=Group=${input.user}`,
