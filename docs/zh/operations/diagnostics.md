@@ -1,73 +1,66 @@
 ---
-title: 健康与诊断
-description: 在实际拥有故障的组件、Job、Runtime 或 Session Surface 中定位问题。
+title: 健康检查与故障诊断
+description: 掌握平台各层级健康检查机制、故障证据定位矩阵与沙箱自检排查。
 ---
 
-从真正失败的状态开始。Eveland 将组件 Health、异步 Job Log、Runtime Output 与 Session Event 分开，避免一条嘈杂日志成为唯一调试界面。
+Eveland 明确区分了**组件可用性 (Health)**、**异步任务日志 (Job Logs)**、**运行时标准输出 (Runtime Output)** 与 **会话追踪 (Session Events)**，帮助运维人员精准定位异常根因。
 
-## 组件健康
+---
 
-- API 与 Agent Gateway Public `/health` 返回产品版本、Revision、Channel 与 Component。
-- Worker 输出 Startup Identity，并写入已脱敏的 Configuration Snapshot。
-- Built-in OTLP Receive Health 独立于核心服务 Health；Collector Exporter Queue 会分别重试。
-- **Settings → About** 比较 Dashboard 与 API Identity，并向管理员显示 Allowlisted Masked Configuration。
-- **Settings → Instance health** 使用持续 Worker Heartbeat、Agent Gateway Probe 与 Postgres 查询展示组件可用性，并显示 Worker 宿主机的 CPU、内存、数据文件系统和 Workload 趋势。旧的 Worker Configuration Snapshot 不能作为在线证据。
-- 配置了共享 Workflow World 时，Instance health 还会统计其 Dispatch 积压：未解决的 Dead Letter（平台已放弃的派发）与被隔离的 Run（pending 或 running 状态、但被未解决 Dead Letter 阻止 Boot Recovery 重放的行）。任何非零计数都是等待运维处理的警告；World 无法读取时报告 unavailable，而不是显示零。
+## 1. 组件健康检查与监控面板
 
-Instance Health 默认每分钟保留一份宿主机样本，并提供 24 小时与 7 天视图。磁盘增长至少有一天有效历史后才显示预计耗尽时间；历史不足时明确显示无法预测。整台服务器断电后无法自行上报，仍应由外部监控轮询 API 与 Agent Gateway 的 Public `/health`。
+- **公开探针**：API 与 Gateway 提供公开的 `/health` 接口，返回平台版本、Git Revision 与运行通道（Channel）。
+- **心跳机制**：Worker 与 Workflow Dispatcher 持续向控制面发送心跳登记。
+- **实例健康看板 (Settings → Instance health)**：
+  - 展示宿主机 CPU、内存占用、磁盘使用率与增长趋势；
+  - 监控当前排队与执行中的并发构建数（`Running builds N/cap`）；
+  - 统计工作流死信（Dead Letter）与隔离任务积压情况。
 
-## 选择正确证据
+---
 
-| 故障                           | 首先检查                                                     |
-| ------------------------------ | ------------------------------------------------------------ |
-| Import 或 Source Validation    | Import Job 与 Source Preflight Log                           |
-| 依赖安装或 `eve build`         | Build Log                                                    |
-| Unit 启动或 Health Timeout     | Deploy Diagnostic 与 systemd Journal                         |
-| Agent 进程输出                 | Runtime stdout/stderr                                        |
-| Model、Tool、Subagent 或 Usage | Session Timeline                                             |
-| Stable/Preview Host            | Agent Gateway Health、Route Policy 与 Target RuntimeInstance |
+## 2. 故障现象与排查证据定位矩阵
 
-初始 Health Failure 会在清理前捕获有限长度的近期 Unit State 与 Journal。Project Secret 会被 Mask；Diagnostic 或 Cleanup Failure 不会覆盖原始 Deployment Error。
+遇到异常时，请根据故障现象快速检索对应的日志入口：
 
-单个 systemd Deployment 的 Runtime Output 位于其 Transient Unit 的 Journal：
+| 故障现象                        | 首选排查入口                       | 核心定位方法                                                      |
+| :------------------------------ | :--------------------------------- | :---------------------------------------------------------------- |
+| **项目导入失败 / 预检报错**     | 控制台 Import Job 日志             | 检查 Git 仓库地址凭证、Zip 文件结构及依赖清单。                   |
+| **依赖安装失败 / 打包报错**     | 控制台 Build Log                   | 检查 `pnpm/npm` 依赖锁定、Eve 兼容版本及环境变量冲突。            |
+| **部署实例启动失败 / 超时**     | Deployment 诊断信息与 systemd 日志 | 检查端口占用、环境配置文件权限及 `/eve/v1/health` 响应。          |
+| **Agent 执行过程抛错 / 崩溃**   | 宿主机 systemd Journal 日志        | 检查 Agent 代码运行时堆栈与系统资源配额限制。                     |
+| **模型调用异常 / Token 未统计** | 控制台 Sessions 会话历史           | 检查模型提供商 Key、OTel Collector 状态及网络连通性。             |
+| **网关 502 / 域名解析失败**     | Gateway 反向代理日志               | 检查泛域名 DNS 记录、TLS 证书及目标 Deployment 是否处于健康状态。 |
+
+---
+
+## 3. 读取指定部署的运行时日志
+
+每个 Agent 部署在宿主机上均作为独立的 systemd 瞬态服务运行。使用以下命令实时跟踪其标准输出与错误日志：
 
 ```bash
-journalctl -u eveland-<project>-<deployment>.service
+# 查看指定部署的实时日志
+sudo journalctl -u eveland-<projectSlug>-<deploymentId>.service -f
 ```
 
-## Build Log 中的 Sandbox 证据
+---
 
-Release Preparation 向每个部署的 Eve 项目注入 bwrap Exec Sandbox，Build Log 总会说明发生了什么——绝不静默：
+## 4. 构建日志中的沙箱自检 (Sandbox Self-check)
 
-```
-Injected eve sandbox modules: agent/sandbox.js
-```
+在构建阶段，Eveland 会自动向发布包注入轻量沙箱并在加固权限下执行即时自检：
 
-两种变体会替换或伴随这一行：
+- **自检通过标记**：
+  ```text
+  Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.
+  ```
+- **如果自检失败（构建会自动中断退出）**，通常是宿主机先决条件未满足，请依次核查：
+  1. `/etc/apparmor.d/bwrap` 配置文件是否存在并正确赋予了 `userns` 权限；
+  2. 宿主机根目录是否存在 `/workspace` 挂载目录；
+  3. 宿主机是否安装了完整的工具链（`bwrap`, `rg`, `grep` 等）。
 
-- 自带 Sandbox 定义的项目会记录 `Preserved the project's authored sandbox lifecycle (…)`——Eveland 只覆盖 `backend`，authored 的 `bootstrap()`、`onSession()`、`description`、`revalidationKey` 与 Workspace Seed 保持生效。
-- 没有 `agent/` 目录的项目会记录 `Injected eve sandbox modules: none`，并 `WARNING` 提示部署后的 Agent 回退到 eve 默认 Sandbox 链。Build 不会因此失败。
-- 声明了平台保留名称（`PATH`、`HOME`、`NPM_CONFIG_CACHE` 或运行时保留变量）的环境条目会以 `WARNING` 从 Build 中剔除。
+下一步：若遇到具体错误代码，请查阅 [故障排查速查手册](/zh/docs/reference/troubleshooting)。
 
-**当 Sandbox 在真实运行时权限下不可用时，Build 会失败——这是有意为之。**Eve 惰性预热 Sandbox，所以坏掉的 bubblewrap 配置既不会让 `eve build`、`eve start` 失败，也不会让 `/eve/v1/health` 失败——该端点无论 Sandbox 状态如何都返回 `200`。Eveland 用 Build 后立即执行的运行时专属自检补上这个缺口：以真实的 Vendored Backend 在与部署完全一致的加固下运行（systemd 上是非特权用户 + `NoNewPrivileges` + `ProtectSystem=strict`；Docker 上是真实的 Capability/Seccomp 设置），用 Node 执行一个带类型的 `.ts` 文件，并验证包括真实 `rg` 与 GNU `grep` 搜索在内的每条平台命令。通过的 Build 会记录下列之一：
+## 相关参考
 
-```
-Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.
-Docker sandbox self-check passed: bwrap executed TypeScript with deployment-equivalent permissions.
-```
-
-自检失败会让 Build 本身失败。systemd 失败信息会点名需要修复的宿主机前提，并附上捕获的探针输出：
-
-1. `/etc/apparmor.d/bwrap` 必须存在并授予 `userns`——Ubuntu 的 apt bubblewrap 不带 AppArmor Profile，`kernel.apparmor_restrict_unprivileged_userns=1` 会以 `setting up uid map: Permission denied` 阻止非 root bwrap。
-2. `/workspace` 必须已作为空目录存在；bwrap 无法自己创建这个 Bind 目标。
-3. 完整的平台 Sandbox 工具链必须在 `PATH` 上；Worker Preflight 一次性报告所有缺失命令。
-
-Docker 失败会报告镜像探针输出，并要求确认本地引擎支持 `SYS_ADMIN`、`NET_ADMIN` 与 `seccomp=unconfined`。HTTP Health 通过并不代表 Sandbox 可用——这正是自检存在的原因。
-
-继续使用[故障排查](/zh/docs/reference/troubleshooting)检查具体症状，包括 Scheduler、Cold Start 与 Activation 故障。
-
-## 深入参考
-
-- [故障排查速查](/zh/docs/reference/troubleshooting)：按症状快速索引具体故障与处置方案
-- [运行时与资源运营](/zh/docs/operations/runtime)：systemd/Docker 实例生命周期与资源限制
-- [沙箱设计与自检原理](/zh/docs/reference/design/sandbox)：bubblewrap 沙箱自检与权限模型的深度决策
+- [故障排查手册](/zh/docs/reference/troubleshooting)：按现象速查解决方案
+- [运行时与资源管理](/zh/docs/operations/runtime)：进程生命周期与资源配额控制
+- [沙箱架构设计](/zh/docs/reference/design/sandbox)：bubblewrap 沙箱加固与自检原理

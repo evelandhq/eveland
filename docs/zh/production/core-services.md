@@ -1,13 +1,13 @@
 ---
 title: 安装核心服务
-description: 安装稳定 Eveland Release，并以宿主机 systemd unit 运行 API、Agent Gateway、Dashboard、Worker 与 Workflow Dispatcher。
+description: 安装稳定版本 Eveland，并以宿主机 systemd unit 启动核心控制面服务。
 ---
 
-稳定安装必须运行精确的 `vX.Y.Z` Tag，而不是可变的 `main` Checkout。不要将 `main` 当作稳定实例部署。
+生产环境请务必运行经过测试的稳定版本（如 `vX.Y.Z` Release Tag），切勿在生产环境中直接部署未经测试的 `main` 分支代码。
 
-每个平台进程都以宿主机 systemd unit 运行。Docker 只剩下托管 OpenTelemetry Collector，以及——除非你自带 PostgreSQL——那个自带的数据库。
+在 Linux 宿主机上，除辅助容器（OTel Collector 与可选的 Postgres）运行在 Docker 内外，平台的所有核心进程均作为独立的 systemd 服务运行。
 
-## 安装指定版本
+## 1. 检出稳定版本并构建
 
 ```bash
 git fetch --tags origin
@@ -17,60 +17,72 @@ pnpm --filter @evelandhq/web build
 pnpm --filter @evelandhq/api db:migrate
 ```
 
-在把任何进程滚动到新 Tag 之前，先应用数据库 Migration。Dashboard 构建产物是宿主机制品：`eveland-web.service` 直接服务它，没有构建产物就拒绝启动。
+_注意：在启动或重启进程前，务必先执行 `db:migrate` 确保数据库结构最新。Dashboard 前端构建产物（`apps/web/.next`）由宿主机服务直接托管，未构建将无法启动。_
 
-## 配置平台环境
+## 2. 配置平台全局环境变量
 
-一套安装只有一份配置文件——`eveland-ctl` 装置下是 `/opt/eveland/etc/eveland.env`，手工安装则是本地 `.env`（已 gitignore）。至少要设置公开 Origin 与所有生产 Secret：
+对于使用 `eveland-ctl` 管理的安装，配置文件路径为 `/opt/eveland/etc/eveland.env`；手动部署时为项目根目录的 `.env`。核心必要配置如下：
 
-- `EVELAND_PUBLIC_ORIGIN`——唯一的浏览器可见 Origin（前门）。Better Auth URL、认证 CORS Origin 与 Identity Issuer 都由它派生；单项覆盖（`WEB_ORIGIN`、`BETTER_AUTH_URL`、`EVELAND_IDENTITY_ISSUER`）存在但很少需要。
-- `EVELAND_IDENTITY_ALLOWED_ORIGINS`——精确的聊天浏览器 Origin，仅在使用外部聊天前端时需要。
-- `EVELAND_AGENT_BASE_DOMAINS`——Wildcard Agent Domain，例如 `agents.example.com`。
-- `DATABASE_URL` 与 `EVELAND_WORKFLOW_WORLD_URL`——各自只有一个地址，因为它们的每一个读取方现在都是同一网络命名空间里的宿主机进程。自带数据库与外置 PostgreSQL 的取舍见[准备宿主机](/zh/docs/production/prerequisites)。
-- `BETTER_AUTH_SECRET`、`APP_SECRET_KEY`、`EVELAND_GATEWAY_SERVICE_TOKEN`、`EVELAND_GATEWAY_AFFINITY_SECRET`、`EVELAND_SCHEDULER_RUNTIME_SECRET`、`EVELAND_SCHEDULER_DISPATCH_SECRET`、`EVELAND_OTLP_SERVICE_TOKEN`——彼此独立的长随机值。绝不沿用开发 Fallback；在显式 `NODE_ENV=development` 之外，缺失这些值时服务直接拒绝启动（Fail Closed）。
+```ini
+# 公开访问入口（前门域名，不带尾部斜杠）
+EVELAND_PUBLIC_ORIGIN=https://console.example.com
 
-每个变量的定义、默认值与使用方见[环境变量参考](/zh/docs/reference/environment-variables)。
+# Agent 泛解析域名（客户端与 API 访问 Agent 使用）
+EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 
-## 启动基础设施
+# 数据库连接地址
+DATABASE_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+
+# 平台安全密钥（请使用 openssl rand -hex 32 生成高强度独立随机串）
+BETTER_AUTH_SECRET=your_auth_secret_32_bytes_min
+APP_SECRET_KEY=your_app_encryption_key_32_bytes
+EVELAND_GATEWAY_SERVICE_TOKEN=your_gateway_service_token
+EVELAND_GATEWAY_AFFINITY_SECRET=your_affinity_secret
+EVELAND_SCHEDULER_RUNTIME_SECRET=your_scheduler_runtime_secret
+EVELAND_SCHEDULER_DISPATCH_SECRET=your_scheduler_dispatch_secret
+EVELAND_OTLP_SERVICE_TOKEN=your_otlp_service_token
+```
+
+_完整变量列表与默认值说明请参考[环境变量参考](/zh/docs/reference/environment-variables)。_
+
+## 3. 启动基础设施容器
+
+执行以下命令拉起托管的 OpenTelemetry Collector（以及内置的 Postgres）：
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d otel-collector postgres
 ```
 
-如果这套安装使用你自己的 PostgreSQL，就去掉 `postgres`——它被门控在一个 Compose Profile 之后，因此不带服务名的 `up -d` 不会在你配置的集群旁边再起一个。
+_(如果使用了外部自有 PostgreSQL 集群，可从命令中去掉 `postgres`)_
 
-这会启动**托管 OpenTelemetry Collector**，其由 Worker 生成的配置从 `/var/lib/eveland/otel` 以只读方式挂载。Collector 留在 Docker Bridge 上，因为 Docker Runtime 需要把它接入每个 Agent 的私有遥测网络；它通过 `host.docker.internal` 访问宿主机上的 API，而 API 在同一地址上绑定第二个 Listener，只接受 Health、Collector Observation、Agent JWKS 与 Scheduler Channel 路径。
+**安全警示**：如果使用了自带的内置 Postgres，其默认映射端口 `17310` 仅供本机宿主机进程回环访问，**严禁在宿主机公网防火墙上放行 17310 端口**。
 
-Overlay 不启动任何平台服务。基础文件中的开发版 API、Agent Gateway、Dashboard、Worker 与 Workflow Dispatcher 各自被门控在一个此命令永不启用的 Profile 之后——合并后的生产配置因此不可能启动任何一个的第二份。
+## 4. 安装与配置 systemd 核心服务
 
-**发布到宿主机的 `17310` 绝不能从宿主机之外访问。** 自带数据库的存在是为了让宿主机服务——API、Agent Gateway、Worker、Workflow Dispatcher 以及每个已部署的 Agent 进程——通过 Loopback 访问它，而它携带的是众所周知的默认凭据。必须在宿主机防火墙上阻断所有非本地网络对它的访问——参见[网络](/zh/docs/production/networking)。
+平台各进程在 systemd 中以最小必要权限独立运行：
 
-## 安装平台 unit
+| 服务 Unit                             | 运行身份                    | 职责与可写路径                               |
+| :------------------------------------ | :-------------------------- | :------------------------------------------- |
+| `eveland-api.service`                 | `eveland-platform` (非特权) | 控制面 API；仅可写 `EVELAND_DATA_DIR`        |
+| `eveland-gateway.service`             | `DynamicUser` (临时无特权)  | 统一接入网关；文件系统完全只读               |
+| `eveland-web.service`                 | `eveland-web` (非特权)      | 控制台前端；仅可写自身运行时构建缓存 `.next` |
+| `eveland-worker.service`              | `root` (系统特权控制器)     | 构建沙箱编排与进程管理；无公网监听端口       |
+| `eveland-workflow-dispatcher.service` | `DynamicUser` (临时无特权)  | 持久化工作流外置调度；文件系统只读           |
 
-`eveland-ctl install --systemd` 会为每个平台进程渲染并启用一个 unit：
+使用 `eveland-ctl` 时可一键安装：
 
-| Unit                                  | 运行身份           | 可写路径                             |
-| ------------------------------------- | ------------------ | ------------------------------------ |
-| `eveland-api.service`                 | `eveland-platform` | `EVELAND_DATA_DIR`                   |
-| `eveland-gateway.service`             | `DynamicUser`      | 无                                   |
-| `eveland-web.service`                 | `eveland-web`      | `apps/web/.next`（其运行时缓存）     |
-| `eveland-worker.service`              | `root`             | 数据根目录、systemd、Deployment 用户 |
-| `eveland-workflow-dispatcher.service` | `DynamicUser`      | 无                                   |
+```bash
+eveland-ctl install --systemd
+```
 
-每个有监听端口的服务都以非特权身份运行，配以 `ProtectSystem=strict`、只读源码树和显式的 `ReadWritePaths`，而且**没有任何两个共用同一个 uid**。这正是「每服务一份环境文件」能成为真实边界、而不只是约定的原因：同 uid 的进程可以互相读取 `/proc/<pid>/environ`，公网前门一旦与 API 共用用户，整份平台配置就只隔着一次读取。API 与 Dashboard 保留固定用户，因为它们拥有跨重启存活的文件；Gateway 什么都不拥有，所以用每次开机回收的 `DynamicUser`。Worker 是 root 是有意为之：它是唯一被允许构建不可信项目代码、并驱动 `systemd-run`/`systemctl`/`chown` 的组件——每个 Eve Deployment 正是这样获得自己的非特权 `DynamicUser` 的。每个 unit 读取 `etc/` 下自己的环境文件，这些文件在每次启动时都从 `etc/eveland.env` 重新渲染——要改就改后者，不要改渲染产物。
+如需手动安装各服务 unit 模板，请继续阅读[安装宿主机 Worker](/zh/docs/production/worker) 与 [安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)。
 
-手工安装时，同样的 unit 见[安装宿主机 Worker](/zh/docs/production/worker) 与[安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)。
+## 5. 校验组件版本一致性
 
-## 对齐 Release 身份
+启动各服务后，登录控制台在 **Settings → About** 中核对组件信息：
 
-在平台配置中设置 `EVELAND_RELEASE_CHANNEL=stable`，并把 `EVELAND_REVISION` 设为 `git rev-parse --short=12 HEAD` 的输出，然后重启这些 unit。刻意测试 `main` 的实例改用 `EVELAND_RELEASE_CHANNEL=edge` 及其精确 Revision。`eveland-ctl start` 与 `eveland-ctl update` 都会替你从 Checkout 固化这两个值。
+- API、Dashboard、Worker 与 Dispatcher 的 `version` 和 `revision` 应完全一致。
+- 确认各服务报告的 `channel` 为 `stable`。
 
-需要认证的 Dashboard **Settings → About** 页面对比 Dashboard 与 API 的 Build Identity；API 与 Agent Gateway 也通过公开 `/health` 暴露它，Worker 在启动时打印它，Dispatcher 则在其 Registration 上报告它。只要其中任何一处不一致，就不能宣称安装（或后续升级）完成。团队 Admin 可以在同一 About 页面检查各组件白名单化的有效配置；Secret 只以固定掩码显示。
-
-下一步[安装宿主机 Worker](/zh/docs/production/worker)。
-
-## 深入参考
-
-- [生产架构概览](/zh/docs/production)：受支持的核心服务、宿主机 Worker 与 systemd 拓扑
-- [配置参考](/zh/docs/reference/configuration)：各组件环境变量归属与默认值
-- [安全模型](/zh/docs/operations/security)：网络隔离、凭证保护与进程特权边界
+下一步：[安装宿主机 Worker](/zh/docs/production/worker)。

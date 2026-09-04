@@ -1,66 +1,41 @@
 ---
-title: Agent Catalog 与聊天客户端
-description: 派生的 Catalog、客户端中立的认证协议，以及为什么一个聊天客户端服务所有 Agent。
+title: Agent Catalog 与统一聊天客户端设计决策
+description: 为什么 Catalog 是实时派生的只读投影，以及统一 Web 聊天客户端如何解决多 Agent 舰队交互难题。
 ---
 
-## Catalog 是投影，不是注册表
+## 1. Catalog 是实时投影，而不是静态注册表
 
-`GET /api/agent-catalog` 回答一个问题：*这个安装上有哪些 Eve 客户端可以聊的
-Agent？*成员资格由两个事实派生：部署的 Source Revision 默认导出标准的
-`eveChannel(...)`，且 Project 有可路由的 Stable Deployment。没有需要
-另行创建的 Catalog 记录，所以 Catalog 不可能与现实漂移。
+平台接口 `GET /api/agent-catalog` 用于解答一个核心问题：_当前平台有哪些已就绪、可供客户端直接对话的 Agent？_
 
-设计时记录的非目标：不做 marketplace、分类、搜索、发布审核；不按 auth
-函数过滤；不探测 Agent；不承载业务授权。Catalog 读 Stable 路由**已部署**
-的 Revision——绝不读 Project 更新但未部署的源码——因为它公示的是客户端
-*现在*就能对话的东西。缩容到零的 `stopped` Deployment 依然入选：门槛是
-可路由，不是正在运行。
+- **基于客观事实派生**：项目的部署版本默认导出了标准的 `eveChannel(...)`，且生产路由（Stable Route）处于可访问状态。
+- **杜绝状态漂移**：没有人工单独维护的“应用上架审批”或静态记录，目录状态始终与底层生产部署严格一致。处于缩容至零休眠（`stopped`）状态的 Agent 依然入选，因为它们在收到请求时可自动被唤醒。
+- **稳定托管身份**：使用 `issuer + projectId` 作为持久的 Agent 全局标识，而非易变的临时 URL。当项目域名调整或后端重启时，客户端本地的历史对话依然完好有效。
 
-身份是 `issuer + projectId`，不是 URL。Stable URL 变更不得在客户端里
-凭空造出第二个 Agent；聊天历史必须在 Agent 下线或退出 Catalog 后幸存。
+---
 
-## 认证 continuation 协议
+## 2. 客户端中立的认证重定向协议
 
-Route 认证发生在任何 Eve session 存在之前，所以 Eve 的会话内授权事件
-物理上无法承载它。取而代之：想要 Eveland 身份的 Agent 用标准 `401`
-challenge 应答并给出 Eveland 的授权 URL；客户端进入 Eveland 的通用
-登录，provider 由 Eveland 挑选，一个短时效、单次使用、带签名的
-continuation 把调用者送回来——只送回管理员 allowlist 里的 return
-target，绝无开放重定向。
+在建立会话之前，客户端遵循标准的认证协商流程：
 
-两条规则保住协议的客户端中立：
+1. **遵循 Agent 自身认证**：Catalog 仅仅公示可用性，客户端发起请求时严格遵循 Agent 自身要求的鉴权方式；
+2. **标准挑战与返回**：需要 Eveland 统一身份的 Agent 返回 `401 Unauthorized` 与带有授权地址的挑战头；客户端重定向至控制台完成登录并换取短期 Caller Token；
+3. **保持客户端极简 (Thin Client)**：客户端无需硬编码任何第三方 IdP 的认证细节或敏感密钥，任何 Web 前端、移动端或终端 CLI 均能以相同方式接入。
 
-- **Catalog 成员资格绝不意味着发送 token。** 客户端先遵守 Agent 自己的
-  route auth，Agent 主动要求时才进入 Eveland 流程；Eve 的 route auth 是
-  有序回退列表，`evelandIdentity()` 必须放行后续项（Basic、local-dev）
-  的尝试。
-- **客户端保持薄。** 它绝不拼接 provider 授权 URL、看不到 provider
-  选择、除内存中的短时效 token 外不持有身份状态。任何客户端——浏览器
-  或 CLI——都能实现同一契约。
+---
 
-## 为什么是一个聊天客户端（Dawn）
+## 3. 为什么需要统一聊天客户端
 
-[Dawn](https://github.com/evelandhq/dawnchat) 是 Eveland 面向 Eve Agent
-的网页聊天，它的存在源于一个关于规模的观察：认真运行 Agent 的组织，
-最终 **Agent 数量会超过人数**。在这个比例下，每个 Agent 配一个前端不是
-工程选型，是跑步机——而认证让它雪上加霜：组织内部通常只有一套授权体系，
-N 个前端就要把它重新实现 N 次。
+当企业运营的 Agent 数量超过员工人数时，为每个业务 Agent 单独开发一套前端聊天页面、设计一套登录逻辑是完全不可持续的。
 
-Dawn 把这件事倒了过来：Agent Catalog 加一个统一聊天界面，意味着**新
-Agent 写出来、进入 Catalog 的那一刻就能聊**——不用写前端、不用做登录页、
-不用注册 OIDC client。登录一次，与安装信任你可见的所有 Agent 对话；
-Agent 作者写一行 `evelandIdentity()` 就发布。
+统一客户端将这一关系彻底反转：
 
-Channel 集成（Slack、飞书、企业微信）仍是把 Agent 送到用户所在处的一等
-方式。Dawn 额外主张的是保真度：它把 reasoning 和 tool-calling 过程随流
-渲染出来——这才是现代 LLM 聊天体验，消息桥接给不了。
+- **开发即上线**：业务开发者只需专注于编写 Agent 核心逻辑并配置 `evelandIdentity()`，发布后即刻出现在企业统一聊天窗口中，开箱可用；
+- **全保真流式呈现**：完整呈现思维链推理（Reasoning Trace）、工具调用与中间状态，提供现代大模型的一流交互体验。
 
-Dawn 是*一个*客户端，不是*唯一的*客户端——上面的 continuation 协议刻意
-保持任何客户端可实现，CLI 从一开始就被当作对等客户端来预期。
+## 相关参考
 
-## 深入参考
-
-- [身份架构设计决策](/zh/docs/reference/design/identity)：三条互不替换的信任边界与 Caller Token
-- [Agent 身份行为契约](/zh/docs/reference/identity)：Agent Catalog 只读投影契约与 `evelandIdentity()` 协议
+- [身份架构设计决策](/zh/docs/reference/design/identity)：三条互不替换的信任边界与 Caller Token 机制
+- [Agent 身份行为契约](/zh/docs/reference/identity)：Agent Catalog 只读投影规格与 `evelandIdentity()` 协议
 - [部署第一个 Agent](/zh/docs/agents/first-deployment)：导入带有标准 Eve Channel 的项目并发布
+
 - [安全模型](/zh/docs/operations/security)：外部身份网络策略与浏览器会话隔离

@@ -1,91 +1,44 @@
 ---
 title: Why Eveland
-description: A company will eventually operate more agents than people. Eveland is the infrastructure for that world.
+description: A company will eventually operate more agents than people. Eveland is the infrastructure built for that reality.
 ---
 
 > **A company will eventually operate more agents than people.**
 >
-> **Eveland is the infrastructure for that world.**
+> **Eveland is the infrastructure built for that reality.**
 
-Today, Eveland starts with self-hosted production infrastructure for Eve agents: enabling teams to operate fleets of agents at organizational scale, directly inside the infrastructure and data environments they already control.
+Today, Eveland delivers self-hosted, production-grade infrastructure for Eve agents: empowering organizations to operate agent fleets at scale, directly within their own infrastructure and data environments.
 
-## A hundred agents, not one
+## Operating a hundred agents, not just one
 
-An organization that takes agents seriously does not end up with _an_ agent.
-Repetitive work exists in every function — support, marketing, back office,
-finance — and each pocket of it justifies its own agent. The steady state is
-more agents than people.
+Organizations that embrace agents in earnest never stop at a single assistant. Repetitive workflows exist in every department — customer support, marketing, operations, and finance. Every domain justifies dedicated agents. In a mature state, an organization will operate more agents than employees.
 
-That ratio breaks tools built for the singular case. A deployment
-pipeline per agent, a login page per agent, a chat frontend per agent, a
-monitoring dashboard per agent — none of it survives multiplication by a
-hundred. A single-node default runs one node with one agent: it is a
-fine way to run _an_ agent, but no way to run a fleet. Eveland is built for
-the plural from day one. Import a project, and deployment, routing,
-secrets, schedules, identity, chat, and observability are already there:
-shared once across the platform, not rebuilt per agent.
+This volume quickly breaks tooling designed for one-off deployments. Maintaining a bespoke deployment pipeline, login screen, chat UI, and monitoring dashboard per agent simply does not scale when multiplied by a hundred.
 
-This focus on the plural is why the platform optimizes for
-[density](/docs/reference/design/runtime): when a hundred agents share a
-single box, every resource the infrastructure consumes is an agent you cannot run.
+Eveland was engineered for the plural from day one. Import a project, and deployments, domain routing, secrets management, scheduled automation, user identity, and full observability are immediately available — shared at the platform level rather than rebuilt per agent. This is also why Eveland relentlessly optimizes for [runtime density](/docs/reference/design/runtime): when dozens of agents share a machine, every resource consumed by infrastructure overhead is capacity lost for running actual agents.
 
-## In your infrastructure, not someone else's
+## On your infrastructure, close to your data
 
-"Data sovereignty" is the broad strategic argument, but the day-to-day reality is even more direct: **your agents are only useful where your systems are.**
-SaaS applications can live in the cloud, but no enterprise has everything in
-the cloud: finance data, operational data, self-hosted internal
-applications. Agents that cannot reach those systems cannot do the work, and
-forcing internal systems to migrate onto a hosted platform is a cost measured in
-years, when it is possible at all. This is not a regional quirk;
-heterogeneous, partly-on-premises system landscapes are the global
-enterprise reality. Eveland goes to where the data already lives.
+Beyond data sovereignty and compliance, engineering reality dictates that **agents are only valuable when they can directly reach your systems.**
 
-Then there is cost, in two currencies:
+Few organizations host all their core assets exclusively in public clouds. Internal financial databases, operational data stores, and proprietary enterprise applications frequently reside in on-premises or private network environments. Forcing those systems to migrate onto third-party hosted platforms is expensive and slow. Eveland brings the agent runtime directly to where your data already lives.
 
-- **Running cost.** LLM calls, workflow state, sandbox execution: on a
-  hosted platform, each is a metered line item. On your own hardware, they use
-  capacity you already own, and the platform is engineered to waste none of
-  it. With [systemd runtime density](/docs/reference/design/runtime),
-  [lightweight bubblewrap sandboxing](/docs/reference/design/sandbox),
-  [on-demand activation and scale-to-zero](/docs/reference/design/scale-to-zero),
-  and [external workflow dispatching](/docs/reference/design/workflow), a modest
-  machine comfortably hosts dozens of production agents.
-- **Management cost.** Hosted deployment platforms are built for operators;
-  business stakeholders cannot see what an agent actually did. Eveland gives
-  development, operations, and business the same clear window: Sessions,
-  reasoning traces, tool calls, schedules, and usage are first-class, human-readable
-  surfaces — not opaque logs to export on request. The foundation is
-  guaranteed by a [transparent OpenTelemetry pipeline](/docs/reference/design/observability)
-  and a [secure Agent Gateway](/docs/reference/design/gateway).
+Self-hosting also delivers compelling cost advantages across two dimensions:
 
-## Where Eveland came from
+- **Operational expenditure**: On managed platforms, LLM gateway calls, durable workflow state storage, and sandbox compute are recurring metered line items. On your own hardware, these utilize existing capacity. Powered by [systemd host-native runtime density](/docs/reference/design/runtime), [lightweight bubblewrap sandboxing](/docs/reference/design/sandbox), [on-demand cold activation and scale-to-zero](/docs/reference/design/scale-to-zero), and [external workflow dispatching](/docs/reference/design/workflow), a modest cloud VM can easily host dozens of production agents.
+- **Observability and transparency**: Managed platforms often present black-box dashboards tailored for DevOps, leaving business owners blind to what an agent actually did. Eveland provides developers, operators, and business stakeholders with a unified view: conversation trees, reasoning traces, tool executions, schedules, and token usage are first-class, human-readable interfaces, backed by a [transparent OpenTelemetry pipeline](/docs/reference/design/observability) and an [isolated Agent Gateway](/docs/reference/design/gateway).
 
-The road to agents that genuinely run on their own is long, and we walked
-most of it: frameworks that could not run unattended, runners that were
-unstable and untraceable on failure, and several stops in between.
-[Eve](https://eve.dev) is the first framework that matches what we were
-looking for: agents as code, traceable execution, stable runtime behavior, LLM- and
-cloud-agnostic, fit for running at organizational scale. Eveland is the missing production
-half: everything between "the agent works locally" and "the organization runs on
-it in production."
+## Origins of Eveland
 
-This is not a speculative design. [Jinshuju](https://jinshuju.net) runs 20+
-agents on Eveland — customer support, marketing, back office, finance — in
-continuous stable operation for over two months. Most of the recorded
-[design decisions](/docs/reference/design) were forced by that production
-reality, not imagined ahead of it.
+The journey to building autonomous agents that run reliably without human supervision is demanding. We encountered frameworks that could not run unattended, task runners that failed silently without tracebacks, and various fragile orchestration scripts.
+
+[Eve](https://eve.dev) was the first open-source framework that matched our expectations: agents written as standard code, deterministic execution, multi-model flexibility, and enterprise maintainability. Eveland provides the missing production layer: bridging the gap between "runs on my laptop" and "reliably powers our enterprise in production."
+
+This architecture was forged in real operations. [Jinshuju](https://jinshuju.net) runs 20+ agents on Eveland — spanning customer support, growth, administration, and finance — in continuous, stable production for months. Most of our [design decisions](/docs/reference/design) were shaped by concrete operational realities rather than theoretical speculation.
 
 ## Who it's for
 
-Any team with repetitive operational workflows. Writing an agent takes basic development
-ability, but with today's coding agents that bar keeps dropping — a
-one-person company may benefit the most: agents that work while you sleep.
+- **Teams with repetitive operational workflows**: AI coding tools have made authoring domain agents remarkably accessible. Even solo developers and small teams can deploy an autonomous digital workforce that works around the clock.
+- **Teams requiring production determinism**: Unlike simple chat widgets, Eveland agents execute autonomously via cron schedules, webhooks, and asynchronous message channels. Unlike brittle experimental runners, Eveland enforces strict process isolation, deterministic crash recovery, and enterprise-grade observability.
 
-Against office chat assistants, the difference is unattended autonomy:
-Eveland agents run on schedules, wake on webhooks and channels, and don't
-need a human in the loop to exist. Against DIY agent runners, the
-difference is that boring word: production. Stable execution, hardened isolation,
-first-class observability, and deterministic recovery when something goes wrong.
-
-If that is the problem you have, [deploy the platform](/docs/production) and
-give your first hundred agents a home.
+If you are ready to put your agent fleet into production, explore [Production deployment](/docs/production) and build a reliable home for your agents.

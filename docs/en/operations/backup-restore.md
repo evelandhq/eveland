@@ -1,46 +1,77 @@
 ---
 title: Backup and restore
-description: Back up the control-plane database, the shared workflow database, and the data root as one consistent set, and restore them in the right order.
+description: Backup strategy and disaster recovery procedures for platform control plane databases, workflow state, and data roots.
 ---
 
-Eveland ships no backup tooling of its own. Operators use standard `pg_dump`, `rsync`, or filesystem/volume snapshots. What Eveland defines is **what the state is** and **which pieces must stay consistent with each other**.
+Eveland does not bundle proprietary backup tools. Operators should utilize standard tools (e.g. `pg_dump`, `rsync`, or cloud storage volume snapshots).
 
-## What is state
+For a consistent disaster recovery, you must know **what constitutes persistent platform state** and **the required restoration ordering**.
 
-Three stores plus configuration hold everything a restore needs:
+---
 
-1. **Control-plane Postgres** (`DATABASE_URL`): Projects, SourceRevisions, Releases, Deployments, routes, SessionBindings, ScheduleRuns, jobs, Team membership, and every encrypted Secret as AES-256-GCM ciphertext.
-2. **The shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`): durable workflow runs, timers, streams, and per-run queues. It is part of platform state, not telemetry — losing it loses every in-flight and resumable durable run.
-3. **The data root** (`EVELAND_DATA_DIR`, normally `/var/lib/eveland`): imported sources and uploads, built Release artifacts, deployment env files, Agent observability policies, managed Collector configuration and exporter queues, and the sandbox cache — which contains every durable session's `/workspace` state and is therefore data, not cache, despite the name.
-4. **Configuration outside the database**: the platform environment file (`/opt/eveland/etc/eveland.env`, or your `.env`) — the per-service files under `etc/` are re-rendered from it on every start and need no backup of their own. `APP_SECRET_KEY` deserves special care: database backups contain only ciphertext, so a backup without the key cannot recover any stored Secret. Keep the key material in your secret store, not only on the host.
+## 1. Core state checklist
 
-An install with history from before the shared World may also hold derived legacy `eveland_wf_*` databases; they remain state until their Projects are deleted (see [Upgrade and rollback](/docs/operations/upgrades)).
+A consistent backup requires the following three components captured from the **exact same point in time**:
 
-Both databases and the data root must come from the same point in time. Control-plane rows reference data-root paths (`sourcePath`, release directories) and shared-World tenants reference control-plane Deployments; a backup where one side has moved past the other leaves reconciliation pointing at objects that do not exist. Take backups inside a quiesced window (no running jobs or builds) or use snapshots that are mutually consistent.
+| State Component              | Storage & Path                            | Core Content                                                                                                 |
+| :--------------------------- | :---------------------------------------- | :----------------------------------------------------------------------------------------------------------- |
+| **Control Plane Database**   | PostgreSQL (`DATABASE_URL`)               | Project metadata, releases, deployment history, routes, team auth, and AES-256 encrypted secrets.            |
+| **Shared Workflow Database** | PostgreSQL (`EVELAND_WORKFLOW_WORLD_URL`) | Durable workflow execution states, timers, and step queues.                                                  |
+| **Persistent Data Root**     | Host filesystem (`/var/lib/eveland`)      | Source archives, immutable releases (`builds/`), telemetry configs, and persistent `/workspace` directories. |
 
-## What not to back up
+_Security Warning: Decrypting stored secrets requires the host `APP_SECRET_KEY`. Ensure this master key is safely backed up in an external secret manager (KMS / Vault)._
 
-- **The npm cache** (`npm-cache/` below the data root) — rebuilt on demand.
-- **The Eveland checkout and its `node_modules`** — reproducible from the release tag with `pnpm install --frozen-lockfile`.
-- **Collector exporter queues** (below `otel/` in the data root) — excluding them loses only undelivered telemetry, never platform state.
+---
 
-Built Release artifacts (`builds/`) are _not_ safely excludable: a Release is immutable and cold activation starts the exact artifact on disk. Excluding builds means every Deployment needs a new build and promote after restore, and historical Release provenance is gone. Back up the whole data root and exclude only the npm cache unless you accept that cost.
+## 2. Excluded ephemeral paths
 
-## Restore ordering
+When creating filesystem snapshots, exclude these temporary caches:
 
-1. Stop all five components (Dashboard, API, Agent Gateway, Worker, Workflow Dispatcher) and keep public ingress closed.
-2. Restore the control-plane database and the shared workflow database from the same backup window.
-3. Restore the data root at the **same absolute path** — API's mounted path and Worker's `EVELAND_DATA_DIR` must agree, and stored `sourcePath` values are absolute.
-4. Restore configuration files, check out the exact release tag the backup was taken under, and install the frozen lockfile. Restore onto the same version first; upgrade afterwards through the normal [upgrade path](/docs/operations/upgrades).
-5. Start Postgres, then the core services, the dispatcher, and Worker. Worker reconciles stale `ready` RuntimeInstances to `stopped` or `failed`; nothing restarts by itself.
-6. Send a real request or wait for a schedule: the next activation cold-starts the preserved exact Release. Verify identity and health per **Settings → About** before reopening ingress.
+- **npm cache directory** (`EVELAND_DATA_DIR/npm-cache/`): Rebuilt on demand;
+- **Platform checkout and dependencies** (`/opt/eveland` & `node_modules`): Fully reproducible via git tag and `pnpm install --frozen-lockfile`;
+- **OTel Collector exporter queues** (`EVELAND_DATA_DIR/otel/`): Transient telemetry buffers.
 
-## Host reboot recovery
+_Note: Compiled releases in `builds/` **must be backed up**. Cold starts execute the exact build artifact from disk. If missing, all deployments must be manually rebuilt and promoted._
 
-A reboot is not a restore case. systemd Deployment processes are transient units and deliberately do not restart after a host reboot. The enabled Worker service does restart, reconciles stale `ready` RuntimeInstances to `stopped`/`failed`, and the next cron or Agent Gateway request cold-starts the preserved exact Release. The immutable Deployment, routes, history, and SessionBindings survive; only the transient process is absent during the cold interval.
+---
+
+## 3. Disaster recovery workflow
+
+When restoring onto a new host or recovering from a hardware failure:
+
+```bash
+# Step 1: Stop all Eveland platform units
+sudo systemctl stop eveland-api eveland-gateway eveland-web eveland-worker eveland-workflow-dispatcher
+
+# Step 2: Restore PostgreSQL databases (control plane and workflow databases)
+# Example: pg_restore from backup dump
+
+# Step 3: Restore the data root onto the identical absolute path (e.g. /var/lib/eveland)
+
+# Step 4: Checkout the recorded release tag and install dependencies
+cd /opt/eveland
+git checkout vX.Y.Z
+pnpm install --frozen-lockfile
+
+# Step 5: Start Postgres and core services
+sudo systemctl start eveland-api eveland-gateway eveland-web eveland-worker eveland-workflow-dispatcher
+
+# Step 6: Verify platform health
+# Open Settings → About in the dashboard to confirm aligned versions, then send a test request
+```
+
+---
+
+## 4. Host reboot handling
+
+A normal host reboot does **not** require a disaster recovery restore:
+
+- Agent deployments run as transient systemd services and do not restart on boot by design.
+- On host startup, the Worker automatically launches, marking offline instances as `stopped`.
+- The first inbound request triggers an automated cold start, restoring service with zero manual intervention.
 
 ## Deeper reference
 
-- [Upgrade and rollback](/docs/operations/upgrades): version upgrade checklist and control-plane database migrations
-- [Capacity planning](/docs/operations/capacity): storage budgeting for data root, release artifacts, and durable workspaces
-- [Security model](/docs/operations/security): protecting `APP_SECRET_KEY` and secret recovery boundaries
+- [Upgrades and rollbacks](/docs/operations/upgrades): version upgrade checklists and database migrations
+- [Capacity planning](/docs/operations/capacity): storage sizing for releases and persistent workspaces
+- [Security model](/docs/operations/security): master encryption key protection

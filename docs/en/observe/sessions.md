@@ -1,32 +1,41 @@
 ---
-title: Sessions and usage
-description: Trace root and child Eve sessions with deployment provenance and provider-reported usage.
+title: Sessions and token usage
+description: End-to-end conversation tracing, subagent hierarchy visualization, and provider-reported token usage tracking.
 ---
 
-Session collection is independent of Playground. Injected Eve hooks use Eveland-private OpenTelemetry providers and send standard OTLP to the managed Collector; Built-in then projects Agent LogRecords into Postgres. Direct Agent requests, Playground, schedules, and child sessions can all appear in the same history. User instrumentation and exporters remain unchanged.
+In Eveland, session tracing and usage metrics are fully integrated into the dashboard, completely decoupled from the interactive Playground. Conversations initiated via public APIs, scheduled cron tasks, or console debugging are unified into a cohesive history tied to their source deployment.
 
-## Session model
+---
 
-A platform Session is the root conversation. Each root or subagent Eve session becomes a SessionNode. Durable Eve identity is scoped to the Project, while individual observations retain the Deployment that produced them.
+## 1. Conversation hierarchy (Session & SessionNode)
 
-Child-before-parent delivery and discovery races are expected. Projection merges relationships and provenance idempotently without following arbitrary remote subagent URLs.
+Eveland models agent interactions as a structured conversation tree:
 
-## Usage
+- **Root Session**: Represents the end-to-end context initiated by the caller with the primary agent.
+- **SessionNode**: When the primary agent spawns subagents or triggers background workflow steps, each step branches as an attached child node.
+- **Deployment Provenance**: Every turn and tool call is permanently labeled with the exact deployment version that generated it, enabling clear comparisons across releases.
 
-Usage comes only from Eve's provider-reported `step.completed.data.usage`:
+---
 
-- input and output tokens
-- cache-read and cache-write tokens
-- provider or AI gateway cost when reported
+## 2. Accurate model usage tracking
 
-Missing usage remains explicitly missing; Eveland does not estimate it. At-least-once OTLP delivery cannot double-count already projected usage.
+Eveland captures token usage directly from model provider responses during `step.completed`:
 
-## Telemetry health
+- **Input and Output Tokens**: Exact prompts and completion token counts.
+- **Cache Hit Tracking**: Tracks Cache Read and Cache Write tokens, allowing precise cost evaluation of context caching.
+- **Cost Aggregation**: When upstream AI gateways report financial charges, Eveland aggregates total expenditure per project and deployment.
+- **No Synthetic Estimates**: If a provider omits usage metadata for a turn, Eveland records it as missing rather than fabricating guesses.
 
-Telemetry failure must not make an Agent turn fail. The Collector gives Built-in and every external exporter an independent persistent retry queue. Collector/Built-in liveness is part of **Settings → Instance health**; external destination probe state is shown under **Settings → Observability**.
+---
+
+## 3. Telemetry resilience and fault isolation
+
+- **Telemetry failure isolation**: Telemetry network hiccups never cause an agent turn or conversation to fail or stall.
+- **Persistent retry queues**: The managed Collector maintains isolated persistent disk buffers for internal Postgres projection and external sinks (e.g. Elastic, Langfuse).
+- **Liveness monitoring**: Verify telemetry health and pipeline status under **Settings → Instance health**.
 
 ## Deeper reference
 
-- [Observability behavior contract](/docs/reference/observability): OTLP batch storage, SessionNode tree projection rules, and retention policy
-- [Observability design decisions](/docs/reference/design/observability): why OpenTelemetry was chosen as the sole telemetry transport
+- [Observability behavior contract](/docs/reference/observability): OTLP projection model and data retention policies
+- [Observability design decisions](/docs/reference/design/observability): rationale behind OpenTelemetry as the sole transport
 - [Health and diagnostics](/docs/operations/diagnostics): verifying Collector health and troubleshooting missing usage

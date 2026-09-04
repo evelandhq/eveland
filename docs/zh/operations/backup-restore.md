@@ -1,46 +1,77 @@
 ---
 title: 备份与恢复
-description: 将控制平面数据库、共享 Workflow 数据库与数据根目录作为一组一致状态备份，并按正确顺序恢复。
+description: 掌握平台控制面数据库、工作流数据库及持久化数据目录的备份策略与灾难恢复流程。
 ---
 
-Eveland 不自带备份工具。运维使用标准的 `pg_dump`、`rsync` 或文件系统/卷快照。Eveland 定义的是**状态是什么**，以及**哪些部分必须彼此一致**。
+Eveland 本身不捆绑专有的备份工具，建议使用标准的开源工具（如 `pg_dump`、`rsync` 或云厂商的存储卷快照）。
 
-## 什么是状态
+为了实现一致性恢复，必须清晰了解**平台的状态由哪些部分组成**以及**恢复的正确顺序**。
 
-三个存储加配置承载恢复所需的一切：
+---
 
-1. **控制平面 Postgres**（`DATABASE_URL`）：Project、SourceRevision、Release、Deployment、Route、SessionBinding、ScheduleRun、Job、Team Membership，以及所有以 AES-256-GCM 密文存储的加密 Secret。
-2. **共享 Workflow 数据库**（`EVELAND_WORKFLOW_WORLD_URL`）：持久化 Workflow Run、Timer、Stream 与 Per-run Queue。它是平台状态而非遥测——丢失它意味着丢失所有进行中与可恢复的持久化 Run。
-3. **数据根目录**（`EVELAND_DATA_DIR`，通常为 `/var/lib/eveland`）：导入源码与上传、已构建的 Release Artifact、Deployment Env 文件、Agent Observability Policy、受管 Collector 配置与 Exporter Queue，以及 Sandbox Cache——它包含每个持久化 Session 的 `/workspace` 状态，虽名为 Cache，实为数据。
-4. **数据库之外的配置**：平台环境文件（`/opt/eveland/etc/eveland.env`，或你的 `.env`）——`etc/` 下各服务的文件在每次启动时都从它重新渲染，无需单独备份。`APP_SECRET_KEY` 需要特别对待：数据库备份只含密文，没有 Key 的备份无法恢复任何已存 Secret。Key 材料应保存在 Secret Store 中，而不仅在宿主机上。
+## 1. 核心状态构成清单
 
-带有共享 World 之前历史的安装可能还持有派生的遗留 `eveland_wf_*` 数据库；在其 Project 被删除前它们同样是状态（见[升级与回滚](/zh/docs/operations/upgrades)）。
+进行完整备份时，以下三项必须保持在**同一时间点（同一快照窗口）**：
 
-两个数据库与数据根目录必须来自同一时间点。控制平面行引用数据根目录中的路径（`sourcePath`、Release 目录），共享 World 的 Tenant 引用控制平面 Deployment；一侧领先另一侧的备份会让 Reconciliation 指向不存在的对象。请在静默窗口内备份（没有运行中的 Job 或 Build），或使用彼此一致的快照。
+| 状态组件             | 存储介质与路径                            | 核心数据内容                                                                  |
+| :------------------- | :---------------------------------------- | :---------------------------------------------------------------------------- |
+| **控制平面数据库**   | PostgreSQL (`DATABASE_URL`)               | 项目配置、发布版本、部署历史、路由规则、团队账号与 AES-256 加密的密钥。       |
+| **共享工作流数据库** | PostgreSQL (`EVELAND_WORKFLOW_WORLD_URL`) | 持久化工作流任务状态、定时器（Timer）与执行队列。                             |
+| **持久化数据目录**   | 本地文件系统 (`/var/lib/eveland`)         | 源码快照、不可变发布包（`builds/`）、遥测配置及长效会话的 `/workspace` 目录。 |
 
-## 不需要备份的内容
+_安全提示：所有加密存储的凭据均依赖宿主机的 `APP_SECRET_KEY`。请务必将该主密钥妥善备份至企业的外部密钥管理系统（KMS / Vault）中。_
 
-- **npm 缓存**（数据根目录下的 `npm-cache/`）——按需重建。
-- **Eveland Checkout 及其 `node_modules`**——可用 Release Tag 加 `pnpm install --frozen-lockfile` 复现。
-- **Collector Exporter Queue**（数据根目录 `otel/` 之下）——排除它只丢失尚未投递的遥测，绝不丢失平台状态。
+---
 
-已构建的 Release Artifact（`builds/`）*不*可安全排除：Release 不可变，Cold Activation 启动的是磁盘上的精确 Artifact。排除 builds 意味着恢复后每个 Deployment 都需要重新 Build 并 Promote，历史 Release 溯源也随之丢失。除非接受这一代价，否则备份整个数据根目录、只排除 npm 缓存。
+## 2. 无需备份的临时内容
 
-## 恢复顺序
+在做文件系统快照或备份同步时，可排除以下临时缓存：
 
-1. 停止全部五个组件（Dashboard、API、Agent Gateway、Worker、Workflow Dispatcher），并保持公开 Ingress 关闭。
-2. 从同一备份窗口恢复控制平面数据库与共享 Workflow 数据库。
-3. 在**同一绝对路径**恢复数据根目录——API 的挂载路径与 Worker 的 `EVELAND_DATA_DIR` 必须一致，存储的 `sourcePath` 为绝对路径。
-4. 恢复配置文件，Checkout 备份当时的精确 Release Tag 并安装 Frozen Lockfile。先恢复到相同版本，之后再走正常的[升级路径](/zh/docs/operations/upgrades)。
-5. 启动 Postgres，再启动核心服务、Dispatcher 与 Worker。Worker 会把过期的 `ready` RuntimeInstance 对账为 `stopped` 或 `failed`；没有任何进程会自行重启。
-6. 发送真实请求或等待 Schedule：下一次 Activation 会 Cold Start 保留的精确 Release。重新开放 Ingress 前，按 **Settings → About** 核对 Identity 与 Health。
+- **npm 缓存目录**（`EVELAND_DATA_DIR/npm-cache/`）：可随时在线重新下载；
+- **平台代码仓库与依赖**（`/opt/eveland` 及其 `node_modules`）：通过 Git Tag 与 `pnpm install --frozen-lockfile` 即可精准还原；
+- **OTel Collector 待发队列**（`EVELAND_DATA_DIR/otel/`）：仅包含临时遥测缓冲。
 
-## 宿主机重启恢复
+_注意：`builds/` 下的不可变发布包**必须备份**。因为按需冷激活时 Worker 直接从磁盘加载发布产物；如果缺少发布产物，恢复后所有部署都必须重新触发打包。_
 
-重启不是恢复场景。systemd Deployment 进程是 Transient Unit，有意不在宿主机重启后自动拉起。已 Enable 的 Worker 服务会重启，把过期的 `ready` RuntimeInstance 对账为 `stopped`/`failed`；下一个 Cron 或 Agent Gateway 请求会 Cold Start 保留的精确 Release。不可变的 Deployment、Route、历史与 SessionBinding 全部保留；冷启动间隔内缺席的只有 Transient 进程。
+---
 
-## 深入参考
+## 3. 标准灾难恢复流程
 
-- [升级与回滚](/zh/docs/operations/upgrades)：版本升级检查单与控制平面数据库迁移
-- [容量规划](/zh/docs/operations/capacity)：数据根目录、Release 产物与持久化 Workspace 存储预算
-- [安全模型](/zh/docs/operations/security)：主加密密钥 `APP_SECRET_KEY` 保护与 Secret 恢复边界
+当遭遇硬件故障或灾难恢复时，请按以下顺序执行：
+
+```bash
+# 步骤 1：停止所有平台服务
+sudo systemctl stop eveland-api eveland-gateway eveland-web eveland-worker eveland-workflow-dispatcher
+
+# 步骤 2：恢复 PostgreSQL 数据库（控制面库与工作流库）
+# 示例：通过 pg_restore 导入备份文件
+
+# 步骤 3：在相同绝对路径（如 /var/lib/eveland）下恢复持久化数据目录
+
+# 步骤 4：恢复 /opt/eveland 源码，检出备份时记录的精确 Release Tag
+cd /opt/eveland
+git checkout vX.Y.Z
+pnpm install --frozen-lockfile
+
+# 步骤 5：启动数据库与核心服务
+sudo systemctl start eveland-api eveland-gateway eveland-web eveland-worker eveland-workflow-dispatcher
+
+# 步骤 6：验证平台状态
+# 登录控制台在 Settings → About 核对版本信息，发起测试请求验证按需唤醒
+```
+
+---
+
+## 4. 宿主机非正常重启说明
+
+普通的宿主机重启**无需执行备份恢复**：
+
+- Agent 部署属于 systemd 瞬态服务（Transient Units），开机默认不自动拉起。
+- 宿主机重启后，Worker 会自动启动并将失联的实例状态标记为休眠（`stopped`）。
+- 当第一笔流量到达时，网关会自动冷启动对应版本，整个过程全自动完成。
+
+## 相关参考
+
+- [升级与回滚](/zh/docs/operations/upgrades)：版本迁移检查单与注意事项
+- [容量规划](/zh/docs/operations/capacity)：数据根目录与发布包存储空间预算
+- [安全模型](/zh/docs/operations/security)：主加密密钥 `APP_SECRET_KEY` 保护机制

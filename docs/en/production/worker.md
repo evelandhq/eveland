@@ -1,13 +1,13 @@
 ---
 title: Install the host Worker
-description: Install the privileged Worker as a systemd service and connect it to the core services.
+description: Install the privileged Worker as a host systemd service to manage sandboxed builds and agent process lifecycles.
 ---
 
-Worker is the only runtime controller. Production keeps it on the host so API and the Agent Gateway never receive systemd or Docker-controller privilege.
+The Worker is Eveland's sole host-native Runtime Controller. To maintain strict security isolation, it operates exclusively on the host with no public network listeners.
 
-## Install the checkout
+## 1. Prepare codebase
 
-Worker runs as root from its own checkout at `/opt/eveland` (see `infra/systemd/eveland-worker.service`). Apply the same `vX.Y.Z` tag as the core services and install the frozen lockfile:
+The Worker runs from `/opt/eveland` on the host, checked out to the matching stable release tag:
 
 ```bash
 cd /opt/eveland
@@ -16,9 +16,9 @@ git checkout vX.Y.Z
 pnpm install --frozen-lockfile
 ```
 
-`@evelandhq/sandbox-bwrap` — the only dependency whose compiled output is vendored into every Agent Release — ships prebuilt from npm, pinned by the lockfile. The frozen install therefore gets the exact backend that tag was tested against; there is no separate sandbox-backend build step.
+_Note: The `@evelandhq/sandbox-bwrap` sandbox backend is published prebuilt and pinned by the lockfile; no separate compilation is needed._
 
-## Install the service
+## 2. Install and start systemd service
 
 ```bash
 sudo install -d -m 0750 /etc/eveland
@@ -33,67 +33,63 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now eveland-worker
 ```
 
-## Configure the environment file
+## 3. Configure Worker environment
 
-`infra/systemd/eveland-worker.env.example` documents every entry. The values that must agree with other components:
+In `/etc/eveland/eveland-worker.env`, ensure the following values match your core services:
 
-- `EVELAND_RUNTIME=systemd` and `NODE_ENV=production`. `NODE_ENV=production` already defaults the runtime to systemd, but keep the explicit value so the file documents the host's runtime unambiguously.
-- `EVELAND_DATA_DIR=/var/lib/eveland` — the exact absolute path the API reads.
-- `DATABASE_URL` — the platform database.
-- `EVELAND_WORKFLOW_WORLD_URL` (and `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` when needed) — the shared workflow database; must equal the dispatcher's value.
-- `APP_SECRET_KEY` — must match the API's value. After rotation, redeploy every Agent Deployment so its telemetry credential is signed by the new key.
-- `EVELAND_GATEWAY_SERVICE_TOKEN`, `EVELAND_GATEWAY_INTERNAL_URL` — Agent Gateway service authentication.
-- `EVELAND_SCHEDULER_RUNTIME_SECRET`, `EVELAND_SCHEDULER_DISPATCH_SECRET`, `EVELAND_SCHEDULER_REDEEM_URL` — scheduler authentication; the runtime secret must also match the dispatcher's value.
-- `EVELAND_IDENTITY_ISSUER`, `EVELAND_IDENTITY_JWKS_URL` — the same stable issuer as the API; JWKS may use host loopback because systemd Agents run on this host.
-- `EVELAND_AGENT_BASE_DOMAINS`, `EVELAND_OTLP_SERVICE_TOKEN`, `EVELAND_RELEASE_CHANNEL`, `EVELAND_REVISION` — aligned with the core services.
+```ini
+# Runtime and environment
+EVELAND_RUNTIME=systemd
+NODE_ENV=production
 
-Per-Deployment resource ceilings (`EVELAND_MEMORY_MAX`, `EVELAND_CPU_QUOTA`, `EVELAND_TASKS_MAX`) and every optional knob are in the [environment-variable reference](/docs/reference/environment-variables); size them with [Capacity planning](/docs/operations/capacity).
+# Platform data directory (must exactly match API mount path)
+EVELAND_DATA_DIR=/var/lib/eveland
 
-## Build trust boundary
+# Database connections
+DATABASE_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland
 
-Building a Project executes that Project's dependency lifecycle scripts (`pnpm install`/`npm ci`/`npm install`, e.g. `postinstall`) inside the build sandbox as the unprivileged build user (`EVELAND_BUILD_USER`, default `eveland-build`), never as root. Imported Projects — and their full dependency trees — are trusted only up to that sandbox's boundary: nothing outside the release directory and the shared npm cache is writable, and the Eveland data dir (other Projects' builds, sources, and decrypted secret env files) is hidden entirely, regardless of which user is inside. The rest of the host filesystem stays read-only visible to the build, which retains network access. `EVELAND_BUILD_SANDBOX=none` disables this sandbox and is not recommended.
+# Internal service authentication (must match core services)
+APP_SECRET_KEY=your_app_encryption_key_32_bytes
+EVELAND_GATEWAY_SERVICE_TOKEN=your_gateway_service_token
+EVELAND_GATEWAY_INTERNAL_URL=http://127.0.0.1:17300
+EVELAND_SCHEDULER_RUNTIME_SECRET=your_scheduler_runtime_secret
+EVELAND_SCHEDULER_DISPATCH_SECRET=your_scheduler_dispatch_secret
+EVELAND_SCHEDULER_REDEEM_URL=http://127.0.0.1:17301/api/scheduler/redeem
+EVELAND_IDENTITY_ISSUER=https://console.example.com
+EVELAND_IDENTITY_JWKS_URL=http://127.0.0.1:17301/.well-known/jwks.json
 
-Worker secrets are hidden by a different mechanism: the Worker's own environment (`APP_SECRET_KEY`, `DATABASE_URL`, and the rest of its `process.env`) would otherwise be inherited by the build subprocess and readable through `/proc/self/environ`. Both build modes instead construct the subprocess environment from a fixed allowlist — `PATH` and `npm_config_cache` — so no Worker secret ever reaches a build. `HOME` is not on that allowlist because `runuser` resets it during the user switch; it is injected after the switch, pointed at the release directory. The allowlist also deliberately drops operator proxy configuration (`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`, `npm_config_registry`): a host that needs a proxy to reach the npm registry needs a mirror reachable without env-borne proxy config today.
-
-The Project's own Agent environment joins that allowlist, but only its `variable` entries — never a `secret`, from either the Project's environment or the Shared Agent Environment. `npx eve build` imports the Project's agent config to compile the Release manifest, so a config resolving a compile-time value from `process.env` would otherwise freeze its authored fallback into every turn the Release reports. A `variable` is operator-declared non-secret configuration and may cross into a boundary where untrusted lifecycle scripts can read it; a `secret` cannot, and reaches the deployed process only.
-
-Two groups of names stay platform-owned; an entry claiming either is dropped from the build with a `WARNING` in the build log — never silently:
-
-- **`PATH`, `HOME`, `NPM_CONFIG_CACHE`** — the build's own toolchain. `NPM_CONFIG_CACHE` because npm reads it case-insensitively alongside `npm_config_cache`, so an entry using it could redirect the shared cache. These still reach the deployed process normally.
-- **Every name the platform reserves at runtime** — `NODE_ENV`, `EVELAND_PROJECT_ID`, `EVELAND_IDENTITY_ISSUER`, `EVELAND_IDENTITY_JWKS_URL`, `EVELAND_MEMORY_ROOT`, `EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES`, `EVELAND_SANDBOX_MAX_OUTPUT_BYTES`, `EVELAND_SANDBOX_RUN_TIMEOUT_MS`, `EVELAND_SCHEDULER_REDEEM_URL`, `EVELAND_SCHEDULER_RUNTIME_SECRET`, `EVELAND_WORKFLOW_RUNNER`, `EVELAND_WORKFLOW_STREAM_COMPACTION`, `EVELAND_WORKFLOW_WORLD_URL`, `WORKFLOW_POSTGRES_URL`, `WORKFLOW_POSTGRES_MAX_POOL_SIZE` (kept in sync with `apps/worker/src/runtime/reserved-environment.ts`, locked by a test). The runtime applies these last, so a build that adopted the Project's value would compile against something the deployed process then overrides. `NODE_ENV` is dropped from every build regardless of the host's own value: `npm ci` and `pnpm install --frozen-lockfile` omit devDependencies under `NODE_ENV=production`, which would strip the Project's own build toolchain.
-
-Because a Release is immutable, changing a `variable` refreshes the compiled manifest only on the next deploy — an environment change alone restarts live Deployments onto their existing Release. On the Docker runtime these variables pass as `--build-arg` and appear in image build metadata; the `ARG` declarations sit after the dependency-install layer, so on Docker only pre-discovery, the Extension integrator, `npx eve build`, and the final discovery can read them. The systemd runtime exposes them to install and build in one shell.
-
-## Never switch the resolved runtime
-
-> **WARNING: never switch `EVELAND_RUNTIME` on a host with live Deployments.**
-
-Every Deployment records the `runtimeKind` of the adapter that created it, and stop, restart, and delete always resolve their adapter from that recorded value. A `runtimeKind` that is wrong for the process that actually exists means stopping resolves the wrong adapter: the old process is never stopped and keeps its port, a redeploy crash-loops or quietly leaves two versions running, and health checks can false-pass against the stale process.
-
-Treat the **resolved** runtime as fixed per host, chosen at provisioning time — and remember it can change two ways: flipping `EVELAND_RUNTIME`, or setting `NODE_ENV=production` on a host that leaves `EVELAND_RUNTIME` unset. Preflight catches an accidental flip loudly, but drain first regardless — stop and remove **every** Deployment before switching:
-
-```bash
-# systemd host being migrated away from:
-systemctl stop 'eveland-*'
-systemctl reset-failed 'eveland-*'
-
-# docker host being migrated away from:
-docker rm -f $(docker ps -aq --filter "name=eveland-")
+# Telemetry and release identity
+EVELAND_AGENT_BASE_DOMAINS=agents.example.com
+EVELAND_OTLP_SERVICE_TOKEN=your_otlp_service_token
+EVELAND_RELEASE_CHANNEL=stable
+EVELAND_REVISION=your_git_commit_sha
 ```
 
-Only start the Worker with the new runtime once the old runtime has zero `eveland-*` processes left.
+## 4. Build and execution isolation boundaries
 
-## Verify ownership boundaries
+### Sandboxed dependency builds
 
-- Worker runs as root and controls `systemd-run`, `systemctl`, and filesystem ownership.
-- Builds run as the unprivileged build user inside the configured build sandbox.
-- Eve processes run under per-Deployment systemd dynamic users with the application access group.
-- Worker has no public listener.
-- Project Secrets reach only a root-owned `0600` EnvironmentFile for the target process.
+- When running dependency installations (`npm ci`/`pnpm install`) and bundle compilation (`npx eve build`), Worker executes scripts inside an unprivileged **bubblewrap sandbox** under the `eveland-build` system user.
+- **Secret shielding**: Worker's own sensitive environment variables (`DATABASE_URL`, `APP_SECRET_KEY`) are stripped before invoking build processes, preventing leakage to build scripts.
+- **Variable filtering**: Only non-sensitive project configuration (`variable`) is exposed during build to generate manifests. Sensitive credentials (`secret`) are only injected into active deployment processes.
 
-Worker refuses to accept jobs while production preflight or the durable workflow configuration is incomplete. Check the service journal and the masked Worker configuration snapshot (`diagnostics/worker-configuration.json` under the data root, surfaced in **Settings → About**) before moving on.
+### Runtime process isolation
 
-Next, [install the workflow dispatcher](/docs/production/workflow-dispatcher).
+- **Ephemeral DynamicUser**: Each deployed agent executes under an isolated systemd `DynamicUser`, binding exclusively to a private loopback port (`127.0.0.1:18000–18999`).
+- **Protected secret files**: Runtime environment variables are materialized as root-owned, mode `0600` files read by systemd, keeping agent environments strictly separated.
+
+## 5. Verify Worker operation
+
+Inspect Worker journal logs to confirm preflight validation succeeds:
+
+```bash
+sudo journalctl -u eveland-worker -f
+```
+
+A healthy Worker outputs its configuration snapshot and starts polling for platform jobs.
+
+Next: [Install the workflow dispatcher](/docs/production/workflow-dispatcher).
 
 ## Deeper reference
 

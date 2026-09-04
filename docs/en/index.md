@@ -1,16 +1,18 @@
 ---
 title: Overview
-description: Self-hosted production infrastructure for agents on systems you control.
+description: Self-hosted production infrastructure for running fleets of agents on systems you control.
 ---
 
-A company will eventually operate more agents than people. Eveland is the infrastructure for that world.
+A company will eventually operate more agents than people. Eveland is the infrastructure built for that reality.
 
-Today, Eveland starts with self-hosted production infrastructure for [Eve](https://eve.dev) agents: giving your fleet a production home with immutable releases, concurrent previews, stable traffic routing, runtime isolation, durable schedules, and transparent session observability. The founding argument — why run agents on your own infrastructure at all — is in [Why Eveland](/docs/why).
+Today, Eveland provides self-hosted production infrastructure for agents built with [Eve](https://eve.dev): immutable releases, concurrent preview environments, weighted traffic routing, native runtime isolation, durable scheduling, and end-to-end session observability.
+
+For the core motivation behind self-hosting agent fleets, see [Why Eveland](/docs/why).
 
 ## What Eveland owns
 
 ```text
-Eve project
+Eve project source
   → Source revision
   → Immutable release
   → Preview deployment
@@ -18,19 +20,20 @@ Eve project
   → Sessions, usage, and schedules
 ```
 
-Eveland does not replace Eve's filesystem-first authoring model or the Agent's own application authentication. It manages what begins after the project is ready to run.
+Eveland preserves Eve's filesystem-first authoring model and never intervenes in agent-level application auth. Once your agent code is ready to run, Eveland manages its entire deployment and runtime lifecycle.
 
 ## Production by design
 
-The supported production topology separates the core services from privileged runtime control. The Dashboard, API, Agent Gateway, Postgres, and the managed OpenTelemetry Collector form the core services; a host Worker starts Eve deployments as isolated systemd services, and exactly one Workflow Dispatcher completes the production topology. Agent ports stay on private loopback, while the Agent Gateway owns the stable and preview hosts.
+In production Linux environments, Eveland runs an efficient host-native architecture:
 
-This boundary keeps the Docker controller, source tree, decrypted secrets, and telemetry policy data away from public Agent traffic. Per-deployment CPU and memory limits, idle stopping, and on-demand activation keep runtime capacity intentional.
+- **Core management services**: API, Agent Gateway, Web Dashboard, and a managed OpenTelemetry Collector handle ingestion, routing, and control.
+- **High-density runtime**: A host Worker orchestrates systemd transient services and bubblewrap sandboxes, delivering sub-second cold starts and automatic scale-to-zero when idle.
+- **Strict security boundaries**: Public agent traffic flows through the Agent Gateway without access to the host controller, source code, decrypted secrets, or backing databases.
 
 ## Choose your path
 
-- **Architects and evaluators:** start with [Why Eveland](/docs/why) for the founding argument, and explore [Design decisions](/docs/reference/design) for detailed trade-offs behind runtime density, bubblewrap sandboxing, scale-to-zero, and gateway design.
-- **Agent developers and team members:** if Eveland is already installed, follow [Deploy your first agent](/docs/agents/first-deployment), then explore [Secrets and Connections](/docs/agents/secrets-connections), [Releases and traffic routing](/docs/agents/releases-routing), [Sessions and usage tracking](/docs/observe/sessions), and [Schedules and automation](/docs/observe/schedules).
-- **Platform administrators:** start with [Production architecture](/docs/production), prepare a Linux host, install the core services, host Worker, and Workflow Dispatcher, then verify the complete path.
-- **Operators and SREs:** use [Runtime and resources](/docs/operations/runtime), [Health and diagnostics](/docs/operations/diagnostics), and [Troubleshooting](/docs/reference/troubleshooting) for day-two operations; [Capacity planning](/docs/operations/capacity), [Upgrades](/docs/operations/upgrades), [Backup and restore](/docs/operations/backup-restore), and the [Environment variable reference](/docs/reference/environment-variables) cover deeper production scenarios.
+- **Architects & evaluators**: Read [Why Eveland](/docs/why) for the founding thesis, then dive into [Design decisions](/docs/reference/design) to explore technical trade-offs around runtime density, sandboxing, and scale-to-zero.
+- **Agent developers**: If your platform is ready, follow [Deploy your first agent](/docs/agents/first-deployment), then explore [Secrets and Connections](/docs/agents/secrets-connections) and [Releases and traffic routing](/docs/agents/releases-routing).
+- **Platform operators & SREs**: Start with [Production architecture](/docs/production), prepare your host with [Host prerequisites](/docs/production/prerequisites), and refer to [Runtime operations](/docs/operations/runtime), [Diagnostics](/docs/operations/diagnostics), and [Troubleshooting](/docs/reference/troubleshooting) for day-two maintenance.
 
-Local Docker development and repository contribution workflows remain in the repository README. They are not the production deployment path.
+_Note: For local Docker development and repository contribution workflows, see the repository README._

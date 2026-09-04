@@ -1,91 +1,45 @@
 ---
 title: Why systemd, not Docker
-description: Production runs Agents as hardened systemd units because the machine's resources should serve Agents, not infrastructure.
+description: Architectural rationale for running agents as hardened systemd transient units in production to maximize runtime density.
 ---
 
-## The decision
+## The Decision
 
-Production Eveland runs every Deployment as a hardened systemd transient unit
-on the Linux host, controlled by a root Worker. Docker is the development
-runtime (and a legacy opt-in profile), not a production choice.
+In Linux production environments, Eveland runs each agent deployment directly on the host as a hardened systemd transient service, managed by a single privileged host Worker. Docker remains exclusively for local development and non-Linux environments.
 
-## The reason: density
+---
 
-The goal is to squeeze the machine for the Agents. In a real installation the
-number of Agents easily exceeds the number of people using them, so the
-economics are set by how many Agents one box can host — and every byte and
-cycle the infrastructure consumes is capacity an Agent doesn't get.
+## Core Rationale: Runtime Density
 
-Docker charges for itself twice: the daemon is a permanent resident, and
-every Deployment carries an image whose layers occupy disk even when nothing
-is running. A systemd transient unit costs nothing when it isn't running, and
-a Release is just a directory of files — no image build, no layer store, no
-per-Deployment baseline. Combined with [scale-to-zero](/docs/reference/design/scale-to-zero)
-and the [bubblewrap sandbox](/docs/reference/design/sandbox), the marginal
-cost of one more _dormant_ Agent approaches zero, so the same machine runs
-strictly more Agents on systemd than it would on containers.
+The platform is engineered to maximize the computational capacity available for actual business agents. In mature production deployments, the number of agents quickly surpasses the number of human team members. Infrastructure overhead directly limits fleet capacity: every byte of RAM and CPU cycle consumed by platform plumbing is capacity unavailable for running agents.
 
-Secondary reasons recorded at decision time:
+Traditional containerization introduces substantial overhead:
 
-- **Privilege lives in exactly one place.** The Worker is root on purpose —
-  it drives `systemd-run`, `systemctl`, and ownership handoffs — while every
-  deployed Agent runs unprivileged under its own `DynamicUser`. No component
-  except the Worker holds host privileges; the API and Agent Gateway cannot
-  start processes at all.
-- **Host processes need no network plumbing.** A containerized Agent that
-  calls a host-local model server (Ollama) needs an injected loopback bridge;
-  a host process just binds loopback. The systemd adapter deleted a layer the
-  Docker adapter had to punch through.
+- **Persistent daemon footprint**: Docker daemons and container engines consume constant baseline memory.
+- **Image layer sprawl**: Every deployment requires separate image layers on disk, locking up storage even when completely idle.
+- **Cold start latency**: Initializing container runtimes and virtual bridge networking adds significant delay compared to host processes.
 
-## What Docker remains for
+By contrast, systemd transient units consume **zero memory and CPU when dormant**. A Release is merely an immutable directory artifact on disk — without container build overhead or layer storage taxes. Paired with [scale-to-zero](/docs/reference/design/scale-to-zero) and [lightweight bubblewrap sandboxing](/docs/reference/design/sandbox), the marginal cost of hosting a dormant agent approaches zero. A machine can host vastly more agents using systemd than with nested containers.
 
-Local development — `docker-compose.yml` pins `EVELAND_RUNTIME: docker` so
-macOS development works unchanged — and the macOS appliance, where
-`eveland-ctl` runs the stack on Docker Desktop and systemd does not exist.
-Linux production supports the systemd runtime only; there is no Docker Agent
-runtime to opt into there. Linux native development keeps the Collector
-bridged because the Docker runtime attaches it to each Agent's private telemetry
-network. The host API therefore adds a second listener on Docker's private bridge
-address, restricted to health, Collector Observation, Agent JWKS, and Scheduler
-Channel paths; its control plane remains loopback-only. Core platform services
-(Postgres, the OTel Collector) stay containerized in production; it is the
-_Agent_ runtime that moved to the host.
+---
 
-## Mixed runtimes: visible, not supported
+## Security and Operational Trade-offs
 
-Every Deployment records the `runtimeKind` that created it, and lifecycle
-operations resolve their adapter from that recorded value — never from the
-Worker's current configuration. The recorded reason is deliberately narrow:
-the column's job is "to make mixed state visible and stoppable, not to make
-mixed hosts a supported topology." Stopping a Deployment whose runtime isn't
-available on this host fails loudly as a logged job failure, never silently.
+1. **Privilege confinement**: Only the host Worker executes as root, driving `systemd-run`, `systemctl`, and ownership transitions. Every deployed agent process executes under an isolated, unprivileged systemd `DynamicUser`. The API and Agent Gateway have zero host execution privileges.
+2. **Seamless access to local models**: Many enterprise agents communicate with local LLMs (e.g. Ollama). Containerized agents require complex bridge networking to access host loopback services, whereas host-native processes bind and connect directly over loopback.
+3. **Deprivileged build sandbox**: Third-party lifecycle scripts (`npm ci`, `npx eve build`) represent supply-chain risks. Build execution runs strictly under a dedicated unprivileged user within a bubblewrap sandbox, shielding the host.
 
-## Build de-privileging
+---
 
-The build step (`npm ci`, `npx eve build`) executes arbitrary third-party
-lifecycle scripts. The adversary in the threat model is the dependency tree,
-not the project author, so builds run as a dedicated unprivileged build user
-inside the same bubblewrap mask; root only choreographs ownership handoffs
-between the build user and the app user. Skipping the sandbox
-(`EVELAND_BUILD_SANDBOX=none`) exists but is explicitly not recommended.
+## Accepted Engineering Trade-offs
 
-## Accepted trade-offs
-
-- Linux-only production, and the Worker runs as root.
-- Resource limits are coarse: one global memory/CPU cap applies to all
-  Deployments rather than per-tenant budgets.
-- Secrets reach Agents as root-owned `0600` environment files rather than
-  systemd `LoadCredential`, because Eve apps read `process.env` — env-file
-  injection is drop-in parity with `docker --env` and requires no app-side
-  changes.
-- The shared data root `/var/lib/eveland` becomes a hard cross-service
-  contract: every platform process reads it at that one absolute path, so a
-  stored source path resolves the same for the API that wrote it and the
-  Worker that later builds from it.
+- **Linux production requirement**: Production deployments depend on modern Linux distributions featuring systemd (Ubuntu 24.04 LTS recommended).
+- **Cgroup resource boundaries**: Resources are governed at the process group level (CPU quotas, memory caps) rather than hypervisor isolation.
+- **Root-owned secret environment files**: Secrets are delivered via mode `0600` environment files read directly by systemd, avoiding command-line (argv) exposure.
 
 ## Deeper reference
 
-- [Production architecture](/docs/production): core services and host Worker topology overview
-- [Install the host Worker](/docs/production/worker): systemd service setup and environment configuration
-- [Why a bubblewrap sandbox](/docs/reference/design/sandbox): build and runtime sandbox isolation decisions
-- [Scale to zero](/docs/reference/design/scale-to-zero): zero-cost dormant agents and cold activation mechanics
+- [Production architecture overview](/docs/production): core services and Worker topology
+- [Install the host Worker](/docs/production/worker): systemd service installation and configuration
+- [Why a bubblewrap sandbox](/docs/reference/design/sandbox): sandbox isolation and self-check decisions
+- [Scale-to-zero design decisions](/docs/reference/design/scale-to-zero): idle process teardown and cold activation

@@ -1,68 +1,56 @@
 ---
-title: 缩容到零
-description: Deployment 是持久地址，进程是可丢弃的。其余一切都从这个拆分推导出来。
+title: 缩容到零设计决策
+description: 核心设计拆分：Deployment 是持久地址，运行进程是可丢弃的。
 ---
 
-## 决策
+## 核心设计决策
 
-Deployment 是持久、可寻址、不可变的目标。它背后的操作系统进程是可丢弃
-的：最后一份活跃工作结束五分钟后空闲即停；任何需要它运行的东西——公开
-请求、活跃 stream、执行中的 turn、schedule dispatch、workflow step——都
-必须持有一个有时限的 activation lease。持久停靠的 Session **不会**让
-进程保持存活。
+在 Eveland 中，**Deployment 是持久、不可变且可寻址的实体，而其底层的操作系统进程则是完全可丢弃的**。
 
-这是[密度论证](/zh/docs/reference/design/runtime)的后半部分：systemd 让
-休眠 Agent 几乎零成本，缩容到零让休眠成为默认状态。
+当所有活跃任务处理完毕后，经过配置的空闲等待时间（默认 5 分钟），Worker 会安全停止底层进程。任何需要访问 Agent 的操作（公网请求、流式传输、对话执行、定时任务或工作流步骤）必须持有一个有时限的激活租约（ActivationLease）。
 
-## 冷激活：特权拆分
+这是[高密度运行时](/zh/docs/reference/design/runtime)架构的基石：systemd 使得休眠 Agent 几乎零成本，而缩容至零则让休眠成为了日常稳态。
 
-发现休眠的组件永远不获得宿主机特权：
+---
 
-1. Agent Gateway 发现被选中的 Deployment 处于休眠。
-2. 它调用一个 service-authenticated 的内部激活端点。
-3. API 入队（并合并）激活任务——它不持有 Docker 或 systemd 特权。
-4. Worker——唯一有特权的组件——启动预构建的 Release 并发布就绪。冷启动
-   绝不重装依赖、不重新构建源码。
-5. Gateway 在有界的冷启动预算内等待，然后代理请求，原始的认证、header、
-   body 流、abort 信号和 NDJSON 响应流原样保留。
+## 冷激活与特权拆分链路
 
-Session 固定跨越休眠：continuation 唤醒 SessionBinding 早已选定的那个
-Deployment，绝不重跑路由加权。
+当请求到达且发现目标 Agent 处于休眠状态时，整个冷启动链路遵循严格的特权隔离原则：
 
-## 平台为什么拥有 cron 时钟
+```text
+1. 外部请求到达 Agent Gateway，发现对应 Deployment 处于休眠 (stopped)
+2. Gateway 调用内部受服务凭证保护的激活 API（Gateway 自身无系统特权）
+3. 控制面 API 创建并合并激活任务（API 同样无宿主机进程管理特权）
+4. 宿主机 Worker 认领任务，拉起已打包好的精确不可变 Release，验证端口就绪
+5. Gateway 在配置的冷启动超时预算（默认 30 秒）内等待就绪，随后透明转发请求
+```
 
-Eve 的 schedule 计时器跑在进程内，这与设计的两半都冲突：休眠的进程没有
-时钟；而 preview 和 A/B Deployment 并发存活时，_每个活着的进程都有自己
-的一份时钟_——preview 会独立执行生产业务的 schedule。
+冷启动直接运行磁盘上已准备好的 Release 产物，**绝不重新安装 npm 依赖或重新编译代码**，通常可在毫秒级至数秒内完成。
 
-所以准备好的 Release 保留 schedule 注册以兼容 Eve，但把原生 handler
-替换为 no-op；只有 Eveland 的认证 dispatch 路径会调用保留的原始定义。
-Eveland 拥有时钟和 Postgres 里的 ScheduleRun 账本；注入的 Scheduler
-Channel 是临时唤醒进程内的执行 RPC，不是守护进程。cron 精确指向一个
-Deployment——绝不经过加权的 Gateway 路由——preview 和候选版本不会仅仅
-因为活着就执行业务 cron。Worker 重启后从 Postgres 重新发现到期工作，
-内存计时器只是唤醒提示。漏掉的 tick 合并为至多一次补跑并记录漏掉的
-数量，绝不无界回放。
+---
 
-## 接受的代价
+## 平台接管 Cron 时钟的理由
 
-- **冷启动延迟真实存在且有界。** Gateway 最多等待配置的预算（默认
-  30 秒），请求要么继续要么可见地失败；等待期间入站 body 保持背压而
-  不是被缓冲。
-- **At-least-once，不是 exactly-once。** Eveland 保证每个到期 tick 一条
-  持久 ScheduleRun 和幂等的 dispatch 认领；作者编写的副作用仍需自己的
-  幂等性。结果不可知的 dispatch 进入终态 `dispatch_unknown`，由运维带
-  审计地重试——绝不自动回放。
-- **dispatch 不等于执行完成。** 返回 Session ID 的 schedule dispatch 要
-  持有 lease 直到每个返回的 Session 报告根 turn 边界；五分钟空闲 TTL 是
-  激活超时，不是执行超时。
-- **就绪必须证明端口属主。** 一个后来才发现的坑，现已是不变量：就绪
-  检查验证监听 socket 属于 Worker 启动的那个进程，Gateway 才不会把流量
-  代理给抢占了端口的陌生进程。
+Eve 框架原本的定时调度计时器运行在进程内部。这一机制在企业多部署场景中存在明显缺陷：
 
-## 深入参考
+1. **休眠进程无时钟**：当进程缩容至零停止后，内置时钟无法自行触发；
+2. **多版本重复触发**：当预览环境（Preview）或灰度部署并发存活时，每个进程都会独立触发一次线上定时任务，导致严重的业务数据重复。
 
-- [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：运行时密度与休眠边际成本
+因此，Eveland 在发布阶段自动中和了代码自带的本地 Cron，将调度权统一收敛至平台层：
+
+- 平台以 PostgreSQL 中的调度记录为真源，准点触发唯一的生产目标；
+- 即便目标 Agent 处于休眠状态，平台也会在到期前数秒通过预热机制（Prewarming）自动唤醒实例，确保准点执行。
+
+---
+
+## 接受的工程代价
+
+- **冷启动延迟**：首次唤醒存在有界的延迟（网关默认等待上限 30 秒）。在等待期间，客户端入站请求保持背压流控，而非无限堆积内存。
+- **At-least-once 交付保证**：平台确保每个定时周期生成一条确定性的 ScheduleRun 并幂等认领；若遇到因网络中断导致结局未知的任务，需人工核对后再决定是否补发，避免盲目重试产生副作用。
+- **严格套接字归属核查**：在标记实例就绪前，平台必须严格校验本地监听端口确实属于该次启动的进程，防止流量误转发至占用该端口的外来进程。
+
+## 相关参考
+
+- [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：运行时密度与休眠边际成本论证
 - [路由与 Deployment 生命周期契约](/zh/docs/reference/routing)：ActivationLease、端口预留与冷启动
-- [Schedules 与自动化任务](/zh/docs/observe/schedules)：面向开发者的定时调度与唤醒概览
-- [Schedule 执行行为契约](/zh/docs/reference/scheduling)：Planner、Prewarm 与状态机规范
+- [定时任务与自动化](/zh/docs/observe/schedules)：面向开发者的定时调度与唤醒概览
