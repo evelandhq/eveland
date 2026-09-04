@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import path from "node:path";
 import { execa } from "execa";
 import { readFileSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import {
   buildBwrapArgs,
   buildDynamicUserAccessRepairScript,
@@ -24,6 +24,7 @@ import { DEPLOYMENT_STOP_TIMEOUT_SECONDS } from "./shutdown-budget.js";
 import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discovery-artifacts.js";
 
 vi.mock("node:fs/promises", () => ({
+  access: vi.fn().mockResolvedValue(undefined),
   mkdir: vi.fn().mockResolvedValue(undefined),
   readdir: vi.fn().mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" })),
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -1419,6 +1420,61 @@ describe("createSystemdAdapter verifyPortOwnership", () => {
     await expect(adapter.verifyPortOwnership!(ownershipInput)).rejects.toThrow(
       /ss.*command not found/,
     );
+  });
+});
+
+describe("createSystemdAdapter startProcess release-directory preflight", () => {
+  // A Release records the absolute path it was built at, and activation
+  // replays it. When that path is gone, systemd fails inside namespace setup
+  // ("Failed to load environment files", result 'resources') without naming
+  // the Release or the missing path, and the operator meets it as an HTTP 503
+  // on a turn. The preflight has to speak before systemd-run does.
+  test("refuses a Release built under a different data root, naming the remedy", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(access).mockRejectedValueOnce(
+      Object.assign(new Error("missing"), { code: "ENOENT" }),
+    );
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(
+      adapter.startProcess({
+        processName: "eveland-proj_123-dep_456",
+        // The pre-appliance production default, still recorded in Releases
+        // built before the data root moved.
+        releaseRef: "/var/lib/eveland/builds/proj_123/rel_456",
+        port: 41000,
+        env: {},
+        commandContext: { hasLockfile: true },
+        sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
+        observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
+      }),
+    ).rejects.toThrow(/built under a different data root.*Rebuild the project/s);
+
+    // Nothing was launched, and no plaintext env file was written on the way.
+    expect(vi.mocked(execa).mock.calls).toEqual([]);
+    vi.mocked(access).mockResolvedValue(undefined);
+  });
+
+  test("reports a wiped build root differently from a moved one", async () => {
+    vi.mocked(access).mockRejectedValueOnce(
+      Object.assign(new Error("missing"), { code: "ENOENT" }),
+    );
+    const adapter = createSystemdAdapter(baseAdapterConfig);
+
+    await expect(
+      adapter.startProcess({
+        processName: "eveland-proj_123-dep_456",
+        releaseRef: "/var/lib/eveland-data/builds/proj_123/rel_456",
+        port: 41000,
+        env: {},
+        commandContext: { hasLockfile: true },
+        sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
+        memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
+        observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
+      }),
+    ).rejects.toThrow(/lies under this host's data root/);
+    vi.mocked(access).mockResolvedValue(undefined);
   });
 });
 
