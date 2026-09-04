@@ -463,7 +463,8 @@ describe("api app", () => {
       Response.json(
         {
           error: "Unsupported Eve version",
-          detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.49.x or 0.50.x.',
+          detail:
+            'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.49.x, 0.50.x, or 0.51.x.',
         },
         { status: 409 },
       ),
@@ -475,8 +476,8 @@ describe("api app", () => {
     await expect(version.json()).resolves.toEqual({
       eveVersion: {
         version: "0.22.6",
-        expected: "0.49.x or 0.50.x",
-        supportedRanges: ["0.49.x", "0.50.x"],
+        expected: "0.49.x, 0.50.x, or 0.51.x",
+        supportedRanges: ["0.49.x", "0.50.x", "0.51.x"],
         supported: false,
         sourceRevisionId: revision.id,
       },

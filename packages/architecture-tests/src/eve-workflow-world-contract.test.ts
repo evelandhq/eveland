@@ -20,7 +20,7 @@ import { readSource, repoRoot } from "./scan-support.js";
  * deploy time on a real project instead of in CI. The world is resolved from
  * `apps/worker` — the workspace that actually installs the versions the worker
  * injects — and the eve lines from `packages/agent-observer`, which installs
- * both supported lines for its own compatibility tests.
+ * every supported line for its own compatibility tests.
  */
 const require = createRequire(import.meta.url);
 
@@ -34,10 +34,11 @@ const RESOLUTION_ANCHORS: Record<string, string> = {
   "@workflow/world-postgres": "apps/worker",
   eve: "packages/agent-observer",
   "eve-oldest": "packages/agent-observer",
+  "eve-previous": "packages/agent-observer",
 };
 
 /** The supported eve lines, newest first; alias names are pnpm catalog entries. */
-const EVE_LINES = ["eve", "eve-oldest"] as const;
+const EVE_LINES = ["eve", "eve-previous", "eve-oldest"] as const;
 
 function resolveInstalled(specifier: string): string {
   const packageName = specifier.startsWith("@")

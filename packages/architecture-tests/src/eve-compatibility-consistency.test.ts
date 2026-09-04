@@ -96,7 +96,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.50.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.51.1");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -124,12 +124,35 @@ describe("Eve compatibility repository contract", () => {
       // until the interactive-class deadline reaps it like the session-timeout
       // run; a late answer then gets the hook route's own 404.
       "TOOL_RUN_WORKFLOW_NAME",
+      // 0.51.0 renamed TOOL_RUN_WORKFLOW_NAME to this. Re-audited 2026-09-04:
+      // same run, same lineage -- `execution/tools/workflow/start.js` still
+      // starts it with `startWorkflowOnCurrentDeployment` from inside the turn
+      // step, so the Workflow SDK stamps `$parentRunId` and it inherits its
+      // ancestor's stored class, and it still settles by resuming the owner
+      // turn's outcome hook with the same 30s abort grace. Only the hook token
+      // moved, `eve:tool-run:` -> `eve:workflow-tool-run:<operationId>`. Both
+      // constants stay covered until 0.49.x and 0.50.x leave the window.
+      "WORKFLOW_TOOL_RUN_WORKFLOW_NAME",
+      // 0.51.0: the shared execute body behind every subagent tool (local,
+      // remote, dynamic, and self-agent). Audited 2026-09-04: it opens NO run
+      // of its own. `runtime/tools/registry.js` now prepares the framework
+      // agent tool as a workflow tool, so a subagent call starts a
+      // WORKFLOW_TOOL_RUN_WORKFLOW_NAME run and `executeWorkflowBody` resolves
+      // this name out of the workflow registry and calls it inline inside that
+      // run -- no `start()`, no lineage of its own, nothing to retain beyond
+      // the tool run already audited above. It needs an unstamped id only so a
+      // version-stamped deployment can still resolve the body. The retention
+      // consequence worth knowing is upstream of this name: from 0.51 every
+      // subagent invocation costs one durable tool run, where 0.50 dispatched
+      // subagents without one.
+      "SUBAGENT_TOOL_EXECUTE_WORKFLOW_NAME",
     ];
 
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // Both 0.49.x and 0.50.x run all six.
+    // 0.49.x and 0.50.x run six; 0.51.x runs six plus the subagent body, with
+    // the tool run under its new name.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
       for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
@@ -167,9 +190,9 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.49/0.50 compatibility window", () => {
+  test("describes the supported 0.49/0.50/0.51 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
-    const stableDependencyNames = ["eve-oldest", "eve"];
+    const stableDependencyNames = ["eve-oldest", "eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
       const rangeMatch = /^0\.(\d+)\.x$/.exec(line.range);
       const verifiedMatch = /^0\.(\d+)\.(\d+)$/.exec(line.verifiedVersion);
@@ -183,7 +206,7 @@ describe("Eve compatibility repository contract", () => {
       return minor;
     });
 
-    expect(supportedLines).toHaveLength(2);
+    expect(supportedLines).toHaveLength(3);
     // Lines are strictly ascending but need not be contiguous: a minor that
     // was superseded before it could host a real deployment may be skipped
     // (0.40/0.41 were replaced by 0.42 within 48 hours of release, 0.43 by

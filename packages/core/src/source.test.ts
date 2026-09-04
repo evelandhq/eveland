@@ -116,11 +116,11 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(false);
     expect(result.eveVersion).toBe("0.22.6");
     expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.49.x or 0.50.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.49.x, 0.50.x, or 0.51.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
     );
   });
 
-  test("accepts dependency declarations contained inside the 0.49/0.50 compatibility window", () => {
+  test("accepts dependency declarations contained inside the 0.49/0.50/0.51 compatibility window", () => {
     for (const version of [
       "0.49.0",
       "~0.49.0",
@@ -134,13 +134,19 @@ describe("inspectEveProject", () => {
       "0.50",
       "0.50.x",
       "0.50.*",
+      "0.51.1",
+      "~0.51.1",
+      "^0.51.1",
+      "0.51",
+      "0.51.x",
+      "0.51.*",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }
     // The window is a set of verified lines, not "everything at or above the
     // floor": 0.48.x is below the floor now (it was skipped when 0.49.0
     // superseded it, before any deployment ran on it), 0.45.x/0.46.x/0.47.x
-    // are further below, and 0.51.x is not admitted before it has passed the
+    // are further below, and 0.52.x is not admitted before it has passed the
     // matrix.
     for (const version of [
       "0.30.8",
@@ -164,7 +170,7 @@ describe("inspectEveProject", () => {
       "^0.42.0",
       "0.42.x",
       ">=0.49.0",
-      ">=0.49.0 <0.51.0",
+      ">=0.49.0 <0.52.0",
       "0.43.0",
       "~0.43.0",
       "0.43.x",
@@ -183,7 +189,7 @@ describe("inspectEveProject", () => {
       "0.47.7",
       "^0.47.7",
       "0.47.x",
-      "0.51.0",
+      "0.52.0",
       "*",
       "latest",
     ]) {
@@ -207,8 +213,8 @@ describe("inspectEveProject", () => {
   test("reports the sliding compatibility window as structured ranges", () => {
     expect(createEveVersionInfo("0.49.0", "src_1")).toEqual({
       version: "0.49.0",
-      expected: "0.49.x or 0.50.x",
-      supportedRanges: ["0.49.x", "0.50.x"],
+      expected: "0.49.x, 0.50.x, or 0.51.x",
+      supportedRanges: ["0.49.x", "0.50.x", "0.51.x"],
       supported: true,
       sourceRevisionId: "src_1",
     });
