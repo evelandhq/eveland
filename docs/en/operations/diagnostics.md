@@ -30,6 +30,7 @@ When diagnosing anomalies, identify the appropriate diagnostic stream:
 | **Agent runtime error / Crash**         | Host systemd journal                | Inspect uncaught exceptions and cgroup resource limits.                               |
 | **Model failure / Missing tokens**      | Dashboard Sessions timeline         | Verify model provider keys, OTel Collector health, and network connectivity.          |
 | **Gateway 502 / Host resolution**       | Agent Gateway reverse proxy logs    | Verify wildcard DNS records, TLS certificates, and target deployment health.          |
+| **Workflow run never finishes**         | `eveland-ctl dead-letters`          | Fix the Deployment the letters name, then `--resolve` to replay the runs it holds.    |
 
 ---
 
