@@ -19,17 +19,19 @@ For release-specific compatibility notes and changelogs, consult [GitHub Release
 
 ## 2. Standard upgrade workflow
 
-### Option A: Managed installations with `eveland-ctl` (Recommended)
+### If you used the installer (the normal case)
 
-If your installation is managed via `eveland-ctl`, run a single command to pull the latest tag, apply migrations, and perform a rolling restart:
+One command backs up the databases, moves to the newest release, applies migrations, and restarts the platform:
 
 ```bash
 eveland-ctl update
 ```
 
-### Option B: Manual installations
+Pin a specific release with `--version vX.Y.Z`. Re-running `curl -fsSL https://eveland.ai/install.sh | sudo bash` on an installed machine does the same thing — it forwards to `eveland-ctl update`.
 
-For installations managed via manual git checkouts and systemd units:
+### If you installed by hand
+
+For git checkouts and systemd units you manage yourself. (To stop doing this, see [migrating a hand-installed platform onto the installer](/docs/production/install#coming-from-an-older-hand-installed-platform).)
 
 ```bash
 # 1. Checkout the target release tag

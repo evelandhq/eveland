@@ -106,11 +106,20 @@ sync — edit both languages together.
 
 ## Production installation
 
-The production topology (Docker Compose core services, host systemd worker and
-workflow dispatcher, Traefik wildcard routing) is documented at
-[eveland.ai/docs/production](https://eveland.ai/docs/production), sourced from
-[`docs/en/production/`](docs/en/production/) — the in-repo Markdown is readable
-standalone if the site is unavailable.
+On a Linux server, one command installs the platform:
+
+```bash
+curl -fsSL https://eveland.ai/install.sh | sudo bash
+```
+
+The installer prepares the host and hands off to `eveland-ctl`, which generates
+the configuration, applies migrations, and registers the systemd units for all
+five services (Docker is left holding only the OTLP Collector and, optionally,
+the bundled Postgres). The walkthrough is
+[eveland.ai/docs/production/install](https://eveland.ai/docs/production/install);
+the manual, step-by-step path is kept alongside it for hosts that need it. Both
+are sourced from [`docs/en/production/`](docs/en/production/) — the in-repo
+Markdown is readable standalone if the site is unavailable.
 
 ## Getting help
 

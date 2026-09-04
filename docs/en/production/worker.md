@@ -3,6 +3,8 @@ title: Install the host Worker
 description: Install the privileged Worker as a host systemd service to manage sandboxed builds and agent process lifecycles.
 ---
 
+> **Manual installation.** [The installer](/docs/production/install) does everything on this page for you. Follow these steps only if you have to install by hand.
+
 The Worker is Eveland's sole host-native Runtime Controller. To maintain strict security isolation, it operates exclusively on the host with no public network listeners.
 
 ## 1. Prepare codebase

@@ -3,6 +3,8 @@ title: Install the core services
 description: Install a stable Eveland release and run the core control plane services as host systemd units.
 ---
 
+> **Manual installation.** [The installer](/docs/production/install) does everything on this page for you. Follow these steps only if you have to install by hand.
+
 Production deployments should always run a verified stable release tag (e.g. `vX.Y.Z`). Never deploy unverified `main` branch checkouts in production.
 
 On a Linux host, ancillary containers (the managed OTel Collector and optional Postgres) run via Docker, while all core Eveland services run as native systemd units.

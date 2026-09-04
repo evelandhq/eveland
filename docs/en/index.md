@@ -34,6 +34,6 @@ In production Linux environments, Eveland runs an efficient host-native architec
 
 - **Architects & evaluators**: Read [Why Eveland](/docs/why) for the founding thesis, then dive into [Design decisions](/docs/reference/design) to explore technical trade-offs around runtime density, sandboxing, and scale-to-zero.
 - **Agent developers**: If your platform is ready, follow [Deploy your first agent](/docs/agents/first-deployment), then explore [Secrets and Connections](/docs/agents/secrets-connections) and [Releases and traffic routing](/docs/agents/releases-routing).
-- **Platform operators & SREs**: Start with [Production architecture](/docs/production), prepare your host with [Host prerequisites](/docs/production/prerequisites), and refer to [Runtime operations](/docs/operations/runtime), [Diagnostics](/docs/operations/diagnostics), and [Troubleshooting](/docs/reference/troubleshooting) for day-two maintenance.
+- **Platform operators & SREs**: [Install Eveland](/docs/production/install) with one command, skim [Production architecture](/docs/production) for what you just installed, and keep [Runtime operations](/docs/operations/runtime), [Diagnostics](/docs/operations/diagnostics), and [Troubleshooting](/docs/reference/troubleshooting) handy for day two.
 
 _Note: For local Docker development and repository contribution workflows, see the repository README._

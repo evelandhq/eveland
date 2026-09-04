@@ -18,7 +18,7 @@ const copy = {
       body: "High-density, strictly isolated, end-to-end observable: immutable releases, stable routing, and dedicated systemd runtimes — open source and self-hosted on systems you control.",
       primary: "Deploy Eveland",
       secondary: "Production architecture",
-      installCaption: "Full production checklist",
+      installCaption: "What the installer does",
     },
     manifesto: {
       statement: "A company will eventually operate more agents than people.",
@@ -127,7 +127,7 @@ const copy = {
       body: "高密度、强隔离、全链路可观测：为每个 Agent 提供专属沙箱、不可变发布与平滑路由——完全开源，与你的数据同在。",
       primary: "部署 Eveland",
       secondary: "查看生产架构",
-      installCaption: "完整生产部署清单",
+      installCaption: "安装脚本做了什么",
     },
     manifesto: {
       statement: "企业运营的 Agent 数量终将超过员工人数。",
