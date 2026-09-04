@@ -1,4 +1,6 @@
-import { OTEL_PLATFORM_HOST_HTTP_PORT } from "@evelandhq/core/ports";
+import { API_INTERNAL_URL_FALLBACK, OTEL_PLATFORM_HOST_HTTP_PORT } from "@evelandhq/core/ports";
+import type { WorkflowDispatcherRegistration } from "@evelandhq/core/contracts";
+import { assessDispatcherReadiness } from "@evelandhq/core/workflow-dispatch";
 import { availableUpdate, type UpdateCheck } from "@evelandhq/core/update-check";
 import { loadPlatformEnvFile } from "./env-file.ts";
 import {
@@ -99,6 +101,58 @@ async function reportRelease(
   return { identity, version, check };
 }
 
+/**
+ * The workflow dispatcher is the one platform process whose unit being
+ * `active` proves nothing an operator cares about: it serves no port, so it
+ * has no readiness URL, and the thing that gates every deploy is not the
+ * process but the registration it writes through the Control API. A dispatcher
+ * that shut down, never took ownership, or claims from the wrong World
+ * database leaves the unit green and every deploy failing with
+ * `workflow_unavailable`, several screens away from here.
+ *
+ * So `status` asks the same question the platform asks, through the same
+ * `assessDispatcherReadiness` the deploy gate uses -- the ctl and the platform
+ * cannot disagree about what "the dispatcher is up" means.
+ *
+ * `ok: null` is "could not tell" (no service token, API unreachable) and does
+ * NOT fail the status: the API's own line already reports an unreachable API,
+ * and an unanswerable question must not masquerade as a fault.
+ */
+async function dispatcherClaimState(
+  fetchImpl: FetchLike,
+  values: Record<string, string> | undefined,
+): Promise<{ ok: boolean | null; label: string }> {
+  const token = values?.EVELAND_GATEWAY_SERVICE_TOKEN?.trim();
+  if (!token) return { ok: null, label: "claim state unknown (no service token configured)" };
+  const apiUrl = (values?.EVELAND_API_INTERNAL_URL?.trim() || API_INTERNAL_URL_FALLBACK).replace(
+    /\/+$/u,
+    "",
+  );
+  let registration: WorkflowDispatcherRegistration | null;
+  try {
+    const response = await fetchImpl(`${apiUrl}/internal/workflow/dispatcher/registration`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(2_000),
+    });
+    if (!response.ok) {
+      return { ok: null, label: `claim state unknown (API answered ${response.status})` };
+    }
+    ({ registration } = (await response.json()) as {
+      registration: WorkflowDispatcherRegistration | null;
+    });
+  } catch {
+    return { ok: null, label: "claim state unknown (API unreachable)" };
+  }
+  const readiness = assessDispatcherReadiness(registration);
+  if (readiness.ready) return { ok: true, label: "claiming" };
+  // The reason is written for logs, where the machine-readable prefix earns
+  // its place; here the line already says what happened.
+  return {
+    ok: false,
+    label: `NOT CLAIMING: ${readiness.reason.replace(/^workflow_unavailable: /u, "")}`,
+  };
+}
+
 export async function runStatus(
   _args: string[],
   io: LifecycleIo & { tcpProbe?: TcpProbe },
@@ -115,6 +169,7 @@ export async function runStatus(
   const release = await reportRelease(io, resolved, envFile);
   io.stdout("");
 
+  const values = envFile?.values;
   let healthy = true;
   if (await systemdSupervised(resolved)) {
     io.stdout("Supervision: systemd production form (every platform process is a unit)");
@@ -129,10 +184,16 @@ export async function runStatus(
       // Both sides, always: a unit can be active and unhealthy (bad config),
       // which is exactly the state a status command exists to surface.
       const ready = spec.readinessUrl ? await probe(resolved.fetchImpl, spec.readinessUrl) : null;
-      const ok = unitState === "active" && ready !== false;
+      const claim = spec.reportsWorkflowClaim
+        ? await dispatcherClaimState(resolved.fetchImpl, values)
+        : null;
+      const ok = unitState === "active" && ready !== false && claim?.ok !== false;
       if (!ok) healthy = false;
       const health = ready === null ? "" : ready ? ", health ok" : ", health FAILED";
-      io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${unitState} (systemd)${health}`);
+      io.stdout(
+        `  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${unitState} (systemd)${health}` +
+          (claim ? `, ${claim.label}` : ""),
+      );
     }
   } else {
     const supervisorPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
@@ -168,7 +229,11 @@ export async function runStatus(
         );
       }
       if (ready !== null) parts.push(ready ? "health ok" : "health FAILED");
-      const ok = supervisorAlive && alive && ready !== false;
+      const claim = spec.reportsWorkflowClaim
+        ? await dispatcherClaimState(resolved.fetchImpl, values)
+        : null;
+      if (claim) parts.push(claim.label);
+      const ok = supervisorAlive && alive && ready !== false && claim?.ok !== false;
       if (!ok) healthy = false;
       io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
     }

@@ -10,6 +10,27 @@ import { runStatus } from "./status.ts";
 import type { LifecycleIo } from "./lifecycle.ts";
 import type { TcpProbe } from "./status.ts";
 
+const REGISTRATION_PATH = "/internal/workflow/dispatcher/registration";
+
+function dispatcherRegistration(overrides: Record<string, unknown> = {}) {
+  return {
+    instanceId: "wfd_host_1_abcd1234",
+    generation: "eveland-workflow-dispatcher b53ed56a",
+    state: "ready",
+    ownershipAcquired: true,
+    bootRecoveryCompleted: true,
+    reenqueuedRuns: 0,
+    worldDatabaseIdentity: "cluster:7501/eveland_workflow",
+    schemaGeneration: "0007_seal",
+    protocolMin: 1,
+    protocolMax: 1,
+    startedAt: new Date().toISOString(),
+    readyAt: new Date().toISOString(),
+    lastHeartbeatAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 async function makeHarness(options: {
   supervisorAlive?: boolean;
   childrenAlive?: boolean;
@@ -25,6 +46,8 @@ async function makeHarness(options: {
   check?: Record<string, unknown>;
   installed?: boolean;
   updateCheckEnv?: string;
+  serviceToken?: boolean;
+  registration?: Record<string, unknown> | null;
 }) {
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-status-"));
   const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-statusrepo-"));
@@ -34,6 +57,7 @@ async function makeHarness(options: {
       "EVELAND_PUBLIC_ORIGIN=http://localhost:17300",
       "DATABASE_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
       ...(options.pinnedRevision ? [`EVELAND_REVISION=${options.pinnedRevision}`] : []),
+      ...(options.serviceToken ? ["EVELAND_GATEWAY_SERVICE_TOKEN=service-token"] : []),
     ].join("\n"),
     "utf8",
   );
@@ -88,10 +112,14 @@ async function makeHarness(options: {
     sleep: async () => {},
     isAlive: (pid) => alivePids.has(pid),
     processIdentity: async (pid) => (alivePids.has(pid) ? "id-" + pid : null),
-    fetchImpl: async () =>
-      (options.healthOk ?? true)
+    fetchImpl: async (input: Parameters<typeof fetch>[0]) => {
+      if (String(input).includes(REGISTRATION_PATH)) {
+        return Response.json({ registration: options.registration ?? null });
+      }
+      return (options.healthOk ?? true)
         ? new Response("{}", { status: 200 })
-        : new Response("no", { status: 503 }),
+        : new Response("no", { status: 503 });
+    },
     tcpProbe: async () => options.tcpOk ?? true,
     pgReady: async () => options.tcpOk ?? true,
     execCommand: async (argv) => {
@@ -153,6 +181,54 @@ describe("runStatus", () => {
     const harness = await makeHarness({ supervisorAlive: true, tcpOk: false });
     expect(await runStatus([], harness.io)).toBe(1);
     expect(harness.out.join("\n")).toContain("UNREACHABLE");
+  });
+
+  // The dispatcher serves no port, so "the process is up" is the only thing
+  // this command could say about it before -- while the registration it
+  // writes is what every deploy actually gates on.
+  test("a claiming dispatcher says so on its own line", async () => {
+    const harness = await makeHarness({
+      supervisorAlive: true,
+      serviceToken: true,
+      registration: dispatcherRegistration(),
+    });
+    expect(await runStatus([], harness.io)).toBe(0);
+    expect(harness.out.join("\n")).toContain("Workflow dispatcher");
+    expect(harness.out.join("\n")).toContain("claiming");
+  });
+
+  test("a live process whose dispatcher is not claiming is a failure", async () => {
+    // Exactly the state that blocks every deploy with `workflow_unavailable`
+    // while the systemd unit stays green.
+    const harness = await makeHarness({
+      supervisorAlive: true,
+      serviceToken: true,
+      registration: dispatcherRegistration({ state: "stopped" }),
+    });
+    expect(await runStatus([], harness.io)).toBe(1);
+    const output = harness.out.join("\n");
+    expect(output).toContain("NOT CLAIMING: dispatcher is stopped");
+    // The machine-readable prefix belongs in logs, not in a terminal line
+    // that already says what happened.
+    expect(output).not.toContain("workflow_unavailable");
+  });
+
+  test("a dispatcher with no registration at all is a failure", async () => {
+    const harness = await makeHarness({
+      supervisorAlive: true,
+      serviceToken: true,
+      registration: null,
+    });
+    expect(await runStatus([], harness.io)).toBe(1);
+    expect(harness.out.join("\n")).toContain("NOT CLAIMING: no workflow dispatcher registration");
+  });
+
+  test("an unanswerable claim question is reported, not counted as a fault", async () => {
+    // No service token: the ctl cannot ask. That is not the same as a
+    // dispatcher that is failing, and must not be reported as one.
+    const harness = await makeHarness({ supervisorAlive: true });
+    expect(await runStatus([], harness.io)).toBe(0);
+    expect(harness.out.join("\n")).toContain("claim state unknown");
   });
 });
 

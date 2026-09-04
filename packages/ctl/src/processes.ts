@@ -37,6 +37,13 @@ export type ProcessSpec = {
   binWorkspace: string;
   /** Loopback URL whose 2xx response marks the process ready; null when the process has no listener. */
   readinessUrl: string | null;
+  /**
+   * True for a process that proves it is working through the workflow
+   * dispatcher registration rather than a port. It serves no HTTP, so
+   * `readinessUrl` can say nothing about it — and the registration, not the
+   * process, is what every deploy gates on.
+   */
+  reportsWorkflowClaim?: boolean;
 };
 
 export const PLATFORM_PROCESSES: ProcessSpec[] = [
@@ -91,6 +98,7 @@ export const PLATFORM_PROCESSES: ProcessSpec[] = [
     argv: ["pnpm", "exec", "tsx", "src/main.ts"],
     binWorkspace: "",
     readinessUrl: null,
+    reportsWorkflowClaim: true,
   },
 ];
 
