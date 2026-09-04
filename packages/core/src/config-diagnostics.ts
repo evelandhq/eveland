@@ -106,6 +106,15 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     emptyUsesFallback: true,
   },
   {
+    ...entry(
+      "EVELAND_UPDATE_CHECK_FILE",
+      ["web"],
+      "Absolute path to the update check eveland-ctl publishes; the About page reads it to offer an upgrade.",
+      "not published",
+    ),
+    emptyUsesFallback: true,
+  },
+  {
     name: "DATABASE_URL",
     components: ["api", "gateway", "worker"],
     sensitivity: "url",

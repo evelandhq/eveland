@@ -21,6 +21,7 @@ import {
   type ProcessKey,
   type ProcessSpec,
 } from "./processes.ts";
+import { updateCheckPath } from "./update-check.ts";
 
 /**
  * The Linux production form — the same topology docs/en/production documents,
@@ -205,8 +206,21 @@ export const GATEWAY_ENV_KEYS = [
   "EVELAND_API_SESSION_IDLE_TTL_MS",
 ];
 
-/** The Dashboard's env allowlist (it only talks to the API). */
-export const WEB_ENV_KEYS = ["NODE_ENV", "EVELAND_RELEASE_CHANNEL", "EVELAND_REVISION", "API_URL"];
+/**
+ * The Dashboard's env allowlist. It talks to the API and to nothing else —
+ * plus one local read: `EVELAND_UPDATE_CHECK_FILE` is the update check the ctl
+ * publishes under run/, world-readable and carrying only a version, a tag and
+ * a short SHA. The About page reads it directly rather than through the API
+ * because it is a fact about this HOST's checkout, and because that page has
+ * to keep working when the API is the thing that is down.
+ */
+export const WEB_ENV_KEYS = [
+  "NODE_ENV",
+  "EVELAND_RELEASE_CHANNEL",
+  "EVELAND_REVISION",
+  "API_URL",
+  "EVELAND_UPDATE_CHECK_FILE",
+];
 
 /** `etc/eveland-<service>.env` — a unit's own environment. */
 export function serviceEnvFilePath(etcDir: string, service: string): string {
@@ -226,7 +240,7 @@ export function serviceEnvFilePath(etcDir: string, service: string): string {
  */
 export function derivedServiceValues(
   values: Record<string, string>,
-  options: { dockerBridgeHost?: string | null } = {},
+  options: { dockerBridgeHost?: string | null; runDir?: string } = {},
 ): Record<string, string> {
   const origin = new URL(
     values.EVELAND_PUBLIC_ORIGIN?.trim() || `http://localhost:${GATEWAY_PORT}`,
@@ -244,6 +258,12 @@ export function derivedServiceValues(
     // listener is checked against.
     EVELAND_API_BIND_HOST: "127.0.0.1",
   };
+  // Where eveland-ctl publishes what it knows about newer releases. An
+  // absolute path, because the unit that reads it has no appliance root in
+  // its environment to build one from.
+  if (options.runDir) {
+    derived.EVELAND_UPDATE_CHECK_FILE = updateCheckPath({ runDir: options.runDir });
+  }
   // Detected per start, because Docker renumbers its bridge on its own
   // schedule and a stale address is a listener that fails to bind.
   if (options.dockerBridgeHost) {
@@ -576,7 +596,10 @@ export async function writeServiceEnvFiles(
   options: { dockerBridgeHost?: string | null } = {},
 ): Promise<void> {
   const { io, layout } = context;
-  const values = { ...envFile.values, ...derivedServiceValues(envFile.values, options) };
+  const values = {
+    ...envFile.values,
+    ...derivedServiceValues(envFile.values, { ...options, runDir: layout.runDir }),
+  };
   // null keys means "the whole configuration": see renderServiceEnv.
   const files: Array<{ service: string; keys: readonly string[] | null; label: string }> = [
     { service: "api", keys: null, label: "full configuration" },

@@ -9,6 +9,37 @@ For release-specific compatibility notes and changelogs, consult [GitHub Release
 
 ---
 
+## 0. Knowing an upgrade is available
+
+`eveland-ctl status` opens with the release this machine is on, and says so when a newer one exists:
+
+```
+Release: v0.51.2 (stable) 6c1e3b8f2a91
+  ! v0.52.0 is available (crosses BREAKING CHANGES in v0.52.0) — run `eveland-ctl update`
+```
+
+The same notice appears in the Dashboard under **Settings → About**.
+
+Three things are worth knowing about it:
+
+- **It asks your git remote, not GitHub's API.** The answer comes from `git fetch --tags` on the remote `eveland-ctl update` already upgrades from, so `status` cannot tell you something `update` disagrees with, and a machine that can upgrade can always check.
+- **It never blocks.** The answer is a cached file (`run/update-check.json`) refreshed by a detached process after a `start` and, at most once a day, after a `status`. `status` itself only ever reads the file — it is the command you run when something is already broken.
+- **It only claims the positive.** A cached answer can be old, so you are told when a newer release exists and told nothing at all otherwise. `status` never reports that you are up to date; `eveland-ctl update` is the authority on that, and it says `Already up to date`.
+
+Only `stable` installations are compared. An `edge` checkout sits on a commit no release tag names, so it is shown its revision and nothing more.
+
+`status` also warns when the checkout has moved out from under the running platform:
+
+```
+  ! The platform was started from b53ed56a1c22; the checkout is now 6c1e3b8f2a91.
+```
+
+That means someone moved the tree without an update, or an update stopped between moving it and restarting. Re-run `eveland-ctl update`.
+
+To stop the check reaching the network, set `EVELAND_UPDATE_CHECK=off` in `etc/eveland.env`. The checkout's own identity is still published, so the drift warning above and the About page's version still work.
+
+---
+
 ## 1. Pre-upgrade preparations
 
 1. **Review target Release Notes**: Check for any breaking changes or manual migration requirements.

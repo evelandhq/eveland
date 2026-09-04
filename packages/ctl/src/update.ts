@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
 import { breakingChangesBetween } from "./changelog.ts";
 import { detectDockerBridgeHost } from "./docker-bridge.ts";
+import { newestStableTag, parseReleaseTag } from "./release-identity.ts";
 import { libpqEnvironment } from "./pg-probe.ts";
 import { loadPlatformEnvFile } from "./env-file.ts";
 import { databaseMode, readInstallMetadata, type DatabaseMode } from "./home.ts";
@@ -171,13 +172,6 @@ function templateEvePin(packageJsonRaw: string | null): string | null {
   }
 }
 
-/** `vX.Y.Z` → [X, Y, Z]; anything else (a SHA, a branch, a pre-release) → null. */
-export function parseReleaseTag(tag: string): [number, number, number] | null {
-  const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag);
-  if (!match) return null;
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
 export function isForwardMove(currentVersion: string, targetTag: string): boolean {
   const current = parseReleaseTag(`v${currentVersion}`);
   const target = parseReleaseTag(targetTag);
@@ -213,20 +207,16 @@ export function recoveryPlan(options: {
   ].join("\n");
 }
 
+// Re-exported so `update`'s callers keep one import site for the release-tag
+// grammar it shares with the update check.
+export { newestStableTag, parseReleaseTag } from "./release-identity.ts";
+
 export {
   pendingUpdatePath,
   readPendingUpdate,
   type PendingUpdate,
   updateMutexPath,
 } from "./state-files.ts";
-
-/** The newest exact vX.Y.Z tag: a pre-release sorts above the stable it precedes and is never a default target. */
-export function newestStableTag(tagListOutput: string): string | undefined {
-  return tagListOutput
-    .split("\n")
-    .map((line) => line.trim())
-    .find((tag) => parseReleaseTag(tag) !== null);
-}
 
 type UpdateContext = {
   io: LifecycleIo;

@@ -152,7 +152,11 @@ async function makeHarness(
       written[filePath] = content;
       await writeFile(filePath, content, "utf8");
     },
-    spawnDaemon: async () => {
+    spawnDaemon: async ({ argv }) => {
+      if (argv.includes("_check-update")) {
+        timeline.push("update-check");
+        return 9999;
+      }
       timeline.push("start-daemon");
       await writeSupervisorRecord(layout, { pid: 4242, identity: "id-4242" });
       alivePids.add(4242);

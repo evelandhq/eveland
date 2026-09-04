@@ -9,6 +9,37 @@ Eveland 包含五个核心服务组件（API、Gateway、Dashboard、Worker 与 
 
 ---
 
+## 0. 如何知道有新版本
+
+`eveland-ctl status` 的第一行就是这台机器当前的版本；有更新时会直接说出来：
+
+```
+Release: v0.51.2 (stable) 6c1e3b8f2a91
+  ! v0.52.0 is available (crosses BREAKING CHANGES in v0.52.0) — run `eveland-ctl update`
+```
+
+同样的提示也会出现在控制台的 **Settings → About**。
+
+关于这个提示，有三点需要知道：
+
+- **它问的是你自己的 git remote，不是 GitHub API。** 答案来自 `eveland-ctl update` 本来就要用的那个 remote 上的 `git fetch --tags`，因此 `status` 不可能给出与 `update` 相矛盾的结论；能升级的机器就一定能检查。
+- **它从不阻塞。** 答案是一个缓存文件（`run/update-check.json`），由 `start` 之后、以及每天至多一次的 `status` 之后派生出的独立进程刷新。`status` 本身只读文件——它正是你在出问题时才会跑的命令。
+- **它只做肯定判断。** 缓存可能是旧的，所以只在确实存在新版本时告诉你，其余情况一律沉默。`status` 永远不会声称"你已是最新"；这件事的权威是 `eveland-ctl update`，它会输出 `Already up to date`。
+
+只有 `stable` 安装会参与比较。`edge` checkout 停在没有任何 release tag 指向的 commit 上，因此只显示 revision。
+
+当磁盘上的 checkout 已经与运行中的平台脱节时，`status` 也会给出警告：
+
+```
+  ! The platform was started from b53ed56a1c22; the checkout is now 6c1e3b8f2a91.
+```
+
+这说明有人移动了源码树却没有执行 update，或者某次 update 在移动源码树与重启之间中断了。重新执行 `eveland-ctl update` 即可。
+
+若不希望该检查访问网络，在 `etc/eveland.env` 中设置 `EVELAND_UPDATE_CHECK=off`。checkout 自身的身份仍会照常发布，因此上面的脱节警告与 About 页的版本显示都不受影响。
+
+---
+
 ## 1. 升级前准备
 
 1. **查阅目标版本 Release Notes**：确认是否存在需要特别注意的数据迁移或破坏性变更。

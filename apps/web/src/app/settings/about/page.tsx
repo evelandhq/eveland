@@ -1,8 +1,10 @@
 import { Fragment } from "react";
-import { ShieldCheckIcon, TriangleAlertIcon } from "lucide-react";
+import { ArrowUpCircleIcon, ShieldCheckIcon, TriangleAlertIcon } from "lucide-react";
 import { isSameBuild } from "@evelandhq/core/build-info";
 import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
 import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
+import { readUpdateCheckFile } from "@evelandhq/core/server/update-check";
+import { availableUpdate, revisionDrift } from "@evelandhq/core/update-check";
 import { DateTime } from "@/components/date-time";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -37,10 +39,19 @@ export const metadata = {
 
 export default async function AboutSettingsPage() {
   const webBuild = createBuildInfoFromEnv("web", process.env);
-  const [apiBuild, currentMember] = await Promise.all([
+  const [apiBuild, currentMember, updateCheck] = await Promise.all([
     getApiBuildInfo().catch(() => null),
     getCurrentMember(),
+    // Published by eveland-ctl, read from disk: it describes the HOST's
+    // checkout, so it stays readable when the API is the thing that is down.
+    // Absent in a development checkout and on installs with the check off.
+    readUpdateCheckFile(process.env.EVELAND_UPDATE_CHECK_FILE),
   ]);
+  // Only ever a positive claim. The check is a cached file that can be a month
+  // old on a machine nobody logs into, so "an update exists" is safe to show
+  // and "you are up to date" is never shown at all.
+  const update = availableUpdate(updateCheck);
+  const drift = revisionDrift(updateCheck, webBuild.revision);
   const hasMismatch = apiBuild ? !isSameBuild(webBuild, apiBuild) : false;
   const systemConfiguration =
     currentMember.role === "admin"
@@ -69,6 +80,38 @@ export default async function AboutSettingsPage() {
           Identify the Eveland release and effective runtime configuration.
         </p>
       </header>
+
+      {update ? (
+        <Alert>
+          <ArrowUpCircleIcon />
+          <AlertTitle>Eveland {update.tag} is available</AlertTitle>
+          <AlertDescription>
+            <span>
+              This instance runs v{updateCheck?.version ?? webBuild.version}.
+              {update.breaking.length > 0
+                ? ` The upgrade crosses BREAKING CHANGES in v${update.breaking.join(", v")}.`
+                : null}{" "}
+              Run <code className="font-mono">eveland-ctl update</code> on the host to upgrade.
+            </span>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {drift ? (
+        <Alert variant="destructive">
+          <TriangleAlertIcon />
+          <AlertTitle>The checkout has moved under the running platform</AlertTitle>
+          <AlertDescription>
+            <span>
+              The Dashboard is serving revision <code className="font-mono">{drift.running}</code>,
+              but the source tree on the host is now at{" "}
+              <code className="font-mono">{drift.checkout}</code>. Someone moved the tree without an
+              update, or an update did not finish. Run{" "}
+              <code className="font-mono">eveland-ctl status</code> on the host.
+            </span>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {hasMismatch ? (
         <Alert variant="destructive">

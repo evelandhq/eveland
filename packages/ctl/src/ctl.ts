@@ -1,6 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { runDoctor } from "./doctor.ts";
-import { runRestart, runStart, runStop, runSupervise, type LifecycleIo } from "./lifecycle.ts";
+import {
+  runCheckUpdate,
+  runRestart,
+  runStart,
+  runStop,
+  runSupervise,
+  type LifecycleIo,
+} from "./lifecycle.ts";
 import { runCtlLogs } from "./logs.ts";
 import { runStatus } from "./status.ts";
 import { runInstallCommand } from "./systemd.ts";
@@ -70,6 +77,11 @@ const commands: Record<string, Command> = {
     description: "(internal) phase 2 of `update`, run from the new checkout",
     hidden: true,
     run: runFinishUpdate,
+  },
+  "_check-update": {
+    description: "(internal) refresh the cached 'is a newer release out' answer",
+    hidden: true,
+    run: runCheckUpdate,
   },
 };
 

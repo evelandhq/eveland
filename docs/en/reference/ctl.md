@@ -36,16 +36,16 @@ The `EVELAND_HOME` environment variable specifies the appliance root directory (
 
 ## 3. Command reference
 
-| Command                         | Operational Behavior                                                                                                                                   |
-| :------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eveland-ctl start`             | Boots infrastructure containers (OTel Collector, bundled Postgres), then launches core platform processes. Supports `--foreground` and `--skip-infra`. |
-| `eveland-ctl stop`              | Gracefully terminates platform services (stopping systemd units in reverse order). Leaves infrastructure containers running.                           |
-| `eveland-ctl restart`           | Sequentially executes `stop` followed by `start`.                                                                                                      |
-| `eveland-ctl status`            | Inspects process liveness, queries HTTP health endpoints, and checks database connectivity. Exits 0 when fully healthy.                                |
-| `eveland-ctl logs [process]`    | Streams logs for platform components. Supports `-f` (follow) and `--tail N`.                                                                           |
-| `eveland-ctl doctor`            | Runs comprehensive host diagnostics (sandboxing permissions, port availability, database connectivity). Reports all failures in one pass.              |
-| `eveland-ctl update`            | Creates database backups, fetches the latest stable release, executes migrations, and performs rolling restarts. Supports `--version vX.Y.Z`.          |
-| `eveland-ctl install --systemd` | Renders and registers systemd unit files for all core platform services.                                                                               |
+| Command                         | Operational Behavior                                                                                                                                                                                           |
+| :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eveland-ctl start`             | Boots infrastructure containers (OTel Collector, bundled Postgres), then launches core platform processes. Supports `--foreground` and `--skip-infra`.                                                         |
+| `eveland-ctl stop`              | Gracefully terminates platform services (stopping systemd units in reverse order). Leaves infrastructure containers running.                                                                                   |
+| `eveland-ctl restart`           | Sequentially executes `stop` followed by `start`.                                                                                                                                                              |
+| `eveland-ctl status`            | Reports the release on disk (and any newer one), then inspects process liveness, HTTP health endpoints, and database connectivity. Exits 0 when fully healthy — a pending upgrade never changes the exit code. |
+| `eveland-ctl logs [process]`    | Streams logs for platform components. Supports `-f` (follow) and `--tail N`.                                                                                                                                   |
+| `eveland-ctl doctor`            | Runs comprehensive host diagnostics (sandboxing permissions, port availability, database connectivity). Reports all failures in one pass.                                                                      |
+| `eveland-ctl update`            | Creates database backups, fetches the latest stable release, executes migrations, and performs rolling restarts. Supports `--version vX.Y.Z`.                                                                  |
+| `eveland-ctl install --systemd` | Renders and registers systemd unit files for all core platform services.                                                                                                                                       |
 
 ---
 

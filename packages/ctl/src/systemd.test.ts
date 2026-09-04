@@ -7,6 +7,7 @@ import { applianceLayout, readInstallMetadata } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
 import { PLATFORM_PROCESSES, processByKey, systemdUnitName } from "./processes.ts";
 import {
+  derivedServiceValues,
   DISPATCHER_ENV_KEYS,
   GATEWAY_ENV_KEYS,
   renderApplianceOverlay,
@@ -257,11 +258,23 @@ describe("the public Gateway's and the Dashboard's narrowed environments", () =>
     }
   });
 
-  test("the dashboard file is tiny: release identity and the API address", () => {
-    const rendered = renderServiceEnv("web", WEB_ENV_KEYS, FULL);
+  test("the dashboard file is tiny: release identity, the API address, and the update check", () => {
+    const rendered = renderServiceEnv("web", WEB_ENV_KEYS, {
+      ...FULL,
+      EVELAND_UPDATE_CHECK_FILE: "/opt/eveland/run/update-check.json",
+    });
     expect(rendered).toContain("API_URL=http://api");
+    expect(rendered).toContain("EVELAND_UPDATE_CHECK_FILE=/opt/eveland/run/update-check.json");
     expect(rendered).not.toContain("DATABASE_URL");
     expect(rendered).not.toContain("must-not-appear");
+  });
+
+  test("the update check's path is derived from the appliance root, as an absolute path", () => {
+    // The unit that reads it runs under ProtectSystem=strict with a four-key
+    // environment: it has no appliance root to build a relative path from.
+    const derived = derivedServiceValues(FULL, { runDir: "/opt/eveland/run" });
+    expect(derived.EVELAND_UPDATE_CHECK_FILE).toBe("/opt/eveland/run/update-check.json");
+    expect(derivedServiceValues(FULL)).not.toHaveProperty("EVELAND_UPDATE_CHECK_FILE");
   });
 });
 
