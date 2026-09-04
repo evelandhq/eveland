@@ -1,6 +1,7 @@
 import {
   externalDestinationDomains,
   type ExternalDestinationConfig,
+  type ObservabilitySignal,
 } from "@evelandhq/core/observability";
 import { deriveAgentTelemetrySecret } from "@evelandhq/core/server/agent-telemetry-credential";
 import {
@@ -19,6 +20,7 @@ import { prepareExternalOtlpJson } from "./observability/egress.js";
 
 const maxExternalOtlpRequestBytes = 16 * 1024 * 1024;
 const externalOtlpContentType = "application/json";
+const failureLogIntervalMs = 60_000;
 
 /**
  * Registered alongside the other internal routes, ahead of the session-auth
@@ -34,6 +36,7 @@ export function registerObservabilityProxyRoute(input: {
 }): void {
   const { app, store, options, appSecretKey } = input;
   const telemetrySecret = deriveAgentTelemetrySecret(appSecretKey);
+  const failureLog = createDestinationFailureLog();
 
   app.post("/internal/observability/destinations/:destinationId/v1/:signal", async (c) => {
     const token = options.otlpServiceToken ?? resolvePlatformOtlpServiceToken(process.env);
@@ -90,14 +93,70 @@ export function registerObservabilityProxyRoute(input: {
           ),
         }),
       );
+      failureLog.clear(destination.id);
       return new Response(Uint8Array.from(response.body).buffer, {
         status: response.status,
         headers: response.contentType ? { "content-type": response.contentType } : undefined,
       });
-    } catch {
+    } catch (error) {
+      failureLog.record({
+        destinationId: destination.id,
+        kind: destination.kind,
+        signal,
+        error,
+      });
       return c.json({ error: "External observability destination is unavailable" }, 502);
     }
   });
+}
+
+/**
+ * The 502 above used to be the only trace a broken destination left in the
+ * API: an unreachable endpoint, a host the allowlist rejects, and a config
+ * sealed under a rotated APP_SECRET_KEY all answered the same opaque body,
+ * and the reason surfaced only in the Worker's five-minute health probe.
+ *
+ * It has to be logged without becoming a flood. The Collector's persistent
+ * queue retries a failing destination forever, so a permanent fault is a
+ * permanent stream of identical failures. One line is emitted when the reason
+ * changes and at most one repeat per minute, carrying how many were suppressed
+ * in between. State is per app instance, not per module, so tests never see
+ * each other's throttle.
+ */
+function createDestinationFailureLog(): {
+  record: (input: {
+    destinationId: string;
+    kind: string;
+    signal: ObservabilitySignal;
+    error: unknown;
+  }) => void;
+  clear: (destinationId: string) => void;
+} {
+  const states = new Map<string, { message: string; loggedAt: number; suppressed: number }>();
+  return {
+    record: (input) => {
+      const message = input.error instanceof Error ? input.error.message : String(input.error);
+      const at = Date.now();
+      const previous = states.get(input.destinationId);
+      const repeated = previous !== undefined && previous.message === message;
+      if (repeated && at - previous.loggedAt < failureLogIntervalMs) {
+        previous.suppressed += 1;
+        return;
+      }
+      const suppressed = previous?.suppressed ?? 0;
+      states.set(input.destinationId, { message, loggedAt: at, suppressed: 0 });
+      console.error(
+        `Observability destination ${input.destinationId} (${input.kind}) could not forward ${
+          input.signal
+        }; answering 502 so the Collector keeps the batch queued: ${message}${
+          suppressed > 0 ? ` (+${suppressed} suppressed since the previous line)` : ""
+        }`,
+      );
+    },
+    clear: (destinationId) => {
+      states.delete(destinationId);
+    },
+  };
 }
 
 function parseSignal(value: string) {

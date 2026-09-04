@@ -973,6 +973,89 @@ describe("external OTLP egress proxy", () => {
     );
     expect(forwarded).toEqual({ resourceLogs: [] });
   });
+
+  /**
+   * The 502 is the Collector's cue to keep retrying, so a broken destination
+   * produces an unbounded stream of identical failures. The API logs the
+   * reason -- which the opaque 502 body deliberately withholds -- while
+   * throttling repeats of the same reason.
+   */
+  test("logs why a forward failed, once per reason, and again after a recovery", async () => {
+    const store = createTestStore();
+    const forwardExternalObservabilityRequest = vi.fn();
+    const app = createApp(store, {
+      appSecretKey: devSecretKey,
+      otlpServiceToken: "collector-service-token",
+      validateObservabilityDestination: async () => undefined,
+      forwardExternalObservabilityRequest,
+    });
+    await app.request("/api/system/observability/destinations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedRevision: 1,
+        config: {
+          kind: "custom_otlp",
+          endpoint: "https://collector.example",
+          supportedSignals: ["logs"],
+          domains: ["platform"],
+          headers: {},
+        },
+      }),
+    });
+    const destinationId = (await store.getObservabilityPolicy("team_local"))
+      .externalDestinations[0]!.id;
+    const post = () =>
+      app.request(`/internal/observability/destinations/${destinationId}/v1/logs`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer collector-service-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ resourceLogs: [] }),
+      });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      forwardExternalObservabilityRequest.mockRejectedValue(new Error("Destination hung up."));
+      expect((await post()).status).toBe(502);
+      expect(logged).toHaveBeenCalledTimes(1);
+      expect(logged.mock.calls[0]![0]).toContain(destinationId);
+      expect(logged.mock.calls[0]![0]).toContain("custom_otlp");
+      expect(logged.mock.calls[0]![0]).toContain("logs");
+      expect(logged.mock.calls[0]![0]).toContain("Destination hung up.");
+
+      // The same reason within the window is counted, not repeated.
+      expect((await post()).status).toBe(502);
+      expect(logged).toHaveBeenCalledTimes(1);
+
+      // A different reason is worth a line of its own, and carries the count.
+      forwardExternalObservabilityRequest.mockRejectedValue(
+        new Error("Could not decrypt an observability destination."),
+      );
+      expect((await post()).status).toBe(502);
+      expect(logged).toHaveBeenCalledTimes(2);
+      expect(logged.mock.calls[1]![0]).toContain("Could not decrypt an observability destination.");
+      expect(logged.mock.calls[1]![0]).toContain("+1 suppressed since the previous line");
+
+      // A recovery clears the throttle, so the next break is reported at once
+      // rather than swallowed as a repeat of the reason before it.
+      forwardExternalObservabilityRequest.mockResolvedValue({
+        status: 202,
+        contentType: "application/json",
+        body: new Uint8Array(),
+      });
+      expect((await post()).status).toBe(202);
+      forwardExternalObservabilityRequest.mockRejectedValue(
+        new Error("Could not decrypt an observability destination."),
+      );
+      expect((await post()).status).toBe(502);
+      expect(logged).toHaveBeenCalledTimes(3);
+      expect(logged.mock.calls[2]![0]).not.toContain("suppressed");
+    } finally {
+      logged.mockRestore();
+    }
+  });
 });
 
 function agentLogBatch(deploymentId: string) {
