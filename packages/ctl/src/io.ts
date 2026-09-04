@@ -1,3 +1,4 @@
+import type { Palette } from "./color.ts";
 import type { TcpProbe } from "./net-probe.ts";
 import type { PgEnsureDatabase, PgReady } from "./pg-probe.ts";
 import type { Prompter } from "./prompt.ts";
@@ -38,6 +39,8 @@ export type LifecycleIo = {
   env: NodeJS.ProcessEnv;
   stdout: (line: string) => void;
   stderr: (line: string) => void;
+  /** ANSI styles for the human-facing outputs; defaults to off unless stdout is a terminal. */
+  palette?: Palette;
   platform?: NodeJS.Platform;
   fetchImpl?: FetchLike;
   sleep?: (ms: number) => Promise<void>;

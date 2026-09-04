@@ -47,6 +47,10 @@ curl -fsSL https://eveland.ai/install.sh | sudo bash
 | `eveland-ctl update`            | 自动备份数据库、拉取最新稳定版本、执行数据库迁移并滚动重启全部组件。支持通过 `--version vX.Y.Z` 指定目标版本。                                       |
 | `eveland-ctl install --systemd` | 为当前宿主机渲染并注册所有核心服务的 systemd unit 文件。                                                                                             |
 
+### 输出配色
+
+`status` 与 `doctor` 会给报告上色，让**不正常**的那几行自己跳出来：绿色 `✓` / `[  ok  ]` 搭配变暗的详情，黄色表示无法判定，红色表示故障。只有 stdout 是终端时才写入颜色，因此重定向到文件、管道给 `grep`、或者把输出贴进 issue，拿到的都是纯文本。在终端上用 `NO_COLOR=1` 关闭；不是终端时（例如管道给 `less -R`）用 `FORCE_COLOR=1` 强制打开。
+
 ---
 
 ## 4. 环境深度体检 (Doctor)

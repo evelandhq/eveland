@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
+import { createPalette } from "./color.ts";
 import { applianceLayout } from "./home.ts";
 import { writeInstallMetadata } from "./bootstrap.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
@@ -11,6 +12,7 @@ import type { LifecycleIo } from "./lifecycle.ts";
 import type { TcpProbe } from "./status.ts";
 
 const REGISTRATION_PATH = "/internal/workflow/dispatcher/registration";
+const ESC = "\u001b";
 
 function dispatcherRegistration(overrides: Record<string, unknown> = {}) {
   return {
@@ -48,6 +50,8 @@ async function makeHarness(options: {
   updateCheckEnv?: string;
   serviceToken?: boolean;
   registration?: Record<string, unknown> | null;
+  /** Force colour on; the default is off, as it is whenever stdout is not a terminal. */
+  color?: boolean;
 }) {
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-status-"));
   const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-statusrepo-"));
@@ -108,6 +112,7 @@ async function makeHarness(options: {
     platform: "darwin",
     stdout: (line) => out.push(line),
     stderr: () => {},
+    palette: options.color ? createPalette({}, true) : undefined,
     repoRootDir: repo,
     sleep: async () => {},
     isAlive: (pid) => alivePids.has(pid),
@@ -354,5 +359,35 @@ describe("the release block", () => {
     });
     await runStatus([], moved.io);
     expect(moved.daemonArgv.some((argv) => argv.includes("_check-update"))).toBe(true);
+  });
+
+  /**
+   * The row that is wrong has to be findable without reading the rows that
+   * are right -- and this same output goes into issue reports, so the codes
+   * appear only when stdout is a terminal.
+   */
+  test("colour marks the failing row and dims the healthy ones", async () => {
+    const harness = await makeHarness({ supervisorAlive: true, healthOk: false, color: true });
+    expect(await runStatus([], harness.io)).toBe(1);
+    const output = harness.out.join("\n");
+    expect(output).toContain(`${ESC}[31m✗${ESC}[39m Agent Gateway`);
+    expect(output).toContain(`${ESC}[31mhealth FAILED${ESC}[39m`);
+    expect(output).toContain(`${ESC}[32m✓${ESC}[39m Postgres`);
+    expect(output).toContain(`${ESC}[2mreachable${ESC}[22m`);
+    expect(output).toContain(`${ESC}[1mInfrastructure:${ESC}[22m`);
+  });
+
+  // "Could not tell" is neither green nor red: the row still passes, and the
+  // colour has to say that the claim itself went unanswered.
+  test("an unanswerable dispatcher claim is a warning, not a failure", async () => {
+    const harness = await makeHarness({ supervisorAlive: true, color: true });
+    expect(await runStatus([], harness.io)).toBe(0);
+    expect(harness.out.join("\n")).toContain(`${ESC}[33mclaim state unknown`);
+  });
+
+  test("without a terminal the status is plain text, byte for byte", async () => {
+    const harness = await makeHarness({ supervisorAlive: true, healthOk: false });
+    expect(await runStatus([], harness.io)).toBe(1);
+    expect(harness.out.join("\n")).not.toContain(ESC);
   });
 });

@@ -2,6 +2,7 @@ import { API_INTERNAL_URL_FALLBACK, OTEL_PLATFORM_HOST_HTTP_PORT } from "@evelan
 import type { WorkflowDispatcherRegistration } from "@evelandhq/core/contracts";
 import { assessDispatcherReadiness } from "@evelandhq/core/workflow-dispatch";
 import { availableUpdate, type UpdateCheck } from "@evelandhq/core/update-check";
+import { createPalette, marker, type Palette } from "./color.ts";
 import { loadPlatformEnvFile } from "./env-file.ts";
 import {
   publicOrigin,
@@ -58,6 +59,7 @@ async function probe(fetchImpl: FetchLike, url: string): Promise<boolean> {
  */
 async function reportRelease(
   io: LifecycleIo,
+  color: Palette,
   resolved: ReturnType<typeof resolveLifecycle>,
   envFile: { values: Record<string, string> } | null,
 ): Promise<{
@@ -69,10 +71,12 @@ async function reportRelease(
   const version = await checkoutVersion(resolved.repoRootDir);
   const check = await readUpdateCheck(resolved.layout);
   if (!identity || !version) {
-    io.stdout("Release: unknown (this checkout has no git revision)");
+    io.stdout(`${color.bold("Release:")} unknown (this checkout has no git revision)`);
     return { identity, version, check };
   }
-  io.stdout(`Release: v${version} (${identity.channel}) ${identity.revision}`);
+  io.stdout(
+    `${color.bold("Release:")} v${version} ${color.dim(`(${identity.channel}) ${identity.revision}`)}`,
+  );
 
   // The version the CHECK was written against is not necessarily the one on
   // disk now, so the comparison is redone against the live checkout.
@@ -82,7 +86,9 @@ async function reportRelease(
       update.breaking.length > 0
         ? ` (crosses BREAKING CHANGES in v${update.breaking.join(", v")})`
         : "";
-    io.stdout(`  ! ${update.tag} is available${breaking} — run \`eveland-ctl update\``);
+    io.stdout(
+      color.yellow(`  ! ${update.tag} is available${breaking} — run \`eveland-ctl update\``),
+    );
   }
 
   // What the platform was STARTED with, versus what the tree holds now.
@@ -93,10 +99,16 @@ async function reportRelease(
   const pinned = envFile?.values.EVELAND_REVISION?.trim();
   if (pinned && pinned !== "unknown" && pinned !== identity.revision) {
     io.stdout(
-      `  ! The platform was started from ${pinned}; the checkout is now ${identity.revision}.`,
+      color.yellow(
+        `  ! The platform was started from ${pinned}; the checkout is now ${identity.revision}.`,
+      ),
     );
-    io.stdout("    The tree moved without an update — re-run `eveland-ctl update`, or");
-    io.stdout("    `eveland-ctl restart` if you moved it by hand and it is already built.");
+    io.stdout(
+      color.yellow("    The tree moved without an update — re-run `eveland-ctl update`, or"),
+    );
+    io.stdout(
+      color.yellow("    `eveland-ctl restart` if you moved it by hand and it is already built."),
+    );
   }
   return { identity, version, check };
 }
@@ -153,6 +165,19 @@ async function dispatcherClaimState(
   };
 }
 
+/**
+ * The dispatcher's claim is the one tri-state on the row: claiming, not
+ * claiming, or unanswerable. "Could not tell" is a warning, never a fault --
+ * the same distinction `dispatcherClaimState` makes for the exit code.
+ */
+function claimStyle(color: Palette, ok: boolean | null) {
+  return ok === null ? color.yellow : ok ? color.dim : color.red;
+}
+
+function reachability(color: Palette, up: boolean): string {
+  return up ? color.dim("reachable") : color.red("UNREACHABLE");
+}
+
 export async function runStatus(
   _args: string[],
   io: LifecycleIo & { tcpProbe?: TcpProbe },
@@ -166,15 +191,19 @@ export async function runStatus(
     platform: resolved.platform,
   });
 
-  const release = await reportRelease(io, resolved, envFile);
+  const color = io.palette ?? createPalette(io.env);
+
+  const release = await reportRelease(io, color, resolved, envFile);
   io.stdout("");
 
   const values = envFile?.values;
   let healthy = true;
   if (await systemdSupervised(resolved)) {
-    io.stdout("Supervision: systemd production form (every platform process is a unit)");
+    io.stdout(
+      `${color.bold("Supervision:")} systemd production form ${color.dim("(every platform process is a unit)")}`,
+    );
     io.stdout("");
-    io.stdout("Processes:");
+    io.stdout(color.bold("Processes:"));
     for (const spec of PLATFORM_PROCESSES) {
       const active = await resolved.execCommand(
         ["systemctl", "is-active", systemdUnitName(spec.key)],
@@ -189,11 +218,12 @@ export async function runStatus(
         : null;
       const ok = unitState === "active" && ready !== false && claim?.ok !== false;
       if (!ok) healthy = false;
-      const health = ready === null ? "" : ready ? ", health ok" : ", health FAILED";
-      io.stdout(
-        `  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${unitState} (systemd)${health}` +
-          (claim ? `, ${claim.label}` : ""),
-      );
+      // One style per fact rather than one per row: an active unit whose
+      // health probe fails must read as a failure on the half that failed.
+      const parts = [(unitState === "active" ? color.dim : color.red)(`${unitState} (systemd)`)];
+      if (ready !== null) parts.push(ready ? color.dim("health ok") : color.red("health FAILED"));
+      if (claim) parts.push(claimStyle(color, claim.ok)(claim.label));
+      io.stdout(`  ${marker(color, ok)} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
     }
   } else {
     const supervisorPid = await verifiedSupervisorPid(resolved.layout, resolved.processIdentity);
@@ -201,46 +231,50 @@ export async function runStatus(
     const state = await readSupervisorState(resolved.layout);
 
     if (!supervisorAlive) {
-      io.stdout("Supervisor: not running");
+      io.stdout(`${color.bold("Supervisor:")} ${color.red("not running")}`);
       healthy = false;
     } else {
       io.stdout(
-        `Supervisor: running (pid ${supervisorPid}, since ${state?.startedAt ?? "unknown"})`,
+        `${color.bold("Supervisor:")} running ${color.dim(`(pid ${supervisorPid}, since ${state?.startedAt ?? "unknown"})`)}`,
       );
     }
 
     io.stdout("");
-    io.stdout("Processes:");
+    io.stdout(color.bold("Processes:"));
     for (const spec of PLATFORM_PROCESSES) {
       const child = state?.children[spec.key];
       const alive = child?.pid != null && resolved.isAlive(child.pid);
       const ready = spec.readinessUrl ? await probe(resolved.fetchImpl, spec.readinessUrl) : null;
       const parts: string[] = [];
       if (!supervisorAlive) {
-        parts.push("down");
+        parts.push(color.red("down"));
       } else if (alive) {
-        parts.push(`up (pid ${child!.pid})`);
-        if (child!.restarts > 0) parts.push(`${child!.restarts} restarts`);
+        parts.push(color.dim(`up (pid ${child!.pid})`));
+        // A process that keeps coming back is not down, but it is not well
+        // either, and nothing else in this output would say so.
+        if (child!.restarts > 0) parts.push(color.yellow(`${child!.restarts} restarts`));
       } else {
         parts.push(
           child
-            ? `down (${child.status}${child.lastExit ? `, last exit ${child.lastExit}` : ""})`
-            : "unknown",
+            ? color.red(
+                `down (${child.status}${child.lastExit ? `, last exit ${child.lastExit}` : ""})`,
+              )
+            : color.yellow("unknown"),
         );
       }
-      if (ready !== null) parts.push(ready ? "health ok" : "health FAILED");
+      if (ready !== null) parts.push(ready ? color.dim("health ok") : color.red("health FAILED"));
       const claim = spec.reportsWorkflowClaim
         ? await dispatcherClaimState(resolved.fetchImpl, values)
         : null;
-      if (claim) parts.push(claim.label);
+      if (claim) parts.push(claimStyle(color, claim.ok)(claim.label));
       const ok = supervisorAlive && alive && ready !== false && claim?.ok !== false;
       if (!ok) healthy = false;
-      io.stdout(`  ${ok ? "✓" : "✗"} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
+      io.stdout(`  ${marker(color, ok)} ${spec.label.padEnd(20)} ${parts.join(", ")}`);
     }
   }
 
   io.stdout("");
-  io.stdout("Infrastructure:");
+  io.stdout(color.bold("Infrastructure:"));
   // Through the DSN, and only the address is printed: a connection URL
   // carries a password, and this output goes into terminals and issue reports.
   const databaseUrl = envFile?.values.DATABASE_URL?.trim();
@@ -248,25 +282,27 @@ export async function runStatus(
   const metadata = await readInstallMetadata(resolved.layout);
   const kind = databaseMode(metadata) === "bundled" ? "bundled" : "external";
   if (!databaseUrl || !databaseLabel) {
-    io.stdout(`  ✗ ${"Postgres".padEnd(20)} DATABASE_URL is not a connection URL`);
+    io.stdout(
+      `  ${marker(color, false)} ${"Postgres".padEnd(20)} ${color.red("DATABASE_URL is not a connection URL")}`,
+    );
     healthy = false;
   } else {
     const postgresUp = await pgReady(databaseUrl);
     io.stdout(
-      `  ${postgresUp ? "✓" : "✗"} ${"Postgres".padEnd(20)} ${databaseLabel} (${kind}) ${postgresUp ? "reachable" : "UNREACHABLE"}`,
+      `  ${marker(color, postgresUp)} ${"Postgres".padEnd(20)} ${color.dim(`${databaseLabel} (${kind})`)} ${reachability(color, postgresUp)}`,
     );
     if (!postgresUp) healthy = false;
   }
   const collectorUp = await tcpProbe("127.0.0.1", OTEL_PLATFORM_HOST_HTTP_PORT);
   io.stdout(
-    `  ${collectorUp ? "✓" : "✗"} ${"OTLP Collector".padEnd(20)} 127.0.0.1:${OTEL_PLATFORM_HOST_HTTP_PORT} ${collectorUp ? "reachable" : "UNREACHABLE"}`,
+    `  ${marker(color, collectorUp)} ${"OTLP Collector".padEnd(20)} ${color.dim(`127.0.0.1:${OTEL_PLATFORM_HOST_HTTP_PORT}`)} ${reachability(color, collectorUp)}`,
   );
   if (!collectorUp) healthy = false;
 
   if (envFile) {
     io.stdout("");
-    io.stdout(`Config: ${envFile.path}`);
-    io.stdout(`Origin: ${publicOrigin(envFile)}`);
+    io.stdout(`${color.bold("Config:")} ${envFile.path}`);
+    io.stdout(`${color.bold("Origin:")} ${publicOrigin(envFile)}`);
   }
 
   // Last, and detached: the answer printed above came from the file this
