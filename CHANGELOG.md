@@ -4,6 +4,18 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.53.0](https://github.com/evelandhq/eveland/compare/v0.52.0...v0.53.0) (2026-09-04)
+
+
+### Features
+
+* **ctl:** colour the status and doctor reports ([#503](https://github.com/evelandhq/eveland/issues/503)) ([2ae326e](https://github.com/evelandhq/eveland/commit/2ae326e3fd9507001c8cfcccaaf1cc4dbd6046e1))
+
+
+### Bug Fixes
+
+* **web:** bound the deployments page and stop shouting at archived rows ([#501](https://github.com/evelandhq/eveland/issues/501)) ([b4af1a0](https://github.com/evelandhq/eveland/commit/b4af1a083f48aa238e2365ee06ed5394b5248197))
+
 ## [0.52.0](https://github.com/evelandhq/eveland/compare/v0.51.2...v0.52.0) (2026-09-04)
 
 
