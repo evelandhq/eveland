@@ -18,7 +18,13 @@ export type StreamCommand = (
 
 export type ExecCommand = (
   argv: string[],
-  options: { cwd: string },
+  /**
+   * `timeoutMs` kills the child and resolves with `code: null`. Only the
+   * callers that talk to the network need it, and they must have it: a
+   * `git fetch` against a black-holed remote otherwise hangs forever, and the
+   * process holding it may be a detached background one nobody will notice.
+   */
+  options: { cwd: string; timeoutMs?: number },
 ) => Promise<{ code: number | null; output: string }>;
 
 export type SpawnDaemon = (options: {

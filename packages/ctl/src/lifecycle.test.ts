@@ -48,6 +48,7 @@ async function makeHarness(options: HarnessOptions = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const execCalls: string[][] = [];
+  const daemonArgv: string[][] = [];
   const signals: Array<{ pid: number; signal: string }> = [];
   const alivePids = options.alivePids ?? new Set<number>();
   const layout = applianceLayout(resolveApplianceRoot({ EVELAND_HOME: home }, "darwin"));
@@ -75,7 +76,11 @@ async function makeHarness(options: HarnessOptions = {}) {
       execCalls.push(argv);
       return { code: 0, output: "ok" };
     },
-    spawnDaemon: async () => {
+    spawnDaemon: async ({ argv }) => {
+      daemonArgv.push(argv);
+      // The background update check is a one-shot, not the supervisor: it
+      // must not be mistaken for one by the harness or by the tests.
+      if (argv.includes("_check-update")) return 9999;
       await (options.daemon?.(layout) ??
         (async () => {
           alivePids.add(4242);
@@ -100,7 +105,7 @@ async function makeHarness(options: HarnessOptions = {}) {
       if (signal === "SIGTERM" || signal === "SIGKILL") alivePids.delete(pid);
     },
   };
-  return { io, out, err, execCalls, signals, alivePids, home, repo, layout };
+  return { io, out, err, execCalls, daemonArgv, signals, alivePids, home, repo, layout };
 }
 
 const VALID_ENV = "NODE_ENV=development\nEVELAND_PUBLIC_ORIGIN=http://localhost:17300\n";
@@ -535,13 +540,16 @@ describe("systemd supervision mode", () => {
 
   test("start delegates to compose (core) + systemctl (host units), never the ctl supervisor", async () => {
     const harness = await makeSystemdHarness();
-    let daemonSpawned = false;
-    harness.io.spawnDaemon = async () => {
-      daemonSpawned = true;
+    const spawned: string[][] = [];
+    harness.io.spawnDaemon = async ({ argv }) => {
+      spawned.push(argv);
       return 1;
     };
     expect(await runStart([], harness.io)).toBe(0);
-    expect(daemonSpawned).toBe(false);
+    // systemd owns the processes: no ctl supervisor is started. The one-shot
+    // update check is not a supervisor and is expected in both forms.
+    expect(spawned.filter((argv) => argv.includes("_supervise"))).toEqual([]);
+    expect(spawned.some((argv) => argv.includes("_check-update"))).toBe(true);
     const composeUp = harness.execCalls.find((argv) => argv.includes("up"));
     expect(composeUp!.join(" ")).toContain("docker-compose.prod.yml");
     // Compose starts the infrastructure and nothing else.

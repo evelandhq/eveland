@@ -30,6 +30,12 @@ import { runSeedAgent } from "./seed-agent.ts";
 import { createPrompter, nonInteractivePrompter } from "./prompt.ts";
 import { absoluteProcessDir, childEnvironment, PLATFORM_PROCESSES } from "./processes.ts";
 import {
+  performUpdateCheck,
+  scheduleUpdateCheck,
+  updateCheckPath,
+  updateChecksEnabled,
+} from "./update-check.ts";
+import {
   defaultProcessIdentity,
   isProcessAlive,
   readSupervisorRecord,
@@ -78,12 +84,26 @@ function defaultExecCommand(): ExecCommand {
   return (argv, options) =>
     new Promise((resolve) => {
       const [command, ...rest] = argv;
+      // stdin is /dev/null: a command that decides to prompt (git asking for
+      // credentials) fails immediately instead of waiting on a terminal that
+      // a daemonized caller does not have.
       const child = spawn(command!, rest, { cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"] });
       let output = "";
+      const timer =
+        options.timeoutMs === undefined
+          ? null
+          : setTimeout(() => {
+              output += `\ntimed out after ${options.timeoutMs}ms`;
+              child.kill("SIGKILL");
+            }, options.timeoutMs);
+      const finish = (result: { code: number | null; output: string }) => {
+        if (timer) clearTimeout(timer);
+        resolve(result);
+      };
       child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
       child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
-      child.on("error", (error) => resolve({ code: null, output: `${output}\n${error.message}` }));
-      child.on("close", (code) => resolve({ code, output }));
+      child.on("error", (error) => finish({ code: null, output: `${output}\n${error.message}` }));
+      child.on("close", (code) => finish({ code, output }));
     });
 }
 
@@ -466,7 +486,12 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
   // the update state machine owns the platform until its record is cleared.
   if (parsed.values["from-update"]) {
     // update's phase 2: the parent phase 1 holds the update lock.
-    return runStartUnlocked(parsed.values, io, resolved);
+    return publishAfterStart(
+      io,
+      resolved,
+      parsed.values,
+      await runStartUnlocked(parsed.values, io, resolved),
+    );
   }
   // start and update exclude each other through the SAME lock, held for
   // the whole start (a snapshot of the holder would leave a window for an
@@ -506,10 +531,42 @@ export async function runStart(args: string[], io: LifecycleIo): Promise<number>
       );
       return 1;
     }
-    return await runStartUnlocked(parsed.values, io, resolved, release);
+    return publishAfterStart(
+      io,
+      resolved,
+      parsed.values,
+      await runStartUnlocked(parsed.values, io, resolved, release),
+    );
   } finally {
     await release();
   }
+}
+
+/**
+ * Republishes the update check after a successful start, in the background.
+ *
+ * This is the hook that keeps the answer alive on a machine nobody logs into:
+ * an appliance that boots, runs for months and never sees a `status` would
+ * otherwise never learn that a release shipped. It is deliberately NOT a
+ * systemd timer — the unit list IS the topology (SYSTEMD_HOST_UNITS is pinned
+ * to PLATFORM_PROCESSES by test), and a hint does not get to widen it.
+ */
+async function publishAfterStart(
+  io: LifecycleIo,
+  resolved: ResolvedLifecycle,
+  values: StartValues,
+  code: number,
+): Promise<number> {
+  // Foreground start only returns when the operator stops the platform.
+  if (code === 0 && !values.foreground) {
+    await scheduleUpdateCheck({
+      io,
+      layout: resolved.layout,
+      repoRootDir: resolved.repoRootDir,
+      spawnDaemon: resolved.spawnDaemon,
+    });
+  }
+  return code;
 }
 
 type StartValues = {
@@ -802,7 +859,14 @@ export async function runSupervise(args: string[], io: LifecycleIo): Promise<num
     label: spec.label,
     cwd: absoluteProcessDir(resolved.repoRootDir, spec),
     argv: spec.argv,
-    env: childEnvironment(io.env, envFile.values),
+    // The check file's path is a machine fact, not configuration: it is
+    // pinned in rather than derived, because the appliance root a child would
+    // have to derive it from is exactly what is not in its environment. The
+    // systemd form pins the same value through WEB_ENV_KEYS.
+    env: {
+      ...childEnvironment(io.env, envFile.values),
+      EVELAND_UPDATE_CHECK_FILE: updateCheckPath(resolved.layout),
+    },
   }));
 
   const supervisor = new Supervisor(children, {
@@ -870,4 +934,35 @@ export async function runSupervise(args: string[], io: LifecycleIo): Promise<num
   await removeSupervisorFiles(resolved.layout);
   io.stdout("[supervisor] all processes stopped");
   return 0;
+}
+
+/**
+ * The hidden `_check-update` command: one short-lived process that refreshes
+ * `run/update-check.json` and exits. It lives here, alongside `_supervise`,
+ * because it needs the same `--root` seam — a daemon spawned by `start` does
+ * not inherit the appliance root the parent resolved.
+ */
+export async function runCheckUpdate(args: string[], io: LifecycleIo): Promise<number> {
+  const parsed = parseArgs({
+    args,
+    options: { root: { type: "string" } },
+    allowPositionals: false,
+  });
+  const resolved = resolveLifecycle(
+    parsed.values.root ? { ...io, env: { ...io.env, EVELAND_HOME: parsed.values.root } } : io,
+  );
+  const envFile = await loadPlatformEnvFile({
+    env: io.env,
+    repoRoot: resolved.repoRootDir,
+    platform: resolved.platform,
+  });
+  return performUpdateCheck({
+    io,
+    layout: resolved.layout,
+    repoRootDir: resolved.repoRootDir,
+    execCommand: resolved.execCommand,
+    processIdentity: resolved.processIdentity,
+    sleep: resolved.sleep,
+    checkEnabled: updateChecksEnabled(io.env, envFile?.values ?? {}),
+  });
 }
