@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.52.0](https://github.com/evelandhq/eveland/compare/v0.51.2...v0.52.0) (2026-09-04)
+
+
+### Features
+
+* **ctl:** report the running release and offer the upgrade ([#497](https://github.com/evelandhq/eveland/issues/497)) ([449a4a0](https://github.com/evelandhq/eveland/commit/449a4a0f32951ae4d3810a82588318e0d6b27542))
+* **ctl:** show whether the workflow dispatcher is actually claiming ([#500](https://github.com/evelandhq/eveland/issues/500)) ([915cfb1](https://github.com/evelandhq/eveland/commit/915cfb1c3b30615a1c87b81521c9475c8fbdd30b))
+
+
+### Bug Fixes
+
+* **worker:** name the missing release directory before systemd-run does ([#498](https://github.com/evelandhq/eveland/issues/498)) ([018f9a1](https://github.com/evelandhq/eveland/commit/018f9a19e9e2e934ed7653a7b48b4bda38d8002a))
+
 ## [0.51.2](https://github.com/evelandhq/eveland/compare/v0.51.1...v0.51.2) (2026-09-04)
 
 
