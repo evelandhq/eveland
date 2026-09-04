@@ -435,6 +435,16 @@ export const sessionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+export const deploymentListQuerySchema = z.object({
+  // A Project accumulates archived Deployments forever, and they are the ones
+  // nobody can act on -- so the overview leaves them out until asked.
+  archived: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .default(false),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
 export const usageAnalyticsQuerySchema = z.object({
   range: z.enum(["24h", "7d", "30d"]).default("7d"),
   modelId: z.string().min(1).max(512).optional(),

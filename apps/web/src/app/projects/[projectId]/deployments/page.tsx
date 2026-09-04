@@ -1,11 +1,13 @@
+import Link from "next/link";
 import { BadgeCheckIcon, TriangleAlertIcon } from "lucide-react";
-import { unsupportedReleaseEveVersionMessage } from "@evelandhq/core/eve-compatibility";
+import { displayedDeploymentEveRefusal } from "@evelandhq/core/eve-compatibility";
 import { DateTime } from "@/components/date-time";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
 import { EveVersionStatus } from "@/components/eve-version-status";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   getAgentEndpoints,
   getDeploymentOverview,
@@ -22,20 +24,35 @@ export const metadata = {
 
 export default async function ProjectDeploymentsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ archived?: string }>;
 }) {
-  const { projectId } = await params;
+  const [{ projectId }, query] = await Promise.all([params, searchParams]);
+  const showArchived = query.archived === "1";
   const [project, jobs, endpoints, eveVersion, overview, sourceRevision] = await Promise.all([
     getProject(projectId),
     getProjectJobs(projectId),
     getAgentEndpoints(projectId),
     getEveVersion(projectId),
-    getDeploymentOverview(projectId),
+    // Archived Deployments are the bulk of a long-lived project's history and
+    // nothing on this page can act on them, so they stay behind a disclosure.
+    getDeploymentOverview(projectId, showArchived ? { archived: "true", limit: "200" } : {}),
     getSourceRevision(projectId),
   ]);
   const latestImportJob = jobs.find((job) => job.type === "import_source") ?? null;
   const stableRoute = overview.routes.find((route) => route.kind === "project") ?? null;
+  // Draining a Deployment any non-deployment route still sends traffic to is
+  // refused by the API (409). The page holds the routes that decide it, so it
+  // withholds the button instead of offering one that always fails.
+  const routedDeploymentIds = new Set(
+    overview.routes
+      .filter((route) => route.kind !== "deployment")
+      .flatMap((route) =>
+        route.targets.filter((target) => target.weight > 0).map((target) => target.deploymentId),
+      ),
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
@@ -138,7 +155,12 @@ export default async function ProjectDeploymentsPage({
             // The project-level Eve badge reflects only the current
             // deployment (or source), so a retired Release that activation
             // now refuses terminally (#425) would otherwise be invisible.
-            const cannotStart = unsupportedReleaseEveVersionMessage(
+            // Archived Deployments are excluded inside the helper: activation
+            // refuses them on their status long before it reads the Eve
+            // version, so an upgrade notice there is noise about work nobody
+            // can do.
+            const cannotStart = displayedDeploymentEveRefusal(
+              deployment.status,
               overview.releaseSummaries[deployment.releaseId] ?? null,
             );
             return (
@@ -182,15 +204,40 @@ export default async function ProjectDeploymentsPage({
                   productionDeploymentId={project?.deploymentId ?? null}
                   stableRouteId={stableRoute?.id ?? null}
                   status={deployment.status}
+                  routed={routedDeploymentIds.has(deployment.id)}
                   retentionProtected={retention?.protected ?? true}
                 />
               </div>
             );
           })}
           {overview.deployments.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">No deployments yet.</p>
+            <p className="p-6 text-sm text-muted-foreground">
+              {showArchived || overview.archivedCount === 0
+                ? "No deployments yet."
+                : "No live deployments."}
+            </p>
           ) : null}
         </div>
+        {/* The list is a bounded page, so it says so whenever it is not the
+            whole history -- and offers the way in and back out. */}
+        {overview.deployments.length < overview.totalCount || showArchived ? (
+          <div className="mt-3 flex items-center justify-between gap-4 text-xs text-muted-foreground">
+            <span>
+              Showing {overview.deployments.length} of {overview.totalCount} deployments
+              {showArchived || overview.archivedCount === 0
+                ? null
+                : ` · ${overview.archivedCount} archived`}
+            </span>
+            {overview.archivedCount > 0 ? (
+              <Link
+                href={showArchived ? "?" : "?archived=1"}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                {showArchived ? "Hide archived" : "Show archived"}
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </div>
   );

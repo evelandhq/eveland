@@ -33,12 +33,18 @@ export default async function DeploymentsPage() {
   const projectDeployments = await Promise.all(
     projects.map(async (project) => ({
       project,
-      overview: await getDeploymentOverview(project.id),
+      // This cross-project table is explicitly a history view ("including
+      // archived and failed releases"), so it opts back into the archived
+      // rows the per-project overview now withholds by default.
+      overview: await getDeploymentOverview(project.id, { archived: "true", limit: "200" }),
     })),
   );
   const deployments = projectDeployments.flatMap(({ project, overview }) =>
     overview.deployments.map((deployment) => ({ deployment, project })),
   );
+  // Each project's page is capped, so the count comes from the per-project
+  // totals rather than from the rows that survived the cap.
+  const totalCount = projectDeployments.reduce((sum, { overview }) => sum + overview.totalCount, 0);
 
   return (
     <PageContainer className="gap-5">
@@ -49,7 +55,11 @@ export default async function DeploymentsPage() {
             Runtime deployments across every project, including archived and failed releases.
           </p>
         </div>
-        <span className="text-sm text-muted-foreground">{deployments.length} total</span>
+        <span className="text-sm text-muted-foreground">
+          {deployments.length === totalCount
+            ? `${totalCount} total`
+            : `${deployments.length} of ${totalCount}`}
+        </span>
       </div>
 
       {deployments.length === 0 ? (
