@@ -814,6 +814,80 @@ describe("api app", () => {
     });
   });
 
+  test("withholds archived deployments from the overview until they are asked for", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "Archived Overview Agent",
+      importKind: "zip",
+    });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/archived-overview",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployments = [];
+    for (let index = 0; index < 3; index += 1) {
+      deployments.push(
+        await store.recordDeployment({
+          projectId: project.id,
+          sourceRevisionId: revision.id,
+          imageTag: `archived-overview-${index}`,
+          summary: { summarySource: "build-manifest", eveVersionResolved: "0.49.0" },
+          containerName: `archived-overview-${index}`,
+          internalPort: 3000,
+          hostPort: 41_300 + index,
+          runtimeKind: "docker",
+        }),
+      );
+    }
+    await store.updateDeploymentStatus(deployments[0]!.id, "archived");
+    await store.updateDeploymentStatus(deployments[1]!.id, "archived");
+    const app = createApp(store);
+
+    const live = await app.request(`/api/projects/${project.id}/deployments`);
+    expect(live.status).toBe(200);
+    const liveBody = (await live.json()) as {
+      deployments: Array<{ id: string }>;
+      totalCount: number;
+      archivedCount: number;
+      retention: Array<{ deployment: { id: string } }>;
+      releaseSummaries: Record<string, unknown>;
+    };
+    expect(liveBody.deployments.map((deployment) => deployment.id)).toEqual([deployments[2]!.id]);
+    // The counts describe the whole history even though the page does not.
+    expect(liveBody).toMatchObject({ totalCount: 3, archivedCount: 2 });
+    // Retention and release summaries are narrowed to the page, so the
+    // response cannot smuggle the history back in.
+    expect(liveBody.retention.map((entry) => entry.deployment.id)).toEqual([deployments[2]!.id]);
+    expect(Object.keys(liveBody.releaseSummaries)).toEqual([deployments[2]!.releaseId]);
+
+    const all = await app.request(`/api/projects/${project.id}/deployments?archived=true`);
+    expect(all.status).toBe(200);
+    const allBody = (await all.json()) as { deployments: Array<{ id: string }> };
+    expect(allBody.deployments).toHaveLength(3);
+
+    const capped = await app.request(
+      `/api/projects/${project.id}/deployments?archived=true&limit=2`,
+    );
+    expect(capped.status).toBe(200);
+    const cappedBody = (await capped.json()) as {
+      deployments: Array<{ id: string }>;
+      totalCount: number;
+    };
+    expect(cappedBody.deployments.map((deployment) => deployment.id)).toEqual([
+      deployments[2]!.id,
+      deployments[1]!.id,
+    ]);
+    expect(cappedBody.totalCount).toBe(3);
+
+    const rejected = await app.request(`/api/projects/${project.id}/deployments?limit=0`);
+    expect(rejected.status).toBe(400);
+  });
+
   test("groups experiment metrics by deployment, experiment, and variant", async () => {
     const store = createTestStore();
     const project = await store.createProject({

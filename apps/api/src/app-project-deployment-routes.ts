@@ -11,7 +11,7 @@ import {
 } from "@evelandhq/db";
 import { publicDeployment } from "./app-public-projections.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
-import { aliasSchema, routeTargetsSchema } from "./app-schemas.js";
+import { aliasSchema, deploymentListQuerySchema, routeTargetsSchema } from "./app-schemas.js";
 import { invalidateGatewayAfterCommit, publicGatewayUrl } from "./app-support.js";
 
 // The narrow persistence and configuration ports this slice actually needs.
@@ -80,24 +80,39 @@ export function registerProjectDeploymentRoutes(input: {
 
   app.get("/api/projects/:projectId/deployments", async (c) => {
     const projectId = c.req.param("projectId");
+    const parsed = deploymentListQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) return c.json({ error: "Invalid deployment query" }, 400);
+    const { archived, limit } = parsed.data;
     // Build-derived read model: each release's summary projected from eve's
     // discovery manifest (null for releases built before the projection or
     // whose manifest was unreadable). One project-scoped query, not a lookup
-    // per (unbounded, archived-included) deployment.
+    // per deployment.
     const [deployments, retention, routes, releaseSummaries] = await Promise.all([
-      store.listDeployments(projectId),
+      store.listDeployments(projectId, { includeArchived: archived, limit }),
       store.getDeploymentRetention(projectId, undefined, deploymentRetentionOptions()),
       store.listProjectRoutes(projectId),
       store.listReleaseSummaries(projectId),
     ]);
+    // Retention already spans the whole history -- it has to, since `recent`
+    // and the route/session reasons are computed across all of it -- so the
+    // counts come free, and the entries the response carries are narrowed to
+    // the page rather than repeating that history.
+    const page = new Set(deployments.map((deployment) => deployment.id));
+    const pageReleases = new Set(deployments.map((deployment) => deployment.releaseId));
     return c.json({
       deployments: deployments.map(publicDeployment),
-      retention: retention.map((entry) => ({
-        ...entry,
-        deployment: publicDeployment(entry.deployment),
-      })),
+      totalCount: retention.length,
+      archivedCount: retention.filter((entry) => entry.deployment.status === "archived").length,
+      retention: retention
+        .filter((entry) => page.has(entry.deployment.id))
+        .map((entry) => ({
+          ...entry,
+          deployment: publicDeployment(entry.deployment),
+        })),
       routes,
-      releaseSummaries,
+      releaseSummaries: Object.fromEntries(
+        Object.entries(releaseSummaries).filter(([releaseId]) => pageReleases.has(releaseId)),
+      ),
     });
   });
 

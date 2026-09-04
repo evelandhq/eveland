@@ -65,8 +65,10 @@ export const getEveVersion = (projectId: string) =>
   apiGet<{ eveVersion: EveVersionInfo }>(`/projects/${projectId}/eve-version`).then(
     (data) => data.eveVersion,
   );
-export const getDeploymentOverview = (projectId: string) =>
-  apiGet<DeploymentOverview>(`/projects/${projectId}/deployments`);
+export const getDeploymentOverview = (
+  projectId: string,
+  filters: { archived?: string; limit?: string } = {},
+) => apiGet<DeploymentOverview>(`/projects/${projectId}/deployments${queryString(filters)}`);
 export const getSecrets = (projectId: string) =>
   apiGet<{ secrets: PublicSecret[] }>(`/projects/${projectId}/secrets`).then(
     (data) => data.secrets,

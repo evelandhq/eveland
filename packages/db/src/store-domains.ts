@@ -563,7 +563,16 @@ export interface DeploymentStore {
     workflowWorld?: ReleaseWorkflowAttestation;
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
-  listDeployments(projectId: string): Promise<DeploymentRecord[]>;
+  /**
+   * Every Deployment the Project ever had, newest first. `options` bounds the
+   * read model the deployments endpoint serves; callers that must reason over
+   * the whole history -- retention, project deletion, runtime reconciliation
+   * -- pass nothing and keep the unbounded list.
+   */
+  listDeployments(
+    projectId: string,
+    options?: { includeArchived?: boolean; limit?: number },
+  ): Promise<DeploymentRecord[]>;
   listReservedDeploymentHostPorts(): Promise<number[]>;
   getDeployment(deploymentId: string): Promise<DeploymentRecord | null>;
   getDeploymentEveVersion(deploymentId: string): Promise<EveVersionInfo | null>;

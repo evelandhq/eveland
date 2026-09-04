@@ -472,13 +472,24 @@ export type PublicDeploymentRetention = {
 };
 
 export type DeploymentOverview = {
+  /**
+   * The page of Deployments the request asked for, newest first. Bounded:
+   * archived Deployments are withheld unless requested, and the page is
+   * capped. `totalCount`/`archivedCount` describe the history behind it.
+   */
   deployments: PublicDeploymentRecord[];
+  /** Every Deployment the Project has, whatever this page shows. */
+  totalCount: number;
+  /** How many of `totalCount` are archived. */
+  archivedCount: number;
   routes: ResolvedAgentRoute[];
+  /** Retention verdicts for the Deployments on this page, in the same order. */
   retention: PublicDeploymentRetention[];
   /**
    * Release id -> build-derived summary projected from eve's discovery
-   * manifest; null for releases built before the projection existed or whose
-   * manifest was unreadable.
+   * manifest, for the Releases behind this page's Deployments; null for
+   * releases built before the projection existed or whose manifest was
+   * unreadable.
    */
   releaseSummaries: Record<string, Record<string, unknown> | null>;
 };

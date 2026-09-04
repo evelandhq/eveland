@@ -246,12 +246,20 @@ export function createPostgresDeploymentRoutingStore({
       return deployment ? deploymentRowToDeployment(deployment) : null;
     },
 
-    async listDeployments(projectId) {
-      const rows = await db
+    async listDeployments(projectId, options = {}) {
+      // Archived rows dominate a long-lived project's history, so the read
+      // model behind the deployments page asks for the live ones and a bound;
+      // every other caller reasons over the whole history and passes nothing.
+      const query = db
         .select()
         .from(deployments)
-        .where(eq(deployments.projectId, projectId))
+        .where(
+          options.includeArchived === false
+            ? and(eq(deployments.projectId, projectId), ne(deployments.status, "archived"))
+            : eq(deployments.projectId, projectId),
+        )
         .orderBy(desc(deployments.createdAt), desc(deployments.id));
+      const rows = await (options.limit === undefined ? query : query.limit(options.limit));
       return rows.map(deploymentRowToDeployment);
     },
 

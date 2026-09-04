@@ -776,3 +776,47 @@ describe("deployment recording atomicity", () => {
     await expect(store.listDeployments(project.id)).resolves.toHaveLength(1);
   });
 });
+
+describe("deployment list bounds", () => {
+  test("withholds archived deployments and caps the page only when asked", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "History Agent", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/history",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const recorded: DeploymentRecord[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      recorded.push(
+        await store.recordDeployment({
+          projectId: project.id,
+          sourceRevisionId: revision.id,
+          imageTag: `history:${index}`,
+          containerName: `history-${index}`,
+          internalPort: 3000,
+          hostPort: 41_900 + index,
+          runtimeKind: "docker",
+        }),
+      );
+    }
+    // The two oldest are retired; the two newest stay live.
+    await store.updateDeploymentStatus(recorded[0]!.id, "archived");
+    await store.updateDeploymentStatus(recorded[1]!.id, "archived");
+
+    // Every existing caller passes no options and keeps the whole history --
+    // retention and project deletion depend on seeing archived rows.
+    await expect(store.listDeployments(project.id)).resolves.toHaveLength(4);
+
+    const live = await store.listDeployments(project.id, { includeArchived: false });
+    expect(live.map((deployment) => deployment.id)).toEqual([recorded[3]!.id, recorded[2]!.id]);
+
+    // Newest first, so a cap keeps the newest rather than an arbitrary slice.
+    const capped = await store.listDeployments(project.id, { limit: 2 });
+    expect(capped.map((deployment) => deployment.id)).toEqual([recorded[3]!.id, recorded[2]!.id]);
+  });
+});

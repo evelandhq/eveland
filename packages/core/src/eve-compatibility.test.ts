@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   LATEST_VERIFIED_EVE_VERSION,
+  displayedDeploymentEveRefusal,
   permanentDeploymentActivationRefusal,
   unsupportedEveVersionMessage,
   unsupportedReleaseEveVersionMessage,
@@ -73,5 +74,31 @@ describe("permanentDeploymentActivationRefusal", () => {
     expect(
       permanentDeploymentActivationRefusal({ id: "dep_x", status: "stopped" }, null),
     ).toBeNull();
+  });
+});
+
+describe("displayedDeploymentEveRefusal", () => {
+  const retired = { eveVersionResolved: "0.31.1" };
+
+  test("reports the refusal for a Deployment that could still be activated", () => {
+    expect(displayedDeploymentEveRefusal("stopped", retired)).toBe(
+      unsupportedReleaseEveVersionMessage(retired),
+    );
+    expect(displayedDeploymentEveRefusal("running", retired)).not.toBeNull();
+    expect(displayedDeploymentEveRefusal("failed", retired)).not.toBeNull();
+  });
+
+  test("says nothing about a Deployment that can never activate again", () => {
+    // Status refuses these before the version gate is ever reached, so the
+    // upgrade notice would name work nobody can do.
+    expect(displayedDeploymentEveRefusal("archived", retired)).toBeNull();
+    expect(displayedDeploymentEveRefusal("archiving", retired)).toBeNull();
+  });
+
+  test("stays silent for a supported release whatever the status", () => {
+    expect(
+      displayedDeploymentEveRefusal("running", { eveVersionResolved: LATEST_VERIFIED_EVE_VERSION }),
+    ).toBeNull();
+    expect(displayedDeploymentEveRefusal("running", null)).toBeNull();
   });
 });

@@ -17,6 +17,7 @@ export function DeploymentTrafficActions({
   productionDeploymentId,
   stableRouteId,
   status,
+  routed,
   retentionProtected,
 }: {
   projectId: string;
@@ -24,6 +25,8 @@ export function DeploymentTrafficActions({
   productionDeploymentId: string | null;
   stableRouteId: string | null;
   status: string;
+  /** A non-deployment route still sends this Deployment traffic, so drain is refused. */
+  routed: boolean;
   retentionProtected: boolean;
 }) {
   const router = useRouter();
@@ -71,17 +74,26 @@ export function DeploymentTrafficActions({
     productionDeploymentId &&
     productionDeploymentId !== deploymentId &&
     status === "running";
+  // An archived row used to render three permanently greyed buttons, which on
+  // a project with a long history is most of the page. An action is rendered
+  // only where it could actually run; `disabled` is left for the transient
+  // cases -- a request in flight, or a retention hold the row explains.
+  const canPromote = status === "running";
+  const canDrain = status === "running" && !routed;
+  const canArchive = status !== "archived" && status !== "archiving";
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={busy || status !== "running"}
-        onClick={() => run("promote", () => promoteDeployment(projectId, deploymentId))}
-      >
-        {actionIcon("promote")}
-        Promote / rollback
-      </Button>
+      {canPromote ? (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => run("promote", () => promoteDeployment(projectId, deploymentId))}
+        >
+          {actionIcon("promote")}
+          Promote / rollback
+        </Button>
+      ) : null}
       {canSplit ? (
         <>
           <Button
@@ -118,24 +130,28 @@ export function DeploymentTrafficActions({
           </Button>
         </>
       ) : null}
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={busy || status !== "running"}
-        onClick={() => run("drain", () => drainDeployment(projectId, deploymentId))}
-      >
-        {actionIcon("drain")}
-        Drain
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={busy || retentionProtected || status === "archived" || status === "archiving"}
-        onClick={() => run("archive", () => archiveDeployment(projectId, deploymentId))}
-      >
-        {actionIcon("archive")}
-        Archive
-      </Button>
+      {canDrain ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => run("drain", () => drainDeployment(projectId, deploymentId))}
+        >
+          {actionIcon("drain")}
+          Drain
+        </Button>
+      ) : null}
+      {canArchive ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || retentionProtected}
+          onClick={() => run("archive", () => archiveDeployment(projectId, deploymentId))}
+        >
+          {actionIcon("archive")}
+          Archive
+        </Button>
+      ) : null}
       {error ? <span className="text-xs text-destructive">{error}</span> : null}
     </div>
   );

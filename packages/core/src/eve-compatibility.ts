@@ -106,6 +106,22 @@ export function unsupportedReleaseEveVersionMessage(
 }
 
 /**
+ * The Eve-version refusal worth *showing* for a Deployment, or null. Same gate
+ * as `unsupportedReleaseEveVersionMessage`, minus the Deployments that can
+ * never activate again for a reason that has nothing to do with Eve:
+ * `permanentDeploymentActivationRefusal` refuses an archived or archiving
+ * Deployment on its status before it ever reads the version, so telling
+ * someone to upgrade one is noise about work nobody can do.
+ */
+export function displayedDeploymentEveRefusal(
+  deploymentStatus: string,
+  releaseSummary: Record<string, unknown> | null,
+): string | null {
+  if (deploymentStatus === "archived" || deploymentStatus === "archiving") return null;
+  return unsupportedReleaseEveVersionMessage(releaseSummary);
+}
+
+/**
  * The refusal that no retry, restart, or waiting can clear — the predicate
  * behind settling a Deployment's orphaned workflow runs (issue #433) and
  * filtering them out of dispatcher boot recovery. Deliberately narrower than
