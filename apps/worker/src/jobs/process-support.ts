@@ -25,6 +25,7 @@ import {
   resolveWorkflowWorldDeploymentUrl,
   resolveWorkflowWorldPlatformUrl,
 } from "@evelandhq/core/workflow-world-url";
+import { resolveDeploymentShutdownTimeoutSeconds } from "../runtime/shutdown-budget.js";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
 import { resolveWorkflowRunnerMode } from "../runtime/workflow-world.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";
@@ -300,6 +301,12 @@ export async function composeDeploymentEnv(
     EVELAND_SANDBOX_RUN_TIMEOUT_MS: resolveSandboxRunTimeoutMs(workerEnv),
     EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES: sandboxProcessLimits.maxConcurrentProcesses,
     EVELAND_SANDBOX_MAX_OUTPUT_BYTES: sandboxProcessLimits.maxOutputBytes,
+    // How long srvx drains in-flight requests before cutting the remaining
+    // connections (see ../runtime/shutdown-budget.ts for the four layers this
+    // number has to thread). Reserved because a project entry could otherwise
+    // set it to 0 -- turning every platform-initiated restart into an instant
+    // kill -- or past the point where `eve start` SIGKILLs the server anyway.
+    SERVER_SHUTDOWN_TIMEOUT: String(resolveDeploymentShutdownTimeoutSeconds(workerEnv)),
     // Only injected when the platform has the shared world configured. A
     // project that could set these could scope its world at another tenant's
     // data, or hand the runner a database nothing provisions.

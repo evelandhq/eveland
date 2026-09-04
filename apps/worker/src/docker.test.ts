@@ -23,6 +23,7 @@ import {
   resolveAgentTelemetryNetworkName,
 } from "./runtime/docker/agent-network.js";
 import { injectSandboxModules } from "./runtime/sandbox-inject.js";
+import { resolveDeploymentShutdownTimeoutSeconds } from "./runtime/shutdown-budget.js";
 import { processSafeName } from "./runtime/types.js";
 
 // Module-scoped: every test in this file runs against the mocked execa. This is safe
@@ -849,7 +850,7 @@ describe("createDockerAdapter", () => {
     ]);
   });
 
-  test("stopProcess shells out to docker rm --force with the process name", async () => {
+  test("stopProcess drains with docker stop before docker rm --force", async () => {
     vi.mocked(execa).mockClear();
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
@@ -857,6 +858,14 @@ describe("createDockerAdapter", () => {
 
     const networkName = resolveAgentTelemetryNetworkName("eveland-proj_123");
     expect(vi.mocked(execa).mock.calls).toEqual([
+      // Without this first call `rm --force` is a bare SIGKILL and the Docker
+      // runtime cuts in-flight requests that systemd's units would have
+      // drained.
+      [
+        "docker",
+        ["stop", "--time", String(resolveDeploymentShutdownTimeoutSeconds({})), "eveland-proj_123"],
+        { reject: false },
+      ],
       ["docker", ["rm", "--force", "eveland-proj_123"], { reject: false }],
       [
         "docker",
@@ -869,12 +878,21 @@ describe("createDockerAdapter", () => {
 
   test("stopProcess tolerates 'No such container' as a benign not-found (idempotent re-run)", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({
-      failed: true,
-      exitCode: 1,
-      stderr: "Error: No such container: eveland-proj_123",
-      all: "",
-    } as never);
+    // The drain attempt fails the same way and is deliberately unchecked; the
+    // `rm --force` below it stays the single authority.
+    vi.mocked(execa)
+      .mockResolvedValueOnce({
+        failed: true,
+        exitCode: 1,
+        stderr: "Error: No such container: eveland-proj_123",
+        all: "",
+      } as never)
+      .mockResolvedValueOnce({
+        failed: true,
+        exitCode: 1,
+        stderr: "Error: No such container: eveland-proj_123",
+        all: "",
+      } as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123")).resolves.toBeUndefined();
@@ -884,6 +902,7 @@ describe("createDockerAdapter", () => {
     vi.mocked(execa).mockClear();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.mocked(execa)
+      .mockResolvedValueOnce({ failed: false } as never)
       .mockResolvedValueOnce({ failed: false } as never)
       .mockResolvedValueOnce({ failed: false, all: "" } as never)
       .mockResolvedValueOnce({
@@ -901,24 +920,28 @@ describe("createDockerAdapter", () => {
     vi.mocked(execa).mockClear();
     const stderr =
       "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?";
-    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr, all: "" } as never);
+    const unreachable = { failed: true, exitCode: 1, stderr, all: "" };
+    // Once for the drain attempt, once for the `rm --force` that reports it.
+    vi.mocked(execa)
+      .mockResolvedValueOnce(unreachable as never)
+      .mockResolvedValueOnce(unreachable as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(
       /docker rm --force eveland-proj_123 failed/,
     );
-    vi.mocked(execa).mockResolvedValueOnce({ failed: true, exitCode: 1, stderr, all: "" } as never);
+    vi.mocked(execa)
+      .mockResolvedValueOnce(unreachable as never)
+      .mockResolvedValueOnce(unreachable as never);
     await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(stderr);
   });
 
   test("stopProcess throws when the docker CLI itself cannot be spawned (ENOENT)", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({
-      failed: true,
-      exitCode: undefined,
-      stderr: "",
-      all: "",
-    } as never);
+    const unspawnable = { failed: true, exitCode: undefined, stderr: "", all: "" };
+    vi.mocked(execa)
+      .mockResolvedValueOnce(unspawnable as never)
+      .mockResolvedValueOnce(unspawnable as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(
@@ -928,12 +951,10 @@ describe("createDockerAdapter", () => {
 
   test("stopProcess throws on an unknown non-zero exit", async () => {
     vi.mocked(execa).mockClear();
-    vi.mocked(execa).mockResolvedValueOnce({
-      failed: true,
-      exitCode: 1,
-      stderr: "permission denied",
-      all: "",
-    } as never);
+    const denied = { failed: true, exitCode: 1, stderr: "permission denied", all: "" };
+    vi.mocked(execa)
+      .mockResolvedValueOnce(denied as never)
+      .mockResolvedValueOnce(denied as never);
     const adapter = createDockerAdapter(dockerAdapterConfig);
 
     await expect(adapter.stopProcess("eveland-proj_123")).rejects.toThrow(/permission denied/);

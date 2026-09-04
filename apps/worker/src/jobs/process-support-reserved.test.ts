@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { RESERVED_RUNTIME_ENVIRONMENT_KEYS } from "../runtime/reserved-environment.js";
+import { resolveDeploymentShutdownTimeoutSeconds } from "../runtime/shutdown-budget.js";
 import { composeDeploymentEnv } from "./process-support.js";
 
 const workflowPostgresUrl = "postgres://platform@host:5432/eveland";
@@ -102,6 +103,9 @@ describe("reserved runtime environment names", () => {
     expect(env.EVELAND_SANDBOX_RUN_TIMEOUT_MS).toBe("600000");
     expect(env.EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES).toBe("64");
     expect(env.EVELAND_SANDBOX_MAX_OUTPUT_BYTES).toBe("16777216");
+    // srvx's own default is 5s; the platform states its budget rather than
+    // inheriting it (../runtime/shutdown-budget.ts).
+    expect(env.SERVER_SHUTDOWN_TIMEOUT).toBe(String(resolveDeploymentShutdownTimeoutSeconds({})));
     expect(env.EVELAND_MEMORY_ROOT).toBe("/var/lib/eveland-memory");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
     // Provisioning a per-project database here would leave an empty one behind

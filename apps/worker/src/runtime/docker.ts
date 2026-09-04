@@ -10,6 +10,7 @@ import { injectSandboxModules } from "./sandbox-inject.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
 import { SANDBOX_VERIFY_SCRIPT_PATH, writeSandboxVerifyScript } from "./sandbox-verify.js";
+import { resolveDeploymentShutdownTimeoutSeconds } from "./shutdown-budget.js";
 import {
   processSafeName,
   type PortOwnership,
@@ -361,7 +362,26 @@ export function isBenignDockerStopFailure(outcome: DockerCommandOutcome): boolea
   return /No such container/i.test(outcome.stderr ?? "");
 }
 
-export async function dockerStopAndRemove(containerName: string): Promise<void> {
+/**
+ * `gracePeriodSeconds` buys the container's process the same drain
+ * `SERVER_SHUTDOWN_TIMEOUT` promises it: `docker rm --force` is a bare SIGKILL,
+ * so without a preceding `docker stop` every platform-initiated stop cut
+ * in-flight requests instantly -- the Docker runtime had no equivalent of the
+ * systemd unit's TimeoutStopSec. Omit it where the container cannot be serving
+ * the platform's traffic anyway; see ./shutdown-budget.ts for the layering.
+ */
+export async function dockerStopAndRemove(
+  containerName: string,
+  gracePeriodSeconds?: number,
+): Promise<void> {
+  if (gracePeriodSeconds !== undefined) {
+    // Deliberately unchecked: a container that is already gone makes this fail
+    // and the `rm --force` below stays the single authority on whether the
+    // stop succeeded, which keeps this helper idempotent.
+    await execa("docker", ["stop", "--time", String(gracePeriodSeconds), containerName], {
+      reject: false,
+    });
+  }
   const result = await execa("docker", ["rm", "--force", containerName], {
     reject: false,
   });
@@ -663,7 +683,7 @@ export function createDockerAdapter(
         .filter((name) => name.startsWith(namePrefix));
     },
     async stopProcess(processName: string): Promise<void> {
-      await dockerStopAndRemove(processName);
+      await dockerStopAndRemove(processName, resolveDeploymentShutdownTimeoutSeconds(process.env));
       // Same discipline as the systemd adapter: decrypted secrets never
       // outlive the process they were written for.
       await rm(envFilePathFor(processName), { force: true }).catch(() => undefined);

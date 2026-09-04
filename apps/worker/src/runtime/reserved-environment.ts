@@ -43,6 +43,10 @@ export const RESERVED_RUNTIME_ENVIRONMENT_KEYS: readonly string[] = [
   // carrying it would strip the project's own build toolchain out of the
   // install that `npx eve build` then runs against.
   "NODE_ENV",
+  // The drain budget a platform-initiated stop honours. A project that could
+  // set it could make every restart an instant kill, or claim more grace than
+  // `eve start` will ever wait for. See ./shutdown-budget.ts.
+  "SERVER_SHUTDOWN_TIMEOUT",
   "WORKFLOW_POSTGRES_MAX_POOL_SIZE",
   "WORKFLOW_POSTGRES_URL",
 ];

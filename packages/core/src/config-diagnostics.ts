@@ -701,6 +701,12 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "512",
   ),
   entry(
+    "EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS",
+    ["worker"],
+    "Seconds a stopped Deployment gets to finish in-flight HTTP requests before its remaining connections are cut. Must stay below 20.",
+    "15",
+  ),
+  entry(
     "EVELAND_SANDBOX_RUN_TIMEOUT_MS",
     ["worker"],
     "Hard wall-clock limit for one sandbox run() command.",
