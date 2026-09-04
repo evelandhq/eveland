@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.51.1](https://github.com/evelandhq/eveland/compare/v0.51.0...v0.51.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **api:** log why a forward to an observability destination failed ([#491](https://github.com/evelandhq/eveland/issues/491)) ([a199d53](https://github.com/evelandhq/eveland/commit/a199d5360218f219c596e68683f7bff38d9e9db8))
+* **ctl:** give the shared workflow world its own database ([#490](https://github.com/evelandhq/eveland/issues/490)) ([77050a7](https://github.com/evelandhq/eveland/commit/77050a707ab5fd92da70e28ededcd9184101bd7f))
+
 ## [0.51.0](https://github.com/evelandhq/eveland/compare/v0.50.0...v0.51.0) (2026-09-04)
 
 
