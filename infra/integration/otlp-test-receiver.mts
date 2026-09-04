@@ -31,7 +31,16 @@ export async function startOtlpTestReceiver(port = OTEL_AGENT_HOST_HTTP_PORT) {
     }
   });
   server.listen(port, "127.0.0.1");
-  if (!server.listening) await once(server, "listening");
+  if (!server.listening) {
+    // Race the two outcomes. Awaiting "listening" alone never settles when the
+    // bind fails, and the unhandled "error" event then takes the process down
+    // with a bare EADDRINUSE that says nothing about why this port matters.
+    const [error] = (await Promise.race([
+      once(server, "listening").then(() => [null] as const),
+      once(server, "error"),
+    ])) as [NodeJS.ErrnoException | null];
+    if (error) throw describeBindFailure(error, port);
+  }
 
   return {
     drain(signal: Signal) {
@@ -45,6 +54,23 @@ export async function startOtlpTestReceiver(port = OTEL_AGENT_HOST_HTTP_PORT) {
         server.close((error) => (error ? reject(error) : resolve())),
       ),
   };
+}
+
+/**
+ * The Agent under test dials the Agent receiver on a fixed loopback address, so
+ * this stand-in has to own that exact port -- it cannot fall back to an
+ * ephemeral one the way every other server in these suites does. The usual
+ * squatter is a real Collector: a leftover Compose stack in the Lima VM, or a
+ * platform runtime someone left up on the host.
+ */
+function describeBindFailure(error: NodeJS.ErrnoException, port: number): Error {
+  if (error.code !== "EADDRINUSE") return error;
+  return new Error(
+    `The OTLP test receiver could not bind 127.0.0.1:${port}, which the Agent under test dials directly. ` +
+      "Something else already owns it -- usually a managed OTel Collector still running from an earlier " +
+      "session (in the Lima VM: `sudo docker stop eveland-otel-collector`). Free the port and re-run.",
+    { cause: error },
+  );
 }
 
 function signalFromPath(url: string | undefined): Signal | null {

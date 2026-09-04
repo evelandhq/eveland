@@ -86,6 +86,11 @@ limactl shell "$VM" -- sudo bash -c "
 
   export EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow
 
+  # First, and cheap: the one fixed port a later stage must bind. Without this
+  # a busy port surfaces in observer-e2e, half an hour in and behind every
+  # smoke phase's OK line.
+  corepack pnpm exec tsx infra/integration/preflight-ports.mts
+
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 
