@@ -4,6 +4,25 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.51.0](https://github.com/evelandhq/eveland/compare/v0.50.0...v0.51.0) (2026-09-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ctl:** the Linux production form no longer runs the Agent Gateway or the Dashboard in Docker Compose. `eveland-ctl install --systemd` (or the next `eveland-ctl update`) re-renders the units and removes the containers; the eveland-appliance-gateway-node-modules, eveland-appliance-web-node-modules and eveland-appliance-web-next volumes are left behind for the operator to reclaim.
+
+### Features
+
+* **cli:** publish the eveland CLI as the bin of the eveland npm package ([#474](https://github.com/evelandhq/eveland/issues/474)) ([7f89b7b](https://github.com/evelandhq/eveland/commit/7f89b7b9eb4b4cb9c4eb6e7bf24cce7723c6683e))
+* **ctl:** converge the Linux production form on host-native systemd units ([#481](https://github.com/evelandhq/eveland/issues/481)) ([158a50a](https://github.com/evelandhq/eveland/commit/158a50a4648f606a61bc7b45f8b364567c5bb7f8))
+* support Eve 0.51.x alongside 0.49.x and 0.50.x ([#483](https://github.com/evelandhq/eveland/issues/483)) ([1fb3fb0](https://github.com/evelandhq/eveland/commit/1fb3fb0293932d43fc5c0fa421183273ecff0cfc))
+
+
+### Bug Fixes
+
+* **architecture-tests:** audit every workflow eve leaves unstamped ([#482](https://github.com/evelandhq/eveland/issues/482)) ([2bf5b90](https://github.com/evelandhq/eveland/commit/2bf5b906cde5d89e655cfdbe012d800fee68ee32))
+* **worker:** reconcile reserved runtime environment drift and give restarts a real drain budget ([#487](https://github.com/evelandhq/eveland/issues/487)) ([e410195](https://github.com/evelandhq/eveland/commit/e410195674cd1ae86ee39e5da598c93dbc44bdc7))
+
 ## [0.50.0](https://github.com/evelandhq/eveland/compare/v0.49.0...v0.50.0) (2026-09-03)
 
 
