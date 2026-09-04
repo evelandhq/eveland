@@ -6,10 +6,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { EveVersionStatus } from "./eve-version-status";
 
+// "Current" means the newest supported line, not merely a supported one: the
+// UI marks only that line healthy and shows every other supported line with an
+// upgrade reminder, so this fixture has to move with the window.
 const currentVersion = {
-  version: "0.50.0",
-  expected: "0.49.x or 0.50.x",
-  supportedRanges: ["0.49.x", "0.50.x"],
+  version: "0.51.1",
+  expected: "0.49.x, 0.50.x, or 0.51.x",
+  supportedRanges: ["0.49.x", "0.50.x", "0.51.x"],
   supported: true,
   sourceRevisionId: "src_1",
 } satisfies EveVersionInfo;
@@ -32,7 +35,7 @@ describe("EveVersionStatus", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.getByText("Eve 0.50.0")).toBeDefined();
+    expect(screen.getByText("Eve 0.51.1")).toBeDefined();
     expect(container.querySelector('[data-slot="tooltip-trigger"]')).toBeNull();
   });
 

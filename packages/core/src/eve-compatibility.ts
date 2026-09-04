@@ -8,14 +8,22 @@ export const EVE_COMPATIBILITY_POLICY = {
     {
       range: "0.50.x",
       verifiedVersion: "0.50.0",
+      dependencyName: "eve-previous",
+    },
+    {
+      range: "0.51.x",
+      verifiedVersion: "0.51.1",
       dependencyName: "eve",
     },
   ],
-  // The window's two lines are consecutive again, so the range is a single
-  // contiguous interval rather than the union of runs a gapped window needs.
-  // 0.48 stays rejected -- it was skipped when 0.49.0 superseded it, and it is
-  // now below the floor as well.
-  peerDependencyRange: ">=0.49.0 <0.51.0",
+  // The first three-line window. 0.49 is held rather than dropped because the
+  // window is what an imported Agent may declare, and holding a line costs
+  // only a matrix entry while dropping one strands every project pinned to it.
+  // All three minors are consecutive, so the range is a single contiguous
+  // interval rather than the union of runs a gapped window needs. 0.48 stays
+  // rejected -- it was skipped when 0.49.0 superseded it, and it is below the
+  // floor as well.
+  peerDependencyRange: ">=0.49.0 <0.52.0",
 } as const;
 
 export type SupportedEveVersionRange =

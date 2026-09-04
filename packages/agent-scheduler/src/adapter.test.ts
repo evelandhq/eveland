@@ -25,7 +25,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.49/0.50 compatibility window", async () => {
+  test("fails closed outside the 0.49/0.50/0.51 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -60,7 +60,7 @@ describe("injectSchedulerAdapter", () => {
       "~0.48.0",
       "0.47.7",
       "^0.47.7",
-      "0.51.0",
+      "0.52.0",
       ">=0.49.0",
       "*",
       "latest",
@@ -89,6 +89,12 @@ describe("injectSchedulerAdapter", () => {
       "0.50",
       "0.50.x",
       "0.50.*",
+      "0.51.1",
+      "~0.51.1",
+      "^0.51.1",
+      "0.51",
+      "0.51.x",
+      "0.51.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -230,7 +236,7 @@ Produce the daily report.
     // Eve 0.33 made "steer" the default send policy, which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every line in the
-    // current 0.49/0.50 window supports the explicit `turnPolicy` option.
+    // current 0.49/0.50/0.51 window supports the explicit `turnPolicy` option.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };
