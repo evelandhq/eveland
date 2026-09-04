@@ -1,4 +1,4 @@
-export const EVELAND_VERSION = "0.50.0"; // x-release-please-version
+export const EVELAND_VERSION = "0.51.0"; // x-release-please-version
 
 export const evelandComponents = [
   "api",
