@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.51.2](https://github.com/evelandhq/eveland/compare/v0.51.1...v0.51.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **ctl:** give every DynamicUser unit a HOME ([#496](https://github.com/evelandhq/eveland/issues/496)) ([b20ad8a](https://github.com/evelandhq/eveland/commit/b20ad8a8acd4bed0b50a38279a696824f518e4a8))
+* **web:** dial the API health endpoint on the origin root ([#494](https://github.com/evelandhq/eveland/issues/494)) ([18814e1](https://github.com/evelandhq/eveland/commit/18814e18d465f11af565d803d3835ff593e43b37))
+
 ## [0.51.1](https://github.com/evelandhq/eveland/compare/v0.51.0...v0.51.1) (2026-09-04)
 
 
