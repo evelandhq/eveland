@@ -37,7 +37,9 @@ async function makeDeps(options: {
   postgresUp?: boolean;
   commandExit?: number | null;
   onTag?: boolean;
+  createDatabaseError?: Error;
 }) {
+  const createdDatabases: Array<{ adminUrl: string; name: string }> = [];
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-bootstrap-"));
   const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-bootstraprepo-"));
   const layout = applianceLayout(home);
@@ -68,6 +70,10 @@ async function makeDeps(options: {
     },
     tcpProbe: async () => options.postgresUp ?? true,
     pgReady: async () => options.postgresUp ?? true,
+    pgEnsureDatabase: async (adminUrl, name) => {
+      if (options.createDatabaseError) throw options.createDatabaseError;
+      createdDatabases.push({ adminUrl, name });
+    },
     sleep: async () => {},
     fileExists: async (filePath) => {
       if (filePath.endsWith("BUILD_ID")) return options.webBuildExists ?? false;
@@ -79,7 +85,7 @@ async function makeDeps(options: {
       }
     },
   };
-  return { deps, out, commands, layout, home, repo };
+  return { deps, out, commands, createdDatabases, layout, home, repo };
 }
 
 describe("gatherBootstrapInputs", () => {
@@ -333,6 +339,37 @@ describe("runBootstrapPrepare", () => {
     await expect(runBootstrapPrepare(deps, envFile, { buildWeb: true })).rejects.toThrow(
       /did not become ready/,
     );
+  });
+
+  test("creates the shared workflow database over the platform's own connection", async () => {
+    const { deps, createdDatabases } = await makeDeps({ webBuildExists: true });
+    const { envFile } = await runBootstrapConfig(deps);
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
+    expect(createdDatabases).toEqual([
+      { adminUrl: envFile.values.DATABASE_URL, name: "eveland_workflow" },
+    ]);
+  });
+
+  test("a role without CREATEDB fails at install time, with the statement to run by hand", async () => {
+    const { deps } = await makeDeps({
+      webBuildExists: true,
+      createDatabaseError: new Error("permission denied to create database"),
+    });
+    const { envFile } = await runBootstrapConfig(deps);
+    await expect(runBootstrapPrepare(deps, envFile, { buildWeb: true })).rejects.toThrow(
+      /CREATE DATABASE eveland_workflow/,
+    );
+  });
+
+  test("an installation still sharing one database is left alone, not re-created", async () => {
+    // Rendered before the split: repointing it here would strand the runs,
+    // timers and hooks that live in that database's `workflow` schema.
+    const { deps, createdDatabases } = await makeDeps({ webBuildExists: true });
+    const { envFile } = await runBootstrapConfig(deps);
+    envFile.values.EVELAND_WORKFLOW_WORLD_URL = envFile.values.DATABASE_URL!;
+    delete envFile.values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL;
+    await runBootstrapPrepare(deps, envFile, { buildWeb: true });
+    expect(createdDatabases).toEqual([]);
   });
 
   test("a failing migration is a clear error", async () => {

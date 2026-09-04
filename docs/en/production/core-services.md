@@ -32,9 +32,11 @@ EVELAND_PUBLIC_ORIGIN=https://console.example.com
 # Wildcard base domain for agent routing
 EVELAND_AGENT_BASE_DOMAINS=agents.example.com
 
-# Database connection strings
+# Database connection strings. Two databases on the same server: the workflow
+# world's DSN is injected into every agent deployment, so it must not also open
+# the platform's own tables.
 DATABASE_URL=postgres://eveland:password@127.0.0.1:17310/eveland
-EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland_workflow
 
 # Security secrets (generate long, distinct random strings using openssl rand -hex 32)
 BETTER_AUTH_SECRET=your_auth_secret_32_bytes_min

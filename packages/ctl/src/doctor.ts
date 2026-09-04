@@ -11,6 +11,7 @@ import {
   POSTGRES_HOST_PORT,
   WEB_PORT,
 } from "@evelandhq/core/ports";
+import { databaseName, WORKFLOW_DATABASE_SUFFIX } from "@evelandhq/core/workflow-world-url";
 import { loadPlatformEnvFile, type PlatformEnvFile } from "./env-file.ts";
 import { databaseMode, readInstallMetadata, type DatabaseMode } from "./home.ts";
 import { defaultPgJournalProbe, describeDatabaseAddress, type PgJournalProbe } from "./pg-probe.ts";
@@ -390,6 +391,43 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
       );
     } else {
       add("postgres", "fail", `${databaseLabel} is unreachable: ${journal.detail}`);
+    }
+  }
+
+  // The shared workflow world's DSN is injected into every deployment, so it
+  // is held by user-authored agent code. Sharing the platform's database hands
+  // that code the accounts, sessions and encrypted project secrets as well --
+  // which is what installations rendered before this split still do, and they
+  // cannot be repointed silently: their runs, timers and hooks live in the
+  // `workflow` schema of the database they are already using.
+  //
+  // Both views are checked, not just the platform's: the deployment-facing URL
+  // is the one an agent actually holds.
+  const platformDatabase = databaseUrl ? databaseName(databaseUrl) : null;
+  const worldKeys = ["EVELAND_WORKFLOW_WORLD_URL", "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL"] as const;
+  const worldDatabases = worldKeys
+    .map((key) => ({ key, database: databaseName(deps.envFile?.values[key]?.trim() ?? "") }))
+    .filter((entry): entry is { key: (typeof worldKeys)[number]; database: string } =>
+      Boolean(entry.database),
+    );
+  if (platformDatabase && worldDatabases.length > 0) {
+    const shared = worldDatabases.filter((entry) => entry.database === platformDatabase);
+    if (shared.length > 0) {
+      add(
+        "workflow-world-database",
+        deps.envFile?.values.NODE_ENV === "development" ? "warn" : "fail",
+        `${shared.map((entry) => entry.key).join(" and ")} name${shared.length > 1 ? "" : "s"} ` +
+          `the platform's own database ('${platformDatabase}'), and every deployment is handed ` +
+          `that DSN. Move the world into its own database ` +
+          `('${platformDatabase}${WORKFLOW_DATABASE_SUFFIX}') -- see ` +
+          "docs/en/operations/upgrades.md.",
+      );
+    } else {
+      add(
+        "workflow-world-database",
+        "ok",
+        `separate workflow database '${worldDatabases[0]!.database}'`,
+      );
     }
   }
 

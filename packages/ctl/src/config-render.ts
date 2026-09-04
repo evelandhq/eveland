@@ -1,5 +1,6 @@
 import path from "node:path";
 import { API_PORT, POSTGRES_HOST_PORT, PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
+import { deriveWorkflowWorldUrl } from "@evelandhq/core/workflow-world-url";
 import { generateAdminPassword, generateAppSecretKey, generateHexSecret } from "./secrets.ts";
 
 /**
@@ -14,10 +15,11 @@ export type BootstrapInputs = {
   adminEmail: string;
   adminPassword: string;
   /**
-   * An operator's own PostgreSQL, or undefined to run the bundled one. It
-   * becomes BOTH the platform database and the shared workflow world: those
-   * have always been one database for a ctl-rendered installation, and giving
-   * an external server two would be a schema split nothing asked for.
+   * An operator's own PostgreSQL, or undefined to run the bundled one. The
+   * shared workflow world is a second database on the same server, derived
+   * from this one's name (`deriveWorkflowWorldUrl`) — one connection to
+   * configure, two databases, because the world's DSN is handed to every
+   * deployment and must not also open the platform's tables.
    */
   databaseUrl?: string;
   /** Optional model keys forwarded to the built-in agent's environment at seeding time. */
@@ -49,9 +51,13 @@ export function renderPlatformEnv(options: {
   // host.docker.internal) and as host systemd units on Linux (loopback). An
   // external server has one address that means the same thing everywhere.
   const deploymentHost = platform === "darwin" ? "host.docker.internal" : "127.0.0.1";
-  const workflowWorldUrl =
+  // Its own database on the same server, never the platform's: this DSN is
+  // injected into every deployment, so the platform's own tables must not be
+  // reachable through it. bootstrap.ts creates it before the first migration.
+  const workflowWorldUrl = deriveWorkflowWorldUrl(
     inputs.databaseUrl ??
-    `postgres://eveland:eveland@${deploymentHost}:${POSTGRES_HOST_PORT}/eveland`;
+      `postgres://eveland:eveland@${deploymentHost}:${POSTGRES_HOST_PORT}/eveland`,
+  );
   const schedulerRedeemUrl = `http://${deploymentHost}:${API_PORT}/internal/scheduler/dispatch`;
   const gatewayServiceToken = generateHexSecret(options.random);
 
@@ -69,7 +75,7 @@ export function renderPlatformEnv(options: {
     // processes too, so there both views are the same loopback address and no
     // second DSN exists at all.
     ...(platform === "darwin" && inputs.databaseUrl === undefined
-      ? { EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: bundledDatabaseUrl }
+      ? { EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: deriveWorkflowWorldUrl(bundledDatabaseUrl) }
       : {}),
     WORKFLOW_DISPATCHER_ACTIVATION_API_URL: `http://127.0.0.1:${API_PORT}`,
     // The API validates dispatcher activations against the gateway service

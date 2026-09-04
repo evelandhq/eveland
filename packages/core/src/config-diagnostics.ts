@@ -559,7 +559,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     components: ["api", "worker", "workflow-dispatcher"],
     sensitivity: "url",
     purpose:
-      "Shared Postgres database backing @evelandhq/workflow-world; every new build uses it, so production fails closed without it. The API derives the World's cluster identity from it to verify the dispatcher registration at workflow-step activation.",
+      "Shared Postgres database backing @evelandhq/workflow-world; every new build uses it, so production fails closed without it. Its own database, never the platform's: this DSN is injected into every deployment. The API derives the World's cluster identity from it to verify the dispatcher registration at workflow-step activation.",
     required: production,
   },
   {

@@ -65,6 +65,7 @@ async function makeHarness(options: HarnessOptions = {}) {
     // database on the platform port) and burns the full 120-second deadline
     // in CI, which does not.
     pgReady: async () => true,
+    pgEnsureDatabase: async () => {},
     tcpProbe: async () => true,
     fetchImpl: async () =>
       (options.fetchOk ?? true)

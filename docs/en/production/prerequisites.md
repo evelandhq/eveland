@@ -77,7 +77,13 @@ _(If your Linux distribution already includes a profile or does not restrict unp
 Eveland requires two logical databases (which may reside on the same PostgreSQL instance):
 
 1. **Platform control plane database** (`DATABASE_URL`): Stores team credentials, project metadata, and session observations.
-2. **Shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`): Backs durable timers and workflows across all platform agents (isolated by `tenant_id`).
+2. **Shared workflow database** (`EVELAND_WORKFLOW_WORLD_URL`): Backs durable timers and workflows across all platform agents (isolated by `tenant_id`). By convention it is the platform database's name plus `_workflow` — `eveland` and `eveland_workflow`.
+
+They must be **two databases, not one**. The workflow world's DSN is injected into every agent deployment, so agent code holds those credentials; pointed at the platform database they would also open the accounts, sessions, and encrypted project secrets. `eveland-ctl` creates the second database at first boot; a manual install creates it once:
+
+```bash
+createdb -h 127.0.0.1 -p 17310 -U eveland eveland_workflow
+```
 
 ### Deployment options
 

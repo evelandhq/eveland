@@ -28,6 +28,14 @@ production" means the process throws or a deploy is blocked when it is missing.
 | `EVELAND_WORKFLOW_WORLD_URL`           | Shared Postgres database backing `@evelandhq/workflow-world` (the platform's multi-tenant workflow world). Every new build bakes this world in, so a production worker fails startup closed without the URL. The API derives the World's cluster identity from it and refuses workflow-step activation for a dispatcher registered against any other cluster. Deployment retention protects deployments with non-terminal runs except those quarantined by an unresolved dispatch dead letter, and worker startup or tenant provisioning automatically applies all pending schema migrations before the dispatcher or a Deployment uses them. | — (required in production)                                                                                          | API and worker (`packages/core/src/workflow-world-url.ts`, `packages/db/src/workflow-world-identity.ts`, `apps/worker/src/runtime/eveland-workflow-world-bootstrap.ts`), dispatcher |
 | `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` | The reading platform process's own view of the same shared workflow database. Set when the platform reaches Postgres by a different name than deployments do (e.g. `host.docker.internal` under Docker Desktop).                                                                                                                                                                                                                                                                                                                                                                                                                              | `EVELAND_WORKFLOW_WORLD_URL`                                                                                        | API and worker (`packages/core/src/workflow-world-url.ts`), dispatcher                                                                                                              |
 
+> **`EVELAND_WORKFLOW_WORLD_URL` must name its own database**, not the one in
+> `DATABASE_URL` (the convention is `eveland` and `eveland_workflow`). The
+> worker injects this DSN into every deployment, so agent code holds it; against
+> the platform database it would also open the accounts, sessions, and encrypted
+> project secrets. `eveland-ctl doctor` reports a shared database as
+> `workflow-world-database`; moving an existing installation is documented in
+> [Upgrades](/docs/operations/upgrades).
+
 > **`EVELAND_WORKFLOW_WORLD_URL` (and, on legacy installs,
 > `WORKFLOW_POSTGRES_URL`) must use a container-reachable host** (e.g.
 > `host.docker.internal`), not `localhost`, because agent containers reach the

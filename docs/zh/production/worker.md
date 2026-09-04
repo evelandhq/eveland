@@ -49,7 +49,7 @@ EVELAND_DATA_DIR=/var/lib/eveland
 
 # 数据库连接
 DATABASE_URL=postgres://eveland:password@127.0.0.1:17310/eveland
-EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland
+EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:password@127.0.0.1:17310/eveland_workflow
 
 # 内部通信安全凭证（必须与核心服务一致）
 APP_SECRET_KEY=your_app_encryption_key_32_bytes

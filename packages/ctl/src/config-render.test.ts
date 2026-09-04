@@ -71,14 +71,33 @@ describe("renderPlatformEnv", () => {
     expect(values.EVELAND_SCHEDULER_REDEEM_URL).toContain("127.0.0.1");
   });
 
-  test("an operator's own PostgreSQL becomes both the platform database and the world", () => {
-    // Those have always been one database for a ctl-rendered installation;
-    // giving an external server two would be a schema split nothing asked for.
-    const dsn = "postgres://ops:pw@db.internal:6543/eveland";
+  test("an operator's own PostgreSQL gets the world as a SECOND database on the same server", () => {
+    // One connection to configure, two databases: the world's DSN is injected
+    // into every deployment, so the platform's own tables must not be
+    // reachable through it.
+    const dsn = "postgres://ops:pw@db.internal:6543/platform";
     const { values } = render("linux", { ...INPUTS, databaseUrl: dsn });
     expect(values.DATABASE_URL).toBe(dsn);
-    expect(values.EVELAND_WORKFLOW_WORLD_URL).toBe(dsn);
+    expect(values.EVELAND_WORKFLOW_WORLD_URL).toBe(
+      "postgres://ops:pw@db.internal:6543/platform_workflow",
+    );
     expect(values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBeUndefined();
+  });
+
+  test("the shared workflow world is never the platform's own database", () => {
+    // What a deployment holds is the world DSN; pointed at the platform
+    // database it would also hold the accounts, sessions and encrypted
+    // project secrets.
+    for (const platform of ["darwin", "linux"] as const) {
+      const { values } = render(platform);
+      const platformDatabase = new URL(values.DATABASE_URL!).pathname;
+      for (const key of ["EVELAND_WORKFLOW_WORLD_URL", "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL"]) {
+        const value = values[key];
+        if (!value) continue;
+        expect(new URL(value).pathname, `${platform} ${key}`).not.toBe(platformDatabase);
+        expect(new URL(value).pathname, `${platform} ${key}`).toBe("/eveland_workflow");
+      }
+    }
   });
 
   test("Linux renders exactly ONE address for the shared workflow world", () => {

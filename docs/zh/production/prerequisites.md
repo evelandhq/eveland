@@ -77,7 +77,13 @@ _(如果使用的发行版已内置对应规则或未开启该内核限制，可
 Eveland 需要两个逻辑数据库（可位于同一个 Postgres 实例中）：
 
 1. **平台控制面数据库** (`DATABASE_URL`)：持久化团队、项目、部署状态与会话事件。
-2. **共享工作流数据库** (`EVELAND_WORKFLOW_WORLD_URL`)：为全平台 Agent 承载持久化任务与定时工作流（内部按 `tenant_id` 逻辑隔离）。
+2. **共享工作流数据库** (`EVELAND_WORKFLOW_WORLD_URL`)：为全平台 Agent 承载持久化任务与定时工作流（内部按 `tenant_id` 逻辑隔离）。命名约定是在平台库名后加 `_workflow`——即 `eveland` 与 `eveland_workflow`。
+
+两者必须是**两个库，而不是同一个库**：工作流库的 DSN 会被注入到每一个 Agent Deployment，也就是握在 Agent 代码手里；一旦指向平台库，账号、会话与加密后的项目 Secret 也就一并暴露了。`eveland-ctl` 会在首次启动时自动创建第二个库；手工部署则执行一次：
+
+```bash
+createdb -h 127.0.0.1 -p 17310 -U eveland eveland_workflow
+```
 
 ### 部署选择
 
