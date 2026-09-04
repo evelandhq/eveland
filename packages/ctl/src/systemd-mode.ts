@@ -435,7 +435,24 @@ function identityLines(profile: UnitProfile, options: UnitRenderOptions): string
   if (profile.identity === "dynamic-user") {
     // DynamicUser implies ProtectSystem=strict, PrivateTmp and friends, and
     // hands out a uid that exists only for this boot.
-    return [...profile.rationale, "DynamicUser=yes", ...UNPRIVILEGED_HARDENING];
+    return [
+      ...profile.rationale,
+      "DynamicUser=yes",
+      // A transient uid has no /etc/passwd entry, and systemd does not export
+      // $HOME for one. Node's os.homedir() then falls through to getpwuid_r(),
+      // finds nothing, and THROWS rather than returning a default (libuv
+      // surfaces it as ENOENT) — so any dependency that reads a home path at
+      // import time kills the process before it starts. That is exactly how
+      // the dispatcher died: graphile-worker's cosmiconfig takes
+      // os.homedir() as its stopDir.
+      //
+      // PrivateTmp's /tmp is the home this identity should have: writable, and
+      // gone at the next restart, so "owns no file that outlives a restart"
+      // still holds. A StateDirectory would buy persistence this identity
+      // deliberately does not want.
+      "Environment=HOME=/tmp",
+      ...UNPRIVILEGED_HARDENING,
+    ];
   }
   const { user, home } = profile.identity;
   const readWrite = [home, ...(profile.readWritePaths?.(options) ?? [])];
@@ -443,8 +460,9 @@ function identityLines(profile: UnitProfile, options: UnitRenderOptions): string
     ...profile.rationale,
     `User=${user}`,
     `Group=${user}`,
-    // A real home: corepack, npm and Next all fall back to $HOME, and
-    // DynamicUser's HOME=/ is exactly what breaks them.
+    // A real home: corepack, npm and Next all fall back to $HOME, and a
+    // transient uid's home — unset, as the dispatcher found out — is exactly
+    // what breaks them.
     `Environment=HOME=${home}`,
     ...UNPRIVILEGED_HARDENING,
     // The checkout, /etc and everything else become read-only; only the
