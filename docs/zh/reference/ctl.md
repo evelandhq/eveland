@@ -46,6 +46,22 @@ curl -fsSL https://eveland.ai/install.sh | sudo bash
 | `eveland-ctl doctor`            | 执行完整的宿主机环境深度体检（检查沙箱、端口占用、数据库连通性等），一次性汇总所有异常。                                                             |
 | `eveland-ctl update`            | 自动备份数据库、拉取最新稳定版本、执行数据库迁移并滚动重启全部组件。支持通过 `--version vX.Y.Z` 指定目标版本。                                       |
 | `eveland-ctl install --systemd` | 为当前宿主机渲染并注册所有核心服务的 systemd unit 文件。                                                                                             |
+| `eveland-ctl dead-letters`      | 按 Deployment 列出平台丢弃掉的 workflow 派发，`--resolve` 负责处理它们。只要还有未处理的，退出码为 1。                                               |
+
+### 派发死信 (Dead letters)
+
+死信是平台放弃投递的一次 workflow 派发。消息被原样保留，等根因修好后可以重放；而只要这一行还没被处理，它同时把对应的 run 挡在调度器的启动恢复之外——这是一种隔离，避免每次重启都重放一次必然失败的投递。Dashboard 健康页只负责统计，处理它们在这里。
+
+```bash
+eveland-ctl dead-letters                                  # 还剩多少，其中哪些真的卡住了
+eveland-ctl dead-letters --resolve --deployment dep_abc   # 修好那个 Deployment 之后
+eveland-ctl dead-letters --resolve --run wrun_abc
+eveland-ctl dead-letters --resolve --all --yes            # 全部处理，可脚本化
+```
+
+先看报告的第二行。`N runs still quarantined` 才是真正卡住的活：这些 run 还是 `pending` 或 `running`，在你做决定之前没有任何调度器会碰它们。`no run is still quarantined` 说明这些死信只是历史记录，对应的 run 早已结束，不构成故障。
+
+处理死信不是清理。它会把每一个被隔离的 run 交还给下一次调度器启动，所以先修根因——通常是某个再也无法激活的 Deployment——然后重启 workflow dispatcher 让它们立刻重放。处理死信不会丢掉它保存的消息，也不会覆盖别人已经做过的处理时间。run 进入终态时会自己处理掉它的死信，所以取消一个卡死的 run 是另一条出路。
 
 ### 输出配色
 
