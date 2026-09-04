@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { getCurrentMemberOrNull } from "./server-api";
+import { getApiBuildInfo, getCurrentMemberOrNull } from "./server-api";
 
 const cookieStore = { toString: () => "eveland_session=session-token" };
 
@@ -23,6 +23,20 @@ describe("server auth API", () => {
     expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:17301/api/members/me", {
       cache: "no-store",
       headers: { cookie: "eveland_session=session-token" },
+    });
+  });
+
+  // `/health` is the API's own top-level namespace, not part of the browser
+  // plane behind `/api`; dialling `/api/health` 404s and the About page then
+  // reports the API build as unavailable.
+  test("reads the API build identity from the private origin's root", async () => {
+    const build = { component: "api", version: "0.51.1", revision: "abc123", channel: "edge" };
+    const fetchMock = vi.fn(async () => Response.json({ ok: true, ...build }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getApiBuildInfo()).resolves.toEqual({ ok: true, ...build });
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:17301/health", {
+      cache: "no-store",
     });
   });
 

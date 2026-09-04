@@ -41,7 +41,8 @@ import type {
 
 // Server components dial the API's private origin directly; the paths are
 // the same `/api/...` the browser uses — verbatim on both origins.
-const apiBaseUrl = `${process.env.API_URL ?? API_INTERNAL_URL_FALLBACK}${PUBLIC_API_PREFIX}`;
+const apiOrigin = process.env.API_URL ?? API_INTERNAL_URL_FALLBACK;
+const apiBaseUrl = `${apiOrigin}${PUBLIC_API_PREFIX}`;
 
 export type ProjectListItem = Project & {
   eveVersion: EveVersionInfo;
@@ -137,7 +138,14 @@ export const getMembers = () =>
   apiGet<{ members: Member[] }>("/members").then((data) => data.members);
 export const getInvitations = () =>
   apiGet<{ invitations: Invitation[] }>("/invitations").then((data) => data.invitations);
-export const getApiBuildInfo = () => apiGet<{ ok: true } & EvelandBuildInfo>("/health");
+// `/health` is a top-level API namespace of its own, not part of the browser
+// plane behind `/api` — dial it on the private origin's root. It is
+// unauthenticated, so it carries no session cookie.
+export const getApiBuildInfo = async () => {
+  const response = await fetch(`${apiOrigin}/health`, { cache: "no-store" });
+  if (!response.ok) throw new Error(`API health request failed with ${response.status}`);
+  return response.json() as Promise<{ ok: true } & EvelandBuildInfo>;
+};
 export const getSystemConfigurationDiagnostics = () =>
   apiGet<SystemConfigurationDiagnostics>("/system/configuration");
 export const getObservabilitySettings = () =>
