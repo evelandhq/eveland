@@ -1,6 +1,13 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { API_PORT, POSTGRES_HOST_PORT, WEB_PORT } from "@evelandhq/core/ports";
-import { collectDoctorChecks, type DoctorDeps } from "./doctor.ts";
+import { createPalette } from "./color.ts";
+import { collectDoctorChecks, runDoctor, type DoctorDeps } from "./doctor.ts";
+import type { LifecycleIo } from "./lifecycle.ts";
+
+const ESC = "\u001b";
 
 function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
   return {
@@ -325,5 +332,68 @@ describe("collectDoctorChecks", () => {
       }),
     );
     expect(byName(checks, "os")?.detail).toContain("WSL2");
+  });
+});
+
+/**
+ * The report is a long list where the rows that matter are the few that are
+ * not ok. Colour is how that reads at a glance -- and it is off unless stdout
+ * is a terminal, because this output is also what gets pasted into an issue.
+ */
+describe("runDoctor rendering", () => {
+  async function render(palette?: LifecycleIo["palette"]) {
+    const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-doctorrender-"));
+    const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-doctorhome-"));
+    await writeFile(
+      path.join(repo, ".env"),
+      [
+        "NODE_ENV=production",
+        "DATABASE_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
+        `APP_SECRET_KEY=${"k".repeat(32)}`,
+        `BETTER_AUTH_SECRET=${"s".repeat(32)}`,
+        "EVELAND_ADMIN_PASSWORD=long-enough-password",
+      ].join("\n"),
+      "utf8",
+    );
+    const out: string[] = [];
+    const code = await runDoctor([], {
+      // HTTPS_PROXY is a real warn; an unsupported platform is a real fail.
+      env: { EVELAND_HOME: home, HTTPS_PROXY: "http://127.0.0.1:1" },
+      platform: "sunos" as NodeJS.Platform,
+      repoRootDir: repo,
+      stdout: (line) => out.push(line),
+      stderr: () => {},
+      palette,
+      doctorDeps: {
+        execCommand: async () => ({ code: 0, output: "Info-ZIP\n" }),
+        pgJournalProbe: async () => ({ status: "migrated", count: 62 }),
+        tcpProbe: async () => false,
+        nonLoopbackAddresses: () => [],
+        dockerBridgeHost: async () => null,
+        freeDiskBytes: async () => 100 * 1024 ** 3,
+        fileExists: async () => false,
+      },
+    });
+    return { code, out };
+  }
+
+  test("colour marks each row by status and dims the details of passing ones", async () => {
+    const { code, out } = await render(createPalette({}, true));
+    expect(code).toBe(1);
+    const report = out.join("\n");
+    expect(report).toContain(`[${ESC}[31m FAIL ${ESC}[39m] os`);
+    expect(report).toContain(`[${ESC}[33m warn ${ESC}[39m] proxy-env`);
+    expect(report).toContain(`[${ESC}[32m  ok  ${ESC}[39m] pnpm`);
+    // The row that needs reading keeps full brightness; the ones that do not
+    // recede.
+    expect(report).toContain(`pnpm                 ${ESC}[2mpnpm Info-ZIP${ESC}[22m`);
+    expect(out.at(-1)).toBe(`${ESC}[31m1 failure(s), 2 warning(s).${ESC}[39m`);
+  });
+
+  test("without a terminal the report is plain text, byte for byte", async () => {
+    const { out } = await render();
+    expect(out.join("\n")).not.toContain(ESC);
+    expect(out.join("\n")).toContain("[ FAIL ] os");
+    expect(out.at(-1)).toBe("1 failure(s), 2 warning(s).");
   });
 });

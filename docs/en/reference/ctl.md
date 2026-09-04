@@ -47,6 +47,10 @@ The `EVELAND_HOME` environment variable specifies the appliance root directory (
 | `eveland-ctl update`            | Creates database backups, fetches the latest stable release, executes migrations, and performs rolling restarts. Supports `--version vX.Y.Z`.                                                                  |
 | `eveland-ctl install --systemd` | Renders and registers systemd unit files for all core platform services.                                                                                                                                       |
 
+### Colored output
+
+`status` and `doctor` color their reports so the rows that are _not_ healthy are the ones that stand out: a green `✓` or `[  ok  ]` with dimmed details, yellow for anything the tool could not answer, red for a failure. Color is written only when stdout is a terminal, so a redirect, a pipe into `grep`, or a report pasted into an issue stays plain text. `NO_COLOR=1` turns it off on a terminal; `FORCE_COLOR=1` turns it on when it is not one (piping into `less -R`, for example).
+
 ---
 
 ## 4. Environment doctor checks

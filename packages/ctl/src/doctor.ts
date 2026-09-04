@@ -12,6 +12,7 @@ import {
   WEB_PORT,
 } from "@evelandhq/core/ports";
 import { databaseName, WORKFLOW_DATABASE_SUFFIX } from "@evelandhq/core/workflow-world-url";
+import { createPalette, type Palette } from "./color.ts";
 import { loadPlatformEnvFile, type PlatformEnvFile } from "./env-file.ts";
 import { databaseMode, readInstallMetadata, type DatabaseMode } from "./home.ts";
 import { defaultPgJournalProbe, describeDatabaseAddress, type PgJournalProbe } from "./pg-probe.ts";
@@ -467,6 +468,10 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
   return checks;
 }
 
+function statusStyle(color: Palette, status: CheckStatus) {
+  return status === "ok" ? color.green : status === "warn" ? color.yellow : color.red;
+}
+
 async function probeHealth(fetchImpl: FetchLike, component: "gateway" | "api"): Promise<boolean> {
   const base = component === "gateway" ? GATEWAY_INTERNAL_URL_FALLBACK : API_INTERNAL_URL_FALLBACK;
   try {
@@ -535,19 +540,26 @@ export async function runDoctor(
     ...io.doctorDeps,
   };
   const checks = await collectDoctorChecks(deps);
+  const color = io.palette ?? createPalette(io.env);
   for (const check of checks) {
+    const style = statusStyle(color, check.status);
     const marker = check.status === "ok" ? "  ok  " : check.status === "warn" ? " warn " : " FAIL ";
-    io.stdout(`[${marker}] ${check.name.padEnd(20)} ${check.detail}`);
+    // A passing check's detail is a fact nobody reads twice, so it is dimmed
+    // and the handful of rows that are NOT ok keep the full-brightness text.
+    // This is a long list; whether it is worth reading has to be answerable
+    // without reading it.
+    const detail = check.status === "ok" ? color.dim(check.detail) : check.detail;
+    io.stdout(`[${style(marker)}] ${check.name.padEnd(20)} ${detail}`);
   }
   const failures = checks.filter((check) => check.status === "fail").length;
   const warnings = checks.filter((check) => check.status === "warn").length;
   io.stdout("");
   io.stdout(
     failures > 0
-      ? `${failures} failure(s), ${warnings} warning(s).`
+      ? color.red(`${failures} failure(s), ${warnings} warning(s).`)
       : warnings > 0
-        ? `No failures, ${warnings} warning(s).`
-        : "All checks passed.",
+        ? color.yellow(`No failures, ${warnings} warning(s).`)
+        : color.green("All checks passed."),
   );
   return failures > 0 ? 1 : 0;
 }
