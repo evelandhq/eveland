@@ -84,16 +84,21 @@ jobs:
       - name: The rendered units must be valid systemd
         # systemd ignores unknown keys with only a log line, so a directive in
         # the wrong section (StartLimit* belongs to [Unit], not [Service])
-        # silently does nothing. `verify` is the only thing that says so.
-        # It reports the units' ExecStart binaries as unreadable when run
-        # unprivileged, hence sudo.
+        # silently does nothing at all. `verify` is the only thing that says
+        # so -- and it says it on stdout while still EXITING 0, so the exit
+        # code is not the gate: any diagnostic naming one of our units is.
+        # Diagnostics about units we do not own (docker.service and the other
+        # dependencies verify pulls in) are not our business. sudo because
+        # verify reads the units' ExecStart binaries.
         run: |
-          sudo systemd-analyze verify \
-            /etc/systemd/system/eveland-api.service \
-            /etc/systemd/system/eveland-gateway.service \
-            /etc/systemd/system/eveland-web.service \
-            /etc/systemd/system/eveland-worker.service \
-            /etc/systemd/system/eveland-workflow-dispatcher.service
+          out="$(sudo systemd-analyze verify /etc/systemd/system/eveland-*.service 2>&1)" || {
+            echo "$out"; exit 1;
+          }
+          echo "${out:-(no diagnostics)}"
+          if echo "$out" | grep -E '^/etc/systemd/system/eveland-[a-z-]+\.service:'; then
+            echo "::error::systemd rejected a directive in a generated unit (see above)"
+            exit 1
+          fi
 
       - name: Each platform service has its own uid
         # The per-service env allowlists are only a boundary if no two
