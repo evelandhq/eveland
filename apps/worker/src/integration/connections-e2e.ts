@@ -13,6 +13,14 @@ import { createPgliteTestStore } from "@evelandhq/db/test";
 import { execa } from "execa";
 import { processNextJob } from "../jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
+import { watchDelegatedTurn } from "./delegated-turn.js";
+
+/**
+ * One budget for a whole session read. It has to cover the delegated child
+ * run too: under eve 0.51 that starts only after the root session is
+ * already waiting.
+ */
+const SESSION_STREAM_BUDGET_MS = 60_000;
 
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
 const OPENAPI_TOKEN = "managed-openapi-secret-do-not-leak";
@@ -306,14 +314,16 @@ async function verifySubagentConnection(
   const session = await startSession(
     port,
     'delegate to a subagent: Use connection_search with connection "research" and keywords "connection record".',
+    // eve 0.51 dispatches the subagent as a background task, so its child run
+    // — and the Connection calls this check counts — happen after the root
+    // turn has completed and the session is already waiting.
+    { subagentName: "researcher" },
   );
   assert.ok(
-    session.events.some(
-      (event) =>
-        event.type === "subagent.called" &&
-        (event.data as { name?: unknown } | undefined)?.name === "researcher",
-    ),
-    "root did not invoke the directory-form researcher",
+    session.subagentCalled,
+    `root did not invoke the directory-form researcher; events=${JSON.stringify(
+      session.events.map((event) => event.type),
+    )}`,
   );
   assert.ok(
     counts.mcpLists > beforeMcpLists,
@@ -345,10 +355,12 @@ async function runWarmupTurn(port: number): Promise<void> {
 async function startSession(
   port: number,
   message: string,
+  options: { subagentName?: string } = {},
 ): Promise<{
   sessionId: string;
   nextIndex: number;
   events: SessionEvent[];
+  subagentCalled: boolean;
 }> {
   const response = await fetch(`http://127.0.0.1:${port}/eve/v1/session`, {
     method: "POST",
@@ -364,26 +376,40 @@ async function startSession(
       ? parsed.sessionId
       : response.headers.get("x-eve-session-id");
   assert.ok(sessionId, `session creation returned no session id: ${body}`);
-  return { sessionId, ...(await readUntilWaiting(port, sessionId, 0)) };
+  return { sessionId, ...(await readUntilWaiting(port, sessionId, 0, options)) };
 }
 
+/**
+ * Reads to `session.waiting`, and — when a delegated subagent is expected —
+ * past it: eve 0.51 hands the root turn a background-task handle, so the child
+ * run only starts (and only reports `subagent.called`, and only then uses its
+ * own Connections) after the root session is already waiting.
+ */
 async function readUntilWaiting(
   port: number,
   sessionId: string,
   startIndex: number,
-): Promise<{ nextIndex: number; events: SessionEvent[] }> {
+  options: { subagentName?: string } = {},
+): Promise<{ nextIndex: number; events: SessionEvent[]; subagentCalled: boolean }> {
   const response = await fetch(
     `http://127.0.0.1:${port}/eve/v1/session/${encodeURIComponent(sessionId)}/stream?startIndex=${startIndex}`,
-    { signal: AbortSignal.timeout(60_000) },
+    { signal: AbortSignal.timeout(SESSION_STREAM_BUDGET_MS) },
   );
   assert.ok(response.ok && response.body, `session stream failed (${response.status})`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const events: SessionEvent[] = [];
+  const watch = watchDelegatedTurn(
+    options.subagentName === undefined ? {} : { subagentName: options.subagentName },
+  );
+  const deadline = Date.now() + SESSION_STREAM_BUDGET_MS;
   let buffer = "";
   let waiting = false;
+  // A delegating session is read past its first `session.waiting`: under eve
+  // 0.51 the child run — and the Connections it uses — comes after it.
+  const done = () => (options.subagentName === undefined ? waiting : watch.settled);
   try {
-    while (!waiting) {
+    while (!done() && Date.now() < deadline) {
       const chunk = await reader.read();
       if (chunk.done) break;
       buffer += decoder.decode(chunk.value, { stream: true });
@@ -394,6 +420,7 @@ async function readUntilWaiting(
         if (!line) continue;
         const event = JSON.parse(line) as SessionEvent;
         events.push(event);
+        watch.observe(event);
         if (event.type === "turn.failed" || event.type === "session.failed") {
           throw new Error(`managed Connection turn failed: ${line}`);
         }
@@ -414,7 +441,7 @@ async function readUntilWaiting(
     events.some((event) => event.type === "turn.completed"),
     `session ${sessionId} never completed its turn`,
   );
-  return { nextIndex: startIndex + events.length, events };
+  return { nextIndex: startIndex + events.length, events, subagentCalled: watch.subagentCalled };
 }
 
 async function startConnectionServer(
