@@ -122,13 +122,53 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
   version: string;
 };
 
+/**
+ * The spec version the shared World actually DECLARES, read out of its own
+ * dist rather than assumed to be the package's current one.
+ *
+ * The two parted company when the World picked up the `@workflow/*` set eve
+ * 0.51 bundles: that `@workflow/world` reports `SPEC_VERSION_CURRENT` 7, while
+ * the World keeps declaring `SPEC_VERSION_SUPPORTS_SLOT_IDENTITY` (6) until
+ * v7's sealed log has been reviewed against every eve line the platform hosts.
+ * eve gates on the declared number, so every range check below has to use this
+ * one — reading `SPEC_VERSION_CURRENT` was only ever right by coincidence.
+ *
+ * Resolving the identifier the World names, rather than hardcoding it, is what
+ * makes this catch the World changing its mind as well as the constant moving.
+ */
+function declaredWorldSpecVersion(): number {
+  const source = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
+  const declared = [...source.matchAll(/specVersion:\s*([A-Za-z_$][\w$]*)/g)];
+  // Exactly one, or this is reading the wrong site: a second declaration would
+  // make "the first match" an arbitrary choice, and silently answering for the
+  // wrong one is worse than failing here.
+  if (declared.length !== 1) {
+    throw new Error(
+      `expected exactly one declared specVersion in the World's dist, found ${String(declared.length)}`,
+    );
+  }
+  const identifier = declared[0]![1]!;
+  const constants = require(require.resolve("@workflow/world", { paths: [worldRoot] })) as Record<
+    string,
+    unknown
+  >;
+  const value = constants[identifier];
+  if (typeof value !== "number") {
+    throw new Error(`@workflow/world does not export ${identifier} as a number`);
+  }
+  return value;
+}
+
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
-  test("pins the spec-v6 platform worlds reviewed for Eve 0.38.3", () => {
-    expect(worldManifest.version).toBe("0.14.0");
+  test("pins both platform worlds and the spec version each one declares", () => {
+    expect(worldManifest.version).toBe("0.15.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
+    // Both reviewed @workflow graphs stay recorded: the legacy World's, and
+    // the one the shared World bundles. See the comment above the list.
     const workspace = readSource("pnpm-workspace.yaml");
     expect(workspace).toContain('  - "@workflow/utils@5.0.0-beta.8"');
+    expect(workspace).toContain('  - "@workflow/utils@5.0.0-beta.10"');
 
     const { SPEC_VERSION_CURRENT: sharedSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [worldRoot] }),
@@ -136,7 +176,11 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     const { SPEC_VERSION_CURRENT: postgresSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [postgresWorldRoot] }),
     ) as { SPEC_VERSION_CURRENT: number };
-    expect(sharedSpecVersion).toBe(6);
+    // Capability and declaration, held apart deliberately: the shared World's
+    // package can do v7's sealed log, and the World still declares v6. Moving
+    // the second number is an eve-window decision, not a lockfile outcome.
+    expect(sharedSpecVersion).toBe(7);
+    expect(declaredWorldSpecVersion()).toBe(6);
     expect(postgresSpecVersion).toBe(6);
   });
 
@@ -244,11 +288,12 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
           `could not find eve ${eveManifest.version}'s spec-version guard`,
         ).toBeDefined();
 
-        const { SPEC_VERSION_CURRENT } = require(
-          require.resolve("@workflow/world", { paths: [worldRoot] }),
-        ) as { SPEC_VERSION_CURRENT: number };
-        expect(SPEC_VERSION_CURRENT).toBeGreaterThanOrEqual(enforced!.min);
-        expect(SPEC_VERSION_CURRENT).toBeLessThanOrEqual(enforced!.max);
+        // The declared number, not the package's current one: eve compares the
+        // `specVersion` the World hands it, and since the World's package moved
+        // to v7 while it keeps declaring v6 those are different values.
+        const declared = declaredWorldSpecVersion();
+        expect(declared).toBeGreaterThanOrEqual(enforced!.min);
+        expect(declared).toBeLessThanOrEqual(enforced!.max);
       });
     });
   }

@@ -50,10 +50,19 @@ overrides:
 # The release-age cooldown is waived only for explicitly reviewed packages.
 # `eve`, `@evelandhq/sandbox-bwrap`, and `@evelandhq/workflow-world` are
 # excluded by name rather than by version because they are frequently released
-# first-party packages. The exact @workflow/* entries are the reviewed spec-v6
-# graph required by Eve 0.51.0 (unchanged since 0.38.3: eve's @workflow bumps
-# through 0.51 are devDependencies only); the @ai-sdk and ai entries are
-# likewise pinned third-party decisions.
+# first-party packages; the @ai-sdk and ai entries are pinned third-party
+# decisions.
+#
+# The @workflow/* entries are TWO reviewed graphs that coexist on purpose.
+# `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
+# it are the legacy World, spec-v6 throughout, kept only for Releases built
+# before the shared World and never selected for a new build. The beta.20/10/
+# 42/33 line is what `@evelandhq/workflow-world` 0.15.0 bundles -- the set eve
+# 0.51 carries. That line's `@workflow/world` reports SPEC_VERSION_CURRENT 7,
+# and the shared World still DECLARES 6 (`SPEC_VERSION_SUPPORTS_SLOT_IDENTITY`)
+# because v7's sealed log has not been reviewed against every supported eve
+# line. eve gates on the declared number, which the contract ratchet asserts
+# per line; do not conflate the two.
 minimumReleaseAgeExclude:
   - eve
   - "@evelandhq/sandbox-bwrap"
@@ -62,7 +71,11 @@ minimumReleaseAgeExclude:
   - "@ai-sdk/provider-utils@5.0.16"
   - ai@7.0.85
   - "@workflow/errors@5.0.0-beta.17"
+  - "@workflow/errors@5.0.0-beta.20"
   - "@workflow/utils@5.0.0-beta.8"
+  - "@workflow/utils@5.0.0-beta.10"
   - "@workflow/world-local@5.0.0-beta.36"
+  - "@workflow/world-local@5.0.0-beta.42"
   - "@workflow/world-postgres@5.0.0-beta.34"
   - "@workflow/world@5.0.0-beta.27"
+  - "@workflow/world@5.0.0-beta.33"
