@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.54.0](https://github.com/evelandhq/eveland/compare/v0.53.0...v0.54.0) (2026-09-05)
+
+
+### Features
+
+* adopt workflow-world 0.15.0, resolving dead letters when a run settles ([#506](https://github.com/evelandhq/eveland/issues/506)) ([daa8607](https://github.com/evelandhq/eveland/commit/daa860729ea2701b55540b8a614e84515d1d588a))
+* **ctl:** give dispatch dead letters an operator surface ([#504](https://github.com/evelandhq/eveland/issues/504)) ([f838b5d](https://github.com/evelandhq/eveland/commit/f838b5d87be6a11ec39bdb2083a827a3cc0ed8b7))
+
 ## [0.53.0](https://github.com/evelandhq/eveland/compare/v0.52.0...v0.53.0) (2026-09-04)
 
 
