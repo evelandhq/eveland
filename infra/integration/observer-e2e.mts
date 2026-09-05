@@ -15,7 +15,16 @@ import { projectAgentEventsFromOtlpLogs } from "../../packages/session-collector
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
 import { startOtlpTestReceiver } from "./otlp-test-receiver.mts";
+import { watchDelegatedTurn } from "../../apps/worker/src/integration/delegated-turn.js";
 import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
+
+/**
+ * One budget for the whole delegation. eve 0.51 finishes the root turn while
+ * the subagent is still a background task, so `subagent.called` arrives on the
+ * parent stream only after `turn.completed`, once the external dispatcher has
+ * driven the child run's first durable steps.
+ */
+const DELEGATED_TURN_BUDGET_MS = 60_000;
 
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
 const AGENT_TELEMETRY_SECRET = deriveAgentTelemetrySecret(APP_SECRET_KEY);
@@ -69,7 +78,17 @@ async function main(): Promise<void> {
         true,
       );
       const deployment = await store.getCurrentDeployment(project.id);
-      assert.ok(deployment, "OTLP fixture deployment was not recorded");
+      // processNextJob returns true for a job it merely *ran*; a build that
+      // failed leaves its reason in the project's log, not on stdout, and this
+      // store is a temporary one that disappears with the process.
+      assert.ok(
+        deployment,
+        `OTLP fixture deployment was not recorded; build/deploy log:\n${(
+          await store.listLogs(project.id)
+        )
+          .map((entry) => `  [${entry.type}] ${entry.line}`)
+          .join("\n")}`,
+      );
       processName = deployment.containerName;
 
       const eveSessionId = await runDirectTurn(deployment.hostPort);
@@ -210,15 +229,18 @@ async function runDirectTurn(hostPort: number): Promise<string> {
 
   const stream = await fetch(
     `http://127.0.0.1:${hostPort}/eve/v1/session/${encodeURIComponent(sessionId)}/stream`,
-    { signal: AbortSignal.timeout(30_000) },
+    { signal: AbortSignal.timeout(DELEGATED_TURN_BUDGET_MS) },
   );
   assert.ok(stream.ok && stream.body, `session stream failed (${stream.status})`);
   const reader = stream.body.getReader();
   const decoder = new TextDecoder();
+  // The delegated child run outlives the root turn under eve 0.51, so the read
+  // runs to the end of the whole delegation, not to the root turn's boundary.
+  const watch = watchDelegatedTurn({ subagentName: "researcher" });
+  const deadline = Date.now() + DELEGATED_TURN_BUDGET_MS;
   let buffer = "";
-  let sawSubagent = false;
-  let sawTurnCompleted = false;
-  while (!sawTurnCompleted) {
+  const seen: string[] = [];
+  while (!watch.settled && Date.now() < deadline) {
     const chunk = await reader.read();
     if (chunk.done) break;
     buffer += decoder.decode(chunk.value, { stream: true });
@@ -228,12 +250,16 @@ async function runDirectTurn(hostPort: number): Promise<string> {
       buffer = buffer.slice(newline + 1);
       if (!line) continue;
       const event = JSON.parse(line) as { type?: string };
-      if (event.type === "subagent.called") sawSubagent = true;
-      if (event.type === "turn.completed") sawTurnCompleted = true;
+      if (event.type) seen.push(event.type);
+      watch.observe(event);
     }
   }
   await reader.cancel().catch(() => undefined);
-  assert.ok(sawSubagent, "root did not invoke the directory-form researcher");
-  assert.ok(sawTurnCompleted, "root turn did not complete");
+  assert.ok(!watch.turnFailed, `root turn failed; stream events=${seen.join(", ")}`);
+  assert.ok(watch.turnCompleted, `root turn did not complete; stream events=${seen.join(", ")}`);
+  assert.ok(
+    watch.subagentCalled,
+    `root did not invoke the directory-form researcher; stream events=${seen.join(", ")}`,
+  );
   return sessionId;
 }
