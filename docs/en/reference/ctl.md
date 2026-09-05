@@ -46,6 +46,22 @@ The `EVELAND_HOME` environment variable specifies the appliance root directory (
 | `eveland-ctl doctor`            | Runs comprehensive host diagnostics (sandboxing permissions, port availability, database connectivity). Reports all failures in one pass.                                                                      |
 | `eveland-ctl update`            | Creates database backups, fetches the latest stable release, executes migrations, and performs rolling restarts. Supports `--version vX.Y.Z`.                                                                  |
 | `eveland-ctl install --systemd` | Renders and registers systemd unit files for all core platform services.                                                                                                                                       |
+| `eveland-ctl dead-letters`      | Lists the workflow dispatches this installation dropped, grouped by Deployment, and resolves them with `--resolve`. Exits 1 while any are unresolved.                                                          |
+
+### Dispatch dead letters
+
+A dead letter is a workflow dispatch the platform gave up on. The message is kept verbatim so it can be replayed once the cause is fixed, and while the row is unresolved it also holds its run out of dispatcher boot recovery — a quarantine, so a restart cannot replay a guaranteed failure forever. The Dashboard's health page counts them; this is where you act on them.
+
+```bash
+eveland-ctl dead-letters                                  # what is outstanding, and what is still stuck
+eveland-ctl dead-letters --resolve --deployment dep_abc   # after fixing that Deployment
+eveland-ctl dead-letters --resolve --run wrun_abc
+eveland-ctl dead-letters --resolve --all --yes            # everything, scripted
+```
+
+Read the report's second line first. `N runs still quarantined` is work that is genuinely stuck: those runs are `pending` or `running` and no dispatcher will touch them until you decide. `no run is still quarantined` means the letters are a record of failures whose runs have since settled, which is not an incident.
+
+Resolving is not cleanup. It hands every quarantined run back to the next dispatcher boot, so fix the cause first — usually a Deployment that can no longer activate — and restart the workflow dispatcher to replay them immediately. Resolving a letter never discards the message it holds, and never re-stamps a resolution somebody already made. A run that reaches a terminal status resolves its own letters, so cancelling a wedged run is the other way out.
 
 ### Colored output
 

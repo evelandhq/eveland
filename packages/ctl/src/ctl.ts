@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { runDeadLetters } from "./dead-letters.ts";
 import { runDoctor } from "./doctor.ts";
 import {
   runCheckUpdate,
@@ -63,6 +64,10 @@ const commands: Record<string, Command> = {
   update: {
     description: "Upgrade the appliance to a newer release (backup, migrate, restart)",
     run: runUpdate,
+  },
+  "dead-letters": {
+    description: "Workflow dispatches this installation dropped, and --resolve to replay them",
+    run: runDeadLetters,
   },
   install: {
     description: "install --systemd: promote a Linux install to systemd services",
@@ -131,9 +136,10 @@ function printHelp(io: CtlIo): void {
   io.stdout("Usage: eveland-ctl <command>");
   io.stdout("");
   io.stdout("Commands:");
-  for (const [name, command] of Object.entries(commands)) {
-    if (command.hidden) continue;
-    io.stdout(`  ${name.padEnd(8)} ${command.description}`);
+  const visible = Object.entries(commands).filter(([, command]) => !command.hidden);
+  const width = Math.max(...visible.map(([name]) => name.length));
+  for (const [name, command] of visible) {
+    io.stdout(`  ${name.padEnd(width)} ${command.description}`);
   }
   io.stdout("");
   io.stdout("The appliance root is EVELAND_HOME (default ~/.eveland on macOS,");

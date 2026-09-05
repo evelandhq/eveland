@@ -30,6 +30,7 @@ Eveland 明确区分了**组件可用性 (Health)**、**异步任务日志 (Job 
 | **Agent 执行过程抛错 / 崩溃**   | 宿主机 systemd Journal 日志        | 检查 Agent 代码运行时堆栈与系统资源配额限制。                     |
 | **模型调用异常 / Token 未统计** | 控制台 Sessions 会话历史           | 检查模型提供商 Key、OTel Collector 状态及网络连通性。             |
 | **网关 502 / 域名解析失败**     | Gateway 反向代理日志               | 检查泛域名 DNS 记录、TLS 证书及目标 Deployment 是否处于健康状态。 |
+| **Workflow run 永远不结束**     | `eveland-ctl dead-letters`         | 修好死信指向的 Deployment，再 `--resolve` 重放它扣住的 run。      |
 
 ---
 

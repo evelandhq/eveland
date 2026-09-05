@@ -361,6 +361,14 @@ export default async function InstanceHealthPage({
                 "None"
               )}
             </p>
+            {report.workflow.unresolvedDeadLetters > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Resolution happens on the host:{" "}
+                <code className="font-mono">eveland-ctl dead-letters</code> lists them by
+                Deployment, and <code className="font-mono">--resolve</code> replays the runs they
+                are holding.
+              </p>
+            ) : null}
           </section>
         </>
       ) : null}
