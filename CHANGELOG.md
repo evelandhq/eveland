@@ -4,6 +4,20 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.55.0](https://github.com/evelandhq/eveland/compare/v0.54.0...v0.55.0) (2026-09-07)
+
+
+### Features
+
+* accept uploads on git projects as previews and record source provenance ([#513](https://github.com/evelandhq/eveland/issues/513)) ([9de480f](https://github.com/evelandhq/eveland/commit/9de480f84b29c817642828e1a8535eef5321dd72))
+* **cli:** promote inside the build job and follow the CLI's own build ([#512](https://github.com/evelandhq/eveland/issues/512)) ([6eac35e](https://github.com/evelandhq/eveland/commit/6eac35e8303877acfaab4c247ec2487040916db2))
+* promote uploads on git projects on request and surface the resulting hotfix drift ([#517](https://github.com/evelandhq/eveland/issues/517)) ([32d566b](https://github.com/evelandhq/eveland/commit/32d566b339f04bcdcfcdb983a0a472afbc89f065))
+
+
+### Bug Fixes
+
+* **observability:** group Langfuse traces by root session ([#514](https://github.com/evelandhq/eveland/issues/514)) ([5961cb1](https://github.com/evelandhq/eveland/commit/5961cb1a6e4b286838357dfc9d97480fe3625ddc))
+
 ## [0.54.0](https://github.com/evelandhq/eveland/compare/v0.53.0...v0.54.0) (2026-09-07)
 
 
