@@ -353,6 +353,21 @@ export type ReleaseSourceProvenance = {
   recordedAt: string;
 };
 
+/**
+ * Hotfix drift: a git project whose production deployment runs a revision
+ * that was uploaded rather than synced from the repository, so the
+ * repository does not contain what production runs. Derived from the
+ * project's promoted deployment on every read, never stored: it clears the
+ * moment a git-sync revision is promoted (a rollback included), and that
+ * rule is deliberate -- the platform never compares tree contents.
+ */
+export type HotfixDrift = {
+  deploymentId: string;
+  deploymentKey: string;
+  releaseId: string;
+  source: ReleaseSourceProvenance;
+};
+
 // The browser-facing shape: the host filesystem path stays on the server.
 export type PublicSourceRevision = Omit<SourceRevision, "sourcePath">;
 
@@ -555,6 +570,8 @@ export type DeploymentOverview = {
    * points at a revision, even one recorded before provenance existed.
    */
   releaseSources: Record<string, ReleaseSourceProvenance>;
+  /** Set while production runs an uploaded revision on a git project. */
+  hotfixDrift: HotfixDrift | null;
 };
 
 /** Per-variant rollup behind the experiment view. */

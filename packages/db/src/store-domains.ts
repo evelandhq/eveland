@@ -53,6 +53,7 @@ import type {
   SourceFileRecord,
   SourcePreflight,
   SourcePreflightRecord,
+  HotfixDrift,
   ReleaseSourceProvenance,
   SourceOrigin,
   SourceRevision,
@@ -617,6 +618,12 @@ export interface DeploymentStore {
   listReleaseSummaries(projectId: string): Promise<Record<string, Record<string, unknown> | null>>;
   /** Release id -> its source revision's provenance for a whole project, in one query. */
   listReleaseSources(projectId: string): Promise<Record<string, ReleaseSourceProvenance>>;
+  /**
+   * The project's hotfix drift, derived from its promoted deployment's
+   * revision: non-null only for a git project whose production revision has
+   * a recorded origin other than git-sync.
+   */
+  getProjectHotfixDrift(projectId: string): Promise<HotfixDrift | null>;
   getDeploymentRetention(
     projectId: string,
     keepRecent?: number,
