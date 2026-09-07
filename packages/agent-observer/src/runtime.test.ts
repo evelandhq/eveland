@@ -18,6 +18,55 @@ afterEach(async () => {
 });
 
 describe("private Agent telemetry runtime", () => {
+  test.each([
+    { id: "eve_root", parent: undefined },
+    { id: "eve_child", parent: { sessionId: "eve_root", rootSessionId: "eve_root" } },
+    { id: "eve_grandchild", parent: { sessionId: "eve_child", rootSessionId: "eve_root" } },
+  ])(
+    "exports root lineage on every span and log for $id without parent events",
+    async (session) => {
+      const traces = new InMemorySpanExporter();
+      const logs = new InMemoryLogRecordExporter();
+      const runtime = createPrivateAgentTelemetryRuntime({
+        policy: policy(),
+        exporters: {
+          traces,
+          logs,
+          metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+        },
+      });
+      activeRuntimes.push(runtime);
+      const context = { ...hookContext(), session };
+      for (const turnId of ["turn_0", "turn_1"]) {
+        await runtime.capture({ type: "turn.started", data: { turnId } }, context);
+        await runtime.capture({ type: "step.started", data: { turnId, stepIndex: 0 } }, context);
+        await runtime.capture(
+          {
+            type: "actions.requested",
+            data: {
+              turnId,
+              stepIndex: 0,
+              actions: [{ kind: "tool-call", callId: "call_1", toolName: "search", input: {} }],
+            },
+          },
+          context,
+        );
+        await runtime.capture({ type: "turn.completed", data: { turnId } }, context);
+      }
+      await runtime.forceFlush();
+      expect(traces.getFinishedSpans()).toHaveLength(6);
+      expect(logs.getFinishedLogRecords()).toHaveLength(8);
+      for (const record of [...traces.getFinishedSpans(), ...logs.getFinishedLogRecords()]) {
+        expect(record.attributes).toMatchObject({
+          "session.id": session.id,
+          "gen_ai.conversation.id": session.id,
+          "eveland.eve.session.id": session.id,
+          "eveland.eve.root_session.id": "eve_root",
+        });
+      }
+    },
+  );
+
   test("maps Eve turn, model, and tool lifecycles to private OTel signals", async () => {
     const traces = new InMemorySpanExporter();
     const logs = new InMemoryLogRecordExporter();

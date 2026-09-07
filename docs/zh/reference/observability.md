@@ -271,6 +271,15 @@ Langfuse 设置只要求 installation base URL，例如
 `/api/public/otel/v1/traces`，model call 映射为 generation，Agent、Tool 和
 Subagent 保持 span，并保留标准 GenAI model、usage 和 provider-reported cost。
 
+Langfuse 使用根 Eve session ID，将同一根会话的所有回合及后代会话归到同一个
+session。observer 从 Eve 的 `session.parent.rootSessionId`（根会话用自身 ID）
+读取并在每个 span 和事件 log 上写入 `eveland.eve.root_session.id`，Collector
+再映射为 `langfuse.session.id`；`session.id` 和 `eveland.eve.session.id` 仍保留
+实际执行会话的 ID，用于节点归属。子会话先于父会话到达或在另一进程恢复时也适用。
+旧 observer 未提供根 ID 的数据继续回退到 `session.id`。生效需要 Agent 进程加载
+更新后的 observer runtime，且 Collector 应用更新后的配置；已导出的历史 trace
+不会自动重新归组。
+
 外部目的地配置保存在 revisioned policy 中，凭据使用 `APP_SECRET_KEY` 加密。
 浏览器只能再次读取 URL、authorization 类型和 header 名称，不能读回凭据值。编辑时
 留空凭据表示保留已保存值；首次创建必须提供。

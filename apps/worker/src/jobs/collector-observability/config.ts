@@ -366,6 +366,7 @@ function langfuseTransform() {
         context: "span",
         statements: [
           'set(span.attributes["langfuse.session.id"], span.attributes["session.id"]) where span.attributes["session.id"] != nil',
+          'set(span.attributes["langfuse.session.id"], span.attributes["eveland.eve.root_session.id"]) where span.attributes["eveland.eve.root_session.id"] != nil and span.attributes["eveland.eve.root_session.id"] != ""',
           'set(span.attributes["langfuse.trace.name"], span.attributes["gen_ai.agent.name"]) where span.attributes["gen_ai.agent.name"] != nil',
           'set(span.attributes["langfuse.release"], resource.attributes["service.version"]) where resource.attributes["service.version"] != nil',
           'set(span.attributes["langfuse.release"], resource.attributes["eveland.release.id"]) where resource.attributes["eveland.release.id"] != nil',

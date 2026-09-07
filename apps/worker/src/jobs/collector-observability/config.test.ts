@@ -280,10 +280,17 @@ describe("managed OpenTelemetry Collector configuration", () => {
       'resource.attributes["eveland.telemetry.domain"] != "agent"',
     ]);
     expect(
+      config.processors[
+        "transform/langfuse_destination_langfuse"
+      ].trace_statements[0].statements.slice(0, 2),
+    ).toEqual([
+      'set(span.attributes["langfuse.session.id"], span.attributes["session.id"]) where span.attributes["session.id"] != nil',
+      'set(span.attributes["langfuse.session.id"], span.attributes["eveland.eve.root_session.id"]) where span.attributes["eveland.eve.root_session.id"] != nil and span.attributes["eveland.eve.root_session.id"] != ""',
+    ]);
+    expect(
       config.processors["transform/langfuse_destination_langfuse"].trace_statements[0].statements,
     ).toEqual(
       expect.arrayContaining([
-        'set(span.attributes["langfuse.session.id"], span.attributes["session.id"]) where span.attributes["session.id"] != nil',
         'set(span.attributes["langfuse.observation.type"], "generation") where span.attributes["gen_ai.operation.name"] == "chat"',
         'set(span.attributes["langfuse.observation.type"], "span") where span.attributes["gen_ai.operation.name"] != "chat"',
         'set(span.attributes["langfuse.observation.metadata.eveland.operation_type"], span.attributes["gen_ai.operation.name"]) where span.attributes["gen_ai.operation.name"] != nil',
