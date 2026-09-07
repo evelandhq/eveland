@@ -5,17 +5,108 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+# One release run at a time: two overlapping runs could both decide the
+# `eveland` package is newly released and race each other to npm.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release-please:
+    name: Maintain the release PRs
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    # release-please tracks two components (the platform at `.` and the
+    # published `eveland` package at `packages/eveland`), so the per-path
+    # outputs are the ones that say what was actually released this run. The
+    # root's `release_created` is deliberately not surfaced: a platform release
+    # publishes nothing to npm.
+    outputs:
+      eveland_released: ${{ steps.release.outputs['packages/eveland--release_created'] }}
+      eveland_tag: ${{ steps.release.outputs['packages/eveland--tag_name'] }}
+      eveland_version: ${{ steps.release.outputs['packages/eveland--version'] }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+  publish-eveland:
+    name: Publish eveland to npm
+    needs: release-please
+    if: needs.release-please.outputs.eveland_released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # What lets npm verify this workflow's identity over OIDC (trusted
+      # publishing), so there is no long-lived NPM_TOKEN to store, rotate or
+      # leak, and no 2FA prompt for a human to answer. npm attaches a
+      # provenance attestation on its own; the repository and the package are
+      # both public, which is the condition for that.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The tag release-please just cut, not whatever main has moved on to.
+          ref: ${{ needs.release-please.outputs.eveland_tag }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      # Trusted publishing needs npm >= 11.5.1, which is newer than what the
+      # Node 24 image happens to bundle. Pinning it here rather than trusting
+      # the runner image means a runner update cannot silently break publishing.
+      - name: Use an npm that speaks OIDC
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Pack with pnpm, exactly as CI's "SDK pack contract" job does: `prepack`
+      # builds `dist/` from this tag. Publishing the resulting tarball (rather
+      # than running `npm publish` inside the workspace) means what reaches
+      # npm is byte-identical to what the smoke below installed.
+      - name: Pack the package
+        run: pnpm --filter eveland pack --pack-destination /tmp/eveland-sdk
+
+      # The same contract CI runs on every PR, repeated against the tarball that
+      # is about to ship: a bin or export that only breaks after publishing is
+      # exactly the failure this step exists to catch first.
+      - name: Install the tarball into a clean project and exercise it
+        run: |
+          mkdir -p /tmp/sdk-smoke && cd /tmp/sdk-smoke
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund /tmp/eveland-sdk/eveland-*.tgz
+          node -e "import('eveland/auth').then((m) => { if (typeof m.evelandIdentity !== 'function') throw new Error('evelandIdentity export missing'); console.log('sdk auth import ok'); })"
+          node -e "import('eveland/memory').then((m) => { if (typeof m.evelandMemoryBackend !== 'function') throw new Error('evelandMemoryBackend export missing'); console.log('sdk memory import ok'); })"
+          test -x node_modules/.bin/eveland
+          node_modules/.bin/eveland --help | grep -q "Usage: eveland"
+          node_modules/.bin/eveland --version | grep -q "${{ needs.release-please.outputs.eveland_version }}"
+
+      # No --provenance flag and no NODE_AUTH_TOKEN: trusted publishing does
+      # both. `publishConfig.access` in the package already says public.
+      - name: Publish
+        run: npm publish /tmp/eveland-sdk/eveland-*.tgz
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published \`eveland@${{ needs.release-please.outputs.eveland_version }}\`"
+            echo
+            echo "- tag: \`${{ needs.release-please.outputs.eveland_tag }}\`"
+            echo "- https://www.npmjs.com/package/eveland"
+          } >> "$GITHUB_STEP_SUMMARY"
