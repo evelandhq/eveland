@@ -322,9 +322,8 @@ describe("api app", () => {
       error: "Invalid project input",
       issues: [expect.objectContaining({ path: ["promoteAfterDeploy"] })],
     });
-    await expect(app.request("/api/projects").then((r) => r.json())).resolves.toEqual({
-      projects: [],
-    });
+    const listResponse = await app.request("/api/projects");
+    await expect(listResponse.json()).resolves.toEqual({ projects: [] });
   });
 
   test("rejects duplicate initial environment variable keys before consuming a source preflight", async () => {
