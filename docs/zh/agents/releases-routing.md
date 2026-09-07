@@ -19,7 +19,7 @@ Eveland 明确解耦了源码版本、构建发布包、部署实例与访问路
 - **不可变预览 (Preview)**：每次点击 **Build & Deploy** 都会打包一个全新且不可变的 Release，并在独立的沙箱环境中启动一个 Preview Deployment，拥有唯一的预览域名。
 - **原子发布 (Promote)**：当验证通过后，点击 Promote 会在网关层秒级更新生产路由（Stable Route）的目标指向，**无需重新构建**。
 - **秒级回滚 (Rollback)**：如果新版本上线后发现问题，可以随时将路由重新指向历史中保留的健康 Deployment，实现瞬时回滚。
-- **来源溯源 (Provenance)**：每个 Deployment 都会显示其 Release 的源码来源：同步的提交，或是一次上传（来自 CLI 还是控制台、由谁发起、基于哪个提交、工作树是否有未提交改动）。向 Git 项目上传的版本只会以预览形式到达，是否 Promote 是在本页面上的一次明确操作。
+- **来源溯源 (Provenance)**：每个 Deployment 都会显示其 Release 的源码来源：同步的提交，或是一次上传（来自 CLI 还是控制台、由谁发起、基于哪个提交、工作树是否有未提交改动）。向 Git 项目上传的版本默认以预览形式到达；无论是在本页面上 Promote，还是使用 `eveland deploy --promote`，都是一次明确的操作，并会让项目进入**热修复漂移**（见第 5 节）。
 
 ## 2. 灰度发布与加权分流 (Weighted Routing)
 
@@ -46,6 +46,15 @@ Eveland 明确解耦了源码版本、构建发布包、部署实例与访问路
   - 任何当前被生产路由或别名路由指向的目标；
   - 存在未过期会话绑定（SessionBinding）或活跃请求租约（ActivationLease）的部署。
 - **自动归档清理**：当旧的 Deployment 停止运行且不再受上述规则保护时，后台 Worker 会自动回收其磁盘镜像产物与构建临时目录，防止磁盘膨胀。
+
+## 5. 热修复漂移 (Hotfix Drift)
+
+Git 项目的生产环境可以运行一个上传的版本——从工作树以 `eveland deploy --promote` 发出的热修复，或在 Deployments 页面上 Promote 的预览上传。Eveland 允许这样做，但会让由此产生的状态可见，并守住退出它的路径。
+
+- **定义**：当项目已发布 Deployment 的 Release 来自一个来源为上传（而非 `git-sync`）的 Source Revision 时，项目处于热修复漂移。该状态在每次读取时由这些记录推导得出，不做持久化；只有 Git 项目会漂移。
+- **可见性**：项目的每个页面都会显示横幅——「生产环境正在运行一个上传的热修复（基于 `abc123`，含未提交改动，由 _用户_ 于 14:02 上传）；仓库中并不包含它。请在下次生产同步前将其提交。」——Deployments 列表显示每个 Deployment 的来源，部署日志记录了开启漂移的那次 Promote，`eveland deploy --promote` 在发布后也会打印同样的警告。`GET /api/projects/:id` 与 `GET /api/projects/:id/deployments` 以 `hotfixDrift` 字段返回它。
+- **受保护的同步**：处于漂移时，Promote 一个来自 Git 的版本会替换掉热修复，因此 **Sync, deploy & promote**（以及当前版本是在热修复之后同步下来时的 **Build, deploy & promote**）会显示警告并要求明确确认；JSON API 会以 `400` 和 `code: "hotfix_drift"` 拒绝，除非请求体带有 `replaceHotfix: true`。预览同步不替换任何东西，也不需要确认。重新构建热修复本身，或用 `eveland deploy --promote` 再上传一个热修复，属于同类来源自我替换：无需确认，但 CLI 会打印被替换版本的来源。
+- **解除**：一旦某个 `git-sync` 版本被 Promote——包括回滚——漂移即刻解除。Eveland 刻意不比较目录内容：把热修复提交进仓库并同步到生产，是用同样的代码结束漂移的唯一方式。
 
 ## 相关参考
 

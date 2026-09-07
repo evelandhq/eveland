@@ -6,6 +6,7 @@ import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
 import { EveVersionStatus } from "@/components/eve-version-status";
 import { SourceProvenance } from "@/components/source-provenance";
+import { describeSourceProvenance } from "@/lib/source-provenance";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -72,6 +73,8 @@ export default async function ProjectDeploymentsPage({
           sourceRevisionId={sourceRevision?.id ?? null}
           sourceCommitSha={sourceRevision?.commitSha ?? null}
           sourceRecordedAt={sourceRevision?.createdAt ?? null}
+          currentRevisionOrigin={sourceRevision?.origin ?? null}
+          hotfixDrift={overview.hotfixDrift ?? null}
         />
       </header>
 
@@ -179,6 +182,13 @@ export default async function ProjectDeploymentsPage({
             // an upload and what it was based on. Every Release has one; the
             // guard only covers a response from an older API.
             const source = overview.releaseSources?.[deployment.releaseId] ?? null;
+            // Promoting an upload on a git project is allowed, but it puts
+            // production on code the repository does not contain; the
+            // promote button says so before it acts.
+            const hotfixWarning =
+              project?.importKind === "git" && source?.origin && source.origin !== "git-sync"
+                ? `Promoting puts production on ${describeSourceProvenance(source)} -- code the repository does not contain.`
+                : null;
             return (
               <div
                 key={deployment.id}
@@ -227,6 +237,7 @@ export default async function ProjectDeploymentsPage({
                   status={deployment.status}
                   routed={routedDeploymentIds.has(deployment.id)}
                   retentionProtected={retention?.protected ?? true}
+                  hotfixWarning={hotfixWarning}
                 />
               </div>
             );

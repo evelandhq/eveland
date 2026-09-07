@@ -96,6 +96,8 @@ Primary operations:
 - The dialog's Source dimension defaults to the current immutable Source Revision; Git projects can explicitly choose to sync and validate the latest remote code first, zip projects only use the current Source Revision
 - The dialog's outcome dimension defaults to atomically promoting the new deployment to stable target after it passes health checks; the user can explicitly keep it as a concurrently testable preview without changing the stable target
 - Submit labels state the combination exactly — `Build & deploy`, `Build, deploy & promote`, `Sync & create preview`, or `Sync, deploy & promote` — never an ambiguous `latest` meaning both the current revision and remote Git
+- While the project is in hotfix drift (production runs an uploaded revision on a git project), every project page carries a banner naming the hotfix's base commit, dirty state, uploader and time; a production outcome that would retire the hotfix (sync, or a current revision synced after it) shows the same facts inside the dialog, relabels the submit `… & replace hotfix`, and stays disabled until the replacement is ticked
+- `Promote / rollback` on a Deployment whose source is an upload, on a git project, asks first and says what production will run; promoting a synced commit needs no confirmation
 - Restart deployment
 - Open Playground
 - View logs

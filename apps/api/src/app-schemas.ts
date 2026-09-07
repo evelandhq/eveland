@@ -140,10 +140,17 @@ export const createGitSourcePreflightSchema = z.object({
   gitlabPat: z.string().min(1).max(1024).optional(),
 });
 
+/**
+ * Promoting a git-sync revision while production runs an uploaded hotfix
+ * retires that hotfix; the caller must say so. Meaningless without promote.
+ */
+const replaceHotfixField = z.boolean().default(false);
+
 export const syncSourceSchema = z
   .object({
     deploy: z.boolean().default(false),
     promote: z.boolean().default(false),
+    replaceHotfix: replaceHotfixField,
   })
   .refine((input) => !input.promote || input.deploy, {
     message: "A synced source must be deployed before it can be promoted.",
@@ -152,6 +159,7 @@ export const syncSourceSchema = z
 
 export const buildDeploySchema = z.object({
   promote: z.boolean().default(false),
+  replaceHotfix: replaceHotfixField,
 });
 
 export const secretSchema = environmentVariableSchema;

@@ -121,19 +121,10 @@ describe("api app", () => {
       gitUrl: "https://example.com/agent.git",
     });
 
-    // Promoting an upload is what makes the next sync's replacement a
-    // production regression, so a git project refuses it for now.
-    const promoted = await app.request(`/api/projects/${gitProject.id}/sync-source`, {
-      method: "POST",
-      body: await zipUploadForm({ deploy: "true", promote: "true" }),
-    });
-    expect(promoted.status).toBe(400);
-    await expect(promoted.json()).resolves.toEqual({
-      error: expect.stringMatching(/^Uploads to a git project deploy as previews only\./),
-    });
-    await expect(
-      store.listProjectJobs(gitProject.id, { type: "import_source" }),
-    ).resolves.toHaveLength(2);
+    // Promoting the upload is allowed, but only on request: the default
+    // stays a preview, and app-hotfix-drift.test.ts covers what promoting
+    // an upload onto a git project sets in motion.
+    expect(job?.payload.promoteAfterDeploy).toBe(false);
   });
 
   test("an upload from a CLI token is recorded as a CLI upload by that user", async () => {

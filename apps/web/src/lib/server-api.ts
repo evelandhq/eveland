@@ -18,6 +18,7 @@ import type {
   AgentEndpoints,
   DeploymentOverview,
   EveVersionInfo,
+  HotfixDrift,
   Job,
   LogLine,
   ModelUsageEvent,
@@ -55,6 +56,11 @@ export const getProjects = () =>
   apiGet<{ projects: ProjectListItem[] }>("/projects").then((data) => data.projects);
 export const getProject = (projectId: string) =>
   apiGet<{ project: Project | null }>(`/projects/${projectId}`).then((data) => data.project);
+/** The project together with its hotfix drift, for the project shell's banner. */
+export const getProjectDetail = (projectId: string) =>
+  apiGet<{ project: Project | null; hotfixDrift: HotfixDrift | null }>(
+    `/projects/${projectId}`,
+  ).then((data) => ({ project: data.project, hotfixDrift: data.hotfixDrift ?? null }));
 export const getProjectJobs = (projectId: string) =>
   apiGet<{ jobs: Job[] }>(`/projects/${projectId}/jobs`).then((data) => data.jobs);
 export const getAgentEndpoints = (projectId: string) =>

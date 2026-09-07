@@ -1,4 +1,8 @@
-import type { DeploymentStatus, ReleaseSourceProvenance } from "@evelandhq/core/contracts";
+import type {
+  DeploymentStatus,
+  HotfixDrift,
+  ReleaseSourceProvenance,
+} from "@evelandhq/core/contracts";
 import { claimDeploymentKey, createId } from "@evelandhq/core/ids";
 import { isSessionBindingActive, validateRouteTargets } from "@evelandhq/core/routing";
 import { createEveVersionInfo, readDeclaredEveVersion } from "@evelandhq/core/source";
@@ -39,6 +43,49 @@ import {
 } from "./postgres-store-support.js";
 
 type PostgresDeploymentRoutingDomain = DeploymentStore & RoutingStore;
+
+// The columns that describe where a Release's source came from, joined from
+// its revision and (for uploads) the uploader; shared by every read that
+// reports provenance so they cannot drift apart.
+const releaseSourceColumns = {
+  revisionId: sourceRevisions.id,
+  kind: sourceRevisions.kind,
+  origin: sourceRevisions.origin,
+  commitSha: sourceRevisions.commitSha,
+  baseCommitSha: sourceRevisions.baseCommitSha,
+  dirty: sourceRevisions.dirty,
+  uploadedById: sourceRevisions.uploadedBy,
+  uploadedByEmail: users.email,
+  uploadedByName: users.name,
+  recordedAt: sourceRevisions.createdAt,
+};
+
+function releaseSourceFromRow(row: {
+  revisionId: string;
+  kind: string;
+  origin: string | null;
+  commitSha: string | null;
+  baseCommitSha: string | null;
+  dirty: boolean | null;
+  uploadedById: string | null;
+  uploadedByEmail: string | null;
+  uploadedByName: string | null;
+  recordedAt: Date;
+}): ReleaseSourceProvenance {
+  return {
+    revisionId: row.revisionId,
+    kind: row.kind as ReleaseSourceProvenance["kind"],
+    origin: row.origin as ReleaseSourceProvenance["origin"],
+    commitSha: row.commitSha,
+    baseCommitSha: row.baseCommitSha,
+    dirty: row.dirty,
+    uploadedBy:
+      row.uploadedById && row.uploadedByEmail !== null && row.uploadedByName !== null
+        ? { id: row.uploadedById, email: row.uploadedByEmail, name: row.uploadedByName }
+        : null,
+    recordedAt: row.recordedAt.toISOString(),
+  };
+}
 
 export function createPostgresDeploymentRoutingStore({
   db,
@@ -399,41 +446,47 @@ export function createPostgresDeploymentRoutingStore({
       // provenance of every listed deployment's source, and the uploader's
       // display fields come from the same query rather than a lookup per row.
       const rows = await db
-        .select({
-          releaseId: releases.id,
-          revisionId: sourceRevisions.id,
-          kind: sourceRevisions.kind,
-          origin: sourceRevisions.origin,
-          commitSha: sourceRevisions.commitSha,
-          baseCommitSha: sourceRevisions.baseCommitSha,
-          dirty: sourceRevisions.dirty,
-          uploadedById: sourceRevisions.uploadedBy,
-          uploadedByEmail: users.email,
-          uploadedByName: users.name,
-          recordedAt: sourceRevisions.createdAt,
-        })
+        .select({ releaseId: releases.id, ...releaseSourceColumns })
         .from(releases)
         .innerJoin(sourceRevisions, eq(sourceRevisions.id, releases.sourceRevisionId))
         .leftJoin(users, eq(users.id, sourceRevisions.uploadedBy))
         .where(eq(releases.projectId, projectId));
-      return Object.fromEntries(
-        rows.map((row) => [
-          row.releaseId,
-          {
-            revisionId: row.revisionId,
-            kind: row.kind as ReleaseSourceProvenance["kind"],
-            origin: row.origin as ReleaseSourceProvenance["origin"],
-            commitSha: row.commitSha,
-            baseCommitSha: row.baseCommitSha,
-            dirty: row.dirty,
-            uploadedBy:
-              row.uploadedById && row.uploadedByEmail !== null && row.uploadedByName !== null
-                ? { id: row.uploadedById, email: row.uploadedByEmail, name: row.uploadedByName }
-                : null,
-            recordedAt: row.recordedAt.toISOString(),
-          } satisfies ReleaseSourceProvenance,
-        ]),
-      );
+      return Object.fromEntries(rows.map((row) => [row.releaseId, releaseSourceFromRow(row)]));
+    },
+
+    async getProjectHotfixDrift(projectId) {
+      // Derived, never stored: the project's promoted deployment -> its
+      // release -> that release's revision. Only a git project can drift, and
+      // only a revision that recorded an upload origin counts; an unknown
+      // origin (recorded before provenance existed) is not evidence.
+      const [row] = await db
+        .select({
+          deploymentId: deployments.id,
+          deploymentKey: deployments.deploymentKey,
+          releaseId: releases.id,
+          ...releaseSourceColumns,
+        })
+        .from(projects)
+        .innerJoin(deployments, eq(deployments.id, projects.deploymentId))
+        .innerJoin(releases, eq(releases.id, deployments.releaseId))
+        .innerJoin(sourceRevisions, eq(sourceRevisions.id, releases.sourceRevisionId))
+        .leftJoin(users, eq(users.id, sourceRevisions.uploadedBy))
+        .where(
+          and(
+            eq(projects.id, projectId),
+            eq(projects.importKind, "git"),
+            isNotNull(sourceRevisions.origin),
+            ne(sourceRevisions.origin, "git-sync"),
+          ),
+        )
+        .limit(1);
+      if (!row) return null;
+      return {
+        deploymentId: row.deploymentId,
+        deploymentKey: row.deploymentKey,
+        releaseId: row.releaseId,
+        source: releaseSourceFromRow(row),
+      } satisfies HotfixDrift;
     },
 
     ensureDeploymentRoutes,

@@ -20,6 +20,40 @@ function json(status: number, body: unknown): Response {
   });
 }
 
+type FakeHotfixDrift = {
+  deploymentId: string;
+  deploymentKey: string;
+  releaseId: string;
+  source: {
+    revisionId: string;
+    kind: "git" | "zip";
+    origin: "cli-upload" | "dashboard-upload" | "git-sync" | null;
+    commitSha: string | null;
+    baseCommitSha: string | null;
+    dirty: boolean | null;
+    uploadedBy: { id: string; email: string; name: string } | null;
+    recordedAt: string;
+  };
+};
+
+function hotfixDrift(deploymentId: string, name: string): FakeHotfixDrift {
+  return {
+    deploymentId,
+    deploymentKey: "hotfix01",
+    releaseId: "rel_hotfix",
+    source: {
+      revisionId: "src_hotfix",
+      kind: "zip",
+      origin: "cli-upload",
+      commitSha: null,
+      baseCommitSha: "c".repeat(40),
+      dirty: true,
+      uploadedBy: { id: "user_x", email: `${name}@example.com`, name },
+      recordedAt: "2026-09-07T06:02:00.000Z",
+    },
+  };
+}
+
 type FakeJob = {
   id: string;
   type: string;
@@ -41,6 +75,11 @@ function fakePlatform(options: {
   jobTimeline?: FakeJob[][];
   logTimeline?: string[][];
   preflightOutcome?: { status: string; error: string | null };
+  /**
+   * What GET /api/projects/:id reports as hotfix drift before the upload is
+   * submitted and after the build completes.
+   */
+  hotfixDrift?: { before: FakeHotfixDrift | null; after: FakeHotfixDrift | null };
 }) {
   const calls: Array<{
     method: string;
@@ -74,6 +113,13 @@ function fakePlatform(options: {
     }
     if (pathname === "/api/projects" && method === "GET") {
       return json(200, { projects: options.projects ?? [] });
+    }
+    const detail = pathname.match(/^\/api\/projects\/([^/]+)$/);
+    if (detail && method === "GET") {
+      const project = (options.projects ?? []).find((candidate) => candidate.id === detail[1]);
+      if (!project) return json(404, { error: "Project not found" });
+      const drift = options.hotfixDrift ?? { before: null, after: null };
+      return json(200, { project, hotfixDrift: submitted ? drift.after : drift.before });
     }
     if (pathname === "/api/source-preflights" && method === "POST") {
       return json(202, { preflight: { id: "pre_1", status: "queued" } });
@@ -319,45 +365,6 @@ describe("eveland deploy", () => {
     });
   });
 
-  test("uploads to a git project as a preview and refuses --promote before uploading", async () => {
-    const preview = fakePlatform({
-      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
-      jobTimeline: BUILD_DONE,
-      logTimeline: [[]],
-    });
-    const { io: previewIo, printed } = io(preview, { baseCommitSha: "d".repeat(40), dirty: false });
-    const result = await runDeploy({
-      origin: "http://localhost:17300",
-      token: "tok",
-      dir: await makeProject(),
-      io: previewIo,
-    });
-    expect(result).toMatchObject({ importKind: "git", promoted: false, deploymentId: "dep_new" });
-    const sync = preview.calls.find((call) => call.url.includes("/sync-source"));
-    expect(sync?.form?.get("deploy")).toBe("true");
-    expect(sync?.form?.get("promote")).toBeNull();
-    expect(sync?.form?.get("baseCommitSha")).toBe("d".repeat(40));
-    expect(printed).not.toContain(PROMOTED_LINE);
-    expect(printed.join("\n")).toContain(
-      "Deployed as a preview: 'tour-guide' was imported from git, and uploads to it never promote.",
-    );
-
-    // An explicit --promote is a mistake worth stopping before the upload.
-    const refused = fakePlatform({
-      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
-    });
-    await expect(
-      runDeploy({
-        origin: "http://localhost:17300",
-        token: "tok",
-        dir: await makeProject(),
-        promote: true,
-        io: io(refused).io,
-      }),
-    ).rejects.toThrow(/uploads to it deploy as previews only/);
-    expect(refused.calls.every((call) => call.method === "GET")).toBe(true);
-  });
-
   test("follows its own build job when a concurrent deploy runs on the same project", async () => {
     // A Dashboard deploy queued alongside ours: newer (listed first), fails,
     // and would have produced a different deployment. Neither its failure
@@ -416,6 +423,96 @@ describe("eveland deploy", () => {
       }),
     ).rejects.toThrow(/did not record which deployment it produced/);
     expect(platform.calls.some((call) => call.url.endsWith("/deployments"))).toBe(false);
+  });
+
+  test("uploads to a git project as a preview by default and says how to promote it", async () => {
+    const preview = fakePlatform({
+      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
+      jobTimeline: BUILD_DONE,
+      logTimeline: [[]],
+    });
+    const { io: previewIo, printed } = io(preview, { baseCommitSha: "d".repeat(40), dirty: false });
+    const result = await runDeploy({
+      origin: "http://localhost:17300",
+      token: "tok",
+      dir: await makeProject(),
+      io: previewIo,
+    });
+    expect(result).toMatchObject({
+      importKind: "git",
+      promoted: false,
+      deploymentId: "dep_new",
+      hotfixDrift: null,
+    });
+    const sync = preview.calls.find((call) => call.url.includes("/sync-source"));
+    expect(sync?.form?.get("deploy")).toBe("true");
+    expect(sync?.form?.get("promote")).toBeNull();
+    expect(sync?.form?.get("baseCommitSha")).toBe("d".repeat(40));
+    // A preview never needs the drift read.
+    expect(preview.calls.some((call) => call.url.endsWith("/api/projects/proj_1"))).toBe(false);
+    expect(printed.join("\n")).toContain(
+      "Deployed as a preview: 'tour-guide' was imported from git, so an upload only promotes with --promote.",
+    );
+  });
+
+  test("promotes an upload onto a git project with --promote and reports the drift it creates", async () => {
+    const platform = fakePlatform({
+      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
+      jobTimeline: BUILD_DONE,
+      logTimeline: [[]],
+      hotfixDrift: { before: null, after: hotfixDrift("dep_new", "michael") },
+    });
+    const { io: deployIo, printed } = io(platform, { baseCommitSha: "c".repeat(40), dirty: true });
+    const result = await runDeploy({
+      origin: "http://localhost:17300",
+      token: "tok",
+      dir: await makeProject(),
+      promote: true,
+      io: deployIo,
+    });
+    expect(result).toMatchObject({
+      importKind: "git",
+      promoted: true,
+      deploymentId: "dep_new",
+      hotfixDrift: { deploymentId: "dep_new" },
+    });
+    const sync = platform.calls.find((call) => call.url.includes("/sync-source"));
+    expect(sync?.form?.get("promote")).toBe("true");
+    expect(printed).toContain(PROMOTED_LINE);
+    // The warning names the same facts the Dashboard banner shows.
+    expect(printed.join("\n")).toContain(
+      "Warning: production runs an uploaded hotfix (based on cccccccccccc, uncommitted changes, by michael at ",
+    );
+    expect(printed.join("\n")).toContain(
+      "the repository does not contain it. Commit it before the next production sync.",
+    );
+  });
+
+  test("names the hotfix it is replacing when another upload is already in production", async () => {
+    const platform = fakePlatform({
+      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
+      jobTimeline: BUILD_DONE,
+      logTimeline: [[]],
+      hotfixDrift: { before: hotfixDrift("dep_old", "ada"), after: hotfixDrift("dep_new", "me") },
+    });
+    const { io: deployIo, printed } = io(platform, { baseCommitSha: "c".repeat(40), dirty: false });
+    await runDeploy({
+      origin: "http://localhost:17300",
+      token: "tok",
+      dir: await makeProject(),
+      promote: true,
+      io: deployIo,
+    });
+    // Same kind of source replacing itself: no confirmation, but the
+    // provenance of what is being replaced is on the record.
+    const output = printed.join("\n");
+    expect(output).toContain(
+      "Replacing the uploaded hotfix in production (based on cccccccccccc, uncommitted changes, by ada at ",
+    );
+    expect(output).toContain("Warning: production runs an uploaded hotfix");
+    expect(output.indexOf("Replacing the uploaded hotfix")).toBeLessThan(
+      output.indexOf("Uploading "),
+    );
   });
 
   test("refuses out-of-window eve before uploading", async () => {

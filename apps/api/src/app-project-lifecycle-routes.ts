@@ -1,4 +1,6 @@
 import { bodyLimit } from "hono/body-limit";
+import type { HotfixDrift } from "@evelandhq/core/contracts";
+import { describeHotfixDrift } from "@evelandhq/core/hotfix-drift";
 import { normalizeGitHttpHost } from "@evelandhq/core/ids";
 import { toPublicJob } from "@evelandhq/core/jobs";
 import { type Store } from "@evelandhq/db";
@@ -33,10 +35,29 @@ function readUploadProvenance(form: FormData): unknown {
   };
 }
 
+/**
+ * The 400 a production promote of a git-sync revision gets while the project
+ * is in hotfix drift and the request did not say `replaceHotfix: true`. The
+ * message names what would be lost so the caller can decide with the facts.
+ */
+function hotfixReplacementRefusal(drift: HotfixDrift) {
+  return {
+    error: `Production runs ${describeHotfixDrift(drift)} that the repository does not contain. Promoting a revision from git replaces it; send replaceHotfix: true to confirm, or deploy without promote to keep the hotfix in production.`,
+    code: "hotfix_drift",
+    hotfixDrift: drift,
+  };
+}
+
 // The narrow persistence port this slice actually needs.
 export type ProjectLifecycleStore = Pick<
   Store,
-  "enqueueJob" | "getGitCredential" | "getProject" | "listProjectJobs" | "requestProjectDeletion"
+  | "enqueueJob"
+  | "getCurrentSourceRevision"
+  | "getGitCredential"
+  | "getProject"
+  | "getProjectHotfixDrift"
+  | "listProjectJobs"
+  | "requestProjectDeletion"
 >;
 
 export function registerProjectLifecycleRoutes(input: {
@@ -88,6 +109,15 @@ export function registerProjectLifecycleRoutes(input: {
         400,
       );
     }
+    // Rebuilding the hotfix itself replaces it with itself; only a current
+    // revision that came from git retires the hotfix, and that needs saying.
+    if (deployOptions.data.promote && !deployOptions.data.replaceHotfix) {
+      const drift = await store.getProjectHotfixDrift(projectId);
+      if (drift) {
+        const current = await store.getCurrentSourceRevision(projectId);
+        if (current?.origin === "git-sync") return c.json(hotfixReplacementRefusal(drift), 400);
+      }
+    }
     const job = await store.enqueueJob(projectId, "build_deploy", {
       promoteAfterDeploy: deployOptions.data.promote,
     });
@@ -102,10 +132,9 @@ export function registerProjectLifecycleRoutes(input: {
     }
     // Multipart replaces the project's source with a fresh upload — the
     // `eveland deploy` loop. Any project accepts one; how it was created only
-    // decides what the JSON sync below can do. An upload onto a git project
-    // deploys as a preview only: promoting it would leave production on a
-    // revision the next repository sync silently replaces, and nothing
-    // records that drift yet.
+    // decides what the JSON sync below can do. Promoting an upload onto a git
+    // project puts the project in hotfix drift, which the project and
+    // deployment reads report and the JSON sync below guards against.
     if (isMultipartRequest(c)) {
       const form = await c.req.formData();
       const archive = form.get("archive");
@@ -123,15 +152,6 @@ export function registerProjectLifecycleRoutes(input: {
       if (promote && !deploy) {
         return c.json(
           { error: "A synced source must be deployed before it can be promoted." },
-          400,
-        );
-      }
-      if (promote && project.importKind === "git") {
-        return c.json(
-          {
-            error:
-              "Uploads to a git project deploy as previews only. Promote the preview from the Dashboard once it builds, or sync the repository to deploy and promote a commit.",
-          },
           400,
         );
       }
@@ -179,6 +199,13 @@ export function registerProjectLifecycleRoutes(input: {
         },
         400,
       );
+    }
+    // A synced revision always comes from git, so promoting it retires any
+    // hotfix in production. A preview sync replaces nothing and needs no
+    // confirmation.
+    if (syncOptions.data.promote && !syncOptions.data.replaceHotfix) {
+      const drift = await store.getProjectHotfixDrift(projectId);
+      if (drift) return c.json(hotfixReplacementRefusal(drift), 400);
     }
     const host = normalizeGitHttpHost(project.gitUrl);
     const storedCredential = host ? await store.getGitCredential(currentUserId(c), host) : null;

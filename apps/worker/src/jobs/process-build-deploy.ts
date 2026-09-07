@@ -5,6 +5,7 @@ import {
   resolveDispatcherHeartbeatTtlMs,
 } from "@evelandhq/core/workflow-dispatch";
 import { projectDiscoveryManifest } from "@evelandhq/core/discovery";
+import { hotfixDriftWarning } from "@evelandhq/core/hotfix-drift";
 import { createId } from "@evelandhq/core/ids";
 import { maskKnownSecrets } from "@evelandhq/core/server/secrets";
 import type { Store } from "@evelandhq/db";
@@ -53,6 +54,7 @@ type BuildDeployStore = LaunchInputStore &
     | "setProjectSchedulerTarget"
     | "ensureDeploymentRoutes"
     | "promoteDeployment"
+    | "getProjectHotfixDrift"
     | "replaceJobPayload"
   >;
 
@@ -322,6 +324,19 @@ export async function handleBuildDeployJob(
         type: "deploy",
         line: `Promoted deployment ${deployment.deploymentKey} to the stable route.`,
       });
+      // Promoting an uploaded revision on a git project leaves production on
+      // code the repository does not contain. The deploy log says so in the
+      // words the Dashboard banner and the CLI use, so the record of how the
+      // drift began sits next to the promote that caused it.
+      const drift = await store.getProjectHotfixDrift(project.id);
+      if (drift?.deploymentId === deployment.id) {
+        await store.appendLog({
+          projectId: project.id,
+          deploymentId: deployment.id,
+          type: "deploy",
+          line: hotfixDriftWarning(drift),
+        });
+      }
     }
     await invalidateGatewayRouteCache(process.env, materializedRoutes).catch(async (error) => {
       await store.appendLog({

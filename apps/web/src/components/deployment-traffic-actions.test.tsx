@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 import type { ComponentProps } from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const refresh = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/client-api", () => ({
+const api = vi.hoisted(() => ({
   archiveDeployment: vi.fn(),
   drainDeployment: vi.fn(),
   promoteDeployment: vi.fn(),
   updateRouteTargets: vi.fn(),
 }));
+vi.mock("@/lib/client-api", () => api);
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 
 import { DeploymentTrafficActions } from "./deployment-traffic-actions";
@@ -77,5 +78,41 @@ describe("DeploymentTrafficActions", () => {
     renderActions({ status: "running", productionDeploymentId: "dep_1", routed: true });
 
     expect(buttonNames()).toEqual(["Promote / rollback", "Archive"]);
+  });
+
+  describe("promoting an uploaded revision on a git project", () => {
+    beforeEach(() => {
+      api.promoteDeployment.mockReset().mockResolvedValue(undefined);
+    });
+
+    test("promotes a git revision without a confirmation", async () => {
+      renderActions({ hotfixWarning: null });
+
+      fireEvent.click(screen.getByRole("button", { name: "Promote / rollback" }));
+
+      await waitFor(() =>
+        expect(api.promoteDeployment).toHaveBeenCalledExactlyOnceWith("proj_1", "dep_1"),
+      );
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+
+    test("asks first when the target is an upload, and says what production will run", async () => {
+      renderActions({
+        hotfixWarning:
+          "Promoting puts production on Uploaded from the CLI by Ada, based on abc123def456, with uncommitted changes -- code the repository does not contain.",
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Promote / rollback" }));
+
+      const dialog = await screen.findByRole("alertdialog");
+      expect(dialog.textContent).toContain("Uploaded from the CLI by Ada, based on abc123def456");
+      expect(dialog.textContent).toContain("code the repository does not contain");
+      expect(api.promoteDeployment).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: /promote the upload/i }));
+      await waitFor(() =>
+        expect(api.promoteDeployment).toHaveBeenCalledExactlyOnceWith("proj_1", "dep_1"),
+      );
+    });
   });
 });

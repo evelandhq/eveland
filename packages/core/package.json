@@ -16,6 +16,7 @@
     "./eve": "./src/eve.ts",
     "./eve-compatibility": "./src/eve-compatibility.ts",
     "./front-door": "./src/front-door.ts",
+    "./hotfix-drift": "./src/hotfix-drift.ts",
     "./ids": "./src/ids.ts",
     "./instance-health": "./src/instance-health.ts",
     "./identity": "./src/identity.ts",

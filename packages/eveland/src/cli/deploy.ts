@@ -22,10 +22,11 @@ import { createZipArchive } from "./zip.ts";
  * can never be the one this run promotes.
  *
  * A project imported from git is the exception: an upload to it deploys as
- * a preview only, and --promote is refused. Promoting an upload would put
- * production on a revision the next repository sync silently replaces, and
- * nothing records that drift yet. The upload still carries the commit it was
- * based on and whether the tree was dirty, so the Dashboard can say so.
+ * a preview unless --promote says otherwise. Promoting an upload puts
+ * production on code the repository does not contain -- "hotfix drift",
+ * which the platform derives from the promoted revision's provenance and
+ * shows on the project until a git revision is promoted again. The CLI
+ * prints that warning after promoting, and names any hotfix it replaces.
  */
 
 const POLL_INTERVAL_MS = 1_200;
@@ -41,6 +42,48 @@ type PublicJob = {
   /** The deployment a build produced, recorded before the job completes. */
   deploymentId: string | null;
 };
+
+/** The platform's account of a git project running an uploaded revision. */
+export type HotfixDrift = {
+  deploymentId: string;
+  deploymentKey: string;
+  releaseId: string;
+  source: {
+    revisionId: string;
+    kind: "git" | "zip";
+    origin: "cli-upload" | "dashboard-upload" | "git-sync" | null;
+    commitSha: string | null;
+    baseCommitSha: string | null;
+    dirty: boolean | null;
+    uploadedBy: { id: string; email: string; name: string } | null;
+    recordedAt: string;
+  };
+};
+
+/**
+ * "based on abc123def456, uncommitted changes, by michael at 7 Sep 2026,
+ * 14:02" -- the same facts, in the same order, as the platform's own
+ * wording; only the time is the terminal's local time.
+ */
+export function describeHotfixDrift(drift: HotfixDrift): string {
+  const { source } = drift;
+  const facts = [
+    source.baseCommitSha
+      ? `based on ${source.baseCommitSha.slice(0, 12)}`
+      : "not based on any known commit",
+    ...(source.dirty === true
+      ? ["uncommitted changes"]
+      : source.dirty === false
+        ? ["clean tree"]
+        : []),
+    ...(source.uploadedBy ? [`by ${source.uploadedBy.name || source.uploadedBy.email}`] : []),
+  ];
+  const at = new Date(source.recordedAt).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  return `${facts.join(", ")} at ${at}`;
+}
 
 type ProjectListItem = {
   id: string;
@@ -66,6 +109,8 @@ export type DeployResult = {
   deploymentId: string;
   promoted: boolean;
   provenance: GitProvenance | null;
+  /** Set when this deploy left a git project's production on an upload. */
+  hotfixDrift: HotfixDrift | null;
   stableUrl: string | null;
   previewUrls: string[];
 };
@@ -122,19 +167,26 @@ export async function runDeploy(input: {
     source.projectName ?? path.basename(path.resolve(input.dir)),
   );
   const archive = createZipArchive(source.files);
-  io.print(
-    `Uploading ${source.files.length} files (${Math.max(1, Math.round(archive.length / 1024))} KiB) as '${slug}' to ${origin}...`,
-  );
 
   const { projects } = await request<{ projects: ProjectListItem[] }>("/api/projects");
   const existing = projects.find((candidate) => candidate.slug === slug) ?? null;
   const importKind = existing?.importKind ?? "zip";
-  if (importKind === "git" && input.promote === true) {
-    throw new Error(
-      `Project '${slug}' was imported from git, and uploads to it deploy as previews only. Drop --promote to deploy a preview and promote it from the Dashboard once it builds, or push to the repository and sync it to promote a commit.`,
-    );
-  }
+  // A git project only promotes an upload on request; its default is a
+  // preview, because promoting leaves production on code the repository does
+  // not contain.
   const promote = input.promote ?? importKind === "zip";
+  // Replacing one hotfix with another is the same kind of source replacing
+  // itself, so it needs no confirmation -- but what is being replaced goes
+  // on the record before the upload.
+  if (existing && importKind === "git" && promote) {
+    const replaced = await fetchHotfixDrift(existing.id);
+    if (replaced) {
+      io.print(`Replacing the uploaded hotfix in production (${describeHotfixDrift(replaced)}).`);
+    }
+  }
+  io.print(
+    `Uploading ${source.files.length} files (${Math.max(1, Math.round(archive.length / 1024))} KiB) as '${slug}' to ${origin}...`,
+  );
 
   // Logs advance through the server-side `after` cursor, so no poll ever
   // re-downloads the project's history. The watermark from a limit=1 read is
@@ -243,13 +295,26 @@ export async function runDeploy(input: {
     );
   }
 
+  let hotfixDrift: HotfixDrift | null = null;
   if (promote) {
     // Promotion ran inside the build job, after its routes existed; a promote
     // that fails fails the job, so a completed build is a promoted one.
     io.print("Promoted: routes and the schedule target now point at this deployment.");
+    if (importKind === "git") {
+      // The platform derives drift from the promoted revision; asking it
+      // (rather than assuming) keeps the CLI honest on an older server, and
+      // prints the same facts the Dashboard banner shows.
+      const drift = await fetchHotfixDrift(projectId);
+      if (drift?.deploymentId === deploymentId) {
+        hotfixDrift = drift;
+        io.print(
+          `Warning: production runs an uploaded hotfix (${describeHotfixDrift(drift)}); the repository does not contain it. Commit it before the next production sync.`,
+        );
+      }
+    }
   } else if (importKind === "git") {
     io.print(
-      `Deployed as a preview: '${slug}' was imported from git, and uploads to it never promote. Routes and schedules stay on the current deployment; promote the preview from the Dashboard, or push and sync the repository.`,
+      `Deployed as a preview: '${slug}' was imported from git, so an upload only promotes with --promote. Routes and schedules stay on the current deployment; promote the preview from the Dashboard, or push and sync the repository.`,
     );
   } else {
     io.print(
@@ -268,6 +333,7 @@ export async function runDeploy(input: {
     deploymentId,
     promoted: promote,
     provenance,
+    hotfixDrift,
     stableUrl: endpoints.stable,
     previewUrls: endpoints.previews,
   };
@@ -286,6 +352,13 @@ export async function runDeploy(input: {
       }
       await sleep(POLL_INTERVAL_MS);
     }
+  }
+
+  async function fetchHotfixDrift(id: string): Promise<HotfixDrift | null> {
+    const { hotfixDrift } = await request<{ hotfixDrift?: HotfixDrift | null }>(
+      `/api/projects/${id}`,
+    );
+    return hotfixDrift ?? null;
   }
 
   async function fetchJobs(id: string): Promise<PublicJob[]> {

@@ -7,6 +7,7 @@ import { resolveProjectEveVersion, type EveVersionStore } from "./app-support.js
 export type ProjectMetadataStore = Pick<
   Store,
   | "getProject"
+  | "getProjectHotfixDrift"
   | "listProjects"
   | "listProjectActivity"
   | "listScheduleAttention"
@@ -58,7 +59,9 @@ export function registerProjectMetadataRoutes(input: {
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
-    return c.json({ project });
+    // Derived per read (one join off the promoted deployment), never stored.
+    const hotfixDrift = await store.getProjectHotfixDrift(project.id);
+    return c.json({ project, hotfixDrift });
   });
 
   app.patch("/api/projects/:projectId", async (c) => {
