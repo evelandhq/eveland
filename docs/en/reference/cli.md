@@ -43,15 +43,15 @@ Invoking `eveland login` initiates an RFC 8628 device authorization flow:
 
 ## 4. Command reference
 
-| Command                | Behavior and Arguments                                                                              |
-| :--------------------- | :-------------------------------------------------------------------------------------------------- |
-| `eveland init <dir>`   | Scaffolds a new Eve agent project from starter templates.                                           |
-| `eveland login`        | Authenticates via device authorization flow, storing credentials per origin.                        |
-| `eveland logout`       | Purges stored credentials for the target origin.                                                    |
-| `eveland whoami`       | Prints current origin, user profile, role, and token scopes.                                        |
-| `eveland deploy [dir]` | Validates, packages, uploads, and monitors remote builds. Supports `--no-promote` to keep previews. |
-| `eveland logs [dir]`   | Streams project logs. Supports `-f` (tail follow) and `--type runtime                               | build | deploy`.                                                                                                         |
-| `eveland env list      | set                                                                                                 | rm`   | Manages project environment variables. Supports `--variable` for non-sensitive values and `--stdin` for secrets. |
+| Command                | Behavior and Arguments                                                                                                                                                                         |
+| :--------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eveland init <dir>`   | Scaffolds a new Eve agent project from starter templates.                                                                                                                                      |
+| `eveland login`        | Authenticates via device authorization flow, storing credentials per origin.                                                                                                                   |
+| `eveland logout`       | Purges stored credentials for the target origin.                                                                                                                                               |
+| `eveland whoami`       | Prints current origin, user profile, role, and token scopes.                                                                                                                                   |
+| `eveland deploy [dir]` | Validates, packages, uploads, and monitors remote builds; promotion is requested with the upload and completed by the platform inside the build job. Supports `--no-promote` to keep previews. |
+| `eveland logs [dir]`   | Streams project logs. Supports `-f` (tail follow) and `--type runtime                                                                                                                          | build | deploy`.                                                                                                         |
+| `eveland env list      | set                                                                                                                                                                                            | rm`   | Manages project environment variables. Supports `--variable` for non-sensitive values and `--stdin` for secrets. |
 
 ---
 
@@ -61,7 +61,7 @@ The `eveland deploy` command enforces strict security checks:
 
 - **Exclusions**: Automatically ignores `.git/` and `node_modules/`.
 - **Secret file shielding**: If unencrypted `.env` files or credential-bearing `.npmrc` files are detected, the CLI **aborts the upload immediately**, requiring secrets to be managed via `eveland env set`.
-- **Automatic promotion**: By default, successful builds atomically update the stable production route. Use `--no-promote` to verify changes in an isolated preview first.
+- **Automatic promotion**: By default, successful builds atomically update the stable production route. Promotion travels with the deploy request and runs inside the platform's build job, so a CLI that exits mid-watch never leaves routes or the schedule target on the old deployment, and a concurrent deploy from the Dashboard is never the one promoted. The CLI reports the deployment its own build job produced. Use `--no-promote` to verify changes in an isolated preview first.
 
 ## Deeper reference
 

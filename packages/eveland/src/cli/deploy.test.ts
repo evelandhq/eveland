@@ -20,16 +20,25 @@ function json(status: number, body: unknown): Response {
   });
 }
 
+type FakeJob = {
+  id: string;
+  type: string;
+  status: string;
+  lastError: string | null;
+  parentJobId?: string | null;
+  deploymentId?: string | null;
+};
+
 /**
  * A scripted platform: fixed instance window, a mutable project/job/log
- * state the test advances between polls.
+ * state the test advances between polls. It serves no deployment list and
+ * no promote route: the CLI must learn the deployment from its own build job
+ * and leave promotion to the server-side job.
  */
 function fakePlatform(options: {
   projects?: Array<{ id: string; slug: string; importKind: string }>;
-  preexistingJobs?: Array<{ id: string; type: string; status: string; lastError: null }>;
-  jobTimeline?: Array<
-    Array<{ id: string; type: string; status: string; lastError: string | null }>
-  >;
+  preexistingJobs?: FakeJob[];
+  jobTimeline?: FakeJob[][];
   logTimeline?: string[][];
   preflightOutcome?: { status: string; error: string | null };
 }) {
@@ -40,8 +49,8 @@ function fakePlatform(options: {
     jsonBody: unknown;
   }> = [];
   let polls = 0;
-  // The baseline jobs/logs snapshot happens before the upload; new activity
-  // only appears once the deploy has been submitted.
+  // The baseline logs snapshot happens before the upload; new activity only
+  // appears once the deploy has been submitted.
   let submitted = false;
   const jobTimeline = options.jobTimeline ?? [];
   const logTimeline = options.logTimeline ?? [];
@@ -80,14 +89,14 @@ function fakePlatform(options: {
     }
     if (pathname.endsWith("/sync-source")) {
       submitted = true;
-      return json(202, { job: { id: "job_sync", type: "import_source", status: "queued" } });
+      return json(202, { job: { id: "job_i", type: "import_source", status: "queued" } });
     }
     if (pathname.endsWith("/jobs")) {
       expect(searchParams.get("include")).toBe("deployment");
       if (!submitted) return json(200, { jobs: options.preexistingJobs ?? [] });
       const step = Math.min(polls, jobTimeline.length - 1);
       const timeline = jobTimeline[step] ?? [];
-      return json(200, { jobs: [...(options.preexistingJobs ?? []), ...timeline] });
+      return json(200, { jobs: [...timeline, ...(options.preexistingJobs ?? [])] });
     }
     if (pathname.endsWith("/logs")) {
       // Bounded reads only: the client must always send limit or after, and
@@ -115,12 +124,6 @@ function fakePlatform(options: {
       polls += 1;
       return respond();
     }
-    if (pathname.endsWith("/deployments")) {
-      return json(200, { deployments: [{ id: "dep_new", status: "running" }] });
-    }
-    if (pathname.endsWith("/promote")) {
-      return json(200, { route: {} });
-    }
     if (pathname.endsWith("/endpoints")) {
       return json(200, {
         stable: "http://tour-guide.agent.localhost:17300",
@@ -144,20 +147,34 @@ function io(platform: ReturnType<typeof fakePlatform>) {
   };
 }
 
-const BUILD_DONE = [
-  [{ id: "job_i", type: "import_source", status: "completed", lastError: null }],
-  [
-    { id: "job_i", type: "import_source", status: "completed", lastError: null },
-    { id: "job_b", type: "build_deploy", status: "running", lastError: null },
-  ],
-  [
-    { id: "job_i", type: "import_source", status: "completed", lastError: null },
-    { id: "job_b", type: "build_deploy", status: "completed", lastError: null },
-  ],
+const IMPORT_DONE: FakeJob = {
+  id: "job_i",
+  type: "import_source",
+  status: "completed",
+  lastError: null,
+  parentJobId: null,
+  deploymentId: null,
+};
+const OUR_BUILD = (status: string, deploymentId: string | null = null): FakeJob => ({
+  id: "job_b",
+  type: "build_deploy",
+  status,
+  lastError: null,
+  parentJobId: "job_i",
+  deploymentId,
+});
+
+// Newest first, like the platform's job list.
+const BUILD_DONE: FakeJob[][] = [
+  [IMPORT_DONE],
+  [OUR_BUILD("running"), IMPORT_DONE],
+  [OUR_BUILD("completed", "dep_new"), IMPORT_DONE],
 ];
 
+const PROMOTED_LINE = "Promoted: routes and the schedule target now point at this deployment.";
+
 describe("eveland deploy", () => {
-  test("creates, streams build logs, and promotes a fresh project", async () => {
+  test("creates a fresh project with promotion requested up front and streams build logs", async () => {
     const platform = fakePlatform({
       jobTimeline: BUILD_DONE,
       logTimeline: [["importing source"], ["importing source", "eve build ok"], []],
@@ -191,23 +208,37 @@ describe("eveland deploy", () => {
       (call) => call.method === "POST" && call.url.endsWith("/api/projects"),
     );
     expect(create?.form).toBeNull();
+    // Promote rides on the create request so the worker promotes inside the
+    // build job; the CLI never promotes from the client side.
     expect(create?.jsonBody).toEqual({
       name: "tour-guide",
       preflightId: "pre_1",
       deployAfterImport: true,
+      promoteAfterDeploy: true,
     });
-    expect(platform.calls.some((call) => call.url.includes("/promote"))).toBe(true);
+    expect(platform.calls.some((call) => call.url.includes("/promote"))).toBe(false);
+    expect(platform.calls.some((call) => call.url.endsWith("/deployments"))).toBe(false);
     const output = printed.join("\n");
     expect(output).toContain("importing source");
     expect(output).toContain("eve build ok");
+    expect(printed).toContain(PROMOTED_LINE);
     // Each log line prints once despite polling the cumulative history.
     expect(printed.filter((line) => line.includes("importing source"))).toHaveLength(1);
   });
 
-  test("redeploys an existing zip project through sync-source without replaying old logs", async () => {
+  test("redeploys an existing zip project through sync-source with promote in the request", async () => {
     const platform = fakePlatform({
       projects: [{ id: "proj_1", slug: "tour-guide", importKind: "zip" }],
-      preexistingJobs: [{ id: "job_old", type: "build_deploy", status: "failed", lastError: null }],
+      preexistingJobs: [
+        {
+          id: "job_old",
+          type: "build_deploy",
+          status: "failed",
+          lastError: "old failure",
+          parentJobId: null,
+          deploymentId: null,
+        },
+      ],
       jobTimeline: BUILD_DONE,
       logTimeline: [["fresh build line"]],
     });
@@ -221,11 +252,73 @@ describe("eveland deploy", () => {
       io: deployIo,
     });
 
-    expect(result.projectId).toBe("proj_1");
+    expect(result).toMatchObject({ projectId: "proj_1", deploymentId: "dep_new", promoted: true });
     const sync = platform.calls.find((call) => call.url.includes("/sync-source"));
     expect(sync?.form?.get("deploy")).toBe("true");
-    expect(sync?.form?.get("promote")).toBeNull();
+    expect(sync?.form?.get("promote")).toBe("true");
+    expect(platform.calls.some((call) => call.url.includes("/promote"))).toBe(false);
     expect(printed.join("\n")).toContain("fresh build line");
+    expect(printed).toContain(PROMOTED_LINE);
+  });
+
+  test("follows its own build job when a concurrent deploy runs on the same project", async () => {
+    // A Dashboard deploy queued alongside ours: newer (listed first), fails,
+    // and would have produced a different deployment. Neither its failure
+    // nor its deployment may be attributed to this CLI run.
+    const dashboardBuild = (status: string, extra: Partial<FakeJob> = {}): FakeJob => ({
+      id: "job_dash",
+      type: "build_deploy",
+      status,
+      lastError: null,
+      parentJobId: null,
+      deploymentId: null,
+      ...extra,
+    });
+    const platform = fakePlatform({
+      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "zip" }],
+      jobTimeline: [
+        [IMPORT_DONE],
+        [dashboardBuild("running"), OUR_BUILD("running"), IMPORT_DONE],
+        [
+          dashboardBuild("completed", { deploymentId: "dep_dash" }),
+          OUR_BUILD("running"),
+          IMPORT_DONE,
+        ],
+        [
+          dashboardBuild("failed", { lastError: "Dashboard build exploded" }),
+          OUR_BUILD("completed", "dep_new"),
+          IMPORT_DONE,
+        ],
+      ],
+      logTimeline: [[]],
+    });
+
+    const result = await runDeploy({
+      origin: "http://localhost:17300",
+      token: "tok",
+      dir: await makeProject(),
+      promote: true,
+      io: io(platform).io,
+    });
+
+    expect(result.deploymentId).toBe("dep_new");
+  });
+
+  test("fails clearly when its build job does not name the deployment it produced", async () => {
+    const platform = fakePlatform({
+      jobTimeline: [[IMPORT_DONE], [OUR_BUILD("completed", null), IMPORT_DONE]],
+      logTimeline: [[]],
+    });
+    await expect(
+      runDeploy({
+        origin: "http://localhost:17300",
+        token: "tok",
+        dir: await makeProject(),
+        promote: true,
+        io: io(platform).io,
+      }),
+    ).rejects.toThrow(/did not record which deployment it produced/);
+    expect(platform.calls.some((call) => call.url.endsWith("/deployments"))).toBe(false);
   });
 
   test("refuses git projects and out-of-window eve before uploading", async () => {
@@ -279,16 +372,25 @@ describe("eveland deploy", () => {
       }),
     ).rejects.toThrow(/Import failed: Invalid eve project: boom/);
 
-    const preview = fakePlatform({ jobTimeline: BUILD_DONE, logTimeline: [[]] });
+    const preview = fakePlatform({
+      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "zip" }],
+      jobTimeline: BUILD_DONE,
+      logTimeline: [[]],
+    });
+    const { io: previewIo, printed } = io(preview);
     const result = await runDeploy({
       origin: "http://localhost:17300",
       token: "tok",
       dir: await makeProject(),
       promote: false,
-      io: io(preview).io,
+      io: previewIo,
     });
-    expect(result.promoted).toBe(false);
+    expect(result).toMatchObject({ promoted: false, deploymentId: "dep_new" });
+    const sync = preview.calls.find((call) => call.url.includes("/sync-source"));
+    expect(sync?.form?.get("promote")).toBeNull();
     expect(preview.calls.some((call) => call.url.includes("/promote"))).toBe(false);
+    expect(printed).not.toContain(PROMOTED_LINE);
+    expect(printed.join("\n")).toContain("--no-promote");
   });
 
   test("a failed preflight never creates a project or burns the slug", async () => {

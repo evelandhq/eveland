@@ -127,6 +127,7 @@ export type CreateProjectInput = {
   sourcePath?: string | null;
   requireExactSlug?: boolean;
   deployAfterImport?: boolean;
+  promoteAfterDeploy?: boolean;
   gitCredential?: {
     userId: string;
     host: string;
@@ -218,6 +219,7 @@ export interface SourceStore {
       userId: string;
       name: string;
       deployAfterImport?: boolean;
+      promoteAfterDeploy?: boolean;
       secrets?: InitialProjectSecret[];
     },
     now?: Date,

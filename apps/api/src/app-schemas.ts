@@ -35,21 +35,32 @@ export const gitRepositoryUrlSchema = z
     "Enter a Git repository URL with a repository name.",
   );
 
-export const createProjectSchema = z.discriminatedUnion("importKind", [
+const createProjectShapeSchema = z.discriminatedUnion("importKind", [
   z.object({
     name: projectNameSchema.optional(),
     importKind: z.literal("git"),
     gitUrl: gitRepositoryUrlSchema,
     gitlabPat: z.string().min(1).max(1024).optional(),
     deployAfterImport: z.boolean().optional(),
+    promoteAfterDeploy: z.boolean().optional(),
   }),
   z.object({
     name: projectNameSchema,
     importKind: z.literal("zip"),
     gitUrl: z.string().optional().nullable(),
     deployAfterImport: z.boolean().optional(),
+    promoteAfterDeploy: z.boolean().optional(),
   }),
 ]);
+
+/** Promotion of a fresh import only makes sense when that import deploys. */
+export const IMPORT_PROMOTE_REQUIRES_DEPLOY_MESSAGE =
+  "An imported source must be deployed before it can be promoted.";
+
+export const createProjectSchema = createProjectShapeSchema.refine(
+  (input) => !input.promoteAfterDeploy || input.deployAfterImport,
+  { message: IMPORT_PROMOTE_REQUIRES_DEPLOY_MESSAGE, path: ["promoteAfterDeploy"] },
+);
 
 export const environmentVariableSchema = z.object({
   key: z.string().regex(ENVIRONMENT_ENTRY_KEY_PATTERN, ENVIRONMENT_ENTRY_KEY_MESSAGE),
@@ -62,9 +73,17 @@ export const createProjectFromPreflightSchema = z
     name: projectNameSchema,
     preflightId: z.string().regex(/^pre_[0-9A-Za-z]+$/),
     deployAfterImport: z.boolean().optional(),
+    promoteAfterDeploy: z.boolean().optional(),
     environmentVariables: z.array(environmentVariableSchema).max(50).default([]),
   })
   .superRefine((input, context) => {
+    if (input.promoteAfterDeploy && !input.deployAfterImport) {
+      context.addIssue({
+        code: "custom",
+        path: ["promoteAfterDeploy"],
+        message: IMPORT_PROMOTE_REQUIRES_DEPLOY_MESSAGE,
+      });
+    }
     const keys = new Set<string>();
     input.environmentVariables.forEach((variable, index) => {
       if (keys.has(variable.key)) {

@@ -70,6 +70,8 @@ function job(
     status,
     attempts: status === "queued" ? 0 : 1,
     lastError,
+    parentJobId: null,
+    deploymentId: null,
     createdAt: "2026-07-17T00:00:00.000Z",
     updatedAt: "2026-07-17T00:00:01.000Z",
   };

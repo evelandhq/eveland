@@ -24,7 +24,13 @@ const jobPayloadSchemas: {
       promoteAfterDeploy: z.boolean().optional(),
     })
     .passthrough(),
-  build_deploy: z.object({ promoteAfterDeploy: z.boolean().optional() }).passthrough(),
+  build_deploy: z
+    .object({
+      promoteAfterDeploy: z.boolean().optional(),
+      parentJobId: z.string().optional(),
+      deploymentId: z.string().optional(),
+    })
+    .passthrough(),
   restart_deployment: z
     .object({
       deploymentId: z.string().optional(),
@@ -120,6 +126,11 @@ export function decodeJobPayload<Type extends JobType>(
   return jobPayloadSchemas[type].parse(payload);
 }
 
+function stringField(payload: object, key: string): string | null {
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : null;
+}
+
 export function toPublicJob(job: Job): PublicJob {
   return {
     id: job.id,
@@ -129,6 +140,8 @@ export function toPublicJob(job: Job): PublicJob {
     payload: {},
     attempts: job.attempts,
     lastError: job.lastError,
+    parentJobId: stringField(job.payload, "parentJobId"),
+    deploymentId: stringField(job.payload, "deploymentId"),
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
   };

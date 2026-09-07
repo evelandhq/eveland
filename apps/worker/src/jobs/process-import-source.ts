@@ -94,6 +94,7 @@ export async function handleImportSourceJob(
   if (job.payload.deployAfterImport === true) {
     await store.enqueueJob(job.projectId, "build_deploy", {
       promoteAfterDeploy: job.payload.promoteAfterDeploy === true,
+      parentJobId: job.id,
     });
     options.signal?.throwIfAborted();
     await store.appendLog({

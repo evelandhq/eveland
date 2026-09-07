@@ -12,7 +12,7 @@ function assertTypedEnqueue(store: JobStore): void {
   // @ts-expect-error Archive jobs require a string Deployment identity.
   store.enqueueJob("proj_1", "archive_deployment", { automatic: true });
   // @ts-expect-error Build jobs cannot receive an activation payload.
-  store.enqueueJob("proj_1", "build_deploy", { deploymentId: "dep_1" });
+  store.enqueueJob("proj_1", "build_deploy", { runtimeInstanceId: "rt_1" });
 
   store.listProjectJobs("proj_1").then((jobs) => {
     jobs satisfies import("@evelandhq/core/contracts").Job[];

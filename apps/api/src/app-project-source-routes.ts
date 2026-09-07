@@ -306,6 +306,7 @@ export function registerProjectSourceRoutes(input: {
               gitUrl: parsed.data.gitUrl,
               requireExactSlug: true,
               deployAfterImport: parsed.data.deployAfterImport,
+              promoteAfterDeploy: parsed.data.promoteAfterDeploy,
               ...(gitCredential ? { gitCredential } : {}),
             })
           : await store.createProject({

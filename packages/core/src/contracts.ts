@@ -226,7 +226,16 @@ export type ImportSourceJobPayload = {
 
 export type JobPayloadMap = {
   import_source: ImportSourceJobPayload;
-  build_deploy: { promoteAfterDeploy?: boolean };
+  build_deploy: {
+    promoteAfterDeploy?: boolean;
+    // The import_source job that chained this build, so a client that
+    // submitted the import can follow its own build past a concurrent one.
+    parentJobId?: string;
+    // The Deployment this build produced, recorded as soon as the row exists
+    // and before the job can complete. Unlike DEPLOYMENT_SCOPED_JOB_TYPES
+    // this names an output, not a claim-time target.
+    deploymentId?: string;
+  };
   restart_deployment: {
     deploymentId?: string;
     reason?: string;
@@ -275,6 +284,10 @@ export type PublicJob = {
   payload: Record<string, never>;
   attempts: number;
   lastError: string | null;
+  /** The job that queued this one; a chained build names its import. */
+  parentJobId: string | null;
+  /** The Deployment this job produced or targets, once known. */
+  deploymentId: string | null;
   createdAt: string;
   updatedAt: string;
 };
