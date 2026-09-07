@@ -151,19 +151,38 @@ jobs:
         # worker exports host metrics over OTLP, the bridged Collector
         # forwards them to the API, and the API projects them into Postgres.
         # A silently disconnected Collector fills its queue and looks healthy.
+        #
+        # The worker exports metrics on a 60s period, and the first export
+        # waits a full period, so the first sample lands 60-70s after the
+        # worker came up. How long ago that was depends on how fast the
+        # installer built the built-in agent -- observed between 53s and
+        # 63s here, on either side of the line. Poll with a deadline instead
+        # of assuming the installer was slow enough.
         run: |
           # The ctl's own three-file stack from the ctl's own source tree: a
           # bare `docker compose` here would resolve a different project (the
           # runner workspace) and find no such service.
           cd /opt/eveland/source
-          sudo docker compose \
-            -f docker-compose.yml -f docker-compose.prod.yml \
-            -f /opt/eveland/etc/compose.appliance.yml \
-            --env-file /opt/eveland/etc/eveland.env --profile bundled-postgres \
-            exec -T postgres psql -U eveland -d eveland -tAc \
-            "select count(*) from host_metric_samples where observed_at > now() - interval '10 minutes'" \
-            | tee /tmp/samples
-          test "$(tr -d '[:space:]' < /tmp/samples)" -gt 0
+          count_samples() {
+            sudo docker compose \
+              -f docker-compose.yml -f docker-compose.prod.yml \
+              -f /opt/eveland/etc/compose.appliance.yml \
+              --env-file /opt/eveland/etc/eveland.env --profile bundled-postgres \
+              exec -T postgres psql -U eveland -d eveland -tAc \
+              "select count(*) from host_metric_samples where observed_at > now() - interval '10 minutes'" \
+              | tr -d '[:space:]'
+          }
+          deadline=$((SECONDS + 180))
+          while :; do
+            samples="$(count_samples)"
+            echo "$(date -u +%H:%M:%S) host_metric_samples in the last 10 minutes: ${samples:-?}"
+            if [ "${samples:-0}" -gt 0 ] 2>/dev/null; then exit 0; fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::no host metric sample reached Postgres within 180s"
+              exit 1
+            fi
+            sleep 5
+          done
 
       - name: Stop cleanly
         run: |
