@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.0](https://github.com/evelandhq/eveland/compare/eveland-v0.9.0...eveland-v0.10.0) (2026-09-07)
+
+
+### Features
+
+* accept uploads on git projects as previews and record source provenance ([#513](https://github.com/evelandhq/eveland/issues/513)) ([9de480f](https://github.com/evelandhq/eveland/commit/9de480f84b29c817642828e1a8535eef5321dd72))
+* **cli:** promote inside the build job and follow the CLI's own build ([#512](https://github.com/evelandhq/eveland/issues/512)) ([6eac35e](https://github.com/evelandhq/eveland/commit/6eac35e8303877acfaab4c247ec2487040916db2))
+* promote uploads on git projects on request and surface the resulting hotfix drift ([#517](https://github.com/evelandhq/eveland/issues/517)) ([32d566b](https://github.com/evelandhq/eveland/commit/32d566b339f04bcdcfcdb983a0a472afbc89f065))
+
 ## [0.9.0](https://github.com/evelandhq/eveland/compare/eveland-v0.8.0...eveland-v0.9.0) (2026-09-07)
 
 
