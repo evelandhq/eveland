@@ -205,6 +205,14 @@ Releases are automated by [Release Please](https://github.com/googleapis/release
    green. Release Please then creates the tag and GitHub Release: `vX.Y.Z` for
    the platform, `eveland-vX.Y.Z` for the package. Only `vX.Y.Z` tags are stable
    platform releases; `main` is the `edge` channel.
+4. When the package's Release PR is the one that merged, the same workflow run
+   packs `packages/eveland` from the new `eveland-vX.Y.Z` tag, installs the
+   tarball into a clean project and exercises its exports and CLI, then
+   publishes that exact tarball to npm through
+   [trusted publishing](https://docs.npmjs.com/trusted-publishers) (GitHub
+   OIDC). Nothing is published by hand and no npm token is stored: the npm
+   package's trusted publisher must name this repository and
+   `release.yml`, which is a one-time setting on npmjs.com.
 
 `RELEASE_PLEASE_TOKEN` should be a repository-scoped or GitHub App token that can
 write contents and pull requests. The workflow falls back to `GITHUB_TOKEN`, but
