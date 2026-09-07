@@ -21,6 +21,7 @@ export type ProjectDeploymentStore = Pick<
   | "ensureAliasRoute"
   | "getDeployment"
   | "getDeploymentRetention"
+  | "getProjectHotfixDrift"
   | "getVariantMetrics"
   | "listDeployments"
   | "listProjectRoutes"
@@ -88,13 +89,15 @@ export function registerProjectDeploymentRoutes(input: {
     // discovery manifest (null for releases built before the projection or
     // whose manifest was unreadable). One project-scoped query, not a lookup
     // per deployment.
-    const [deployments, retention, routes, releaseSummaries, releaseSources] = await Promise.all([
-      store.listDeployments(projectId, { includeArchived: archived, limit }),
-      store.getDeploymentRetention(projectId, undefined, deploymentRetentionOptions()),
-      store.listProjectRoutes(projectId),
-      store.listReleaseSummaries(projectId),
-      store.listReleaseSources(projectId),
-    ]);
+    const [deployments, retention, routes, releaseSummaries, releaseSources, hotfixDrift] =
+      await Promise.all([
+        store.listDeployments(projectId, { includeArchived: archived, limit }),
+        store.getDeploymentRetention(projectId, undefined, deploymentRetentionOptions()),
+        store.listProjectRoutes(projectId),
+        store.listReleaseSummaries(projectId),
+        store.listReleaseSources(projectId),
+        store.getProjectHotfixDrift(projectId),
+      ]);
     // Retention already spans the whole history -- it has to, since `recent`
     // and the route/session reasons are computed across all of it -- so the
     // counts come free, and the entries the response carries are narrowed to
@@ -118,6 +121,7 @@ export function registerProjectDeploymentRoutes(input: {
       releaseSources: Object.fromEntries(
         Object.entries(releaseSources).filter(([releaseId]) => pageReleases.has(releaseId)),
       ),
+      hotfixDrift,
     });
   });
 
