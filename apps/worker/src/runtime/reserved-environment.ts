@@ -59,6 +59,15 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   EVELAND_WORKFLOW_RUNNER: ["EVELAND_WORKFLOW_RUNNER"],
   EVELAND_WORKFLOW_STREAM_COMPACTION: ["EVELAND_WORKFLOW_STREAM_COMPACTION"],
   EVELAND_WORKFLOW_WORLD_URL: ["EVELAND_WORKFLOW_WORLD_URL"],
+  // eve 0.52.0 turned on CLI telemetry by default: every `eve build`,
+  // `eve info`, and `eve start` the platform runs would otherwise spawn a
+  // detached flush that POSTs command usage to telemetry.vercel.com and, on a
+  // systemd build where HOME is the release directory, write its installation
+  // identity into the Release itself. The platform owns the decision for the
+  // processes it runs, so the value is a constant with no platform input, and
+  // it is reserved so a project entry cannot re-enable it. The same constant
+  // rides the build environment (systemd) and the image (Docker).
+  EVE_TELEMETRY_DISABLED: [],
   // Reserved at runtime only in production, but reserved for every build
   // regardless: `npm ci` and `pnpm install --frozen-lockfile` both omit
   // devDependencies when NODE_ENV=production is in the environment, so an entry

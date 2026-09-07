@@ -273,6 +273,11 @@ export function buildReleaseBuildEnvironment(input: {
       ...selected.variables,
       PATH: input.pathValue,
       npm_config_cache: input.npmCacheDir,
+      // `npx eve build` and `npx eve info` are CLI commands; from eve 0.52.0
+      // the CLI reports usage unless told not to, and with HOME at releaseDir
+      // it would also write its telemetry identity into the Release. Reserved
+      // (see ./reserved-environment.ts), so `selected` can never carry it.
+      EVE_TELEMETRY_DISABLED: "1",
     },
     rejectedKeys: selected.rejectedKeys,
   };

@@ -96,7 +96,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.51.1");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.52.2");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -131,7 +131,9 @@ describe("Eve compatibility repository contract", () => {
       // ancestor's stored class, and it still settles by resuming the owner
       // turn's outcome hook with the same 30s abort grace. Only the hook token
       // moved, `eve:tool-run:` -> `eve:workflow-tool-run:<operationId>`. Both
-      // constants stay covered until 0.49.x and 0.50.x leave the window.
+      // constants stay covered until 0.50.x leaves the window. 0.52.2
+      // re-checked 2026-09-07: the exported set and the bundler default are
+      // byte-identical to 0.51.1.
       "WORKFLOW_TOOL_RUN_WORKFLOW_NAME",
       // 0.51.0: the shared execute body behind every subagent tool (local,
       // remote, dynamic, and self-agent). Audited 2026-09-04: it opens NO run
@@ -151,7 +153,7 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.49.x and 0.50.x run six; 0.51.x runs six plus the subagent body, with
+    // 0.50.x runs six; 0.51.x and 0.52.x run six plus the subagent body, with
     // the tool run under its new name.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
@@ -190,7 +192,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.49/0.50/0.51 compatibility window", () => {
+  test("describes the supported 0.50/0.51/0.52 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-oldest", "eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {

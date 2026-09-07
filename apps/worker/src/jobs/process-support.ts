@@ -307,6 +307,9 @@ export async function composeDeploymentEnv(
     // set it to 0 -- turning every platform-initiated restart into an instant
     // kill -- or past the point where `eve start` SIGKILLs the server anyway.
     SERVER_SHUTDOWN_TIMEOUT: String(resolveDeploymentShutdownTimeoutSeconds(workerEnv)),
+    // `npx eve start` is a CLI command, and from eve 0.52.0 the CLI reports
+    // usage to Vercel unless told not to (see ../runtime/reserved-environment.ts).
+    EVE_TELEMETRY_DISABLED: "1",
     // Only injected when the platform has the shared world configured. A
     // project that could set these could scope its world at another tenant's
     // data, or hand the runner a database nothing provisions.

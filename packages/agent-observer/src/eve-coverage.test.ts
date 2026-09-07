@@ -46,8 +46,8 @@ describe("Eve observer hook compatibility matrix", () => {
       // arm keeps third-party global registrations reachable, and the sanitize
       // path substitutes only Eve's own integration by identity (the `map` in
       // ai-sdk-telemetry.js compares `e !== eveOtelIntegration`), so
-      // model-capture's integration is never wrapped — re-verified 2026-09-03
-      // (byte-identical in 0.49.0 and 0.50.0). If the pinned expression changes
+      // model-capture's integration is never wrapped — re-verified 2026-09-07
+      // (the pinned expression matches 0.50.0, 0.51.1, and 0.52.2 alike). If the pinned expression changes
       // shape in a new Eve line, re-verify model-capture.ts against it before
       // bumping the matrix. The minifier is free to rename the locals (0.44.0
       // emitted `r`, 0.44.3 `i`), so the pin captures identifiers instead of

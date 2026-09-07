@@ -3,13 +3,13 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.49.x`、`0.50.x` 与 `0.51.x`，验证版本为 `0.49.0`、`0.50.0` 与 `0.51.1`。Eve 0.48（2026-09-02 窗口滑到它之后即被 0.49.0 取代、被跳过，没有任何 Deployment 在其上运行过）以及 Eve 0.47 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.50.x`、`0.51.x` 与 `0.52.x`，验证版本为 `0.50.0`、`0.51.1` 与 `0.52.2`。Eve 0.49（2026-09-07 随 0.52 进入窗口而退出）、Eve 0.48（2026-09-02 窗口滑到它之后即被 0.49.0 取代、被跳过，没有任何 Deployment 在其上运行过）以及 Eve 0.47 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
-项目 `package.json` 中允许的 Eve 依赖声明形式为：受支持线内的精确 Patch、锚定在受支持 Minor Patch 上的 `~`/`^` Range，以及 `0.49` / `0.49.x` / `0.49.*`、`0.50` / `0.50.x` / `0.50.*`、`0.51` / `0.51.x` / `0.51.*`。缺少 Eve 依赖、跨 Minor 的宽泛 Range 或任何可能解析到窗口之外的声明都会 Fail Closed。项目 Overview、Source 与 Playground 会显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本与平台要求。
+项目 `package.json` 中允许的 Eve 依赖声明形式为：受支持线内的精确 Patch、锚定在受支持 Minor Patch 上的 `~`/`^` Range，以及 `0.50` / `0.50.x` / `0.50.*`、`0.51` / `0.51.x` / `0.51.*`、`0.52` / `0.52.x` / `0.52.*`。缺少 Eve 依赖、跨 Minor 的宽泛 Range 或任何可能解析到窗口之外的声明都会 Fail Closed。项目 Overview、Source 与 Playground 会显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本与平台要求。
 
-这是第一个三条线的窗口。`0.49.x` 是被保留而非淘汰：窗口决定的是导入的 Agent 可以声明什么，多留一条线只多一个矩阵条目，砍掉一条线却会让所有锁定它的项目搁浅。三条 Minor 全部相邻，因此其 Range 是一个连续区间，而不是带缺口窗口所需的多段并集。`0.48.x` 从未通过验证（0.49.0 在数小时内即将其取代，更早的 0.46、0.43 与 0.40/0.41 亦然），继续连同 `0.47.x` 及更早版本一起落在下限之下；`0.52.x` 在通过兼容矩阵之前也不会被接纳。
+窗口以三条线为一组滑动：`0.52.x` 于 2026-09-07 进入，`0.49.x` 随之退出，因此仍锁定 0.49 的项目必须在下一次 Build 或 Restart 之前迁到受支持的线。三条 Minor 全部相邻，因此其 Range 是一个连续区间，而不是带缺口窗口所需的多段并集。`0.48.x` 从未通过验证（0.49.0 在数小时内即将其取代，更早的 0.46、0.43 与 0.40/0.41 亦然），继续连同 `0.47.x` 及更早版本一起落在下限之下；`0.53.x` 在通过兼容矩阵之前也不会被接纳。
 
-UI 仅将最新支持线 `0.51.x` 标为绿色。Eve 0.49.x 与 0.50.x 保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
+UI 仅将最新支持线 `0.52.x` 标为绿色。Eve 0.50.x 与 0.51.x 保持可运行，不过会以红色显示并提醒升级；不受支持的版本同样显示为红色且继续阻断。
 
 ## 窗口基线
 
@@ -20,7 +20,7 @@ UI 仅将最新支持线 `0.51.x` 标为绿色。Eve 0.49.x 与 0.50.x 保持可
 - Channel 消息发送默认 `turnPolicy: "steer"`；Eveland 注入的 Scheduler Adapter 始终显式使用 `"queue"`，因此 Schedule 不会抢占用户正在等待的 Turn。
 - 自定义 Sandbox Backend Handle 必须实现保留 Durable Session 的 `stop()` 与 `delete()`——后者永久删除该 Sandbox 的一次性状态、保留共享的 Template 状态；Eveland 会用受管的 bwrap Backend（`@evelandhq/sandbox-bwrap`）替换 Agent 自带的 Backend，两者它都已实现。
 - 受支持的构建产出 Discovery Manifest v15；投影器只接受它（仅 0.45.0 产出的 v14 已随 0.45 线一起离开窗口）。v15 携带可选的 `instrumentation` 模块引用与 `memories` 列表。
-- Message Stream 协议是本窗口内**唯一**不统一的 Wire Format：`0.49.x` 说 v24，`0.50.x` 与 `0.51.x` 说 v25。每个响应都用 `x-eve-stream-version` 头声明版本，Eveland 的 Playground 与 Agent Gateway 原样转发它，而平台自身的客户端基于最新线构建，因此两种都能读。自定义 NDJSON 消费者必须同时处理两种形状：v24 的 Append 事件在 Delta 之外还带累积快照（`messageSoFar` / `reasoningSoFar`）与 UTF-16 的 `inputTextOffset`，v25 只带 Delta。
+- Message Stream 协议自 0.50 分裂以来首次在整个窗口内统一：每条受支持的线都说 **v25**，其 Append 事件只带 Delta（v24 的累积快照 `messageSoFar` / `reasoningSoFar` 与 UTF-16 的 `inputTextOffset` 已随 0.49 离开窗口）。每个响应仍用 `x-eve-stream-version` 头声明版本，Eveland 的 Playground 与 Agent Gateway 原样转发它；自定义 NDJSON 消费者应继续读取该头，而不是假定形状。
 - Eve 的隐式默认 Model 在整个窗口内都是 `openai/gpt-5.6-luna-fast`（0.47.0 与 0.47.1 仍默认 `zai/glm-5.2`）；请显式钉住 `model` 以控制 Provider、行为与成本。
 - Durable 后台工作与 Invocation Channel 属于基线：远端子 Session 流经父 Agent 在 `GET /eve/v1/session/:parentSessionId/subagents/:callId/:childSessionId/stream` 跟随、`operationId` 幂等建 Session、`POST /eve/v1/task-input/:token` 回调，以及 `mcpChannel()` 的 Durable Agent 工具都运行在 Eveland 的 Durable Deployment Routing 边界上。由于每条受支持的线都支持这些 Route，Agent Gateway 不再维护按操作区分的 Eve 版本下限——窗口本身就是门禁。
 - 前端 `stop()` 已不存在；取消是 Durable、由 Hook 持有的 `cancel()` 命令。Eveland 的 Playground 会等待它（包括第一条事件确定 Durable Turn 之前的窗口），并在 Settlement 完成前保持 Stream Attached。
@@ -33,11 +33,9 @@ UI 仅将最新支持线 `0.51.x` 标为绿色。Eve 0.49.x 与 0.50.x 保持可
 
 ## 窗口内各版本支持情况
 
-- **Eve 0.49.x（验证版本 `0.49.0`）**：采用 Message Stream v24 协议与 Sealed Log 存储模型（Spec 7），支持基本的不可变发布与沙箱隔离。
-- **Eve 0.50.x（验证版本 `0.50.0`）**：Message Stream 升级至 **v25**（纯 Delta 增量流传输，移除累积快照），支持 Discovery Manifest v15 与动态能力重置。
-- **Eve 0.51.x（推荐，验证版本 `0.51.1`）**：引入 Workflow Tool 与 Subagent 深度集成机制，强化持久化会话与动态扩展能力。
-
-对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.51.1`，即便 `^0.51.0` 这样的 Range 已经允许它。自定义 NDJSON 消费者必须忽略空行与未知事件类型，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
+- **Eve 0.50.x（验证版本 `0.50.0`）**：Message Stream **v25**（纯 Delta 增量流传输，移除累积快照）、Discovery Manifest v15 与 Sealed Log 存储模型（Spec 7）。
+- **Eve 0.51.x（验证版本 `0.51.1`）**：引入 Workflow Tool 与 Subagent 深度集成：每次 Subagent 调用都作为 Durable Tool Run 与跨越父 Turn 边界的后台任务运行。自定义 NDJSON 消费者必须忽略空行与未知事件类型，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
+- **Eve 0.52.x（推荐，验证版本 `0.52.2`）**：Durable Tool 改用 `eve/tools` 的 `defineWorkflowTool` 声明（`eve/workflow` 入口与 `task.delegated()` 已移除），父 Turn 上的 Workflow Tool 经由一个有序 Inbox 处理、重试的 Dispatch 可能再开一个 Run，`defaultTools: false` 可让 Agent 跳过 Eve 的可选默认工具。`tool` 与 `dynamicTool` 两个 Extension 契约丢弃了 0.52 之前的全部版本：针对 0.51 或更早预编译的 Extension 包会在 Build 时被拒绝、必须重建；Eveland 自行注入的 Extension 从源码编译，不受影响。Eve CLI 现在默认向 Vercel 上报使用情况，除非设置 `EVE_TELEMETRY_DISABLED`；Eveland 为其运行的每次 Build 与每个 Deployment 都设置了它。对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.52.2`，即便 `^0.52.0` 这样的 Range 已经允许它。
 
 npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelog 与源码审阅加上完整兼容矩阵之后才会进入；移除旧 Minor 同样是显式的产品变更。
 

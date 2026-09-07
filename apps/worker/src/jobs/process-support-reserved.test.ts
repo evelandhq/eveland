@@ -98,12 +98,13 @@ describe("reserved runtime environment names", () => {
     );
 
     expect(undeclared).toEqual([]);
-    // EVELAND_PROJECT_ID is the only name that legitimately has no input.
+    // EVELAND_PROJECT_ID is derived per project; EVE_TELEMETRY_DISABLED is a
+    // platform constant. Neither has a worker-environment input.
     expect(
       RESERVED_RUNTIME_ENVIRONMENT_KEYS.filter(
         (key) => RESERVED_RUNTIME_ENVIRONMENT_SOURCES[key]?.length === 0,
       ),
-    ).toEqual(["EVELAND_PROJECT_ID"]);
+    ).toEqual(["EVELAND_PROJECT_ID", "EVE_TELEMETRY_DISABLED"]);
   });
 
   test("a project entry never wins against a reserved name at runtime", async () => {
@@ -111,6 +112,8 @@ describe("reserved runtime environment names", () => {
 
     expect(env.NODE_ENV).toBe("production");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
+    // eve 0.52.0 turned CLI telemetry on by default; `npx eve start` runs the CLI.
+    expect(env.EVE_TELEMETRY_DISABLED).toBe("1");
     expect(env.WORKFLOW_POSTGRES_URL).toBe(`${workflowPostgresUrl}_wf_proj_reserved`);
     // No memoryRootDir option here, so the reserved value is the derived
     // worker-visible default: <EVELAND_DATA_DIR>/memory/<projectId>.
