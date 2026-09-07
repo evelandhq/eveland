@@ -298,6 +298,16 @@ Langfuse setup asks only for the installation base URL, e.g.
 model calls to generations, keeps Agent, Tool, and Subagent as spans, and preserves
 standard GenAI model, usage, and provider-reported cost.
 
+Langfuse groups all turns and descendant sessions of a root conversation under the
+root Eve session ID. The observer emits `eveland.eve.root_session.id` on every span
+and event log from Eve's `session.parent.rootSessionId` (or the session's own ID
+for a root). The Collector maps it to `langfuse.session.id`; `session.id` and
+`eveland.eve.session.id` retain the exact executing session for node attribution.
+This works even when children arrive before parents or resume in another process.
+Older observer payloads without a root ID fall back to `session.id`. Applying the
+fix requires both the updated observer runtime in the Agent process and the updated
+Collector configuration; previously exported traces are not regrouped automatically.
+
 External destination configuration is stored in the revisioned policy; credentials are
 encrypted with `APP_SECRET_KEY`. The browser can read back only the URL, the
 authorization type, and header names — never credential values. Leaving the credential

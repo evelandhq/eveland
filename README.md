@@ -34,6 +34,10 @@ Production installation and operations are documented at
 [`docs/*/reference`](docs/en/reference/) pages. This README covers
 local development and contribution.
 
+The managed Collector groups a root Agent conversation and its descendant sessions
+together in Langfuse. See [Observability](docs/en/reference/observability.md) for
+the session mapping and compatibility behavior.
+
 ## Quickstart (local development)
 
 ```bash

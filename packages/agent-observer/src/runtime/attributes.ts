@@ -21,6 +21,7 @@ export function commonAttributes(
     [ATTR_GEN_AI_CONVERSATION_ID]: sessionId,
     [ATTR_SESSION_ID]: sessionId,
     "eveland.eve.session.id": sessionId,
+    "eveland.eve.root_session.id": asString(context.session?.parent?.rootSessionId) ?? sessionId,
     ...(turnId ? { "eveland.eve.turn.id": turnId } : {}),
     ...(agentName
       ? {

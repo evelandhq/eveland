@@ -18,6 +18,7 @@ export type AgentTelemetryHookContext = {
     id?: unknown;
     parent?: {
       sessionId?: unknown;
+      rootSessionId?: unknown;
       callId?: unknown;
     };
   };

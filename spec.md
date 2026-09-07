@@ -187,6 +187,9 @@ observation of the platform's own telemetry likewise belongs entirely to externa
 destinations — Eveland provides no local fallback; Built-in retention is not
 configurable.
 
+Langfuse export groups a root conversation with its descendant sessions while
+retaining each executing session's identity for attribution.
+
 The trust boundary is a product promise: the platform and Agents use OTLP receivers
 that share no trust; deployment attribution is never taken from an Agent's
 self-reported id but from Worker-issued credentials, whose verified identity
