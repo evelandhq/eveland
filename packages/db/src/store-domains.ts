@@ -53,6 +53,8 @@ import type {
   SourceFileRecord,
   SourcePreflight,
   SourcePreflightRecord,
+  ReleaseSourceProvenance,
+  SourceOrigin,
   SourceRevision,
   UsageAnalytics,
   UsageRange,
@@ -134,7 +136,14 @@ export type CreateProjectInput = {
     encryptedToken: string;
     persistAfterImport: boolean;
   };
+  /** Which surface uploaded a zip source; ignored for git imports. */
+  uploadOrigin?: UploadOrigin;
+  /** Who uploaded a zip source; ignored for git imports. */
+  uploadedBy?: string | null;
 };
+
+/** The upload channels a caller can claim; git syncs are recorded by the platform itself. */
+export type UploadOrigin = Exclude<SourceOrigin, "git-sync">;
 
 export type CreateSourcePreflightInput = {
   userId: string;
@@ -221,6 +230,11 @@ export interface SourceStore {
       deployAfterImport?: boolean;
       promoteAfterDeploy?: boolean;
       secrets?: InitialProjectSecret[];
+      /** Which surface uploaded the source, when the preflight was a zip. */
+      uploadOrigin?: UploadOrigin;
+      /** What a zip upload was based on, when the uploader could tell. */
+      baseCommitSha?: string | null;
+      dirty?: boolean | null;
     },
     now?: Date,
   ): Promise<CreateProjectFromSourcePreflightResult>;
@@ -229,6 +243,10 @@ export interface SourceStore {
     projectId: string;
     kind: ProjectImportKind;
     commitSha?: string | null;
+    origin?: SourceOrigin | null;
+    baseCommitSha?: string | null;
+    dirty?: boolean | null;
+    uploadedBy?: string | null;
     sourcePath: string;
     summary: Record<string, unknown>;
     envVars: string[];
@@ -597,6 +615,8 @@ export interface DeploymentStore {
   getRelease(releaseId: string): Promise<ReleaseRecord | null>;
   /** Release id -> build summary (null when absent) for a whole project, in one query. */
   listReleaseSummaries(projectId: string): Promise<Record<string, Record<string, unknown> | null>>;
+  /** Release id -> its source revision's provenance for a whole project, in one query. */
+  listReleaseSources(projectId: string): Promise<Record<string, ReleaseSourceProvenance>>;
   getDeploymentRetention(
     projectId: string,
     keepRecent?: number,

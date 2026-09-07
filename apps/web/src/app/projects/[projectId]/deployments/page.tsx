@@ -5,6 +5,7 @@ import { DateTime } from "@/components/date-time";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
 import { EveVersionStatus } from "@/components/eve-version-status";
+import { SourceProvenance } from "@/components/source-provenance";
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -108,7 +109,18 @@ export default async function ProjectDeploymentsPage({
           <DeploymentFact label="Eve Agent" value={<EveVersionStatus eveVersion={eveVersion} />} />
           <DeploymentFact
             label="Source revision"
-            value={<span className="font-mono">{project?.sourceRevisionId ?? "None"}</span>}
+            value={
+              sourceRevision ? (
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <SourceProvenance source={sourceRevision} />
+                  <span className="font-mono text-xs font-normal text-muted-foreground">
+                    {sourceRevision.id}
+                  </span>
+                </span>
+              ) : (
+                "None"
+              )
+            }
           />
           <DeploymentFact
             label="Release"
@@ -163,6 +175,10 @@ export default async function ProjectDeploymentsPage({
               deployment.status,
               overview.releaseSummaries[deployment.releaseId] ?? null,
             );
+            // Where this Deployment's source came from: a synced commit, or
+            // an upload and what it was based on. Every Release has one; the
+            // guard only covers a response from an older API.
+            const source = overview.releaseSources?.[deployment.releaseId] ?? null;
             return (
               <div
                 key={deployment.id}
@@ -187,6 +203,11 @@ export default async function ProjectDeploymentsPage({
                   </div>
                   {cannotStart ? (
                     <p className="mt-1 text-xs text-destructive">Cannot start: {cannotStart}</p>
+                  ) : null}
+                  {source ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      <SourceProvenance source={source} recordedAt={source.recordedAt} />
+                    </p>
                   ) : null}
                   <p className="mt-1 text-xs text-muted-foreground">
                     Deployed <DateTime value={deployment.createdAt} />

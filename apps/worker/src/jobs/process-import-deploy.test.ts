@@ -94,6 +94,80 @@ describe("processNextJob", () => {
     await expect(store.claimNextJob("worker-idle")).resolves.toBeNull();
   });
 
+  test("records an upload's provenance on a git project's revision", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Uploaded Onto Git Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/uploaded.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    await store.enqueueJob(project.id, "import_source", {
+      importKind: "zip",
+      sourcePath,
+      origin: "cli-upload",
+      baseCommitSha: "b".repeat(40),
+      dirty: true,
+      uploadedBy: "user_one",
+    });
+
+    await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+    // The revision is what was imported (a zip based on a commit), not what
+    // the project was created from; the project's own git url is untouched.
+    await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
+      kind: "zip",
+      commitSha: null,
+      origin: "cli-upload",
+      baseCommitSha: "b".repeat(40),
+      dirty: true,
+      uploadedBy: "user_one",
+    });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      importKind: "git",
+      gitUrl: "https://example.com/uploaded.git",
+      status: "imported",
+    });
+  });
+
+  test("a clone records itself as a git sync even when the job predates provenance", async () => {
+    const store = createTestStore();
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-provenance-import-"));
+    const gitSource = await createFixtureEveProject();
+    await execa("git", ["init", "--initial-branch=main"], { cwd: gitSource });
+    await execa("git", ["config", "user.email", "worker@example.test"], { cwd: gitSource });
+    await execa("git", ["config", "user.name", "Worker Test"], { cwd: gitSource });
+    await execa("git", ["add", "."], { cwd: gitSource });
+    await execa("git", ["commit", "-m", "fixture"], { cwd: gitSource });
+    const project = await store.createProject({
+      name: "Legacy Sync Agent",
+      importKind: "git",
+      gitUrl: gitSource,
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    // No importKind, no origin: the shape of a job queued by an older API.
+    await store.enqueueJob(project.id, "import_source", { gitUrl: gitSource });
+    const previousDataDir = process.env.EVELAND_DATA_DIR;
+    process.env.EVELAND_DATA_DIR = dataDir;
+    try {
+      await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
+      await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
+        kind: "git",
+        commitSha: expect.stringMatching(/^[0-9a-f]{40}$/),
+        origin: "git-sync",
+        baseCommitSha: null,
+        dirty: null,
+        uploadedBy: null,
+      });
+    } finally {
+      if (previousDataDir === undefined) delete process.env.EVELAND_DATA_DIR;
+      else process.env.EVELAND_DATA_DIR = previousDataDir;
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   test("saves a pending user Git credential only after a source import succeeds", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();

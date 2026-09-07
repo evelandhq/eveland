@@ -19,6 +19,7 @@ Eveland 明确解耦了源码版本、构建发布包、部署实例与访问路
 - **不可变预览 (Preview)**：每次点击 **Build & Deploy** 都会打包一个全新且不可变的 Release，并在独立的沙箱环境中启动一个 Preview Deployment，拥有唯一的预览域名。
 - **原子发布 (Promote)**：当验证通过后，点击 Promote 会在网关层秒级更新生产路由（Stable Route）的目标指向，**无需重新构建**。
 - **秒级回滚 (Rollback)**：如果新版本上线后发现问题，可以随时将路由重新指向历史中保留的健康 Deployment，实现瞬时回滚。
+- **来源溯源 (Provenance)**：每个 Deployment 都会显示其 Release 的源码来源：同步的提交，或是一次上传（来自 CLI 还是控制台、由谁发起、基于哪个提交、工作树是否有未提交改动）。向 Git 项目上传的版本只会以预览形式到达，是否 Promote 是在本页面上的一次明确操作。
 
 ## 2. 灰度发布与加权分流 (Weighted Routing)
 

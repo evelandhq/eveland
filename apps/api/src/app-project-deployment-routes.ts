@@ -24,6 +24,7 @@ export type ProjectDeploymentStore = Pick<
   | "getVariantMetrics"
   | "listDeployments"
   | "listProjectRoutes"
+  | "listReleaseSources"
   | "listReleaseSummaries"
   | "promoteDeployment"
   | "updateDeploymentStatus"
@@ -87,11 +88,12 @@ export function registerProjectDeploymentRoutes(input: {
     // discovery manifest (null for releases built before the projection or
     // whose manifest was unreadable). One project-scoped query, not a lookup
     // per deployment.
-    const [deployments, retention, routes, releaseSummaries] = await Promise.all([
+    const [deployments, retention, routes, releaseSummaries, releaseSources] = await Promise.all([
       store.listDeployments(projectId, { includeArchived: archived, limit }),
       store.getDeploymentRetention(projectId, undefined, deploymentRetentionOptions()),
       store.listProjectRoutes(projectId),
       store.listReleaseSummaries(projectId),
+      store.listReleaseSources(projectId),
     ]);
     // Retention already spans the whole history -- it has to, since `recent`
     // and the route/session reasons are computed across all of it -- so the
@@ -112,6 +114,9 @@ export function registerProjectDeploymentRoutes(input: {
       routes,
       releaseSummaries: Object.fromEntries(
         Object.entries(releaseSummaries).filter(([releaseId]) => pageReleases.has(releaseId)),
+      ),
+      releaseSources: Object.fromEntries(
+        Object.entries(releaseSources).filter(([releaseId]) => pageReleases.has(releaseId)),
       ),
     });
   });

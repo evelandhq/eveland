@@ -26,6 +26,21 @@ describe("job payload contracts", () => {
         },
       }),
     ).toMatchObject({ importKind: "git", deployAfterImport: true });
+    // An upload's provenance rides along untouched; a job that predates the
+    // fields still decodes.
+    expect(
+      decodeJobPayload("import_source", {
+        importKind: "zip",
+        sourcePath: "/tmp/upload",
+        origin: "cli-upload",
+        baseCommitSha: "a".repeat(40),
+        dirty: true,
+        uploadedBy: "user_1",
+      }),
+    ).toMatchObject({ origin: "cli-upload", baseCommitSha: "a".repeat(40), dirty: true });
+    expect(() =>
+      decodeJobPayload("import_source", { importKind: "zip", origin: "carrier-pigeon" }),
+    ).toThrow();
     expect(decodeJobPayload("build_deploy", { promoteAfterDeploy: true })).toEqual({
       promoteAfterDeploy: true,
     });

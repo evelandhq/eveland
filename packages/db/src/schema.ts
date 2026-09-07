@@ -867,18 +867,35 @@ export const schedules = pgTable("schedules", {
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),
 });
 
-export const sourceRevisions = pgTable("source_revisions", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => projects.id),
-  kind: text("kind").notNull(),
-  commitSha: text("commit_sha"),
-  sourcePath: text("source_path").notNull(),
-  summary: jsonb("summary").notNull().default({}),
-  envVars: jsonb("env_vars").notNull().default([]),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const sourceRevisions = pgTable(
+  "source_revisions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    kind: text("kind").notNull(),
+    commitSha: text("commit_sha"),
+    // Provenance: how the revision arrived and, for uploads made from a git
+    // checkout, what it was based on. All nullable -- rows recorded before
+    // the columns existed carry nothing, and an upload from a plain
+    // directory has no base commit to report.
+    origin: text("origin"),
+    baseCommitSha: text("base_commit_sha"),
+    dirty: boolean("dirty"),
+    uploadedBy: text("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+    sourcePath: text("source_path").notNull(),
+    summary: jsonb("summary").notNull().default({}),
+    envVars: jsonb("env_vars").notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      "source_revisions_origin_check",
+      sql`${table.origin} is null or ${table.origin} in ('git-sync', 'cli-upload', 'dashboard-upload')`,
+    ),
+  ],
+);
 
 export const releases = pgTable(
   "releases",

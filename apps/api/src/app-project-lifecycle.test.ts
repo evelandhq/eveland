@@ -1,7 +1,12 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { Hono } from "hono";
 import { describe, expect, test, vi } from "vitest";
+import type { AuthPrincipal } from "@evelandhq/core/contracts";
 import { createApp } from "./app.js";
 import { createTestStore } from "@evelandhq/db/vitest";
+import { registerProjectLifecycleRoutes } from "./app-project-lifecycle-routes.js";
 import { createZipArchiveFixture } from "./app.test-support.js";
 
 async function zipUploadForm(fields: Record<string, string> = {}): Promise<FormData> {
@@ -47,6 +52,7 @@ describe("api app", () => {
     });
     expect(persistedSyncJob?.payload).toMatchObject({
       gitUrl: "https://example.com/weather.git",
+      origin: "git-sync",
       deployAfterImport: true,
       promoteAfterDeploy: true,
     });
@@ -75,11 +81,17 @@ describe("api app", () => {
       importKind: "zip",
       deployAfterImport: true,
       promoteAfterDeploy: true,
+      // No auth configured: the local-dev app is the Dashboard, and the
+      // upload reported no git checkout.
+      origin: "dashboard-upload",
+      uploadedBy: "user_local_admin",
+      baseCommitSha: null,
+      dirty: null,
     });
     expect(String(uploaded?.payload.sourcePath)).toContain("uploads");
   });
 
-  test("zip source upload guards: git projects, promote-without-deploy, empty archives", async () => {
+  test("uploads onto a git project as a preview and records what the upload was based on", async () => {
     const store = createTestStore();
     const app = createApp(store);
     const gitProject = await store.createProject({
@@ -87,14 +99,125 @@ describe("api app", () => {
       importKind: "git",
       gitUrl: "https://example.com/agent.git",
     });
-    const gitUpload = await app.request(`/api/projects/${gitProject.id}/sync-source`, {
+
+    const upload = await app.request(`/api/projects/${gitProject.id}/sync-source`, {
       method: "POST",
-      body: await zipUploadForm(),
+      body: await zipUploadForm({ deploy: "true", baseCommitSha: "a".repeat(40), dirty: "true" }),
     });
-    expect(gitUpload.status).toBe(400);
-    await expect(gitUpload.json()).resolves.toEqual({
-      error: "Only zip projects accept a source upload.",
+    expect(upload.status).toBe(202);
+    const [job] = await store.listProjectJobs(gitProject.id, { type: "import_source", limit: 1 });
+    expect(job?.payload).toMatchObject({
+      importKind: "zip",
+      deployAfterImport: true,
+      promoteAfterDeploy: false,
+      origin: "dashboard-upload",
+      uploadedBy: "user_local_admin",
+      baseCommitSha: "a".repeat(40),
+      dirty: true,
     });
+    // The upload must not disturb where the JSON sync clones from.
+    await expect(store.getProject(gitProject.id)).resolves.toMatchObject({
+      importKind: "git",
+      gitUrl: "https://example.com/agent.git",
+    });
+
+    // Promoting an upload is what makes the next sync's replacement a
+    // production regression, so a git project refuses it for now.
+    const promoted = await app.request(`/api/projects/${gitProject.id}/sync-source`, {
+      method: "POST",
+      body: await zipUploadForm({ deploy: "true", promote: "true" }),
+    });
+    expect(promoted.status).toBe(400);
+    await expect(promoted.json()).resolves.toEqual({
+      error: expect.stringMatching(/^Uploads to a git project deploy as previews only\./),
+    });
+    await expect(
+      store.listProjectJobs(gitProject.id, { type: "import_source" }),
+    ).resolves.toHaveLength(2);
+  });
+
+  test("an upload from a CLI token is recorded as a CLI upload by that user", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({
+      name: "CLI Upload Agent",
+      importKind: "zip",
+      sourcePath: "/tmp/original",
+    });
+    const app = new Hono<{ Variables: { principal: AuthPrincipal } }>();
+    app.use("*", async (c, next) => {
+      c.set("principal", {
+        userId: "user_a",
+        email: "user-a@example.com",
+        name: "Test User A",
+        role: "member",
+        image: null,
+        displayTimezone: null,
+        tokenScopes: ["deploy", "observe"],
+      } as unknown as AuthPrincipal);
+      await next();
+    });
+    registerProjectLifecycleRoutes({
+      app,
+      store,
+      dataDir: await mkdtemp(path.join(os.tmpdir(), "eveland-cli-upload-")),
+    });
+
+    const response = await app.request(`/api/projects/${project.id}/sync-source`, {
+      method: "POST",
+      body: await zipUploadForm({ deploy: "true", baseCommitSha: "c".repeat(40), dirty: "false" }),
+    });
+    expect(response.status).toBe(202);
+    const [job] = await store.listProjectJobs(project.id, { type: "import_source", limit: 1 });
+    expect(job?.payload).toMatchObject({
+      origin: "cli-upload",
+      uploadedBy: "user_a",
+      baseCommitSha: "c".repeat(40),
+      dirty: false,
+    });
+  });
+
+  test("refuses provenance it cannot trust: short hashes, dirty without a base", async () => {
+    const store = createTestStore();
+    const app = createApp(store);
+    const project = await store.createProject({
+      name: "Provenance Guard Agent",
+      importKind: "zip",
+      sourcePath: "/tmp/original",
+    });
+
+    const shortHash = await app.request(`/api/projects/${project.id}/sync-source`, {
+      method: "POST",
+      body: await zipUploadForm({ deploy: "true", baseCommitSha: "abc123" }),
+    });
+    expect(shortHash.status).toBe(400);
+    await expect(shortHash.json()).resolves.toMatchObject({
+      error: "Invalid source provenance",
+      issues: [expect.objectContaining({ path: ["baseCommitSha"] })],
+    });
+
+    const orphanDirty = await app.request(`/api/projects/${project.id}/sync-source`, {
+      method: "POST",
+      body: await zipUploadForm({ deploy: "true", dirty: "true" }),
+    });
+    expect(orphanDirty.status).toBe(400);
+    await expect(orphanDirty.json()).resolves.toMatchObject({
+      error: "Invalid source provenance",
+      issues: [expect.objectContaining({ path: ["dirty"] })],
+    });
+
+    const garbageDirty = await app.request(`/api/projects/${project.id}/sync-source`, {
+      method: "POST",
+      body: await zipUploadForm({ deploy: "true", baseCommitSha: "a".repeat(40), dirty: "maybe" }),
+    });
+    expect(garbageDirty.status).toBe(400);
+    await expect(
+      store.listProjectJobs(project.id, { type: "import_source" }),
+    ).resolves.toHaveLength(1);
+  });
+
+  test("zip source upload guards: promote-without-deploy, empty archives", async () => {
+    const store = createTestStore();
+    const app = createApp(store);
 
     const zipProject = await store.createProject({
       name: "Zip Guard Agent",

@@ -614,6 +614,10 @@ export function sourceRevisionRowToSourceRevision(row: {
   projectId: string;
   kind: string;
   commitSha: string | null;
+  origin: string | null;
+  baseCommitSha: string | null;
+  dirty: boolean | null;
+  uploadedBy: string | null;
   sourcePath: string;
   summary: unknown;
   envVars: unknown;
@@ -624,6 +628,10 @@ export function sourceRevisionRowToSourceRevision(row: {
     projectId: row.projectId,
     kind: row.kind as SourceRevision["kind"],
     commitSha: row.commitSha,
+    origin: row.origin as SourceRevision["origin"],
+    baseCommitSha: row.baseCommitSha,
+    dirty: row.dirty,
+    uploadedBy: row.uploadedBy,
     sourcePath: row.sourcePath,
     summary: isRecord(row.summary) ? row.summary : {},
     envVars: Array.isArray(row.envVars)

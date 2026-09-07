@@ -25,10 +25,15 @@ export async function handleImportSourceJob(
 
   const sourcePathFromPayload = job.payload.sourcePath ?? null;
   const gitCredential = job.payload.gitCredential ?? null;
+  // The revision's kind is the import's, not the project's: a git project can
+  // receive an upload, and that revision is a zip with a base commit, not a
+  // commit. Jobs enqueued before the payload carried a kind fall back to the
+  // project's.
+  const sourceKind = job.payload.importKind ?? project.importKind;
   let sourcePath = sourcePathFromPayload;
   let commitSha: string | null = null;
 
-  if (!sourcePath && project.importKind === "git") {
+  if (!sourcePath && sourceKind === "git") {
     const gitUrl = job.payload.gitUrl ?? project.gitUrl;
     if (!gitUrl) {
       throw new Error("Git import missing gitUrl.");
@@ -64,7 +69,7 @@ export async function handleImportSourceJob(
   }
 
   const scan = await scanEveSource({
-    kind: project.importKind,
+    kind: sourceKind,
     sourcePath,
     commitSha,
   });
@@ -72,6 +77,12 @@ export async function handleImportSourceJob(
   await store.recordSourceRevision({
     projectId: job.projectId,
     ...scan,
+    // A clone is a git sync whatever the payload says (older jobs say
+    // nothing); an upload's channel is only known to whoever enqueued it.
+    origin: job.payload.origin ?? (commitSha !== null ? "git-sync" : null),
+    baseCommitSha: job.payload.baseCommitSha ?? null,
+    dirty: job.payload.dirty ?? null,
+    uploadedBy: job.payload.uploadedBy ?? null,
   });
   options.signal?.throwIfAborted();
   if (gitCredential?.persistAfterImport) {

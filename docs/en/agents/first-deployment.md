@@ -16,6 +16,8 @@ Create a new Project in the web dashboard using either of two methods:
 - **Git repository**: Provide an HTTPS repository URL. You can easily sync new commits later.
 - **Zip archive**: Upload an archive file as a fixed, immutable snapshot.
 
+The import kind is fixed at creation, but it only says how the Project was created. A git Project still accepts an upload from `eveland deploy`, which deploys as a preview rather than promoting; every revision records where it came from, so the Deployments page can tell a synced commit from an upload.
+
 During import, Eveland runs preflight checks to validate directory structure and dependency manifests. For layout requirements, see [Source import](/docs/reference/source-import).
 
 ## 3. Configure runtime secrets and variables

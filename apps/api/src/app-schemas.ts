@@ -68,6 +68,27 @@ export const environmentVariableSchema = z.object({
   value: z.string().min(1).max(65_536),
 });
 
+// A full git object name: SHA-1 today, SHA-256 for repositories that use it.
+const gitCommitShaPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+/**
+ * What an uploader may say about where its source came from. Both fields are
+ * optional (a directory that is not a git checkout has nothing to report),
+ * but a dirty flag without the commit it is relative to means nothing.
+ */
+export const uploadProvenanceSchema = z
+  .object({
+    baseCommitSha: z
+      .string()
+      .regex(gitCommitShaPattern, "baseCommitSha must be a full lowercase git commit hash")
+      .nullable(),
+    dirty: z.boolean().nullable(),
+  })
+  .refine((input) => input.dirty === null || input.baseCommitSha !== null, {
+    message: "dirty is only meaningful alongside baseCommitSha",
+    path: ["dirty"],
+  });
+
 export const createProjectFromPreflightSchema = z
   .object({
     name: projectNameSchema,
@@ -75,6 +96,10 @@ export const createProjectFromPreflightSchema = z
     deployAfterImport: z.boolean().optional(),
     promoteAfterDeploy: z.boolean().optional(),
     environmentVariables: z.array(environmentVariableSchema).max(50).default([]),
+    // The same provenance a sync-source upload carries, for a project whose
+    // first revision is a CLI upload; only meaningful for a zip preflight.
+    baseCommitSha: z.string().regex(gitCommitShaPattern).nullable().optional(),
+    dirty: z.boolean().nullable().optional(),
   })
   .superRefine((input, context) => {
     if (input.promoteAfterDeploy && !input.deployAfterImport) {
@@ -82,6 +107,13 @@ export const createProjectFromPreflightSchema = z
         code: "custom",
         path: ["promoteAfterDeploy"],
         message: IMPORT_PROMOTE_REQUIRES_DEPLOY_MESSAGE,
+      });
+    }
+    if (input.dirty != null && input.baseCommitSha == null) {
+      context.addIssue({
+        code: "custom",
+        path: ["dirty"],
+        message: "dirty is only meaningful alongside baseCommitSha",
       });
     }
     const keys = new Set<string>();
