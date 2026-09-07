@@ -645,6 +645,90 @@ describe("processNextJob", () => {
     });
   });
 
+  test("promoting an upload onto a git project logs the hotfix drift it creates", async () => {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Hotfix Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/hotfix.git",
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const synced = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      commitSha: "a".repeat(40),
+      origin: "git-sync",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const production = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: synced.id,
+      imageTag: "eveland/proj:rel_synced",
+      containerName: "eveland-synced-container",
+      internalPort: 3000,
+      hostPort: 41090,
+      runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
+    });
+    await store.ensureDeploymentRoutes(project.id, production.id, "agent.localhost");
+    // The CLI uploaded a hotfix from a dirty checkout and asked to promote it.
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      origin: "cli-upload",
+      baseCommitSha: "a".repeat(40),
+      dirty: true,
+      uploadedBy: "user_a",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.enqueueJob(project.id, "build_deploy", { promoteAfterDeploy: true });
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            return { releaseRef: "eveland/proj:rel_hotfix", log: "" };
+          },
+          async startProcess() {
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess() {},
+        },
+        allocateHostPort: () => Promise.resolve(41091),
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    const hotfix = (await store.listDeployments(project.id)).find(
+      (deployment) => deployment.id !== production.id,
+    );
+    await expect(store.getProjectHotfixDrift(project.id)).resolves.toMatchObject({
+      deploymentId: hotfix!.id,
+      source: { origin: "cli-upload", uploadedBy: { name: "Test User A" } },
+    });
+    // The deploy log says what production now runs, in the same words the
+    // Dashboard banner and the CLI use.
+    await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
+      expect.objectContaining({
+        deploymentId: hotfix!.id,
+        line: expect.stringMatching(
+          /^Production runs an uploaded hotfix \(based on aaaaaaaaaaaa, uncommitted changes, by Test User A at .+\); the repository does not contain it\./,
+        ),
+      }),
+    );
+  });
+
   test("promotes the exact deployment created by a promote-enabled build", async () => {
     const stoppedProcesses: string[] = [];
     const store = createTestStore();
@@ -714,6 +798,10 @@ describe("processNextJob", () => {
         payload: expect.objectContaining({ deploymentId: promoted!.id }),
       }),
     ]);
+    // A git revision promoted is no drift: nothing about a hotfix is logged.
+    await expect(store.listLogs(project.id, "deploy")).resolves.not.toContainEqual(
+      expect.objectContaining({ line: expect.stringContaining("uploaded hotfix") }),
+    );
     await expect(store.findProjectRoute(project.id)).resolves.toMatchObject({
       targets: [
         expect.objectContaining({
