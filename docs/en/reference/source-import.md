@@ -62,6 +62,18 @@ Builds honor committed package manager lockfiles strictly:
 - **Single active job per project**: A Project permits **at most one running job at any time**. Queued tasks wait for active jobs to finish or time out.
 - **Fencing token leases**: Workers continuously renew execution leases. If a stale lease is reclaimed by a new worker, previous execution attempts detect fencing and abort immediately to prevent dual-execution race conditions.
 
+## 6. Source provenance and uploads to git projects
+
+Every Source Revision records where it came from, not just what it contains:
+
+- **Kind and commit**: `git` revisions are the commit they were synced at; `zip` revisions are an uploaded snapshot.
+- **Origin**: `git-sync` (the platform cloned it), `cli-upload` (`eveland deploy`, authenticated with a CLI token), or `dashboard-upload` (the web console). Revisions recorded before this field existed report no origin.
+- **Uploader, base commit, dirty flag**: an upload records who sent it and, when the CLI ran inside a git checkout, the commit the working tree was based on and whether it carried uncommitted changes. The upload rejects a base commit that is not a full lowercase hash, and a dirty flag without a base commit.
+
+A Project's import kind is immutable and only says how the Project was created. Both kinds accept a multipart upload on `POST /api/projects/:id/sync-source`; the JSON body of the same route still re-clones a git Project from its stored repository URL, which an upload never changes. An upload onto a git Project may deploy (`deploy=true`) but must not promote: `promote=true` is refused with `400`, because promoting it would put production on a revision the next sync replaces. Promote the resulting preview from the Deployments page if that is what you want.
+
+`GET /api/projects/:id/deployments` returns `releaseSources`, keyed by Release id, with the provenance of each listed Deployment's source; the Deployments page renders it as "Commit abc123" or "Uploaded from the CLI by _user_, based on abc123, with uncommitted changes".
+
 ## Deeper reference
 
 - [Deploy your first agent](/docs/agents/first-deployment): developer onboarding guide

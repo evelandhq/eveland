@@ -222,6 +222,15 @@ export type ImportSourceJobPayload = {
   };
   deployAfterImport?: boolean;
   promoteAfterDeploy?: boolean;
+  /**
+   * Source provenance, recorded verbatim on the revision the import creates.
+   * All optional: imports enqueued before provenance existed carry none, and
+   * an upload from a directory that is not a git checkout has no base commit.
+   */
+  origin?: SourceOrigin;
+  baseCommitSha?: string | null;
+  dirty?: boolean | null;
+  uploadedBy?: string | null;
 };
 
 export type JobPayloadMap = {
@@ -298,15 +307,50 @@ export type SourceFileNode = {
   size?: number;
 };
 
+/**
+ * How a source revision reached the platform. `kind` alone cannot tell a
+ * Dashboard upload from a CLI upload (both are zip archives), and a git
+ * project can now receive uploads, so the origin is recorded per revision.
+ * Null on revisions recorded before provenance existed.
+ */
+export type SourceOrigin = "git-sync" | "cli-upload" | "dashboard-upload";
+
 export type SourceRevision = {
   id: string;
   projectId: string;
   kind: ProjectImportKind;
+  /** The commit the revision IS (git sync); null for uploads. */
   commitSha: string | null;
+  origin: SourceOrigin | null;
+  /**
+   * For uploads made from a git checkout: the commit the working tree was
+   * based on, and whether it carried uncommitted changes. Null when the
+   * uploader could not tell (no git, not a checkout, older CLI).
+   */
+  baseCommitSha: string | null;
+  dirty: boolean | null;
+  /** The user who uploaded the source; null for git syncs and older rows. */
+  uploadedBy: string | null;
   sourcePath: string;
   summary: Record<string, unknown>;
   envVars: string[];
   createdAt: string;
+};
+
+/**
+ * The provenance of one Release's source, as the deployment overview shows
+ * it: enough to render "commit abc123" or "uploaded from the CLI by <user>,
+ * based on abc123, with uncommitted changes" without a second request.
+ */
+export type ReleaseSourceProvenance = {
+  revisionId: string;
+  kind: ProjectImportKind;
+  origin: SourceOrigin | null;
+  commitSha: string | null;
+  baseCommitSha: string | null;
+  dirty: boolean | null;
+  uploadedBy: { id: string; email: string; name: string } | null;
+  recordedAt: string;
 };
 
 // The browser-facing shape: the host filesystem path stays on the server.
@@ -505,6 +549,12 @@ export type DeploymentOverview = {
    * unreadable.
    */
   releaseSummaries: Record<string, Record<string, unknown> | null>;
+  /**
+   * Release id -> where its source came from, for the Releases behind this
+   * page's Deployments. Every listed Release has an entry: a Release always
+   * points at a revision, even one recorded before provenance existed.
+   */
+  releaseSources: Record<string, ReleaseSourceProvenance>;
 };
 
 /** Per-variant rollup behind the experiment view. */

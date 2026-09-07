@@ -3,13 +3,35 @@ import { normalizeGitHttpHost } from "@evelandhq/core/ids";
 import { toPublicJob } from "@evelandhq/core/jobs";
 import { type Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
-import { buildDeploySchema, syncSourceSchema } from "./app-schemas.js";
+import { buildDeploySchema, syncSourceSchema, uploadProvenanceSchema } from "./app-schemas.js";
 import {
   currentUserId,
   extractZipUpload,
   InvalidZipUploadError,
   isMultipartRequest,
+  sourceUploadOrigin,
 } from "./app-support.js";
+
+/**
+ * Multipart fields arrive as strings; an absent or empty field is "not
+ * reported", and only "true"/"false" are booleans -- anything else reaches
+ * the schema as-is so it can be refused with a field-level issue.
+ */
+function readUploadProvenance(form: FormData): unknown {
+  const baseCommitSha = form.get("baseCommitSha");
+  const dirty = form.get("dirty");
+  return {
+    baseCommitSha: typeof baseCommitSha === "string" && baseCommitSha !== "" ? baseCommitSha : null,
+    dirty:
+      dirty === null || dirty === ""
+        ? null
+        : dirty === "true"
+          ? true
+          : dirty === "false"
+            ? false
+            : dirty,
+  };
+}
 
 // The narrow persistence port this slice actually needs.
 export type ProjectLifecycleStore = Pick<
@@ -78,12 +100,13 @@ export function registerProjectLifecycleRoutes(input: {
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
-    // Multipart replaces a zip project's source with a fresh upload — the
-    // `eveland deploy` loop. Git projects keep the JSON re-clone below.
+    // Multipart replaces the project's source with a fresh upload — the
+    // `eveland deploy` loop. Any project accepts one; how it was created only
+    // decides what the JSON sync below can do. An upload onto a git project
+    // deploys as a preview only: promoting it would leave production on a
+    // revision the next repository sync silently replaces, and nothing
+    // records that drift yet.
     if (isMultipartRequest(c)) {
-      if (project.importKind !== "zip") {
-        return c.json({ error: "Only zip projects accept a source upload." }, 400);
-      }
       const form = await c.req.formData();
       const archive = form.get("archive");
       if (!(archive instanceof File) || archive.size === 0) {
@@ -102,6 +125,19 @@ export function registerProjectLifecycleRoutes(input: {
           { error: "A synced source must be deployed before it can be promoted." },
           400,
         );
+      }
+      if (promote && project.importKind === "git") {
+        return c.json(
+          {
+            error:
+              "Uploads to a git project deploy as previews only. Promote the preview from the Dashboard once it builds, or sync the repository to deploy and promote a commit.",
+          },
+          400,
+        );
+      }
+      const provenance = uploadProvenanceSchema.safeParse(readUploadProvenance(form));
+      if (!provenance.success) {
+        return c.json({ error: "Invalid source provenance", issues: provenance.error.issues }, 400);
       }
       let extracted;
       try {
@@ -123,6 +159,10 @@ export function registerProjectLifecycleRoutes(input: {
         sourcePath: extracted.sourcePath,
         deployAfterImport: deploy,
         promoteAfterDeploy: promote,
+        origin: sourceUploadOrigin(c),
+        uploadedBy: currentUserId(c),
+        baseCommitSha: provenance.data.baseCommitSha,
+        dirty: provenance.data.dirty,
       });
       return c.json({ job: toPublicJob(job) }, 202);
     }
@@ -145,6 +185,7 @@ export function registerProjectLifecycleRoutes(input: {
     const job = await store.enqueueJob(projectId, "import_source", {
       importKind: "git",
       gitUrl: project.gitUrl,
+      origin: "git-sync",
       deployAfterImport: syncOptions.data.deploy,
       promoteAfterDeploy: syncOptions.data.promote,
       ...(storedCredential

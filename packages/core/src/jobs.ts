@@ -22,6 +22,10 @@ const jobPayloadSchemas: {
       gitCredential: gitCredentialSchema.optional(),
       deployAfterImport: z.boolean().optional(),
       promoteAfterDeploy: z.boolean().optional(),
+      origin: z.enum(["git-sync", "cli-upload", "dashboard-upload"]).optional(),
+      baseCommitSha: z.string().nullable().optional(),
+      dirty: z.boolean().nullable().optional(),
+      uploadedBy: z.string().nullable().optional(),
     })
     .passthrough(),
   build_deploy: z

@@ -35,13 +35,14 @@ import {
   teams,
   users,
 } from "./schema.js";
-import type { ProjectActivityDay } from "@evelandhq/core/contracts";
+import type { ImportSourceJobPayload, ProjectActivityDay } from "@evelandhq/core/contracts";
 import type {
   CreateProjectInput,
   GitCredentialStore,
   JobStore,
   ProjectStore,
   SourceStore,
+  UploadOrigin,
 } from "./store-domains.js";
 import {
   DEFAULT_TEAM_ID,
@@ -96,6 +97,23 @@ type PostgresProjectDomain = Omit<ProjectStore, "updateProjectState"> &
   GitCredentialStore;
 
 type PostgresProjectDependencies = Pick<JobStore, "enqueueJob">;
+
+/**
+ * The provenance an initial import carries. A git import is always a sync
+ * (the platform clones it), so the caller's upload channel only applies to
+ * zip sources; the uploader likewise.
+ */
+function sourceProvenanceFor(
+  kind: string,
+  uploadOrigin: UploadOrigin | undefined,
+  uploadedBy: string | null | undefined,
+): Pick<ImportSourceJobPayload, "origin" | "uploadedBy"> {
+  if (kind === "git") return { origin: "git-sync" };
+  return {
+    ...(uploadOrigin ? { origin: uploadOrigin } : {}),
+    ...(uploadedBy ? { uploadedBy } : {}),
+  };
+}
 
 export function createPostgresProjectStore(
   { db }: PostgresStoreContext,
@@ -266,6 +284,7 @@ export function createPostgresProjectStore(
         ...(input.deployAfterImport ? { deployAfterImport: true } : {}),
         ...(input.promoteAfterDeploy ? { promoteAfterDeploy: true } : {}),
         ...(input.gitCredential ? { gitCredential: input.gitCredential } : {}),
+        ...sourceProvenanceFor(input.importKind, input.uploadOrigin, input.uploadedBy),
       });
 
       return projectRowToProject(row);
@@ -487,6 +506,10 @@ export function createPostgresProjectStore(
             ...(input.deployAfterImport ? { deployAfterImport: true } : {}),
             ...(input.promoteAfterDeploy ? { promoteAfterDeploy: true } : {}),
             ...(gitCredential ? { gitCredential } : {}),
+            ...sourceProvenanceFor(preflight.kind, input.uploadOrigin, input.userId),
+            ...(preflight.kind === "zip" && input.baseCommitSha
+              ? { baseCommitSha: input.baseCommitSha, dirty: input.dirty ?? null }
+              : {}),
           },
         });
         await tx

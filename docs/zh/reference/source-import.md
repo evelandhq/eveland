@@ -62,6 +62,18 @@ description: 新建项目向导、Source Preflight 预检、私有仓库凭据�
 - **并发单活保障**：同一个 Project 在任意时刻**至多只有一个运行中的任务**。后续排队的构建或同步任务必须等待当前任务完成或释放。
 - **心跳续租与防脑裂 (Fencing Token)**：Worker 在执行期间持续续租任务；当旧 Worker 心跳失效或被接管时，旧执行进程会立即感知并自愿中止，防止并行重复操作。
 
+## 6. 来源溯源与向 Git 项目上传
+
+每个 Source Revision 除了内容本身，还记录它从哪里来：
+
+- **类型与提交**：`git` 类型的 Revision 就是同步时的那个提交；`zip` 类型是一份上传的快照。
+- **来源（origin）**：`git-sync`（平台自行克隆）、`cli-upload`（`eveland deploy`，以 CLI Token 认证）或 `dashboard-upload`（Web 控制台）。该字段出现之前记录的 Revision 没有来源。
+- **上传者、基础提交、脏标记**：上传会记录由谁发起；当 CLI 在 Git 检出目录内运行时，还会记录工作树所基于的提交以及是否含未提交改动。基础提交必须是完整的小写哈希，脏标记必须伴随基础提交，否则上传被拒绝。
+
+项目的导入类型不可变，它只说明项目是如何创建的。两种类型的项目都接受 `POST /api/projects/:id/sync-source` 的 multipart 上传；同一路由的 JSON 请求体仍然从项目存储的仓库地址重新克隆，上传永远不会改动这个地址。向 Git 项目上传可以部署（`deploy=true`）但不能发布：`promote=true` 会以 `400` 拒绝，因为把它推上生产会让下一次同步替换掉生产版本。如确需发布，请在 Deployments 页面手动 Promote 该预览。
+
+`GET /api/projects/:id/deployments` 返回按 Release id 索引的 `releaseSources`，即列表中每个部署的源码来源；Deployments 页面据此渲染为「Commit abc123」或「由 _用户_ 从 CLI 上传，基于 abc123，含未提交改动」。
+
 ## 相关参考
 
 - [部署第一个 Agent](/zh/docs/agents/first-deployment)：面向开发者的初次部署指南

@@ -1,5 +1,10 @@
 import path from "node:path";
 import { ApiError, apiRequest, type FetchLike } from "./api-client.ts";
+import {
+  describeGitProvenance,
+  detectGitProvenance,
+  type GitProvenance,
+} from "./git-provenance.ts";
 import { collectProjectFiles, eveSpecifierProblem } from "./preflight.ts";
 import { createZipArchive } from "./zip.ts";
 
@@ -8,13 +13,19 @@ import { createZipArchive } from "./zip.ts";
  * lines streamed to the terminal as they land) with promote requested up
  * front, so the worker promotes inside the build job.
  *
- * Promote is the default on purpose: a redeploy without promote leaves
- * routes AND the scheduler target on the old deployment — the known gotcha
- * this CLI exists to spare people from. --no-promote opts out explicitly.
- * Promotion travels with the deploy request rather than as a second call
- * from the CLI, so a terminal closed mid-watch cannot strand routes on the
- * old deployment, and a concurrent deploy from the Dashboard can never be
- * the one this run promotes.
+ * Promote is the default on purpose for zip projects: a redeploy without
+ * promote leaves routes AND the scheduler target on the old deployment — the
+ * known gotcha this CLI exists to spare people from. --no-promote opts out
+ * explicitly. Promotion travels with the deploy request rather than as a
+ * second call from the CLI, so a terminal closed mid-watch cannot strand
+ * routes on the old deployment, and a concurrent deploy from the Dashboard
+ * can never be the one this run promotes.
+ *
+ * A project imported from git is the exception: an upload to it deploys as
+ * a preview only, and --promote is refused. Promoting an upload would put
+ * production on a revision the next repository sync silently replaces, and
+ * nothing records that drift yet. The upload still carries the commit it was
+ * based on and whether the tree was dirty, so the Dashboard can say so.
  */
 
 const POLL_INTERVAL_MS = 1_200;
@@ -44,13 +55,17 @@ type DeployIo = {
   print: (line: string) => void;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  /** Replaces the real git probe; unset runs `git` in the deploy directory. */
+  detectProvenance?: (dir: string) => Promise<GitProvenance | null>;
 };
 
 export type DeployResult = {
   slug: string;
   projectId: string;
+  importKind: "git" | "zip";
   deploymentId: string;
   promoted: boolean;
+  provenance: GitProvenance | null;
   stableUrl: string | null;
   previewUrls: string[];
 };
@@ -72,7 +87,8 @@ export async function runDeploy(input: {
   token: string;
   dir: string;
   name?: string;
-  promote: boolean;
+  /** Unset means the project's default: promote a zip project, preview a git one. */
+  promote?: boolean;
   io: DeployIo;
 }): Promise<DeployResult> {
   const { origin, token, io } = input;
@@ -89,11 +105,14 @@ export async function runDeploy(input: {
     });
 
   // Local preflight: fail in under a second, before any upload.
-  const source = await collectProjectFiles(path.resolve(input.dir));
+  const dir = path.resolve(input.dir);
+  const source = await collectProjectFiles(dir);
   if (source.problems.length > 0) {
     throw new Error(`The project cannot be deployed:\n  - ${source.problems.join("\n  - ")}`);
   }
   for (const warning of source.warnings) io.print(`Warning: ${warning}`);
+  const provenance = await (io.detectProvenance ?? detectGitProvenance)(dir);
+  io.print(describeGitProvenance(provenance));
   const instance = await request<{ eve: { supportedRanges: string[] } }>("/api/instance");
   const versionProblem = eveSpecifierProblem(source.eveSpecifier, instance.eve.supportedRanges);
   if (versionProblem) throw new Error(versionProblem);
@@ -109,11 +128,13 @@ export async function runDeploy(input: {
 
   const { projects } = await request<{ projects: ProjectListItem[] }>("/api/projects");
   const existing = projects.find((candidate) => candidate.slug === slug) ?? null;
-  if (existing && existing.importKind !== "zip") {
+  const importKind = existing?.importKind ?? "zip";
+  if (importKind === "git" && input.promote === true) {
     throw new Error(
-      `Project '${slug}' was imported from git — push to its repository and use the Dashboard's sync, or deploy under a different --name.`,
+      `Project '${slug}' was imported from git, and uploads to it deploy as previews only. Drop --promote to deploy a preview and promote it from the Dashboard once it builds, or push to the repository and sync it to promote a commit.`,
     );
   }
+  const promote = input.promote ?? importKind === "zip";
 
   // Logs advance through the server-side `after` cursor, so no poll ever
   // re-downloads the project's history. The watermark from a limit=1 read is
@@ -131,7 +152,11 @@ export async function runDeploy(input: {
     const form = new FormData();
     form.set("archive", new File([new Uint8Array(archive)], "source.zip"));
     form.set("deploy", "true");
-    if (input.promote) form.set("promote", "true");
+    if (promote) form.set("promote", "true");
+    if (provenance) {
+      form.set("baseCommitSha", provenance.baseCommitSha);
+      form.set("dirty", String(provenance.dirty));
+    }
     const { job } = await request<{ job: PublicJob }>(`/api/projects/${existing.id}/sync-source`, {
       method: "POST",
       body: form,
@@ -161,7 +186,8 @@ export async function runDeploy(input: {
         name: slug,
         preflightId: submitted.preflight.id,
         deployAfterImport: true,
-        promoteAfterDeploy: input.promote,
+        promoteAfterDeploy: promote,
+        ...(provenance ? { baseCommitSha: provenance.baseCommitSha, dirty: provenance.dirty } : {}),
       },
     });
     projectId = created.project.id;
@@ -217,10 +243,14 @@ export async function runDeploy(input: {
     );
   }
 
-  if (input.promote) {
+  if (promote) {
     // Promotion ran inside the build job, after its routes existed; a promote
     // that fails fails the job, so a completed build is a promoted one.
     io.print("Promoted: routes and the schedule target now point at this deployment.");
+  } else if (importKind === "git") {
+    io.print(
+      `Deployed as a preview: '${slug}' was imported from git, and uploads to it never promote. Routes and schedules stay on the current deployment; promote the preview from the Dashboard, or push and sync the repository.`,
+    );
   } else {
     io.print(
       "Deployed as a preview (--no-promote): routes and schedules stay on the old deployment.",
@@ -234,8 +264,10 @@ export async function runDeploy(input: {
   return {
     slug,
     projectId,
+    importKind,
     deploymentId,
-    promoted: input.promote,
+    promoted: promote,
+    provenance,
     stableUrl: endpoints.stable,
     previewUrls: endpoints.previews,
   };

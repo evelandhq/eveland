@@ -19,6 +19,7 @@ Project
 - **Immutable previews**: Each **Build & Deploy** triggers a brand-new immutable Release and starts a separate Preview Deployment with a unique, permanent preview URL.
 - **Atomic promotion**: Once verified, clicking **Promote** atomically re-points the production route (Stable Route) to the new deployment at the gateway layer — **without needing to rebuild the codebase**.
 - **Instant rollbacks**: If an issue arises post-release, you can immediately point the route back to any retained healthy historical deployment for instant recovery.
+- **Source provenance**: Each Deployment shows where its Release's source came from: the synced commit, or the upload (from the CLI or the Dashboard, by whom, based on which commit, and whether the working tree was dirty). An upload onto a git Project only ever arrives as a preview; promoting it is a deliberate step on this page.
 
 ## 2. Canary releases and weighted routing
 

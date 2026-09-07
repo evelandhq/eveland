@@ -296,6 +296,17 @@ export function currentUserId(c: Context<{ Variables: { principal: AuthPrincipal
 }
 
 /**
+ * Which surface is uploading source. A CLI access token is the only way a
+ * request carries token scopes, so that is the CLI; everything else (a
+ * browser session, or the unauthenticated local-dev app) is the Dashboard.
+ */
+export function sourceUploadOrigin(
+  c: Context<{ Variables: { principal: AuthPrincipal } }>,
+): "cli-upload" | "dashboard-upload" {
+  return c.get("principal")?.tokenScopes ? "cli-upload" : "dashboard-upload";
+}
+
+/**
  * Display attributes of the signed-in control-plane user, for the Playground
  * authentication methods that mint an Eveland identity naming them. Returned
  * separately from the id so the id stays the only thing most providers see.
@@ -316,7 +327,7 @@ export function agentAuthFailureStatus(failure: AgentAuthFailure): 401 | 409 | 4
 }
 
 export async function createZipProjectFromUpload(
-  c: Context,
+  c: Context<{ Variables: { principal: AuthPrincipal } }>,
   store: Pick<Store, "createProject" | "isProjectSlugAvailable">,
   dataDir: string,
 ) {
@@ -385,6 +396,8 @@ export async function createZipProjectFromUpload(
       requireExactSlug: true,
       deployAfterImport,
       promoteAfterDeploy,
+      uploadOrigin: sourceUploadOrigin(c),
+      uploadedBy: currentUserId(c),
     });
     return c.json({ project }, 201);
   } catch (error) {

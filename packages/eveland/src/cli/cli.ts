@@ -118,17 +118,23 @@ const commands: Record<string, Command> = {
     },
   },
   deploy: {
-    description: "Upload this directory, build it on the platform, and promote it",
+    description:
+      "Upload this directory, build it on the platform, and promote it (git projects: preview only)",
     run: async (args, io) => {
       const parsed = parseArgs({
         args,
         options: {
           origin: { type: "string" },
           name: { type: "string" },
+          promote: { type: "boolean" },
           "no-promote": { type: "boolean" },
         },
         allowPositionals: true,
       });
+      if (parsed.values.promote && parsed.values["no-promote"]) {
+        io.stderr("--promote and --no-promote contradict each other.");
+        return 1;
+      }
       const origin = await resolveOrigin(parsed.values.origin, io.env);
       const token = await requireToken(origin, io);
       const result = await runDeploy({
@@ -136,7 +142,13 @@ const commands: Record<string, Command> = {
         token,
         dir: parsed.positionals[0] ?? ".",
         name: parsed.values.name,
-        promote: !parsed.values["no-promote"],
+        // Unset lets the project kind decide: promote a zip project, preview
+        // a git one.
+        ...(parsed.values.promote
+          ? { promote: true }
+          : parsed.values["no-promote"]
+            ? { promote: false }
+            : {}),
         io: { fetchImpl: io.fetchImpl, print: io.stdout, sleep: io.sleep },
       });
       io.stdout("");

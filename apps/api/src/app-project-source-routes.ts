@@ -21,6 +21,7 @@ import {
   extractZipUpload,
   InvalidZipUploadError,
   isMultipartRequest,
+  sourceUploadOrigin,
 } from "./app-support.js";
 
 type CreateGitCredentialInput = {
@@ -234,6 +235,7 @@ export function registerProjectSourceRoutes(input: {
         const result = await store.createProjectFromSourcePreflight({
           ...projectInput,
           userId: currentUserId(c),
+          uploadOrigin: sourceUploadOrigin(c),
           secrets: environmentVariables.map((variable) => ({
             key: variable.key,
             kind: variable.kind,

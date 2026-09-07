@@ -280,6 +280,7 @@ describe("api app", () => {
           sourcePath: "/data/preflights/source",
           deployAfterImport: true,
           promoteAfterDeploy: true,
+          origin: "git-sync",
           gitCredential: expect.objectContaining({ persistAfterImport: true }),
         }),
       }),
@@ -324,6 +325,68 @@ describe("api app", () => {
     });
     const listResponse = await app.request("/api/projects");
     await expect(listResponse.json()).resolves.toEqual({ projects: [] });
+  });
+
+  test("a project created from an uploaded preflight records the upload's provenance", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey: "eveland-test-secret-key-00000000" });
+    const preflight = await store.createSourcePreflight({
+      userId: "user_local_admin",
+      kind: "zip",
+      sourcePath: "/data/preflights/uploaded",
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    const claimed = await store.claimNextSourcePreflight("api-test-worker");
+    await store.completeSourcePreflight(preflight.id, claimed!.attempts, {
+      sourcePath: "/data/preflights/uploaded",
+      commitSha: null,
+      summary: { eveVersion: "0.50.0", layout: "single-agent" },
+    });
+
+    const response = await app.request("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "uploaded-agent",
+        preflightId: preflight.id,
+        deployAfterImport: true,
+        baseCommitSha: "e".repeat(40),
+        dirty: false,
+      }),
+    });
+    expect(response.status).toBe(201);
+    const { project } = (await response.json()) as { project: { id: string } };
+    // No auth configured, so the caller is the Dashboard's local admin.
+    await expect(store.listProjectJobs(project.id)).resolves.toEqual([
+      expect.objectContaining({
+        type: "import_source",
+        payload: expect.objectContaining({
+          importKind: "zip",
+          origin: "dashboard-upload",
+          uploadedBy: "user_local_admin",
+          baseCommitSha: "e".repeat(40),
+          dirty: false,
+        }),
+      }),
+    ]);
+
+    // Provenance is validated like the sync-source upload: a short hash is
+    // refused before the preflight is consumed.
+    const other = await store.createSourcePreflight({
+      userId: "user_local_admin",
+      kind: "zip",
+      sourcePath: "/data/preflights/other",
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    const rejected = await app.request("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "rejected-agent", preflightId: other.id, dirty: true }),
+    });
+    expect(rejected.status).toBe(400);
+    await expect(store.getSourcePreflight(other.id, "user_local_admin")).resolves.toMatchObject({
+      status: "queued",
+    });
   });
 
   test("rejects duplicate initial environment variable keys before consuming a source preflight", async () => {
@@ -899,6 +962,7 @@ describe("api app", () => {
       archivedCount: number;
       retention: Array<{ deployment: { id: string } }>;
       releaseSummaries: Record<string, unknown>;
+      releaseSources: Record<string, { revisionId: string; kind: string; origin: string | null }>;
     };
     expect(liveBody.deployments.map((deployment) => deployment.id)).toEqual([deployments[2]!.id]);
     // The counts describe the whole history even though the page does not.
@@ -907,6 +971,15 @@ describe("api app", () => {
     // response cannot smuggle the history back in.
     expect(liveBody.retention.map((entry) => entry.deployment.id)).toEqual([deployments[2]!.id]);
     expect(Object.keys(liveBody.releaseSummaries)).toEqual([deployments[2]!.releaseId]);
+    // Provenance is part of the same read model, narrowed the same way; a
+    // revision recorded without it reports an unknown origin, not nothing.
+    expect(liveBody.releaseSources).toEqual({
+      [deployments[2]!.releaseId]: expect.objectContaining({
+        revisionId: revision.id,
+        kind: "zip",
+        origin: null,
+      }),
+    });
 
     const all = await app.request(`/api/projects/${project.id}/deployments?archived=true`);
     expect(all.status).toBe(200);

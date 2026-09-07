@@ -135,7 +135,10 @@ function fakePlatform(options: {
   return { fetchImpl, calls };
 }
 
-function io(platform: ReturnType<typeof fakePlatform>) {
+function io(
+  platform: ReturnType<typeof fakePlatform>,
+  provenance: { baseCommitSha: string; dirty: boolean } | null = null,
+) {
   const printed: string[] = [];
   return {
     printed,
@@ -143,6 +146,7 @@ function io(platform: ReturnType<typeof fakePlatform>) {
       fetchImpl: platform.fetchImpl,
       print: (line: string) => printed.push(line),
       sleep: async () => {},
+      detectProvenance: async () => provenance,
     },
   };
 }
@@ -209,7 +213,8 @@ describe("eveland deploy", () => {
     );
     expect(create?.form).toBeNull();
     // Promote rides on the create request so the worker promotes inside the
-    // build job; the CLI never promotes from the client side.
+    // build job; the CLI never promotes from the client side. Not a checkout:
+    // no provenance is claimed, and the output says so.
     expect(create?.jsonBody).toEqual({
       name: "tour-guide",
       preflightId: "pre_1",
@@ -221,6 +226,7 @@ describe("eveland deploy", () => {
     const output = printed.join("\n");
     expect(output).toContain("importing source");
     expect(output).toContain("eve build ok");
+    expect(output).toContain("Source: not a git checkout");
     expect(printed).toContain(PROMOTED_LINE);
     // Each log line prints once despite polling the cumulative history.
     expect(printed.filter((line) => line.includes("importing source"))).toHaveLength(1);
@@ -252,13 +258,104 @@ describe("eveland deploy", () => {
       io: deployIo,
     });
 
-    expect(result).toMatchObject({ projectId: "proj_1", deploymentId: "dep_new", promoted: true });
+    expect(result).toMatchObject({
+      projectId: "proj_1",
+      importKind: "zip",
+      deploymentId: "dep_new",
+      promoted: true,
+      provenance: null,
+    });
     const sync = platform.calls.find((call) => call.url.includes("/sync-source"));
     expect(sync?.form?.get("deploy")).toBe("true");
     expect(sync?.form?.get("promote")).toBe("true");
+    expect(sync?.form?.get("baseCommitSha")).toBeNull();
+    expect(sync?.form?.get("dirty")).toBeNull();
     expect(platform.calls.some((call) => call.url.includes("/promote"))).toBe(false);
     expect(printed.join("\n")).toContain("fresh build line");
     expect(printed).toContain(PROMOTED_LINE);
+  });
+
+  test("sends the base commit and dirty state it detected, on redeploys and first deploys", async () => {
+    const provenance = { baseCommitSha: "f".repeat(40), dirty: true };
+    const redeploy = fakePlatform({
+      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "zip" }],
+      jobTimeline: BUILD_DONE,
+      logTimeline: [[]],
+    });
+    const { io: redeployIo, printed } = io(redeploy, provenance);
+    // No promote flag either way: a zip project promotes by default.
+    const result = await runDeploy({
+      origin: "http://localhost:17300",
+      token: "tok",
+      dir: await makeProject(),
+      io: redeployIo,
+    });
+    expect(result).toMatchObject({ promoted: true, provenance });
+    const sync = redeploy.calls.find((call) => call.url.includes("/sync-source"));
+    expect(sync?.form?.get("promote")).toBe("true");
+    expect(sync?.form?.get("baseCommitSha")).toBe("f".repeat(40));
+    expect(sync?.form?.get("dirty")).toBe("true");
+    expect(printed.join("\n")).toContain(
+      "Source: based on commit ffffffffffff (with uncommitted changes).",
+    );
+
+    const fresh = fakePlatform({ jobTimeline: BUILD_DONE, logTimeline: [[]] });
+    await runDeploy({
+      origin: "http://localhost:17300",
+      token: "tok",
+      dir: await makeProject(),
+      io: io(fresh, { baseCommitSha: "e".repeat(40), dirty: false }).io,
+    });
+    const create = fresh.calls.find(
+      (call) => call.method === "POST" && call.url.endsWith("/api/projects"),
+    );
+    expect(create?.jsonBody).toEqual({
+      name: "tour-guide",
+      preflightId: "pre_1",
+      deployAfterImport: true,
+      promoteAfterDeploy: true,
+      baseCommitSha: "e".repeat(40),
+      dirty: false,
+    });
+  });
+
+  test("uploads to a git project as a preview and refuses --promote before uploading", async () => {
+    const preview = fakePlatform({
+      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
+      jobTimeline: BUILD_DONE,
+      logTimeline: [[]],
+    });
+    const { io: previewIo, printed } = io(preview, { baseCommitSha: "d".repeat(40), dirty: false });
+    const result = await runDeploy({
+      origin: "http://localhost:17300",
+      token: "tok",
+      dir: await makeProject(),
+      io: previewIo,
+    });
+    expect(result).toMatchObject({ importKind: "git", promoted: false, deploymentId: "dep_new" });
+    const sync = preview.calls.find((call) => call.url.includes("/sync-source"));
+    expect(sync?.form?.get("deploy")).toBe("true");
+    expect(sync?.form?.get("promote")).toBeNull();
+    expect(sync?.form?.get("baseCommitSha")).toBe("d".repeat(40));
+    expect(printed).not.toContain(PROMOTED_LINE);
+    expect(printed.join("\n")).toContain(
+      "Deployed as a preview: 'tour-guide' was imported from git, and uploads to it never promote.",
+    );
+
+    // An explicit --promote is a mistake worth stopping before the upload.
+    const refused = fakePlatform({
+      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
+    });
+    await expect(
+      runDeploy({
+        origin: "http://localhost:17300",
+        token: "tok",
+        dir: await makeProject(),
+        promote: true,
+        io: io(refused).io,
+      }),
+    ).rejects.toThrow(/uploads to it deploy as previews only/);
+    expect(refused.calls.every((call) => call.method === "GET")).toBe(true);
   });
 
   test("follows its own build job when a concurrent deploy runs on the same project", async () => {
@@ -321,20 +418,7 @@ describe("eveland deploy", () => {
     expect(platform.calls.some((call) => call.url.endsWith("/deployments"))).toBe(false);
   });
 
-  test("refuses git projects and out-of-window eve before uploading", async () => {
-    const gitPlatform = fakePlatform({
-      projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
-    });
-    await expect(
-      runDeploy({
-        origin: "http://localhost:17300",
-        token: "tok",
-        dir: await makeProject(),
-        promote: true,
-        io: io(gitPlatform).io,
-      }),
-    ).rejects.toThrow(/imported from git/);
-
+  test("refuses out-of-window eve before uploading", async () => {
     const platform = fakePlatform({});
     await expect(
       runDeploy({
