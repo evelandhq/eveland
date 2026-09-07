@@ -70,7 +70,7 @@ description: 新建项目向导、Source Preflight 预检、私有仓库凭据�
 - **来源（origin）**：`git-sync`（平台自行克隆）、`cli-upload`（`eveland deploy`，以 CLI Token 认证）或 `dashboard-upload`（Web 控制台）。该字段出现之前记录的 Revision 没有来源。
 - **上传者、基础提交、脏标记**：上传会记录由谁发起；当 CLI 在 Git 检出目录内运行时，还会记录工作树所基于的提交以及是否含未提交改动。基础提交必须是完整的小写哈希，脏标记必须伴随基础提交，否则上传被拒绝。
 
-项目的导入类型不可变，它只说明项目是如何创建的。两种类型的项目都接受 `POST /api/projects/:id/sync-source` 的 multipart 上传；同一路由的 JSON 请求体仍然从项目存储的仓库地址重新克隆，上传永远不会改动这个地址。向 Git 项目上传可以部署（`deploy=true`）但不能发布：`promote=true` 会以 `400` 拒绝，因为把它推上生产会让下一次同步替换掉生产版本。如确需发布，请在 Deployments 页面手动 Promote 该预览。
+项目的导入类型不可变，它只说明项目是如何创建的。两种类型的项目都接受 `POST /api/projects/:id/sync-source` 的 multipart 上传；同一路由的 JSON 请求体仍然从项目存储的仓库地址重新克隆，上传永远不会改动这个地址。向 Git 项目上传可以部署（`deploy=true`），也可以按需发布（`promote=true`）：这会让项目进入[热修复漂移](/docs/agents/releases-routing)，`GET /api/projects/:id` 与部署总览都以 `hotfixDrift` 字段返回它。漂移期间，带 `promote: true` 的 JSON 同步——以及当前版本来自 Git 同步时带 `promote: true` 的 `build-deploy`——会以 `400` 和 `code: "hotfix_drift"` 拒绝，除非请求体同时带有 `replaceHotfix: true`；错误信息会指明该热修复的上传者、时间与基础提交。
 
 `GET /api/projects/:id/deployments` 返回按 Release id 索引的 `releaseSources`，即列表中每个部署的源码来源；Deployments 页面据此渲染为「Commit abc123」或「由 _用户_ 从 CLI 上传，基于 abc123，含未提交改动」。
 

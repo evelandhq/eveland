@@ -19,7 +19,7 @@ Project
 - **Immutable previews**: Each **Build & Deploy** triggers a brand-new immutable Release and starts a separate Preview Deployment with a unique, permanent preview URL.
 - **Atomic promotion**: Once verified, clicking **Promote** atomically re-points the production route (Stable Route) to the new deployment at the gateway layer — **without needing to rebuild the codebase**.
 - **Instant rollbacks**: If an issue arises post-release, you can immediately point the route back to any retained healthy historical deployment for instant recovery.
-- **Source provenance**: Each Deployment shows where its Release's source came from: the synced commit, or the upload (from the CLI or the Dashboard, by whom, based on which commit, and whether the working tree was dirty). An upload onto a git Project only ever arrives as a preview; promoting it is a deliberate step on this page.
+- **Source provenance**: Each Deployment shows where its Release's source came from: the synced commit, or the upload (from the CLI or the Dashboard, by whom, based on which commit, and whether the working tree was dirty). An upload onto a git Project arrives as a preview by default; promoting it — from this page, or with `eveland deploy --promote` — is a deliberate step that puts the Project in **hotfix drift** (section 5).
 
 ## 2. Canary releases and weighted routing
 
@@ -46,6 +46,15 @@ To balance audit history with host disk capacity, Eveland enforces automated lif
   - Any deployment currently targeted by a production or alias route;
   - Any deployment maintaining unexpired session bindings (SessionBinding) or active request leases (ActivationLease).
 - **Automated archiving**: Once an unprotected deployment stops, the background Worker purges its cached runtime artifacts and build directories to prevent disk accumulation.
+
+## 5. Hotfix drift
+
+A git Project can run an uploaded revision in production — a hotfix sent with `eveland deploy --promote` from a working tree, or a preview upload promoted from the Deployments page. Eveland allows this, but makes the resulting state visible and guards the way out of it.
+
+- **Definition**: a Project is in hotfix drift while its promoted Deployment's Release comes from a Source Revision whose origin is an upload rather than `git-sync`. The state is derived from those rows on every read, never stored, and only a git Project can drift.
+- **Visibility**: every project page shows a banner — "Production runs an uploaded hotfix (based on `abc123`, uncommitted changes, by _user_ at 14:02); the repository does not contain it. Commit it before the next production sync." — the Deployments list shows each Deployment's provenance, the deploy log records the promote that started the drift, and `eveland deploy --promote` prints the same warning after promoting. `GET /api/projects/:id` and `GET /api/projects/:id/deployments` return it as `hotfixDrift`.
+- **Guarded sync**: while in drift, promoting a revision that came from git retires the hotfix, so **Sync, deploy & promote** (and **Build, deploy & promote** when the current revision was synced after the hotfix) shows the warning and requires an explicit confirmation; the JSON API refuses with `400` and `code: "hotfix_drift"` unless the body carries `replaceHotfix: true`. A preview sync replaces nothing and asks nothing. Rebuilding the hotfix itself, or uploading another hotfix with `eveland deploy --promote`, is the same kind of source replacing itself: no confirmation, but the CLI prints the provenance of what it replaces.
+- **Clearing**: drift clears the moment a `git-sync` revision is promoted — a rollback included. Eveland deliberately does not compare tree contents: committing the hotfix to the repository and syncing it to production is the only way to end the drift with the same code.
 
 ## Related references
 

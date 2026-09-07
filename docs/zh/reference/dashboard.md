@@ -96,6 +96,8 @@ Project Sidebar 按日常观察优先排列：Overview、Playground、Sessions�
 - Dialog 的 Source 维度默认选择当前不可变 Source Revision；Git 项目可显式选择先同步并验证远端最新代码，Zip 项目只使用当前 Source Revision
 - Dialog 的结果维度默认在新 Deployment 通过健康检查后将其原子 promote 为 stable target；用户可显式选择保留为可并发测试的 preview、不改变 stable target
 - 提交文案随组合明确显示 `Build & deploy`、`Build, deploy & promote`、`Sync & create preview` 或 `Sync, deploy & promote`，不能用含糊的 `latest` 同时指代当前 Revision 与远端 Git
+- 项目处于热修复漂移（Git 项目的生产环境运行着上传的版本）时，项目的每个页面都显示横幅，指明热修复的基础提交、脏状态、上传者与时间；会替换掉热修复的生产结果（同步，或在热修复之后同步下来的当前版本）在 Dialog 内显示同样的信息，把提交按钮改为 `… & replace hotfix`，并在勾选替换确认前保持禁用
+- 对 Git 项目中来源为上传的 Deployment 点击 `Promote / rollback` 会先询问并说明生产将运行什么；Promote 一个同步的提交无需确认
 - Restart deployment
 - Open Playground
 - 查看日志
