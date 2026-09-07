@@ -644,7 +644,7 @@ export async function updateRouteTargets(
 
 export async function syncSource(
   projectId: string,
-  options: { deploy?: boolean; promote?: boolean } = {},
+  options: { deploy?: boolean; promote?: boolean; confirmDrift?: boolean } = {},
 ): Promise<Job> {
   const data = await clientRequest<{ job: Job }>(`/projects/${projectId}/sync-source`, {
     method: "POST",
@@ -652,6 +652,7 @@ export async function syncSource(
     body: JSON.stringify({
       deploy: options.deploy ?? false,
       promote: options.promote ?? false,
+      ...(options.confirmDrift ? { confirmDrift: true } : {}),
     }),
   });
   return data.job;

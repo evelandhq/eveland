@@ -980,6 +980,10 @@ describe("api app", () => {
         origin: null,
       }),
     });
+    // A zip project has no repository to drift from, whatever runs in production.
+    expect(liveBody).toMatchObject({
+      sourceDrift: { drifted: false, production: expect.objectContaining({ kind: "zip" }) },
+    });
 
     const all = await app.request(`/api/projects/${project.id}/deployments?archived=true`);
     expect(all.status).toBe(200);

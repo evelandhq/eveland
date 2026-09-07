@@ -119,7 +119,7 @@ const commands: Record<string, Command> = {
   },
   deploy: {
     description:
-      "Upload this directory, build it on the platform, and promote it (git projects: preview only)",
+      "Upload this directory, build it on the platform, and promote it (git projects: preview unless --promote)",
     run: async (args, io) => {
       const parsed = parseArgs({
         args,

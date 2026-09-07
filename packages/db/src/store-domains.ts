@@ -617,6 +617,8 @@ export interface DeploymentStore {
   listReleaseSummaries(projectId: string): Promise<Record<string, Record<string, unknown> | null>>;
   /** Release id -> its source revision's provenance for a whole project, in one query. */
   listReleaseSources(projectId: string): Promise<Record<string, ReleaseSourceProvenance>>;
+  /** One Release's source provenance; null when the Release does not exist. */
+  getReleaseSource(releaseId: string): Promise<ReleaseSourceProvenance | null>;
   getDeploymentRetention(
     projectId: string,
     keepRecent?: number,

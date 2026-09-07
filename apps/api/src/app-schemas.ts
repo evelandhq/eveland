@@ -144,6 +144,11 @@ export const syncSourceSchema = z
   .object({
     deploy: z.boolean().default(false),
     promote: z.boolean().default(false),
+    /**
+     * Acknowledges that production currently runs a hotfix upload and that
+     * promoting the synced commit replaces it. Required only in that state.
+     */
+    confirmDrift: z.boolean().default(false),
   })
   .refine((input) => !input.promote || input.deploy, {
     message: "A synced source must be deployed before it can be promoted.",

@@ -121,19 +121,118 @@ describe("api app", () => {
       gitUrl: "https://example.com/agent.git",
     });
 
-    // Promoting an upload is what makes the next sync's replacement a
-    // production regression, so a git project refuses it for now.
+    // Promoting an upload onto a git project is a hotfix; it is allowed, and
+    // the drift it creates is what the JSON sync below has to acknowledge.
     const promoted = await app.request(`/api/projects/${gitProject.id}/sync-source`, {
       method: "POST",
       body: await zipUploadForm({ deploy: "true", promote: "true" }),
     });
-    expect(promoted.status).toBe(400);
-    await expect(promoted.json()).resolves.toEqual({
-      error: expect.stringMatching(/^Uploads to a git project deploy as previews only\./),
+    expect(promoted.status).toBe(202);
+    const [hotfix] = await store.listProjectJobs(gitProject.id, {
+      type: "import_source",
+      limit: 1,
     });
+    expect(hotfix?.payload).toMatchObject({ importKind: "zip", promoteAfterDeploy: true });
+  });
+
+  test("a sync that would promote over a hotfix upload needs the drift confirmed", async () => {
+    const store = createTestStore();
+    const app = createApp(store);
+    const project = await store.createProject({
+      name: "Drifted Agent",
+      importKind: "git",
+      gitUrl: "https://example.com/drifted.git",
+    });
+    const initialImport = await store.claimNextJob("fixture-import");
+    await store.completeJob(initialImport!.id);
+    const hotfix = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      origin: "cli-upload",
+      baseCommitSha: "b".repeat(40),
+      dirty: true,
+      uploadedBy: "user_a",
+      sourcePath: "/tmp/hotfix",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: hotfix.id,
+      imageTag: "hotfix",
+      containerName: "hotfix",
+      internalPort: 3000,
+      hostPort: 41_500,
+      runtimeKind: "docker",
+    });
+    await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
+    await store.promoteDeployment(project.id, deployment.id);
+
+    // The overview names the drift so the Dashboard can ask.
+    const overview = await app.request(`/api/projects/${project.id}/deployments`);
+    await expect(overview.json()).resolves.toMatchObject({
+      sourceDrift: {
+        drifted: true,
+        production: expect.objectContaining({
+          revisionId: hotfix.id,
+          origin: "cli-upload",
+          baseCommitSha: "b".repeat(40),
+          dirty: true,
+          uploadedBy: expect.objectContaining({ id: "user_a", name: "Test User A" }),
+        }),
+      },
+    });
+
+    const sync = (body: Record<string, unknown>) =>
+      app.request(`/api/projects/${project.id}/sync-source`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    const unconfirmed = await sync({ deploy: true, promote: true });
+    expect(unconfirmed.status).toBe(409);
+    await expect(unconfirmed.json()).resolves.toMatchObject({
+      error: expect.stringMatching(/^Production runs a hotfix upload/),
+      drift: { drifted: true, production: expect.objectContaining({ revisionId: hotfix.id }) },
+    });
+    // A preview sync never touches production, so it needs no confirmation.
+    expect((await sync({ deploy: true })).status).toBe(202);
+    const confirmed = await sync({ deploy: true, promote: true, confirmDrift: true });
+    expect(confirmed.status).toBe(202);
+    const [job] = await store.listProjectJobs(project.id, { type: "import_source", limit: 1 });
+    expect(job?.payload).toMatchObject({ origin: "git-sync", promoteAfterDeploy: true });
+
+    // Promoting a synced commit clears the drift with no bookkeeping.
+    const synced = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      origin: "git-sync",
+      commitSha: "c".repeat(40),
+      sourcePath: "/tmp/synced",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const syncedDeployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: synced.id,
+      imageTag: "synced",
+      containerName: "synced",
+      internalPort: 3000,
+      hostPort: 41_501,
+      runtimeKind: "docker",
+    });
+    await store.promoteDeployment(project.id, syncedDeployment.id);
     await expect(
-      store.listProjectJobs(gitProject.id, { type: "import_source" }),
-    ).resolves.toHaveLength(2);
+      (await app.request(`/api/projects/${project.id}/deployments`)).json(),
+    ).resolves.toMatchObject({
+      sourceDrift: { drifted: false, production: expect.objectContaining({ kind: "git" }) },
+    });
+    expect((await sync({ deploy: true, promote: true })).status).toBe(202);
   });
 
   test("an upload from a CLI token is recorded as a CLI upload by that user", async () => {

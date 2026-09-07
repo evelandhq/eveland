@@ -40,6 +40,36 @@ import {
 
 type PostgresDeploymentRoutingDomain = DeploymentStore & RoutingStore;
 
+type ReleaseSourceRow = {
+  releaseId: string;
+  revisionId: string;
+  kind: string;
+  origin: string | null;
+  commitSha: string | null;
+  baseCommitSha: string | null;
+  dirty: boolean | null;
+  uploadedById: string | null;
+  uploadedByEmail: string | null;
+  uploadedByName: string | null;
+  recordedAt: Date;
+};
+
+function releaseSourceRowToProvenance(row: ReleaseSourceRow): ReleaseSourceProvenance {
+  return {
+    revisionId: row.revisionId,
+    kind: row.kind as ReleaseSourceProvenance["kind"],
+    origin: row.origin as ReleaseSourceProvenance["origin"],
+    commitSha: row.commitSha,
+    baseCommitSha: row.baseCommitSha,
+    dirty: row.dirty,
+    uploadedBy:
+      row.uploadedById && row.uploadedByEmail !== null && row.uploadedByName !== null
+        ? { id: row.uploadedById, email: row.uploadedByEmail, name: row.uploadedByName }
+        : null,
+    recordedAt: row.recordedAt.toISOString(),
+  };
+}
+
 export function createPostgresDeploymentRoutingStore({
   db,
 }: PostgresStoreContext): PostgresDeploymentRoutingDomain {
@@ -160,6 +190,27 @@ export function createPostgresDeploymentRoutingStore({
       return [agentRouteRowToAgentRoute(stable), agentRouteRowToAgentRoute(preview)];
     });
   };
+
+  // The provenance read behind both listReleaseSources and getReleaseSource:
+  // one join from Release to its revision and the uploader's display fields.
+  const selectReleaseSources = () =>
+    db
+      .select({
+        releaseId: releases.id,
+        revisionId: sourceRevisions.id,
+        kind: sourceRevisions.kind,
+        origin: sourceRevisions.origin,
+        commitSha: sourceRevisions.commitSha,
+        baseCommitSha: sourceRevisions.baseCommitSha,
+        dirty: sourceRevisions.dirty,
+        uploadedById: sourceRevisions.uploadedBy,
+        uploadedByEmail: users.email,
+        uploadedByName: users.name,
+        recordedAt: sourceRevisions.createdAt,
+      })
+      .from(releases)
+      .innerJoin(sourceRevisions, eq(sourceRevisions.id, releases.sourceRevisionId))
+      .leftJoin(users, eq(users.id, sourceRevisions.uploadedBy));
 
   const domain: PostgresDeploymentRoutingDomain = {
     async recordDeployment(input) {
@@ -398,42 +449,15 @@ export function createPostgresDeploymentRoutingStore({
       // Same shape of read as listReleaseSummaries: the overview needs the
       // provenance of every listed deployment's source, and the uploader's
       // display fields come from the same query rather than a lookup per row.
-      const rows = await db
-        .select({
-          releaseId: releases.id,
-          revisionId: sourceRevisions.id,
-          kind: sourceRevisions.kind,
-          origin: sourceRevisions.origin,
-          commitSha: sourceRevisions.commitSha,
-          baseCommitSha: sourceRevisions.baseCommitSha,
-          dirty: sourceRevisions.dirty,
-          uploadedById: sourceRevisions.uploadedBy,
-          uploadedByEmail: users.email,
-          uploadedByName: users.name,
-          recordedAt: sourceRevisions.createdAt,
-        })
-        .from(releases)
-        .innerJoin(sourceRevisions, eq(sourceRevisions.id, releases.sourceRevisionId))
-        .leftJoin(users, eq(users.id, sourceRevisions.uploadedBy))
-        .where(eq(releases.projectId, projectId));
+      const rows = await selectReleaseSources().where(eq(releases.projectId, projectId));
       return Object.fromEntries(
-        rows.map((row) => [
-          row.releaseId,
-          {
-            revisionId: row.revisionId,
-            kind: row.kind as ReleaseSourceProvenance["kind"],
-            origin: row.origin as ReleaseSourceProvenance["origin"],
-            commitSha: row.commitSha,
-            baseCommitSha: row.baseCommitSha,
-            dirty: row.dirty,
-            uploadedBy:
-              row.uploadedById && row.uploadedByEmail !== null && row.uploadedByName !== null
-                ? { id: row.uploadedById, email: row.uploadedByEmail, name: row.uploadedByName }
-                : null,
-            recordedAt: row.recordedAt.toISOString(),
-          } satisfies ReleaseSourceProvenance,
-        ]),
+        rows.map((row) => [row.releaseId, releaseSourceRowToProvenance(row)]),
       );
+    },
+
+    async getReleaseSource(releaseId) {
+      const [row] = await selectReleaseSources().where(eq(releases.id, releaseId)).limit(1);
+      return row ? releaseSourceRowToProvenance(row) : null;
     },
 
     ensureDeploymentRoutes,

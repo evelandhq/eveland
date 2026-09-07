@@ -108,6 +108,11 @@ describe("source revision provenance", () => {
       origin: null,
       uploadedBy: null,
     });
+    // The single-release read is the same projection.
+    await expect(store.getReleaseSource(deployments[1]!.releaseId)).resolves.toEqual(
+      sources[deployments[1]!.releaseId],
+    );
+    await expect(store.getReleaseSource("rel_missing")).resolves.toBeNull();
   });
 
   test("refuses an origin outside the recorded vocabulary", async () => {

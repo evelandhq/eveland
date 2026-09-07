@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BadgeCheckIcon, TriangleAlertIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { displayedDeploymentEveRefusal } from "@evelandhq/core/eve-compatibility";
 import { DateTime } from "@/components/date-time";
 import { DeploymentActions } from "@/components/deployment-actions";
@@ -72,8 +73,29 @@ export default async function ProjectDeploymentsPage({
           sourceRevisionId={sourceRevision?.id ?? null}
           sourceCommitSha={sourceRevision?.commitSha ?? null}
           sourceRecordedAt={sourceRevision?.createdAt ?? null}
+          sourceDrift={overview.sourceDrift ?? null}
         />
       </header>
+
+      {/* A hotfix upload in production is source the repository does not
+          have. Said up front, with the way back, so nobody syncs over it by
+          accident -- the dialog asks again when it would. */}
+      {overview.sourceDrift?.drifted ? (
+        <Alert>
+          <TriangleAlertIcon />
+          <AlertTitle>Production runs a hotfix upload</AlertTitle>
+          <AlertDescription>
+            <SourceProvenance
+              source={overview.sourceDrift.production}
+              recordedAt={overview.sourceDrift.production.recordedAt}
+            />
+            <p>
+              The repository does not have this source. Commit and push it, then sync and promote to
+              return production to a commit; the sync dialog asks before replacing the hotfix.
+            </p>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {/* One bordered card for production context, mirroring the overview:
           the stable endpoint — the value you actually paste somewhere — gets

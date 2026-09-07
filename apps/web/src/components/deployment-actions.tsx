@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCwIcon, RocketIcon } from "lucide-react";
+import { RefreshCwIcon, RocketIcon, TriangleAlertIcon } from "lucide-react";
+import type { SourceDrift } from "@evelandhq/core/contracts";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +30,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { enqueueBuildDeploy, syncSource } from "@/lib/client-api";
 import { getProjectImportNotice, type Job } from "@/lib/api";
+import { describeSourceProvenance } from "@/lib/source-provenance";
 import { cn } from "@/lib/utils";
 
 type DeploymentSource = "current" | "sync";
@@ -59,6 +62,7 @@ export function DeploymentActions({
   sourceRevisionId,
   sourceCommitSha,
   sourceRecordedAt,
+  sourceDrift = null,
 }: {
   projectId: string;
   canSync: boolean;
@@ -67,13 +71,21 @@ export function DeploymentActions({
   sourceRevisionId: string | null;
   sourceCommitSha: string | null;
   sourceRecordedAt: string | null;
+  /** Whether production runs a hotfix upload the repository does not have. */
+  sourceDrift?: SourceDrift | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [source, setSource] = useState<DeploymentSource>(canDeploy ? "current" : "sync");
   const [destination, setDestination] = useState<DeploymentDestination>("production");
   const [pending, setPending] = useState<"deploy" | "retry" | null>(null);
+  const [driftConfirmed, setDriftConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Syncing to production replaces whatever production runs; when that is a
+  // hotfix upload, the repository does not have it, so the replacement must
+  // be acknowledged here and the API refuses it otherwise.
+  const replacesHotfix =
+    source === "sync" && destination === "production" && sourceDrift?.drifted === true;
   const importNotice = getProjectImportNotice(importJob);
   const retryingImport = importNotice?.active === false;
   const importActive = importNotice?.active === true;
@@ -92,6 +104,7 @@ export function DeploymentActions({
     if (nextOpen) {
       setSource(canDeploy ? "current" : "sync");
       setDestination("production");
+      setDriftConfirmed(false);
       setError(null);
     }
   }
@@ -104,7 +117,11 @@ export function DeploymentActions({
     try {
       const promote = destination === "production";
       if (source === "sync") {
-        await syncSource(projectId, { deploy: true, promote });
+        await syncSource(projectId, {
+          deploy: true,
+          promote,
+          ...(replacesHotfix ? { confirmDrift: true } : {}),
+        });
       } else {
         await enqueueBuildDeploy(projectId, { promote });
       }
@@ -265,6 +282,25 @@ export function DeploymentActions({
                 </FieldSet>
               </FieldGroup>
 
+              {replacesHotfix && sourceDrift.drifted ? (
+                <Alert variant="destructive">
+                  <TriangleAlertIcon />
+                  <AlertTitle>Production runs a hotfix the repository does not have</AlertTitle>
+                  <AlertDescription>
+                    <p>{describeSourceProvenance(sourceDrift.production)}.</p>
+                    <label className="mt-2 flex items-start gap-2 text-foreground">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={driftConfirmed}
+                        onChange={(event) => setDriftConfirmed(event.target.checked)}
+                      />
+                      <span>Replace it with the repository&apos;s latest commit.</span>
+                    </label>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
               {error ? <FieldError>{error}</FieldError> : null}
 
               <DialogFooter>
@@ -273,7 +309,10 @@ export function DeploymentActions({
                 >
                   Cancel
                 </DialogClose>
-                <Button type="submit" disabled={pending !== null}>
+                <Button
+                  type="submit"
+                  disabled={pending !== null || (replacesHotfix && !driftConfirmed)}
+                >
                   {pending === "deploy" ? (
                     <Spinner data-icon="inline-start" />
                   ) : (

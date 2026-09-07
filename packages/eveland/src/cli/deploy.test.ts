@@ -319,7 +319,7 @@ describe("eveland deploy", () => {
     });
   });
 
-  test("uploads to a git project as a preview and refuses --promote before uploading", async () => {
+  test("uploads to a git project as a preview by default, or as a hotfix with --promote", async () => {
     const preview = fakePlatform({
       projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
       jobTimeline: BUILD_DONE,
@@ -339,23 +339,33 @@ describe("eveland deploy", () => {
     expect(sync?.form?.get("baseCommitSha")).toBe("d".repeat(40));
     expect(printed).not.toContain(PROMOTED_LINE);
     expect(printed.join("\n")).toContain(
-      "Deployed as a preview: 'tour-guide' was imported from git, and uploads to it never promote.",
+      "Deployed as a preview: 'tour-guide' was imported from git, so uploads stay previews unless you pass --promote.",
     );
 
-    // An explicit --promote is a mistake worth stopping before the upload.
-    const refused = fakePlatform({
+    // An explicit --promote is a hotfix: promote travels with the upload, and
+    // the output says production has drifted from the repository.
+    const hotfix = fakePlatform({
       projects: [{ id: "proj_1", slug: "tour-guide", importKind: "git" }],
+      jobTimeline: BUILD_DONE,
+      logTimeline: [[]],
     });
-    await expect(
-      runDeploy({
-        origin: "http://localhost:17300",
-        token: "tok",
-        dir: await makeProject(),
-        promote: true,
-        io: io(refused).io,
-      }),
-    ).rejects.toThrow(/uploads to it deploy as previews only/);
-    expect(refused.calls.every((call) => call.method === "GET")).toBe(true);
+    const { io: hotfixIo, printed: hotfixPrinted } = io(hotfix, {
+      baseCommitSha: "d".repeat(40),
+      dirty: true,
+    });
+    const promoted = await runDeploy({
+      origin: "http://localhost:17300",
+      token: "tok",
+      dir: await makeProject(),
+      promote: true,
+      io: hotfixIo,
+    });
+    expect(promoted).toMatchObject({ importKind: "git", promoted: true });
+    const hotfixSync = hotfix.calls.find((call) => call.url.includes("/sync-source"));
+    expect(hotfixSync?.form?.get("promote")).toBe("true");
+    expect(hotfixPrinted.join("\n")).toContain("Promoting a hotfix: 'tour-guide'");
+    expect(hotfixPrinted).toContain(PROMOTED_LINE);
+    expect(hotfixPrinted.join("\n")).toContain("Production has drifted from the repository");
   });
 
   test("follows its own build job when a concurrent deploy runs on the same project", async () => {

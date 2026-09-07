@@ -29,6 +29,7 @@
     "./routing": "./src/routing.ts",
     "./schedules": "./src/schedules.ts",
     "./source": "./src/source.ts",
+    "./source-drift": "./src/source-drift.ts",
     "./transcript": "./src/transcript.ts",
     "./update-check": "./src/update-check.ts",
     "./workflow-dispatch": "./src/workflow-dispatch.ts",

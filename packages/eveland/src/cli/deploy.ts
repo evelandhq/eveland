@@ -22,10 +22,11 @@ import { createZipArchive } from "./zip.ts";
  * can never be the one this run promotes.
  *
  * A project imported from git is the exception: an upload to it deploys as
- * a preview only, and --promote is refused. Promoting an upload would put
- * production on a revision the next repository sync silently replaces, and
- * nothing records that drift yet. The upload still carries the commit it was
- * based on and whether the tree was dirty, so the Dashboard can say so.
+ * a preview unless --promote says otherwise. Promoting one is a hotfix:
+ * production then runs source the repository does not have, the platform
+ * reports that drift, and the next sync to production asks for confirmation
+ * before replacing it. The upload carries the commit it was based on and
+ * whether the tree was dirty, so the Dashboard can say exactly what runs.
  */
 
 const POLL_INTERVAL_MS = 1_200;
@@ -129,12 +130,12 @@ export async function runDeploy(input: {
   const { projects } = await request<{ projects: ProjectListItem[] }>("/api/projects");
   const existing = projects.find((candidate) => candidate.slug === slug) ?? null;
   const importKind = existing?.importKind ?? "zip";
-  if (importKind === "git" && input.promote === true) {
-    throw new Error(
-      `Project '${slug}' was imported from git, and uploads to it deploy as previews only. Drop --promote to deploy a preview and promote it from the Dashboard once it builds, or push to the repository and sync it to promote a commit.`,
+  const promote = input.promote ?? importKind === "zip";
+  if (promote && importKind === "git") {
+    io.print(
+      `Promoting a hotfix: '${slug}' was imported from git, so production will run this upload instead of a synced commit until the repository is synced and promoted again.`,
     );
   }
-  const promote = input.promote ?? importKind === "zip";
 
   // Logs advance through the server-side `after` cursor, so no poll ever
   // re-downloads the project's history. The watermark from a limit=1 read is
@@ -247,9 +248,14 @@ export async function runDeploy(input: {
     // Promotion ran inside the build job, after its routes existed; a promote
     // that fails fails the job, so a completed build is a promoted one.
     io.print("Promoted: routes and the schedule target now point at this deployment.");
+    if (importKind === "git") {
+      io.print(
+        "Production has drifted from the repository: the Dashboard will ask for confirmation before a sync replaces this hotfix.",
+      );
+    }
   } else if (importKind === "git") {
     io.print(
-      `Deployed as a preview: '${slug}' was imported from git, and uploads to it never promote. Routes and schedules stay on the current deployment; promote the preview from the Dashboard, or push and sync the repository.`,
+      `Deployed as a preview: '${slug}' was imported from git, so uploads stay previews unless you pass --promote. Routes and schedules stay on the current deployment.`,
     );
   } else {
     io.print(

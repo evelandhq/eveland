@@ -353,6 +353,17 @@ export type ReleaseSourceProvenance = {
   recordedAt: string;
 };
 
+/**
+ * Whether production has drifted from the repository: a git Project whose
+ * promoted Release was built from an upload rather than a synced commit. It
+ * is derived from the production Release's provenance, never stored, so it
+ * clears by itself the moment a git revision is promoted. Zip Projects never
+ * drift: they have no repository to drift from.
+ */
+export type SourceDrift =
+  | { drifted: true; production: ReleaseSourceProvenance }
+  | { drifted: false; production: ReleaseSourceProvenance | null };
+
 // The browser-facing shape: the host filesystem path stays on the server.
 export type PublicSourceRevision = Omit<SourceRevision, "sourcePath">;
 
@@ -555,6 +566,8 @@ export type DeploymentOverview = {
    * points at a revision, even one recorded before provenance existed.
    */
   releaseSources: Record<string, ReleaseSourceProvenance>;
+  /** Whether the promoted Release is a hotfix upload on a git Project, and what it was. */
+  sourceDrift: SourceDrift;
 };
 
 /** Per-variant rollup behind the experiment view. */

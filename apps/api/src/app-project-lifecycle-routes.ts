@@ -1,6 +1,7 @@
 import { bodyLimit } from "hono/body-limit";
 import { normalizeGitHttpHost } from "@evelandhq/core/ids";
 import { toPublicJob } from "@evelandhq/core/jobs";
+import { deriveSourceDrift } from "@evelandhq/core/source-drift";
 import { type Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
 import { buildDeploySchema, syncSourceSchema, uploadProvenanceSchema } from "./app-schemas.js";
@@ -36,7 +37,12 @@ function readUploadProvenance(form: FormData): unknown {
 // The narrow persistence port this slice actually needs.
 export type ProjectLifecycleStore = Pick<
   Store,
-  "enqueueJob" | "getGitCredential" | "getProject" | "listProjectJobs" | "requestProjectDeletion"
+  | "enqueueJob"
+  | "getGitCredential"
+  | "getProject"
+  | "getReleaseSource"
+  | "listProjectJobs"
+  | "requestProjectDeletion"
 >;
 
 export function registerProjectLifecycleRoutes(input: {
@@ -102,10 +108,9 @@ export function registerProjectLifecycleRoutes(input: {
     }
     // Multipart replaces the project's source with a fresh upload — the
     // `eveland deploy` loop. Any project accepts one; how it was created only
-    // decides what the JSON sync below can do. An upload onto a git project
-    // deploys as a preview only: promoting it would leave production on a
-    // revision the next repository sync silently replaces, and nothing
-    // records that drift yet.
+    // decides what the JSON sync below can do. Promoting an upload onto a git
+    // project is a hotfix: production then runs source the repository does
+    // not have, which the JSON sync below refuses to replace unconfirmed.
     if (isMultipartRequest(c)) {
       const form = await c.req.formData();
       const archive = form.get("archive");
@@ -123,15 +128,6 @@ export function registerProjectLifecycleRoutes(input: {
       if (promote && !deploy) {
         return c.json(
           { error: "A synced source must be deployed before it can be promoted." },
-          400,
-        );
-      }
-      if (promote && project.importKind === "git") {
-        return c.json(
-          {
-            error:
-              "Uploads to a git project deploy as previews only. Promote the preview from the Dashboard once it builds, or sync the repository to deploy and promote a commit.",
-          },
           400,
         );
       }
@@ -179,6 +175,24 @@ export function registerProjectLifecycleRoutes(input: {
         },
         400,
       );
+    }
+    // Promoting the synced commit over a hotfix upload is the one way to lose
+    // uncommitted production source silently, so it needs saying twice.
+    if (syncOptions.data.promote && !syncOptions.data.confirmDrift) {
+      const drift = deriveSourceDrift(
+        project.importKind,
+        project.releaseId ? await store.getReleaseSource(project.releaseId) : null,
+      );
+      if (drift.drifted) {
+        return c.json(
+          {
+            error:
+              "Production runs a hotfix upload that the repository does not have. Syncing and promoting replaces it with the repository's commit; send confirmDrift: true to do that.",
+            drift,
+          },
+          409,
+        );
+      }
     }
     const host = normalizeGitHttpHost(project.gitUrl);
     const storedCredential = host ? await store.getGitCredential(currentUserId(c), host) : null;

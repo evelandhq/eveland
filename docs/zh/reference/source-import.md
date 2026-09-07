@@ -70,7 +70,9 @@ description: 新建项目向导、Source Preflight 预检、私有仓库凭据�
 - **来源（origin）**：`git-sync`（平台自行克隆）、`cli-upload`（`eveland deploy`，以 CLI Token 认证）或 `dashboard-upload`（Web 控制台）。该字段出现之前记录的 Revision 没有来源。
 - **上传者、基础提交、脏标记**：上传会记录由谁发起；当 CLI 在 Git 检出目录内运行时，还会记录工作树所基于的提交以及是否含未提交改动。基础提交必须是完整的小写哈希，脏标记必须伴随基础提交，否则上传被拒绝。
 
-项目的导入类型不可变，它只说明项目是如何创建的。两种类型的项目都接受 `POST /api/projects/:id/sync-source` 的 multipart 上传；同一路由的 JSON 请求体仍然从项目存储的仓库地址重新克隆，上传永远不会改动这个地址。向 Git 项目上传可以部署（`deploy=true`）但不能发布：`promote=true` 会以 `400` 拒绝，因为把它推上生产会让下一次同步替换掉生产版本。如确需发布，请在 Deployments 页面手动 Promote 该预览。
+项目的导入类型不可变，它只说明项目是如何创建的。两种类型的项目都接受 `POST /api/projects/:id/sync-source` 的 multipart 上传；同一路由的 JSON 请求体仍然从项目存储的仓库地址重新克隆，上传永远不会改动这个地址。向 Git 项目上传可以部署（`deploy=true`），并可通过 `promote=true` 作为**热修复（hotfix）**发布。
+
+**源码漂移（Source drift）。** Git 项目若其已发布的 Release 来自一次上传，即处于漂移状态：生产运行的是仓库里没有的源码。漂移由生产 Release 的来源推导而来，不落库，因此发布一个同步的提交后自动消除；Zip 项目永远不会漂移。`GET /api/projects/:id/deployments` 以 `sourceDrift`（`{ drifted, production }`）报告它，Deployments 页面显示横幅，而 JSON 形式的 `POST /api/projects/:id/sync-source` 在 `promote: true` 时会以 `409`（附带同样的 `drift` 对象）拒绝，直到请求体同时带上 `confirmDrift: true`。仅预览的同步（只 `deploy` 不 `promote`）无需确认。
 
 `GET /api/projects/:id/deployments` 返回按 Release id 索引的 `releaseSources`，即列表中每个部署的源码来源；Deployments 页面据此渲染为「Commit abc123」或「由 _用户_ 从 CLI 上传，基于 abc123，含未提交改动」。
 
