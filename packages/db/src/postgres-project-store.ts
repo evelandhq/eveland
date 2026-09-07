@@ -264,6 +264,7 @@ export function createPostgresProjectStore(
         gitUrl: input.gitUrl ?? null,
         sourcePath: input.sourcePath ?? null,
         ...(input.deployAfterImport ? { deployAfterImport: true } : {}),
+        ...(input.promoteAfterDeploy ? { promoteAfterDeploy: true } : {}),
         ...(input.gitCredential ? { gitCredential: input.gitCredential } : {}),
       });
 
@@ -484,6 +485,7 @@ export function createPostgresProjectStore(
             gitUrl: preflight.gitUrl,
             sourcePath: preflight.sourcePath,
             ...(input.deployAfterImport ? { deployAfterImport: true } : {}),
+            ...(input.promoteAfterDeploy ? { promoteAfterDeploy: true } : {}),
             ...(gitCredential ? { gitCredential } : {}),
           },
         });

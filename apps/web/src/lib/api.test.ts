@@ -64,6 +64,8 @@ describe("web api helpers", () => {
       payload: {},
       attempts: 1,
       lastError: "Repository fetch timed out after 120000ms.",
+      parentJobId: null,
+      deploymentId: null,
       createdAt: "2026-07-17T00:00:00.000Z",
       updatedAt: "2026-07-17T00:02:00.000Z",
     };
@@ -121,6 +123,8 @@ describe("web api helpers", () => {
       payload: {},
       attempts: 0,
       lastError: null,
+      parentJobId: null,
+      deploymentId: null,
       createdAt: "2026-07-17T00:00:00.000Z",
       updatedAt: "2026-07-17T00:00:00.000Z",
     };
@@ -141,6 +145,8 @@ describe("web api helpers", () => {
       payload: {},
       attempts: 1,
       lastError: null,
+      parentJobId: null,
+      deploymentId: null,
       createdAt: "2026-07-17T00:00:00.000Z",
       updatedAt: "2026-07-17T00:00:01.000Z",
     };

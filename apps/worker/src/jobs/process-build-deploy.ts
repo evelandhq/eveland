@@ -53,6 +53,7 @@ type BuildDeployStore = LaunchInputStore &
     | "setProjectSchedulerTarget"
     | "ensureDeploymentRoutes"
     | "promoteDeployment"
+    | "replaceJobPayload"
   >;
 
 export async function handleBuildDeployJob(
@@ -282,6 +283,16 @@ export async function handleBuildDeployJob(
         : {}),
     });
     deploymentRecorded = true;
+    // Name the Deployment on the job row before anything else can complete
+    // it: a client watching this job learns exactly which Deployment it
+    // produced instead of guessing from the project's deployment list.
+    await store.replaceJobPayload(
+      job.id,
+      "build_deploy",
+      { ...job.payload, deploymentId: deployment.id },
+      job.attempts,
+    );
+    options.signal?.throwIfAborted();
     if (releaseSummary) {
       await store.appendLog({
         projectId: job.projectId,

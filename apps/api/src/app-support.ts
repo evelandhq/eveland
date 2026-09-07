@@ -27,7 +27,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { projectNameSchema } from "./app-schemas.js";
+import { IMPORT_PROMOTE_REQUIRES_DEPLOY_MESSAGE, projectNameSchema } from "./app-schemas.js";
 import type { AppOptions } from "./app-types.js";
 
 const execFileAsync = promisify(execFile);
@@ -324,6 +324,7 @@ export async function createZipProjectFromUpload(
   const name = form.get("name");
   const archive = form.get("archive");
   const deployAfterImport = form.get("deployAfterImport") === "true";
+  const promoteAfterDeploy = form.get("promoteAfterDeploy") === "true";
 
   const parsedName = projectNameSchema.safeParse(name);
   if (!parsedName.success) {
@@ -334,6 +335,16 @@ export async function createZipProjectFromUpload(
           ...issue,
           path: ["name", ...issue.path],
         })),
+      },
+      400,
+    );
+  }
+
+  if (promoteAfterDeploy && !deployAfterImport) {
+    return c.json(
+      {
+        error: "Invalid project input",
+        issues: [{ path: ["promoteAfterDeploy"], message: IMPORT_PROMOTE_REQUIRES_DEPLOY_MESSAGE }],
       },
       400,
     );
@@ -373,6 +384,7 @@ export async function createZipProjectFromUpload(
       sourcePath,
       requireExactSlug: true,
       deployAfterImport,
+      promoteAfterDeploy,
     });
     return c.json({ project }, 201);
   } catch (error) {

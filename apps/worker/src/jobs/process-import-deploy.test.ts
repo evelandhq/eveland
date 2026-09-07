@@ -191,7 +191,7 @@ describe("processNextJob", () => {
     });
     const initialImport = await store.claimNextJob("worker-a");
     await store.completeJob(initialImport!.id);
-    await store.enqueueJob(project.id, "import_source", {
+    const resync = await store.enqueueJob(project.id, "import_source", {
       importKind: "zip",
       sourcePath,
       deployAfterImport: true,
@@ -200,11 +200,13 @@ describe("processNextJob", () => {
 
     await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
 
+    // The chained build names the import that queued it, so a client that
+    // submitted the import can tell its own build apart from a concurrent one.
     const chained = await store.claimNextJob("worker-b");
     expect(chained).toMatchObject({
       type: "build_deploy",
       status: "running",
-      payload: { promoteAfterDeploy: true },
+      payload: { promoteAfterDeploy: true, parentJobId: resync.id },
     });
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
       expect.objectContaining({
@@ -628,6 +630,16 @@ describe("processNextJob", () => {
     const deployments = await store.listDeployments(project.id);
     const promoted = deployments.find((deployment) => deployment.id !== production.id);
     expect(promoted).toBeDefined();
+    // The job row names the Deployment it produced, so a client watching its
+    // own build never has to guess from the project's deployment list.
+    await expect(
+      store.listProjectJobs(project.id, { type: "build_deploy", limit: 1 }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        status: "completed",
+        payload: expect.objectContaining({ deploymentId: promoted!.id }),
+      }),
+    ]);
     await expect(store.findProjectRoute(project.id)).resolves.toMatchObject({
       targets: [
         expect.objectContaining({

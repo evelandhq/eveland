@@ -108,4 +108,28 @@ describe("job payload contracts", () => {
     });
     expect(JSON.stringify(publicJob)).not.toContain("sealed-sensitive-value");
   });
+
+  test("exposes a build job's lineage on its public status without its payload", async () => {
+    const contracts = await loadJobContracts();
+    const base = {
+      projectId: "proj_1",
+      status: "completed" as const,
+      attempts: 1,
+      lastError: null,
+      createdAt: "2026-08-01T00:00:00.000Z",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    };
+
+    expect(
+      contracts.toPublicJob!({
+        ...base,
+        id: "job_build",
+        type: "build_deploy",
+        payload: { promoteAfterDeploy: true, parentJobId: "job_import", deploymentId: "dep_1" },
+      }),
+    ).toMatchObject({ payload: {}, parentJobId: "job_import", deploymentId: "dep_1" });
+    expect(
+      contracts.toPublicJob!({ ...base, id: "job_import", type: "import_source", payload: {} }),
+    ).toMatchObject({ parentJobId: null, deploymentId: null });
+  });
 });

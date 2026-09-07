@@ -85,6 +85,7 @@ describe("api app", () => {
         importKind: "git",
         gitUrl: "https://github.com/evelandhq/sample-office-assistant.git",
         deployAfterImport: true,
+        promoteAfterDeploy: true,
       }),
     });
 
@@ -118,7 +119,7 @@ describe("api app", () => {
 
     await expect(store.claimNextJob("new-project-test-worker")).resolves.toMatchObject({
       type: "import_source",
-      payload: { deployAfterImport: true },
+      payload: { deployAfterImport: true, promoteAfterDeploy: true },
     });
 
     const listResponse = await app.request("/api/projects");
@@ -249,6 +250,7 @@ describe("api app", () => {
         name: "validated-agent",
         preflightId: queued.preflight.id,
         deployAfterImport: true,
+        promoteAfterDeploy: true,
         environmentVariables: [
           { key: "OPENAI_API_KEY", kind: "secret", value: "sk-first-deploy" },
           { key: "MODEL_NAME", kind: "variable", value: "gpt-5" },
@@ -277,10 +279,52 @@ describe("api app", () => {
         payload: expect.objectContaining({
           sourcePath: "/data/preflights/source",
           deployAfterImport: true,
+          promoteAfterDeploy: true,
           gitCredential: expect.objectContaining({ persistAfterImport: true }),
         }),
       }),
     ]);
+  });
+
+  test("refuses promoteAfterDeploy without deployAfterImport on every create shape", async () => {
+    const store = createTestStore();
+    const app = createApp(store, {
+      dataDir: await mkdtemp(path.join(os.tmpdir(), "eveland-api-")),
+    });
+    const jsonBodies = [
+      { name: "promote-only", preflightId: "pre_promoteOnly", promoteAfterDeploy: true },
+      {
+        importKind: "git",
+        gitUrl: "https://example.com/promote-only.git",
+        promoteAfterDeploy: true,
+      },
+      { name: "promote-only-zip", importKind: "zip", promoteAfterDeploy: true },
+    ];
+    for (const body of jsonBodies) {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "Invalid project input",
+        issues: [expect.objectContaining({ path: ["promoteAfterDeploy"] })],
+      });
+    }
+    const form = new FormData();
+    form.set("name", "promote-only-upload");
+    form.set("archive", new File([await readFile(await createZipArchiveFixture())], "agent.zip"));
+    form.set("promoteAfterDeploy", "true");
+    const uploadResponse = await app.request("/api/projects", { method: "POST", body: form });
+    expect(uploadResponse.status).toBe(400);
+    await expect(uploadResponse.json()).resolves.toMatchObject({
+      error: "Invalid project input",
+      issues: [expect.objectContaining({ path: ["promoteAfterDeploy"] })],
+    });
+    await expect(app.request("/api/projects").then((r) => r.json())).resolves.toEqual({
+      projects: [],
+    });
   });
 
   test("rejects duplicate initial environment variable keys before consuming a source preflight", async () => {
@@ -1037,6 +1081,8 @@ describe("api app", () => {
     const form = new FormData();
     form.set("name", "zip-agent");
     form.set("archive", archive);
+    form.set("deployAfterImport", "true");
+    form.set("promoteAfterDeploy", "true");
     const app = createApp(store, { dataDir });
 
     const response = await app.request("/api/projects", {
@@ -1056,6 +1102,7 @@ describe("api app", () => {
     if (job?.type !== "import_source") {
       throw new Error("Expected a source import job.");
     }
+    expect(job.payload).toMatchObject({ deployAfterImport: true, promoteAfterDeploy: true });
     const sourcePath = job.payload.sourcePath;
     expect(sourcePath).toEqual(expect.stringContaining(path.join(dataDir, "uploads")));
     await expect(
