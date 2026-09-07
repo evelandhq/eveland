@@ -16,12 +16,14 @@ import type {
   ProjectScheduleSummary as CoreProjectScheduleSummary,
   AgentEndpoints as CoreAgentEndpoints,
   DeploymentOverview as CoreDeploymentOverview,
+  HotfixDrift as CoreHotfixDrift,
   PublicDeploymentRecord as CorePublicDeployment,
   PublicJob as CorePublicJob,
   PublicReleaseRecord as CorePublicRelease,
   PublicSecret as CorePublicSecret,
   PublicSourceRevision as CorePublicSourceRevision,
   ResolvedAgentRoute as CoreResolvedAgentRoute,
+  SourceOrigin as CoreSourceOrigin,
   ScheduleRecord,
   ScheduleRunListItem,
   ScheduleRunStatus as CoreScheduleRunStatus,
@@ -60,6 +62,8 @@ export type AgentEndpoints = CoreAgentEndpoints;
 export type Deployment = CorePublicDeployment;
 export type AgentRoute = CoreResolvedAgentRoute;
 export type DeploymentOverview = CoreDeploymentOverview;
+export type HotfixDrift = CoreHotfixDrift;
+export type SourceOrigin = CoreSourceOrigin;
 export type VariantMetric = CoreVariantMetric;
 
 export type SessionTokenUsage = CoreSessionTokenUsage;

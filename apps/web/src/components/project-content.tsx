@@ -1,19 +1,25 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { HotfixDriftNotice } from "@/components/hotfix-drift-notice";
 import { PageContainer } from "@/components/page-container";
 import { ProjectDeletionNotice } from "@/components/project-deletion-notice";
 import { ProjectDeletionPoller } from "@/components/project-deletion-poller";
+import type { HotfixDrift } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export function ProjectContent({
   children,
+  projectId,
   deletionError,
   deletionStatus,
+  hotfixDrift,
 }: {
   children: React.ReactNode;
+  projectId: string;
   deletionError: string | null;
   deletionStatus: "deleting" | "failed" | null;
+  hotfixDrift: HotfixDrift | null;
 }) {
   const pathname = usePathname();
   const fillsViewport = pathname.endsWith("/logs");
@@ -25,6 +31,7 @@ export function ProjectContent({
       {pathname.endsWith("/source") ? (
         <div className="flex h-[calc(100svh-3rem-1px)] min-h-0 min-w-0 flex-none flex-col overflow-hidden md:h-svh">
           <ProjectDeletionNotice status={deletionStatus} error={deletionError} />
+          <HotfixDriftNotice projectId={projectId} drift={hotfixDrift} />
           <fieldset
             disabled={deletionStatus === "deleting"}
             className="m-0 flex min-h-0 min-w-0 flex-1 border-0 p-0"
@@ -42,6 +49,7 @@ export function ProjectContent({
             )}
           >
             <ProjectDeletionNotice status={deletionStatus} error={deletionError} />
+            <HotfixDriftNotice projectId={projectId} drift={hotfixDrift} />
             <fieldset disabled={deletionStatus === "deleting"} className="contents">
               {children}
             </fieldset>

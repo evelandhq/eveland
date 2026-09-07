@@ -2,6 +2,16 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -19,6 +29,7 @@ export function DeploymentTrafficActions({
   status,
   routed,
   retentionProtected,
+  hotfixWarning = null,
 }: {
   projectId: string;
   deploymentId: string;
@@ -28,6 +39,11 @@ export function DeploymentTrafficActions({
   /** A non-deployment route still sends this Deployment traffic, so drain is refused. */
   routed: boolean;
   retentionProtected: boolean;
+  /**
+   * Set when promoting this Deployment puts a git project's production on an
+   * uploaded revision. Promote then asks first, with this text.
+   */
+  hotfixWarning?: string | null;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
@@ -38,6 +54,7 @@ export function DeploymentTrafficActions({
   // phases — the request (`pending`) and the refresh that makes the change
   // visible (`settling`, cleared when the transition ends).
   const [settling, setSettling] = useState<string | null>(null);
+  const [confirmingPromote, setConfirmingPromote] = useState(false);
   const [refreshing, startRefresh] = useTransition();
   useEffect(() => {
     if (!refreshing) setSettling(null);
@@ -88,11 +105,39 @@ export function DeploymentTrafficActions({
           size="sm"
           variant="outline"
           disabled={busy}
-          onClick={() => run("promote", () => promoteDeployment(projectId, deploymentId))}
+          onClick={() =>
+            hotfixWarning
+              ? setConfirmingPromote(true)
+              : run("promote", () => promoteDeployment(projectId, deploymentId))
+          }
         >
           {actionIcon("promote")}
           Promote / rollback
         </Button>
+      ) : null}
+      {hotfixWarning ? (
+        <AlertDialog open={confirmingPromote} onOpenChange={setConfirmingPromote}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Promote an uploaded revision to production?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {hotfixWarning} The project will show this drift until a revision synced from git is
+                promoted again, and a production sync will ask before replacing it.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setConfirmingPromote(false);
+                  void run("promote", () => promoteDeployment(projectId, deploymentId));
+                }}
+              >
+                Promote the upload
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       ) : null}
       {canSplit ? (
         <>

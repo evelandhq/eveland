@@ -597,12 +597,16 @@ export function resetPlaygroundOnPageLeave(input: {
 
 export async function enqueueBuildDeploy(
   projectId: string,
-  options: { promote?: boolean } = {},
+  options: { promote?: boolean; replaceHotfix?: boolean } = {},
 ): Promise<Job> {
   const data = await clientRequest<{ job: Job }>(`/projects/${projectId}/build-deploy`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ promote: options.promote ?? false }),
+    body: JSON.stringify({
+      promote: options.promote ?? false,
+      // Only ever sent as an explicit confirmation, never as a default.
+      ...(options.replaceHotfix ? { replaceHotfix: true } : {}),
+    }),
   });
   return data.job;
 }
@@ -644,7 +648,7 @@ export async function updateRouteTargets(
 
 export async function syncSource(
   projectId: string,
-  options: { deploy?: boolean; promote?: boolean } = {},
+  options: { deploy?: boolean; promote?: boolean; replaceHotfix?: boolean } = {},
 ): Promise<Job> {
   const data = await clientRequest<{ job: Job }>(`/projects/${projectId}/sync-source`, {
     method: "POST",
@@ -652,6 +656,7 @@ export async function syncSource(
     body: JSON.stringify({
       deploy: options.deploy ?? false,
       promote: options.promote ?? false,
+      ...(options.replaceHotfix ? { replaceHotfix: true } : {}),
     }),
   });
   return data.job;

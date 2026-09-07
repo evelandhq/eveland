@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ProjectContent } from "@/components/project-content";
 import { ProjectSidebar } from "@/components/project-sidebar";
 import { SidebarShell } from "@/components/sidebar-shell";
-import { getEveVersion, getProject } from "@/lib/server-api";
+import { getEveVersion, getProject, getProjectDetail } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +35,7 @@ export default async function ProjectLayout({
   params: Promise<{ projectId: string }>;
 }>) {
   const { projectId } = await params;
-  const project = await getProject(projectId);
+  const { project, hotfixDrift } = await getProjectDetail(projectId);
 
   if (!project) {
     notFound();
@@ -54,7 +54,12 @@ export default async function ProjectLayout({
         />
       }
     >
-      <ProjectContent deletionError={project.deletionError} deletionStatus={project.deletionStatus}>
+      <ProjectContent
+        projectId={project.id}
+        deletionError={project.deletionError}
+        deletionStatus={project.deletionStatus}
+        hotfixDrift={hotfixDrift}
+      >
         {children}
       </ProjectContent>
     </SidebarShell>
