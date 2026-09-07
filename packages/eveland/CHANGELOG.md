@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/evelandhq/eveland/compare/eveland-v0.8.0...eveland-v0.9.0) (2026-09-07)
+
+
+### Features
+
+* adopt eve 0.52.2 in a sliding {0.50.x, 0.51.x, 0.52.x} window ([#508](https://github.com/evelandhq/eveland/issues/508)) ([8cf8908](https://github.com/evelandhq/eveland/commit/8cf8908d1de14b9906b1d9e2080de1e6a0511916))
+
 ## [0.8.0](https://github.com/evelandhq/eveland/compare/eveland-v0.7.0...eveland-v0.8.0) (2026-09-04)
 
 
