@@ -309,6 +309,9 @@ RUN ln -sf /usr/bin/python3 /usr/local/bin/python \
 # bwrap bind-mounts each durable session workspace here. The mountpoint must
 # exist before the container root is remounted read-only inside the sandbox.
 RUN mkdir -p /workspace
+# eve 0.52.0 turned CLI telemetry on by default. ENV, not ARG: it must cover
+# the \`eve build\`/\`eve info\` RUN below and the \`eve start\` the image later runs.
+ENV EVE_TELEMETRY_DISABLED=1
 COPY package*.json pnpm-lock.yaml* pnpm-workspace.yaml* .npmrc* ./
 # Install all dependencies: eve projects need their build toolchain to compile.
 RUN if [ -f pnpm-lock.yaml ]; then ${PNPM_FROZEN_INSTALL_COMMAND}; elif [ -f package-lock.json ]; then npm ci; elif [ -f package.json ]; then npm install; fi

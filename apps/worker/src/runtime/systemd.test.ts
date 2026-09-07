@@ -37,7 +37,7 @@ vi.mock("execa", () => ({
 
 vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
-    eveVersion: "0.49.0",
+    eveVersion: "0.50.0",
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),
@@ -359,6 +359,7 @@ describe("buildReleaseBuildEnvironment", () => {
       MODEL_NAME: "configured-model",
       PATH: "/usr/bin",
       npm_config_cache: "/var/lib/eveland/npm-cache",
+      EVE_TELEMETRY_DISABLED: "1",
     });
   });
 
@@ -372,6 +373,7 @@ describe("buildReleaseBuildEnvironment", () => {
     expect(environment).toEqual({
       PATH: "/usr/bin",
       npm_config_cache: "/var/lib/eveland/npm-cache",
+      EVE_TELEMETRY_DISABLED: "1",
     });
     expect(rejectedKeys).toEqual(["NPM_CONFIG_CACHE", "PATH"]);
   });
@@ -1167,7 +1169,7 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
     expect(options.env as Record<string, unknown>).not.toHaveProperty("HOME");
   });
 
-  test("passes extendEnv:false and only PATH/npm_config_cache in the build env, excluding worker secrets even when process.env carries them", async () => {
+  test("passes extendEnv:false and only PATH/npm_config_cache/EVE_TELEMETRY_DISABLED in the build env, excluding worker secrets even when process.env carries them", async () => {
     vi.mocked(execa).mockClear();
     const secretEnvKeys = ["APP_SECRET_KEY", "DATABASE_URL", "WORKFLOW_POSTGRES_URL"] as const;
     const originalValues = secretEnvKeys.map((key) => process.env[key]);
@@ -1203,6 +1205,7 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
         expect(options.env).toEqual({
           PATH: process.env.PATH,
           npm_config_cache: npmCacheDir,
+          EVE_TELEMETRY_DISABLED: "1",
         });
         for (const key of secretEnvKeys) {
           expect(options.env).not.toHaveProperty(key);
