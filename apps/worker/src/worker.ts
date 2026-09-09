@@ -161,6 +161,7 @@ const telemetry = createWorkerTelemetry(capacityObservability.meter, {
   intervalMs,
   maxConcurrentHeavyJobs,
   metricIntervalMs: Number(process.env.EVELAND_HOST_METRIC_INTERVAL_MS ?? 60_000),
+  flush: () => capacityObservability.forceFlush(),
   onMetricError: (error) =>
     console.warn(
       "Worker host metrics are unavailable:",

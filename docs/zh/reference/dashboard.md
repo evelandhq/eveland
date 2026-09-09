@@ -74,7 +74,7 @@ Instance Health 位于 Settings 的 System 分组，仅 Admin 可见。它把"�
 - queued/running Job 数量、最老 queued Job，以及 RuntimeInstance 状态分布
 - 24 小时与 7 天趋势；有足够增长历史时给出磁盘预计耗尽天数
 
-Worker 是唯一采集宿主机指标的特权组件；它把 heartbeat 与 metric sample 作为 capacity domain 的标准 OTLP metrics 发送，Built-in 投影到 Postgres，API 只读取并聚合，Dashboard 只读展示。默认每 60 秒采样、保留 30 天，并每日清理过期 sample。Worker heartbeat 独立于长时间 build/deploy Job 持续发布，不能因为 Job 正在执行而被误判离线。`stopped` RuntimeInstance 是正常 scale-to-zero 状态，不得单独视为故障；Collector delayed/degraded 使实例显示降级，但不等价于 Agent Traffic 已中断。
+Worker 是唯一采集宿主机指标的特权组件；它把 heartbeat 与 metric sample 作为 capacity domain 的标准 OTLP metrics 发送，Built-in 投影到 Postgres，API 只读取并聚合，Dashboard 只读展示。默认每 60 秒采样、保留 30 天，并每日清理过期 sample。Worker heartbeat 独立于长时间 build/deploy Job 持续发布，不能因为 Job 正在执行而被误判离线；Worker 启动后的第一条 heartbeat 立即 flush 而不等导出周期，重启不会让实例显示一整个周期的 unavailable。`stopped` RuntimeInstance 是正常 scale-to-zero 状态，不得单独视为故障；Collector delayed/degraded 使实例显示降级，但不等价于 Agent Traffic 已中断。
 
 页面内风险提示不能声称覆盖整机断电：服务器完全失联仍需要外部监控轮询公开的 API 与 Agent Gateway `/health`。Instance Health 不提供 shell、systemd restart 或其他宿主机写操作。
 

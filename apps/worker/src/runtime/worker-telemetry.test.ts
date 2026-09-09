@@ -8,6 +8,36 @@ import {
 import { createWorkerTelemetry } from "./worker-telemetry.js";
 
 describe("worker telemetry", () => {
+  test("flushes the first heartbeat instead of waiting a full export interval", async () => {
+    const metrics = createTestMetrics();
+    let flushes = 0;
+    const telemetry = createWorkerTelemetry(metrics.meter, {
+      workerId: "worker-1",
+      dataDir: "/var/lib/eveland",
+      intervalMs: 5_000,
+      maxConcurrentHeavyJobs: 2,
+      metricIntervalMs: 60_000,
+      collect: async () => {
+        throw new Error("statfs failed");
+      },
+      flush: async () => {
+        flushes += 1;
+        await metrics.reader.forceFlush();
+      },
+    });
+
+    await telemetry.publishTick({ durationMs: 80, error: null });
+
+    // Nothing in this test flushes the reader: a restarted Worker must reach the
+    // Collector on its own before the health page's stale window (60s) elapses.
+    expect(flushes).toBe(1);
+    expect(metricNames(metrics.exporter)).toContain("eveland.worker.heartbeat");
+
+    await telemetry.publishTick({ durationMs: 80, error: null });
+    expect(flushes).toBe(1);
+    await metrics.provider.shutdown();
+  });
+
   test("surfaces host metric failures without retrying on every job poll", async () => {
     const metrics = createTestMetrics();
     let now = new Date("2026-07-18T10:00:00.000Z");
