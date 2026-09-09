@@ -1,5 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
-import { createDockerBridgeIngress, resolveDockerBridgeBindHost } from "./docker-bridge-ingress.js";
+import {
+  createDockerBridgeIngress,
+  type DockerBridgeServer,
+  dockerBridgeRetryDelayMs,
+  resolveDockerBridgeBindHost,
+  startDockerBridgeListener,
+} from "./docker-bridge-ingress.js";
 
 describe("Docker bridge API ingress", () => {
   test("is disabled unless a private bridge address is configured", () => {
@@ -94,5 +100,98 @@ describe("Docker bridge API ingress", () => {
 
     expect(response.status).toBe(404);
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("Docker bridge listener retry", () => {
+  type FakeServer = DockerBridgeServer & {
+    fail(code: string): void;
+    listen(): void;
+    closed: number;
+  };
+
+  function fakeServer(onListening: () => void): FakeServer {
+    let onError: ((error: NodeJS.ErrnoException) => void) | undefined;
+    const server: FakeServer = {
+      closed: 0,
+      on(_event, listener) {
+        onError = listener;
+        return server;
+      },
+      close() {
+        server.closed += 1;
+        return server;
+      },
+      fail(code) {
+        onError?.(Object.assign(new Error(code), { code }));
+      },
+      listen: onListening,
+    };
+    return server;
+  }
+
+  function harness() {
+    const servers: FakeServer[] = [];
+    const timers: { callback: () => void; ms: number; unref: ReturnType<typeof vi.fn> }[] = [];
+    const log = { listening: vi.fn(), bindFailed: vi.fn() };
+    const handle = startDockerBridgeListener({
+      address: "172.17.0.1:17301",
+      serve: (onListening) => {
+        const server = fakeServer(onListening);
+        servers.push(server);
+        return server;
+      },
+      log,
+      schedule: (callback, ms) => {
+        const timer = { callback, ms, unref: vi.fn() };
+        timers.push(timer);
+        return timer;
+      },
+    });
+    return { servers, timers, log, handle };
+  }
+
+  test("keeps retrying EADDRNOTAVAIL with a growing delay until the bridge appears", () => {
+    // The boot-order race: docker0 does not exist when the API starts and
+    // shows up a few seconds later. One failure used to mean no Collector
+    // ingress until someone restarted the API by hand.
+    const { servers, timers, log } = harness();
+    expect(servers).toHaveLength(1);
+
+    servers[0]!.fail("EADDRNOTAVAIL");
+    expect(servers[0]!.closed).toBe(1);
+    expect(log.bindFailed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ code: "EADDRNOTAVAIL", attempt: 1, retryInMs: 1_000 }),
+    );
+    expect(timers).toHaveLength(1);
+    expect(timers[0]!.ms).toBe(1_000);
+    // A retry timer must never keep the process alive on its own.
+    expect(timers[0]!.unref).toHaveBeenCalled();
+
+    timers[0]!.callback();
+    expect(servers).toHaveLength(2);
+    servers[1]!.fail("EADDRNOTAVAIL");
+    expect(timers[1]!.ms).toBe(2_000);
+
+    timers[1]!.callback();
+    servers[2]!.listen();
+    expect(log.listening).toHaveBeenCalledTimes(1);
+    expect(log.listening).toHaveBeenCalledWith("172.17.0.1:17301");
+    expect(timers).toHaveLength(2);
+  });
+
+  test("stop() cancels the pending retry", () => {
+    const { servers, timers, handle, log } = harness();
+    servers[0]!.fail("EADDRNOTAVAIL");
+    handle.stop();
+    timers[0]!.callback();
+    expect(servers).toHaveLength(1);
+    expect(log.listening).not.toHaveBeenCalled();
+  });
+
+  test("the delay doubles from one second and caps at thirty", () => {
+    expect([1, 2, 3, 5, 6, 20].map(dockerBridgeRetryDelayMs)).toEqual([
+      1_000, 2_000, 4_000, 16_000, 30_000, 30_000,
+    ]);
   });
 });

@@ -505,6 +505,15 @@ export function renderPlatformUnit(spec: ProcessSpec, options: UnitRenderOptions
     // The Collector, and a bundled database, are still containers. `After=` on
     // a unit this host does not have is a no-op, so an installation on an
     // external database is not held up by it.
+    //
+    // It is also a no-op on a host where docker.service is merely
+    // socket-activated (`docker.socket` enabled, `docker.service` disabled —
+    // the default of several distro packages): `After=` only orders units
+    // that are in the same transaction, and nothing pulled docker.service
+    // into the boot. The API then bound its Collector-facing bridge address
+    // before `docker0` existed and got EADDRNOTAVAIL. `Wants=` below makes
+    // docker part of the boot whenever it is installed, and is still a no-op
+    // when it is not.
     "docker.service",
     // Everything else talks to the API; ordering only shortens the window in
     // which they retry, since each unit restarts on failure anyway.
@@ -513,7 +522,7 @@ export function renderPlatformUnit(spec: ProcessSpec, options: UnitRenderOptions
   return [
     "[Unit]",
     `Description=eveland ${spec.label}`,
-    "Wants=network-online.target",
+    "Wants=network-online.target docker.service",
     `After=${after.join(" ")}`,
     "# Not started unattended unless the ctl last left this checkout built and",
     "# migrated. Absent, systemd SKIPS the unit instead of running new code",

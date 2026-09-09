@@ -51,6 +51,18 @@ describe("the systemd form's units", () => {
     expect([...INFRA_COMPOSE_SERVICES]).toEqual(["postgres", "otel-collector"]);
   });
 
+  test("every unit pulls docker into the boot transaction, not only after it", () => {
+    // `After=docker.service` orders nothing on a host where docker is only
+    // socket-activated: the service is not in the boot transaction unless
+    // something wants it, so the API bound its Collector-facing bridge
+    // listener before docker0 existed (EADDRNOTAVAIL after a host reboot).
+    for (const key of SYSTEMD_HOST_UNITS) {
+      const unit = unitFor(key);
+      expect(unit).toContain("Wants=network-online.target docker.service");
+      expect(unit).toMatch(/^After=.*\bdocker\.service\b/m);
+    }
+  });
+
   test("the API unit reads the whole configuration and can write only its data dir", () => {
     const unit = unitFor("api");
     expect(unit).toContain("User=eveland-platform");
