@@ -47,6 +47,7 @@ curl -fsSL https://eveland.ai/install.sh | sudo bash
 | `eveland-ctl update`            | 自动备份数据库、拉取最新稳定版本、执行数据库迁移并滚动重启全部组件。支持通过 `--version vX.Y.Z` 指定目标版本。                                       |
 | `eveland-ctl install --systemd` | 为当前宿主机渲染并注册所有核心服务的 systemd unit 文件。                                                                                             |
 | `eveland-ctl dead-letters`      | 按 Deployment 列出平台丢弃掉的 workflow 派发，`--resolve` 负责处理它们。只要还有未处理的，退出码为 1。                                               |
+| `eveland-ctl dispatcher-lock`   | 显示哪个 Postgres 会话持有 workflow dispatcher 的所有权锁；`--terminate` 踢掉宿主机崩溃后残留的死持有者。                                            |
 
 ### 派发死信 (Dead letters)
 
@@ -57,6 +58,8 @@ eveland-ctl dead-letters                                  # 还剩多少，其�
 eveland-ctl dead-letters --resolve --deployment dep_abc   # 修好那个 Deployment 之后
 eveland-ctl dead-letters --resolve --run wrun_abc
 eveland-ctl dead-letters --resolve --all --yes            # 全部处理，可脚本化
+eveland-ctl dispatcher-lock                               # 谁持有 dispatcher 的单例锁
+eveland-ctl dispatcher-lock --terminate --yes             # 宿主机崩溃后踢掉死持有者
 ```
 
 先看报告的第二行。`N runs still quarantined` 才是真正卡住的活：这些 run 还是 `pending` 或 `running`，在你做决定之前没有任何调度器会碰它们。`no run is still quarantined` 说明这些死信只是历史记录，对应的 run 早已结束，不构成故障。

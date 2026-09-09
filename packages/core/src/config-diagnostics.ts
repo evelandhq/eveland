@@ -633,6 +633,36 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "300000",
   ),
   entry(
+    "WORKFLOW_DISPATCHER_OWNERSHIP_LIVENESS_MS",
+    ["workflow-dispatcher"],
+    "How long a dead dispatcher may keep the World ownership lock before the server reclaims it; drives the ownership session's TCP keepalives, idle timeout, and heartbeat.",
+    "90000",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_OWNERSHIP_RETRY_INTERVAL_MS",
+    ["workflow-dispatcher"],
+    "How often a starting dispatcher retries the ownership lock while another session holds it.",
+    "5000",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_OWNERSHIP_WAIT_MS",
+    ["workflow-dispatcher"],
+    "Give up on the ownership lock after this long; unset waits indefinitely, 0 fails on the first miss.",
+    "unset",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_BOOT_RECOVERY_DEPLOYMENTS_PER_WAVE",
+    ["workflow-dispatcher"],
+    "Deployments whose recovered workflow runs boot recovery releases together, so a dispatcher restart does not cold-start every Deployment at once.",
+    "4",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_BOOT_RECOVERY_WAVE_INTERVAL_MS",
+    ["workflow-dispatcher"],
+    "Delay between those boot-recovery waves; 0 releases every recovered run at once.",
+    "30000",
+  ),
+  entry(
     "WORKFLOW_DISPATCHER_EXECUTOR_FAILURE_LIMIT",
     ["workflow-dispatcher"],
     "Consecutive executor 5xx responses on one workflow run before the dispatcher dead-letters it instead of retrying to exhaustion.",

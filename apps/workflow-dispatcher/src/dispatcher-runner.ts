@@ -40,6 +40,13 @@ export type DispatcherRunnerHandle = {
   /** One heartbeat: report the current state to the Control API. */
   heartbeat(): Promise<void>;
   stop(): Promise<void>;
+  /**
+   * Settles when the package reports `ownership_lost`: the session holding
+   * the World's ownership lock was ended under it, the service has stopped
+   * claiming, and nothing in this process can get the lock back. The launcher
+   * treats it as a crash and exits so the supervisor starts a fresh process.
+   */
+  ownershipLost: Promise<void>;
 };
 
 export async function startEvelandWorkflowDispatcher(
@@ -61,8 +68,16 @@ export async function startEvelandWorkflowDispatcher(
     readyAt: null as string | null,
   };
 
+  let resolveOwnershipLost: () => void = () => {};
+  const ownershipLost = new Promise<void>((resolve) => {
+    resolveOwnershipLost = resolve;
+  });
+
   const onPhase = (event: DispatcherLifecycleEvent) => {
     switch (event.phase) {
+      case "ownership_lost":
+        resolveOwnershipLost();
+        break;
       case "ownership_acquired":
         snapshot.ownershipAcquired = true;
         break;
@@ -242,6 +257,7 @@ export async function startEvelandWorkflowDispatcher(
   return {
     service,
     heartbeat,
+    ownershipLost,
     async stop() {
       await service.stop();
       snapshot.state = "stopped";

@@ -22,15 +22,16 @@ Eveland clearly separates **component availability (Health)**, **asynchronous jo
 
 When diagnosing anomalies, identify the appropriate diagnostic stream:
 
-| Symptom                                 | Primary Inspection Entrypoint       | Key Action                                                                            |
-| :-------------------------------------- | :---------------------------------- | :------------------------------------------------------------------------------------ |
-| **Import failure / Preflight error**    | Dashboard Import Job log            | Verify Git credentials, archive layout, and lockfiles.                                |
-| **Dependency install / Build error**    | Dashboard Build log                 | Check `pnpm/npm` lockfiles, Eve version compatibility, and env conflicts.             |
-| **Deployment startup / Health timeout** | Deployment diagnostic & systemd log | Check private port availability, env file permissions, and `/eve/v1/health` response. |
-| **Agent runtime error / Crash**         | Host systemd journal                | Inspect uncaught exceptions and cgroup resource limits.                               |
-| **Model failure / Missing tokens**      | Dashboard Sessions timeline         | Verify model provider keys, OTel Collector health, and network connectivity.          |
-| **Gateway 502 / Host resolution**       | Agent Gateway reverse proxy logs    | Verify wildcard DNS records, TLS certificates, and target deployment health.          |
-| **Workflow run never finishes**         | `eveland-ctl dead-letters`          | Fix the Deployment the letters name, then `--resolve` to replay the runs it holds.    |
+| Symptom                                        | Primary Inspection Entrypoint       | Key Action                                                                                                                         |
+| :--------------------------------------------- | :---------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| **Import failure / Preflight error**           | Dashboard Import Job log            | Verify Git credentials, archive layout, and lockfiles.                                                                             |
+| **Dependency install / Build error**           | Dashboard Build log                 | Check `pnpm/npm` lockfiles, Eve version compatibility, and env conflicts.                                                          |
+| **Deployment startup / Health timeout**        | Deployment diagnostic & systemd log | Check private port availability, env file permissions, and `/eve/v1/health` response.                                              |
+| **Agent runtime error / Crash**                | Host systemd journal                | Inspect uncaught exceptions and cgroup resource limits.                                                                            |
+| **Model failure / Missing tokens**             | Dashboard Sessions timeline         | Verify model provider keys, OTel Collector health, and network connectivity.                                                       |
+| **Gateway 502 / Host resolution**              | Agent Gateway reverse proxy logs    | Verify wildcard DNS records, TLS certificates, and target deployment health.                                                       |
+| **Workflow run never finishes**                | `eveland-ctl dead-letters`          | Fix the Deployment the letters name, then `--resolve` to replay the runs it holds.                                                 |
+| **Dispatcher not claiming after a host crash** | `eveland-ctl dispatcher-lock`       | A dead session may still hold the ownership lock; `--terminate` evicts it, then `systemctl reset-failed` and start the dispatcher. |
 
 ---
 

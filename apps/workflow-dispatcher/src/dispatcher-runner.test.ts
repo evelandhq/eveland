@@ -45,6 +45,50 @@ function runnerDeps(overrides: Record<string, unknown> = {}) {
 }
 
 describe("eveland workflow dispatcher runner", () => {
+  test("ownership loss settles the handle's promise and the next heartbeat reports stopped", async () => {
+    const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
+    let lifecycle: DispatcherServiceOptions["lifecycle"];
+    const startService = vi.fn(async (options: DispatcherServiceOptions) => {
+      lifecycle = options.lifecycle;
+      for (const phase of ["ownership_acquired", "migrations_applied"] as const) {
+        options.lifecycle?.onPhase?.({ phase, at: new Date() });
+      }
+      options.lifecycle?.onPhase?.({ phase: "boot_recovery_completed", at: new Date() });
+      options.lifecycle?.onPhase?.({ phase: "ready", at: new Date() });
+      return {
+        config: { worldUrl: "postgres://user:secret@db.internal:5432/eveland_workflow" },
+        get phase() {
+          return state.phase;
+        },
+        stop: vi.fn(async () => {
+          state.phase = "stopped";
+        }),
+      } as unknown as DispatcherService;
+    });
+    const fetchImplementation = vi.fn(async () => new Response("{}", { status: 200 }));
+    const handle = await startEvelandWorkflowDispatcher(
+      { WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://127.0.0.1:17301" },
+      telemetry,
+      { ...runnerDeps({ fetchImplementation }), startService },
+    );
+    let settled = false;
+    void handle.ownershipLost.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    // The package's sequence when its session is ended under it.
+    lifecycle?.onPhase?.({ phase: "ownership_lost", at: new Date() });
+    state.phase = "stopped";
+    lifecycle?.onPhase?.({ phase: "stopped", at: new Date() });
+    await handle.ownershipLost;
+
+    await handle.heartbeat();
+    const last = fetchImplementation.mock.calls.at(-1) as unknown as [string, { body: string }];
+    expect(JSON.parse(last[1].body)).toMatchObject({ state: "stopped" });
+  });
+
   test("exports per-tenant saturation with every heartbeat", async () => {
     const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
     const { startService: baseStartService } = fakeServiceFactory(state);

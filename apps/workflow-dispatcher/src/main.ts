@@ -12,6 +12,15 @@ const API_HEALTH_RETRY_MS = 250;
 const API_HEALTH_TIMEOUT_MS = 2_000;
 const SHUTDOWN_GRACE_MS = 30_000;
 const SHUTDOWN_TIMEOUT_EXIT_CODE = 75;
+/**
+ * The lock behind the dispatcher's singleton was taken away (its Postgres
+ * session was ended: `idle_session_timeout`, `pg_terminate_backend`, a server
+ * restart). The package stops claiming on its own, but a process that merely
+ * sits there is a dispatcher-shaped hole: nothing claims, the heartbeat keeps
+ * reporting `stopped`, and systemd sees a healthy service. Exit non-zero so
+ * `Restart=on-failure` starts a fresh process that acquires the lock anew.
+ */
+const OWNERSHIP_LOST_EXIT_CODE = 76;
 
 async function waitForControlApi(apiUrl: string): Promise<void> {
   const healthUrl = new URL("health", `${apiUrl.replace(/\/+$/u, "")}/`).toString();
@@ -99,3 +108,19 @@ const shutdown = (signal: string) => {
 
 process.once("SIGINT", () => shutdown("SIGINT"));
 process.once("SIGTERM", () => shutdown("SIGTERM"));
+
+void handle.ownershipLost.then(async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  telemetry.emit({
+    severity: "error",
+    eventName: "workflow_dispatcher.ownership_lost",
+    body: "lost the World ownership lock; exiting so the supervisor starts a fresh dispatcher",
+  });
+  clearInterval(heartbeatTimer);
+  // The package has already stopped claiming; this reports `stopped` once
+  // more and releases what the package left for the host to release.
+  await handle.stop().catch(() => {});
+  await telemetry.shutdown().catch(() => {});
+  process.exit(OWNERSHIP_LOST_EXIT_CODE);
+});

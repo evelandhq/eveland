@@ -7,6 +7,7 @@ const startup = vi.hoisted(() => ({
     return {
       service: { phase: "ready" },
       heartbeat: vi.fn(async () => {}),
+      ownershipLost: new Promise<void>(() => {}),
       stop: vi.fn(async () => {}),
     };
   }),
