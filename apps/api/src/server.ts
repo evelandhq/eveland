@@ -27,7 +27,11 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createBetterAuthRuntime } from "./auth.js";
 import { resolveAdminConfig, resolveBetterAuthConfig } from "./auth-config.js";
 import { collectSystemConfigurationDiagnostics } from "./config-diagnostics.js";
-import { createDockerBridgeIngress, resolveDockerBridgeBindHost } from "./docker-bridge-ingress.js";
+import {
+  createDockerBridgeIngress,
+  resolveDockerBridgeBindHost,
+  startDockerBridgeListener,
+} from "./docker-bridge-ingress.js";
 
 const port = Number(process.env.PORT ?? API_PORT);
 // Loopback by default: the front door is the only public listener. A
@@ -80,35 +84,39 @@ serve({
 
 if (dockerBridgeBindHost) {
   // The ctl re-detects this address on every start, but the unit that reads
-  // it starts again at every boot with no ctl in the loop. If Docker
-  // renumbered its bridge in between, the bind fails with EADDRNOTAVAIL —
-  // asynchronously, on this server's 'error' event, which unhandled would
-  // take the API's primary listener down with it. Losing Agent event
-  // delivery is bad; losing the whole API is worse.
-  const bridge = serve(
-    {
-      fetch: createDockerBridgeIngress((request) => app.fetch(request)),
-      port,
-      hostname: dockerBridgeBindHost,
+  // it starts again at every boot with no ctl in the loop. The bind fails
+  // asynchronously, on the server's 'error' event, which unhandled would take
+  // the API's primary listener down with it; and the usual cause is a boot
+  // where `docker0` does not exist yet, which clears seconds later. So the
+  // listener retries with a capped backoff instead of giving up — see
+  // startDockerBridgeListener.
+  const bridgeFetch = createDockerBridgeIngress((request) => app.fetch(request));
+  const address = `${dockerBridgeBindHost}:${port}`;
+  startDockerBridgeListener({
+    address,
+    serve: (onListening) =>
+      serve({ fetch: bridgeFetch, port, hostname: dockerBridgeBindHost }, onListening),
+    log: {
+      listening: () => console.log(`Docker bridge runtime ingress listening on http://${address}`),
+      bindFailed: ({ code, attempt, retryInMs }) => {
+        const detail =
+          `The Collector-facing listener on ${address} failed (${code}) on attempt ${String(attempt)}; ` +
+          `retrying in ${String(Math.round(retryInMs / 1000))}s. Agent events are not delivered until it binds. ` +
+          "If Docker's bridge was renumbered since this unit's environment was written, " +
+          "re-run `eveland-ctl start` to re-detect it.";
+        console.error(detail);
+        platformObservability.emitLog({
+          severity: "error",
+          eventName: "eveland.api.docker_bridge_unavailable",
+          body: detail,
+          attributes: {
+            "server.address": dockerBridgeBindHost,
+            "error.type": code,
+            "retry.attempt": attempt,
+          },
+        });
+      },
     },
-    () =>
-      console.log(
-        `Docker bridge runtime ingress listening on http://${dockerBridgeBindHost}:${port}`,
-      ),
-  );
-  bridge.on("error", (error: NodeJS.ErrnoException) => {
-    const detail =
-      `The Collector-facing listener on ${dockerBridgeBindHost}:${port} failed ` +
-      `(${error.code ?? error.message}), so Agent events will not be delivered. ` +
-      "Docker's bridge has most likely been renumbered since this unit's environment was " +
-      "written: re-run `eveland-ctl start` to re-detect it.";
-    console.error(detail);
-    platformObservability.emitLog({
-      severity: "error",
-      eventName: "eveland.api.docker_bridge_unavailable",
-      body: detail,
-      attributes: { "server.address": dockerBridgeBindHost, "error.type": error.code ?? "unknown" },
-    });
   });
 }
 

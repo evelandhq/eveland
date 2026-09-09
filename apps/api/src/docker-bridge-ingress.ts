@@ -54,6 +54,86 @@ export function resolveDockerBridgeBindHost(env: NodeJS.ProcessEnv): string | un
   return host;
 }
 
+export type DockerBridgeServer = {
+  on(event: "error", listener: (error: NodeJS.ErrnoException) => void): unknown;
+  close(callback?: () => void): unknown;
+};
+
+export type DockerBridgeListenerLog = {
+  listening(address: string): void;
+  bindFailed(input: { address: string; code: string; attempt: number; retryInMs: number }): void;
+};
+
+/** 1 s, 2 s, 4 s … capped at 30 s: a boot-order race clears in seconds, a renumbered bridge never does. */
+export function dockerBridgeRetryDelayMs(attempt: number): number {
+  return Math.min(30_000, 1_000 * 2 ** Math.max(0, attempt - 1));
+}
+
+/**
+ * Binds the bridge listener and keeps trying if the bind fails.
+ *
+ * The bind fails asynchronously, on the server's 'error' event, and the
+ * common cause is not a renumbered bridge but a boot-order race: this unit is
+ * ordered `After=docker.service`, yet on a host where docker is only
+ * socket-activated nothing pulls docker into the boot transaction, so the API
+ * starts before `docker0` exists and EADDRNOTAVAIL is the result. Giving up
+ * on the first failure then meant the Collector's exports were refused until
+ * someone restarted the API by hand, and the instance health page kept
+ * showing the last telemetry sample from before the boot — an operator
+ * reading "Worker unavailable" and "<5% memory" about a host that was fine.
+ *
+ * So the listener is retried with a capped backoff, indefinitely and unref'd:
+ * a bridge that appears seconds later is picked up, a bridge that never
+ * appears costs one log line every 30 s and nothing else. The primary
+ * loopback listener is never affected either way.
+ */
+export function startDockerBridgeListener(input: {
+  address: string;
+  serve: (onListening: () => void) => DockerBridgeServer;
+  log: DockerBridgeListenerLog;
+  delayMs?: (attempt: number) => number;
+  schedule?: (callback: () => void, ms: number) => { unref?: () => void };
+}): { stop(): void } {
+  const delayMs = input.delayMs ?? dockerBridgeRetryDelayMs;
+  const schedule = input.schedule ?? ((callback, ms) => setTimeout(callback, ms));
+  let stopped = false;
+  let pending: { unref?: () => void } | undefined;
+  let attempt = 0;
+
+  const bind = () => {
+    if (stopped) return;
+    attempt += 1;
+    let failed = false;
+    const server = input.serve(() => {
+      if (!failed) input.log.listening(input.address);
+    });
+    server.on("error", (error) => {
+      failed = true;
+      // The server is unusable after a failed listen; release it before the
+      // next attempt so a retry never stacks handles.
+      server.close();
+      if (stopped) return;
+      const retryInMs = delayMs(attempt);
+      input.log.bindFailed({
+        address: input.address,
+        code: error.code ?? error.message,
+        attempt,
+        retryInMs,
+      });
+      pending = schedule(bind, retryInMs);
+      pending.unref?.();
+    });
+  };
+
+  bind();
+  return {
+    stop() {
+      stopped = true;
+      pending = undefined;
+    },
+  };
+}
+
 export function createDockerBridgeIngress(apiFetch: ApiFetch): ApiFetch {
   return (request) => {
     const pathname = new URL(request.url).pathname;
