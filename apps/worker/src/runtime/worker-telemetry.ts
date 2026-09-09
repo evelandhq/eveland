@@ -16,6 +16,14 @@ export function createWorkerTelemetry(
     now?: () => Date;
     collect?: MetricCollector;
     onMetricError?: (error: unknown) => void;
+    /**
+     * Pushes buffered metrics to the Collector now. Called once, after the first
+     * tick: the health page marks the Worker stale after max(60s, 6 × poll
+     * interval), which is no wider than the 60s metric export interval, so a
+     * restarted Worker that waits for its periodic export reads as
+     * "unavailable" for one full cycle even though it is healthy.
+     */
+    flush?: () => Promise<void>;
   },
 ) {
   const startedAt = options.startedAt ?? new Date();
@@ -91,6 +99,7 @@ export function createWorkerTelemetry(
   });
   let previousCpuTimes: CpuTimes | null = null;
   let lastMetricAt = Number.NEGATIVE_INFINITY;
+  let firstHeartbeatFlushed = false;
 
   return {
     async publishTick(input: { durationMs: number; error: unknown | null }): Promise<void> {
@@ -109,18 +118,23 @@ export function createWorkerTelemetry(
       tickDuration.record(Math.max(0, input.durationMs), tickAttributes);
       if (input.error) tickFailures.add(1, commonAttributes);
 
-      if (observedAt.getTime() - lastMetricAt < options.metricIntervalMs) {
-        return;
+      if (observedAt.getTime() - lastMetricAt >= options.metricIntervalMs) {
+        lastMetricAt = observedAt.getTime();
+        try {
+          const result = await collect(options.workerId, options.dataDir, previousCpuTimes);
+          previousCpuTimes = result.cpuTimes;
+          recordCapacity(result.sample);
+        } catch (error) {
+          capacityFailures.add(1, commonAttributes);
+          options.onMetricError?.(error);
+        }
       }
-      lastMetricAt = observedAt.getTime();
 
-      try {
-        const result = await collect(options.workerId, options.dataDir, previousCpuTimes);
-        previousCpuTimes = result.cpuTimes;
-        recordCapacity(result.sample);
-      } catch (error) {
-        capacityFailures.add(1, commonAttributes);
-        options.onMetricError?.(error);
+      // Flush after the capacity sample so the first export also refreshes the
+      // host headroom the health page shows next to the heartbeat.
+      if (!firstHeartbeatFlushed && options.flush) {
+        firstHeartbeatFlushed = true;
+        await options.flush();
       }
     },
   };
