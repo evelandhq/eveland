@@ -210,9 +210,11 @@ describe("workflow_step activation gating", () => {
     });
 
     // Exact activation is bound to the validated registration: a stale
-    // process sharing the service token cannot activate under it.
+    // process sharing the service token cannot activate under it. The refusal
+    // is a readiness failure (503), so the dispatcher retries; a 409 would
+    // dead-letter and quarantine a run over the dispatcher's own identity.
     const staleInstance = await activate(app, deployment.id, "wfd_stale_generation");
-    expect(staleInstance.status).toBe(409);
+    expect(staleInstance.status).toBe(503);
     expect(((await staleInstance.json()) as { error: string }).error).toContain(
       "does not match the validated dispatcher registration",
     );

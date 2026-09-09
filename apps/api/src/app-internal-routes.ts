@@ -149,13 +149,21 @@ export function registerInternalRoutes(input: {
       // Exact activation is bound to the registration this API validated: the
       // dispatcher sends its instance id, and a stale process sharing the
       // service token must not activate under another instance's registration.
+      //
+      // 503, not 409. A mismatch says something about the dispatcher's
+      // identity right now — a freshly restarted process claiming before its
+      // first heartbeat lands, or a predecessor that died without reporting
+      // itself stopped — never about the Deployment or the run. The dispatcher
+      // treats 409 as "this Deployment can never activate" and dead-letters the
+      // run, which quarantines it until an operator resolves the letter; a
+      // readiness failure retries, and the next heartbeat settles it.
       const callerInstance = c.req.header("x-eveland-dispatcher-instance");
       if (!callerInstance || callerInstance !== registration!.instanceId) {
         return c.json(
           {
             error: `workflow_unavailable: activation caller instance ${String(callerInstance)} does not match the validated dispatcher registration ${registration!.instanceId}`,
           },
-          409,
+          503,
         );
       }
       if (!release) return c.json({ error: "Deployment activation Release is missing" }, 409);
