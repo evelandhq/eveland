@@ -633,6 +633,18 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "300000",
   ),
   entry(
+    "WORKFLOW_DISPATCHER_EXECUTOR_FAILURE_LIMIT",
+    ["workflow-dispatcher"],
+    "Consecutive executor 5xx responses on one workflow run before the dispatcher dead-letters it instead of retrying to exhaustion.",
+    "5",
+  ),
+  entry(
+    "WORKFLOW_DISPATCHER_EXECUTOR_FAILURE_MIN_SPAN_MS",
+    ["workflow-dispatcher"],
+    "Minimum duration of a run's executor-failure streak before it is dead-lettered, so a short database outage does not quarantine healthy runs.",
+    "60000",
+  ),
+  entry(
     "WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS",
     ["workflow-dispatcher"],
     "Cadence for bounded shared-world block packing and deadline-driven stream/run cleanup; 0 disables the loop.",
