@@ -23,7 +23,7 @@
     "@evelandhq/session-collector": "workspace:*",
     "@hono/node-server": "^2.1.1",
     "better-auth": "^1.7.2",
-    "hono": "^4.13.3",
+    "hono": "^4.13.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
