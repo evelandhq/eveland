@@ -47,6 +47,7 @@ The `EVELAND_HOME` environment variable specifies the appliance root directory (
 | `eveland-ctl update`            | Creates database backups, fetches the latest stable release, executes migrations, and performs rolling restarts. Supports `--version vX.Y.Z`.                                                                  |
 | `eveland-ctl install --systemd` | Renders and registers systemd unit files for all core platform services.                                                                                                                                       |
 | `eveland-ctl dead-letters`      | Lists the workflow dispatches this installation dropped, grouped by Deployment, and resolves them with `--resolve`. Exits 1 while any are unresolved.                                                          |
+| `eveland-ctl dispatcher-lock`   | Shows which Postgres session holds the workflow dispatcher's ownership lock, and `--terminate` evicts a holder that died without releasing it.                                                                 |
 
 ### Dispatch dead letters
 
@@ -57,6 +58,8 @@ eveland-ctl dead-letters                                  # what is outstanding,
 eveland-ctl dead-letters --resolve --deployment dep_abc   # after fixing that Deployment
 eveland-ctl dead-letters --resolve --run wrun_abc
 eveland-ctl dead-letters --resolve --all --yes            # everything, scripted
+eveland-ctl dispatcher-lock                               # who holds the dispatcher's singleton lock
+eveland-ctl dispatcher-lock --terminate --yes             # evict a dead holder after a host crash
 ```
 
 Read the report's second line first. `N runs still quarantined` is work that is genuinely stuck: those runs are `pending` or `running` and no dispatcher will touch them until you decide. `no run is still quarantined` means the letters are a record of failures whose runs have since settled, which is not an incident.

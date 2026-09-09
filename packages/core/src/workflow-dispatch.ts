@@ -10,6 +10,15 @@ export const WORKFLOW_MIGRATION_REQUIRED = "workflow_migration_required";
 
 export const WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS = 60_000;
 
+/**
+ * The advisory-lock key the workflow dispatcher takes on the World database
+ * (`@evelandhq/workflow-world`'s `DISPATCHER_OWNERSHIP_LOCK_KEY`, "evdp").
+ * Mirrored here because the ctl may depend on nothing but core, and its
+ * `dispatcher-lock` command has to name the same lock; the dispatcher app
+ * asserts the two agree.
+ */
+export const WORKFLOW_DISPATCHER_OWNERSHIP_LOCK_KEY = 0x65_76_64_70;
+
 /** One id from Web through API, Gateway, activation and dispatcher logs. */
 export const CANONICAL_REQUEST_ID_HEADER = "x-eveland-request-id";
 

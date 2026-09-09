@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { runDeadLetters } from "./dead-letters.ts";
+import { runDispatcherLock } from "./dispatcher-lock.ts";
 import { runDoctor } from "./doctor.ts";
 import {
   runCheckUpdate,
@@ -68,6 +69,11 @@ const commands: Record<string, Command> = {
   "dead-letters": {
     description: "Workflow dispatches this installation dropped, and --resolve to replay them",
     run: runDeadLetters,
+  },
+  "dispatcher-lock": {
+    description:
+      "Who holds the workflow dispatcher's ownership lock, and --terminate to evict a dead holder",
+    run: runDispatcherLock,
   },
   install: {
     description: "install --systemd: promote a Linux install to systemd services",
