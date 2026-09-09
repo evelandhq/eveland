@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.55.1](https://github.com/evelandhq/eveland/compare/v0.55.0...v0.55.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** refuse a dispatcher-instance mismatch with 503 so the run retries instead of being dead-lettered ([#526](https://github.com/evelandhq/eveland/issues/526)) ([d0f8054](https://github.com/evelandhq/eveland/commit/d0f80546824f429bfce19029e157d2dab436548b))
+* **workflow:** consume @evelandhq/workflow-world 0.15.1 so long hook tokens register and doomed runs are dead-lettered ([#522](https://github.com/evelandhq/eveland/issues/522)) ([e72222c](https://github.com/evelandhq/eveland/commit/e72222c2170983ce0d2926c7d6c89e3d2ac77ff6))
+
 ## [0.55.0](https://github.com/evelandhq/eveland/compare/v0.54.0...v0.55.0) (2026-09-07)
 
 
