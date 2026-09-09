@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.55.2](https://github.com/evelandhq/eveland/compare/v0.55.1...v0.55.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** keep binding the Docker-bridge listener until docker0 exists, and want docker.service at boot ([#527](https://github.com/evelandhq/eveland/issues/527)) ([e0d89f4](https://github.com/evelandhq/eveland/commit/e0d89f47ffbb521aaed325d465d0ae349d1af0d5))
+* **workflow:** consume @evelandhq/workflow-world 0.15.2, exit on ownership loss, and add eveland-ctl dispatcher-lock ([#529](https://github.com/evelandhq/eveland/issues/529)) ([2dec15b](https://github.com/evelandhq/eveland/commit/2dec15b8292ff70c2f837706be194c149ac03b05))
+
 ## [0.55.1](https://github.com/evelandhq/eveland/compare/v0.55.0...v0.55.1) (2026-09-09)
 
 
