@@ -96,7 +96,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.52.2");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.52.5");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -134,6 +134,7 @@ describe("Eve compatibility repository contract", () => {
       // constants stay covered until 0.50.x leaves the window. 0.52.2
       // re-checked 2026-09-07: the exported set and the bundler default are
       // byte-identical to 0.51.1.
+      // 0.52.5 re-checked 2026-09-10: still byte-identical.
       "WORKFLOW_TOOL_RUN_WORKFLOW_NAME",
       // 0.51.0: the shared execute body behind every subagent tool (local,
       // remote, dynamic, and self-agent). Audited 2026-09-04: it opens NO run

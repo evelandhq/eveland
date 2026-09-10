@@ -4,7 +4,7 @@
  *
  * Four layers sit between `systemctl stop` and the agent's request handler, and
  * the innermost one wins. Verified against the pinned tree (eve 0.50.0 ->
- * nitro@3.0.260610-beta -> srvx@0.11.21), and re-verified for eve 0.52.2
+ * nitro@3.0.260610-beta -> srvx@0.11.21), and re-verified for eve 0.52.5
  * (nitro@3.0.260903-beta -> srvx@1.0.3: the graceful-shutdown plugin body is
  * byte-identical, so every number below still holds):
  *
