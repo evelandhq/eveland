@@ -3,7 +3,7 @@ title: Eve 兼容性
 description: 理解 Eveland 已验证的 Eve 版本窗口与 Fail-closed Policy。
 ---
 
-在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.50.x`、`0.51.x` 与 `0.52.x`，验证版本为 `0.50.0`、`0.51.1` 与 `0.52.2`。Eve 0.49（2026-09-07 随 0.52 进入窗口而退出）、Eve 0.48（2026-09-02 窗口滑到它之后即被 0.49.0 取代、被跳过，没有任何 Deployment 在其上运行过）以及 Eve 0.47 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
+在 Eve 发布稳定 Compatibility Contract 之前，Eveland 只支持通过完整兼容矩阵的 Minor Line，并显式变更该窗口。代码中的产品契约支持 `0.50.x`、`0.51.x` 与 `0.52.x`，验证版本为 `0.50.0`、`0.51.1` 与 `0.52.5`。Eve 0.49（2026-09-07 随 0.52 进入窗口而退出）、Eve 0.48（2026-09-02 窗口滑到它之后即被 0.49.0 取代、被跳过，没有任何 Deployment 在其上运行过）以及 Eve 0.47 及更早版本不再允许 Import、Build、Restart、Activation、Playground、Agent Gateway 或 Schedule Execution。
 
 项目 `package.json` 中允许的 Eve 依赖声明形式为：受支持线内的精确 Patch、锚定在受支持 Minor Patch 上的 `~`/`^` Range，以及 `0.50` / `0.50.x` / `0.50.*`、`0.51` / `0.51.x` / `0.51.*`、`0.52` / `0.52.x` / `0.52.*`。缺少 Eve 依赖、跨 Minor 的宽泛 Range 或任何可能解析到窗口之外的声明都会 Fail Closed。项目 Overview、Source 与 Playground 会显示当前 Deployment 对应 Source Revision 的 Eve 依赖版本与平台要求。
 
@@ -35,7 +35,7 @@ UI 仅将最新支持线 `0.52.x` 标为绿色。Eve 0.50.x 与 0.51.x 保持可
 
 - **Eve 0.50.x（验证版本 `0.50.0`）**：Message Stream **v25**（纯 Delta 增量流传输，移除累积快照）、Discovery Manifest v15 与 Sealed Log 存储模型（Spec 7）。
 - **Eve 0.51.x（验证版本 `0.51.1`）**：引入 Workflow Tool 与 Subagent 深度集成：每次 Subagent 调用都作为 Durable Tool Run 与跨越父 Turn 边界的后台任务运行。自定义 NDJSON 消费者必须忽略空行与未知事件类型，且不得把后台任务回执当作终态。只有在两端 Deployment 都已升级、接收方能点名信任的 Forwarder 时，才开启 Remote Principal Forwarding。
-- **Eve 0.52.x（推荐，验证版本 `0.52.2`）**：Durable Tool 改用 `eve/tools` 的 `defineWorkflowTool` 声明（`eve/workflow` 入口与 `task.delegated()` 已移除），父 Turn 上的 Workflow Tool 经由一个有序 Inbox 处理、重试的 Dispatch 可能再开一个 Run，`defaultTools: false` 可让 Agent 跳过 Eve 的可选默认工具。`tool` 与 `dynamicTool` 两个 Extension 契约丢弃了 0.52 之前的全部版本：针对 0.51 或更早预编译的 Extension 包会在 Build 时被拒绝、必须重建；Eveland 自行注入的 Extension 从源码编译，不受影响。Eve CLI 现在默认向 Vercel 上报使用情况，除非设置 `EVE_TELEMETRY_DISABLED`；Eveland 为其运行的每次 Build 与每个 Deployment 都设置了它。对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.52.2`，即便 `^0.52.0` 这样的 Range 已经允许它。
+- **Eve 0.52.x（推荐，验证版本 `0.52.5`）**：Durable Tool 改用 `eve/tools` 的 `defineWorkflowTool` 声明（`eve/workflow` 入口与 `task.delegated()` 已移除），父 Turn 上的 Workflow Tool 经由一个有序 Inbox 处理、重试的 Dispatch 可能再开一个 Run，`defaultTools: false` 可让 Agent 跳过 Eve 的可选默认工具。`tool` 与 `dynamicTool` 两个 Extension 契约丢弃了 0.52 之前的全部版本：针对 0.51 或更早预编译的 Extension 包会在 Build 时被拒绝、必须重建；Eveland 自行注入的 Extension 从源码编译，不受影响。Eve CLI 现在默认向 Vercel 上报使用情况，除非设置 `EVE_TELEMETRY_DISABLED`；Eveland 为其运行的每次 Build 与每个 Deployment 都设置了它。对当前最新线，Agent 项目应刷新 Lockfile 并重新部署，才能实际获得 `0.52.5`，即便 `^0.52.0` 这样的 Range 已经允许它。自 0.52.3 起，Eve 的 Client 库要求 Deployment 对每条消息返回 Delivery Id，而 Eveland 的 Playground 正是基于该 Client 构建：它只能与运行 Eve 0.52.3 或更新版本的 Deployment 对话。运行 0.50.x、0.51.x 或 0.52.0–0.52.2 的 Deployment 仍可通过 Agent Gateway、Schedule 与 Hook 使用，但必须重新 Build 之后 Playground 才能连上。
 
 npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelog 与源码审阅加上完整兼容矩阵之后才会进入；移除旧 Minor 同样是显式的产品变更。
 
