@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.55.3](https://github.com/evelandhq/eveland/compare/v0.55.2...v0.55.3) (2026-09-10)
+
+
+### Bug Fixes
+
+* **worker:** flush the first heartbeat at start so a restart does not read as unavailable ([#530](https://github.com/evelandhq/eveland/issues/530)) ([6fc67ea](https://github.com/evelandhq/eveland/commit/6fc67ea844707c824ebaf5c0c47e8747dde57522))
+
 ## [0.55.2](https://github.com/evelandhq/eveland/compare/v0.55.1...v0.55.2) (2026-09-09)
 
 
