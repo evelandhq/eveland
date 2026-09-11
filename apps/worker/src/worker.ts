@@ -29,12 +29,6 @@ import { reapIdleDeployments } from "./runtime/idle-reaper.js";
 import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
 import { sweepReleaseRetention } from "./runtime/release-reaper.js";
 import { reconcileAbandonedWorkflowRuns } from "./runtime/workflow-run-reconciler.js";
-import { sweepWorkflowStreamRetention } from "./runtime/workflow-world-reaper.js";
-import {
-  formatWorkflowStreamRetentionSummary,
-  runWorkflowStreamRetentionSweep,
-  startWorkflowStreamRetentionScheduler,
-} from "./runtime/workflow-stream-retention.js";
 import {
   reconcileRuntimeInstances,
   recoverStartingRuntimeInstances,
@@ -55,7 +49,6 @@ const intervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const schedulerPrewarmMs = Number(process.env.EVELAND_SCHEDULER_PREWARM_MS ?? 60_000);
 const orphanSweepIntervalMs = Number(process.env.EVELAND_ORPHAN_SWEEP_INTERVAL_MS ?? 3_600_000);
 const releaseSweepIntervalMs = Number(process.env.EVELAND_RELEASE_SWEEP_INTERVAL_MS ?? 3_600_000);
-const workflowSweepIntervalMs = Number(process.env.EVELAND_WORKFLOW_SWEEP_INTERVAL_MS ?? 3_600_000);
 const workflowRunReconcileIntervalMs = Number(
   process.env.EVELAND_WORKFLOW_RUN_RECONCILE_INTERVAL_MS ?? 60_000,
 );
@@ -401,34 +394,6 @@ if (workflowRunReconcileIntervalMs > 0) {
   );
 }
 
-const workflowRetentionScheduler = startWorkflowStreamRetentionScheduler({
-  intervalMs: workflowSweepIntervalMs,
-  run: async () => {
-    await runWorkflowStreamRetentionSweep({
-      sweepLegacy: () =>
-        sweepWorkflowStreamRetention(process.env, {
-          retentionMs: Number(process.env.EVELAND_WORKFLOW_STREAM_RETENTION_MS ?? 86_400_000),
-          batchSize: Number(process.env.EVELAND_WORKFLOW_SWEEP_BATCH_SIZE ?? 50_000),
-        }),
-      onSummary(summary) {
-        const formatted = formatWorkflowStreamRetentionSummary(summary);
-        console[formatted.level](formatted.message);
-        platformObservability.emitLog({
-          severity: formatted.level,
-          eventName: "eveland.worker.workflow_stream_retention.sweep",
-          body: formatted.message,
-          attributes: formatted.attributes,
-        });
-      },
-    });
-  },
-  onError: (error) =>
-    console.error(
-      "Workflow stream retention scheduler failed:",
-      error instanceof Error ? error.name : "UnknownError",
-    ),
-});
-
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     clearInterval(timer);
@@ -444,7 +409,6 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     void Promise.all([
       jobQueueListener?.close() ?? Promise.resolve(),
       storeFactory.close(),
-      workflowRetentionScheduler.close(),
       capacityObservability.shutdown(),
       platformObservability.shutdown(),
       runtimeObservability.shutdown(),

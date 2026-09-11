@@ -351,28 +351,10 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "25",
   ),
   entry(
-    "EVELAND_WORKFLOW_SWEEP_INTERVAL_MS",
-    ["worker"],
-    "Interval between stream-chunk retention sweeps across legacy per-project workflow databases. 0 disables the legacy sweep.",
-    "3600000",
-  ),
-  entry(
     "EVELAND_WORKFLOW_RUN_RECONCILE_INTERVAL_MS",
     ["worker"],
     "Interval between sweeps settling workflow runs bound to Deployments that can never activate again. 0 disables the sweep.",
     "60000",
-  ),
-  entry(
-    "EVELAND_WORKFLOW_STREAM_RETENTION_MS",
-    ["worker"],
-    "Resume window after a run turns terminal before its stream chunks become deletable in legacy per-project workflow databases.",
-    "86400000",
-  ),
-  entry(
-    "EVELAND_WORKFLOW_SWEEP_BATCH_SIZE",
-    ["worker"],
-    "Maximum stream-chunk rows deleted per DELETE batch in legacy per-project workflow databases.",
-    "50000",
   ),
   {
     ...entry(
