@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/evelandhq/eveland/compare/eveland-v0.10.0...eveland-v0.11.0) (2026-09-12)
+
+
+### Features
+
+* slide the Eve compatibility window to 0.52.x, 0.53.x, and 0.54.x ([#536](https://github.com/evelandhq/eveland/issues/536)) ([e494429](https://github.com/evelandhq/eveland/commit/e494429eda894825dfe619b00eddca62912dff25))
+
 ## [0.10.0](https://github.com/evelandhq/eveland/compare/eveland-v0.9.0...eveland-v0.10.0) (2026-09-07)
 
 
