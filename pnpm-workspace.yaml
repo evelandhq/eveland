@@ -56,12 +56,11 @@ overrides:
 # The @workflow/* entries are TWO reviewed graphs that coexist on purpose.
 # `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
-# before the shared World and never selected for a new build. The beta.20/10/
-# 42/33 line is what `@evelandhq/workflow-world` 0.16.0 bundles -- the set eve
-# 0.51 through 0.52 carry (0.53.0 moved eve's own bundle to beta.21/10/43/34;
-# eve compares only the major and prerelease tag of the World's declaration,
-# so the World keeps working across the window until it follows on its own
-# release). That line's `@workflow/world` reports SPEC_VERSION_CURRENT 7,
+# before the shared World and never selected for a new build. The beta.21/10/
+# 43/34 line is what `@evelandhq/workflow-world` 0.17.0 bundles -- the set eve
+# 0.53 and 0.54 carry (eve compares only the major and prerelease tag of the
+# World's declaration, so the same World also serves 0.52.x, which bundles
+# beta.20/10/42/33). That line's `@workflow/world` reports SPEC_VERSION_CURRENT 7,
 # and the shared World still DECLARES 6 (`SPEC_VERSION_SUPPORTS_SLOT_IDENTITY`)
 # because v7's sealed log has not been reviewed against every supported eve
 # line. eve gates on the declared number, which the contract ratchet asserts
@@ -74,11 +73,11 @@ minimumReleaseAgeExclude:
   - "@ai-sdk/provider-utils@5.0.16"
   - ai@7.0.97
   - "@workflow/errors@5.0.0-beta.17"
-  - "@workflow/errors@5.0.0-beta.20"
+  - "@workflow/errors@5.0.0-beta.21"
   - "@workflow/utils@5.0.0-beta.8"
   - "@workflow/utils@5.0.0-beta.10"
   - "@workflow/world-local@5.0.0-beta.36"
-  - "@workflow/world-local@5.0.0-beta.42"
+  - "@workflow/world-local@5.0.0-beta.43"
   - "@workflow/world-postgres@5.0.0-beta.34"
   - "@workflow/world@5.0.0-beta.27"
-  - "@workflow/world@5.0.0-beta.33"
+  - "@workflow/world@5.0.0-beta.34"
