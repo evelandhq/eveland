@@ -1,28 +1,31 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.50.x",
-      verifiedVersion: "0.50.0",
+      range: "0.52.x",
+      verifiedVersion: "0.52.5",
       dependencyName: "eve-oldest",
     },
     {
-      range: "0.51.x",
-      verifiedVersion: "0.51.1",
+      range: "0.53.x",
+      verifiedVersion: "0.53.1",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.52.x",
-      verifiedVersion: "0.52.5",
+      range: "0.54.x",
+      verifiedVersion: "0.54.3",
       dependencyName: "eve",
     },
   ],
-  // A sliding three-line window: 0.52 entered on 2026-09-07 and 0.49 retired
-  // with it, so the floor moved for the first time since 0.50 and the
-  // published SDK's peer range moved with it. All three minors are consecutive,
-  // so the range is a single contiguous interval rather than the union of runs
-  // a gapped window needs. With 0.49 gone the message stream is uniform (v25)
-  // across the window for the first time since the split-wire window of 0.50.
-  peerDependencyRange: ">=0.50.0 <0.53.0",
+  // A sliding three-line window: 0.53 and 0.54 entered together on 2026-09-12
+  // (0.53 was superseded by 0.54.0 within a day, and both were verified in the
+  // same pass), so 0.50 and 0.51 retired at once -- the first double
+  // retirement -- and the published SDK's peer floor moved with them. The floor
+  // is now the first line whose Deployments Eve's own client can reach (0.52.3
+  // introduced the delivery-id acknowledgement the Playground depends on), so
+  // only 0.52.0-0.52.2 remain accepted-but-unreachable from the Playground.
+  // All three minors are consecutive, so the range is a single contiguous
+  // interval rather than the union of runs a gapped window needs.
+  peerDependencyRange: ">=0.52.0 <0.55.0",
 } as const;
 
 export type SupportedEveVersionRange =

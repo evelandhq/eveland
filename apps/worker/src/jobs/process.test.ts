@@ -450,7 +450,7 @@ describe("processNextJob", () => {
         {
           path: "package.json",
           content: JSON.stringify({
-            dependencies: { eve: "^0.50.0" },
+            dependencies: { eve: "^0.52.5" },
             scripts: { start: "eve start" },
           }),
         },
@@ -527,7 +527,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: missingSourcePath,
-      summary: { eveVersion: "^0.50.0" },
+      summary: { eveVersion: "^0.52.5" },
       envVars: [],
       files: [],
       schedules: [],
@@ -577,7 +577,7 @@ describe("processNextJob", () => {
 
   test("fails a cold activation closed when the workflow topology is unclassified", async () => {
     const store = createTestStore();
-    const sourcePath = await createFixtureEveProject("0.50.0");
+    const sourcePath = await createFixtureEveProject("0.52.5");
     const project = await store.createProject({ name: "Unclassified Wake", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -585,7 +585,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath,
-      summary: { eveVersion: "^0.50.0" },
+      summary: { eveVersion: "^0.52.5" },
       envVars: [],
       files: [],
       schedules: [],
@@ -639,7 +639,7 @@ describe("processNextJob", () => {
     const store = createTestStore();
     const missingSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-missing-old-source-"));
     await rm(missingSourcePath, { recursive: true, force: true });
-    const currentSourcePath = await createFixtureEveProject("0.50.0");
+    const currentSourcePath = await createFixtureEveProject("0.52.5");
     const project = await store.createProject({ name: "Old Wake", importKind: "zip" });
     const importJob = await store.claimNextJob("fixture-import");
     await store.completeJob(importJob!.id);
@@ -647,7 +647,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: missingSourcePath,
-      summary: { eveVersion: "^0.50.0" },
+      summary: { eveVersion: "^0.52.5" },
       envVars: [],
       files: [],
       schedules: [],
@@ -668,7 +668,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: currentSourcePath,
-      summary: { eveVersion: "0.50.0" },
+      summary: { eveVersion: "0.52.5" },
       envVars: [],
       files: [],
       schedules: [],
@@ -735,7 +735,7 @@ describe("processNextJob", () => {
         {
           path: "package.json",
           content: JSON.stringify({
-            dependencies: { eve: "^0.50.0" },
+            dependencies: { eve: "^0.52.5" },
             scripts: { start: "eve start" },
           }),
         },

@@ -12,7 +12,7 @@ import {
 import { createZipArchive } from "./zip.ts";
 
 const execFileAsync = promisify(execFile);
-const WINDOW = ["0.50.x", "0.51.x", "0.52.x"];
+const WINDOW = ["0.52.x", "0.53.x", "0.54.x"];
 
 async function makeProject(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-"));
@@ -20,7 +20,7 @@ async function makeProject(): Promise<string> {
   await mkdir(path.join(root, "node_modules", "junk"), { recursive: true });
   await writeFile(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "probe", dependencies: { eve: "0.50.0" } }),
+    JSON.stringify({ name: "probe", dependencies: { eve: "0.52.5" } }),
   );
   await writeFile(path.join(root, "agent", "instructions.md"), "Be helpful.");
   await writeFile(path.join(root, "node_modules", "junk", "big.js"), "excluded");
@@ -52,7 +52,7 @@ describe("deploy preflight", () => {
     expect(result.problems).toEqual([]);
     // Projection-only effects warn instead of refusing.
     expect(result.warnings.join("\n")).toContain("logo.png is binary");
-    expect(result.eveSpecifier).toBe("0.50.0");
+    expect(result.eveSpecifier).toBe("0.52.5");
     expect(result.projectName).toBe("probe");
   });
 
@@ -101,11 +101,11 @@ describe("deploy preflight", () => {
     await mkdir(path.join(root, "agent"), { recursive: true });
     await writeFile(
       path.join(root, "package.json"),
-      JSON.stringify({ name: "dev-probe", devDependencies: { eve: "0.50.0" } }),
+      JSON.stringify({ name: "dev-probe", devDependencies: { eve: "0.52.5" } }),
     );
     await writeFile(path.join(root, "agent", "instructions.md"), "Hi.");
     const result = await collectProjectFiles(root);
-    expect(result.eveSpecifier).toBe("0.50.0");
+    expect(result.eveSpecifier).toBe("0.52.5");
     expect(result.problems).toEqual([]);
   });
 
@@ -125,14 +125,15 @@ describe("deploy preflight", () => {
   });
 
   test("judges eve specifiers against the instance window", () => {
-    expect(eveSpecifierProblem("0.50.0", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("^0.50.0", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("0.52.5", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("^0.52.5", WINDOW)).toBeNull();
     expect(eveSpecifierProblem("0.52.x", WINDOW)).toBeNull();
     expect(eveSpecifierProblem("0.46.0", WINDOW)).toContain("outside this instance's supported");
-    // Retired on 2026-09-07: a formerly supported line reads exactly like any other outsider.
+    // Retired on 2026-09-07 (0.49) and 2026-09-12 (0.50, 0.51): a formerly supported line reads exactly like any other outsider.
     expect(eveSpecifierProblem("0.49.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("^0.50", WINDOW)).toContain("Unsupported");
-    expect(eveSpecifierProblem(">=0.50.0 <0.52.0", WINDOW)).toContain("Unsupported");
+    expect(eveSpecifierProblem("0.51.1", WINDOW)).toContain("outside this instance's supported");
+    expect(eveSpecifierProblem("^0.52", WINDOW)).toContain("Unsupported");
+    expect(eveSpecifierProblem(">=0.52.0 <0.54.0", WINDOW)).toContain("Unsupported");
     expect(eveSpecifierProblem("catalog:", WINDOW)).toContain("Unsupported");
     expect(eveSpecifierProblem(null, WINDOW)).toContain("Missing");
   });

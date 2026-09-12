@@ -96,7 +96,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.52.5");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.54.3");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -113,28 +113,24 @@ describe("Eve compatibility repository contract", () => {
       // the session-timeout run; a batch arriving after cleanup gets the
       // route's own 404, not a retention error.
       "ACTIVITY_COLLECTOR_WORKFLOW_NAME",
-      // 0.48.0: the durable run behind a tool whose `execute` is a Workflow
-      // body ("use workflow"). Audited 2026-09-02: started by
-      // `execution/tool-run/start.js` from inside the turn step, so the
+      // 0.48.0 introduced this run (as TOOL_RUN_WORKFLOW_NAME; 0.51.0 renamed
+      // it, and the old constant left the audit with 0.50.x on 2026-09-12):
+      // the durable run behind a tool whose `execute` is a Workflow body.
+      // Audited 2026-09-02, re-audited 2026-09-04: started by
+      // `execution/tools/workflow/start.js` with
+      // `startWorkflowOnCurrentDeployment` from inside the turn step, so the
       // Workflow SDK stamps `$parentRunId` lineage and the run inherits its
-      // ancestor's stored class; it owns the `eve:tool-run:<operationId>` hook
-      // and settles by resuming the owner turn's outcome hook; cancellation
-      // rides `ctx.abortSignal` with a 30s grace period. An `ask()` hook stays
-      // answerable after the parent turn ends, so the run may outlive its turn
-      // until the interactive-class deadline reaps it like the session-timeout
-      // run; a late answer then gets the hook route's own 404.
-      "TOOL_RUN_WORKFLOW_NAME",
-      // 0.51.0 renamed TOOL_RUN_WORKFLOW_NAME to this. Re-audited 2026-09-04:
-      // same run, same lineage -- `execution/tools/workflow/start.js` still
-      // starts it with `startWorkflowOnCurrentDeployment` from inside the turn
-      // step, so the Workflow SDK stamps `$parentRunId` and it inherits its
-      // ancestor's stored class, and it still settles by resuming the owner
-      // turn's outcome hook with the same 30s abort grace. Only the hook token
-      // moved, `eve:tool-run:` -> `eve:workflow-tool-run:<operationId>`. Both
-      // constants stay covered until 0.50.x leaves the window. 0.52.2
-      // re-checked 2026-09-07: the exported set and the bundler default are
-      // byte-identical to 0.51.1.
-      // 0.52.5 re-checked 2026-09-10: still byte-identical.
+      // ancestor's stored class; it owns the
+      // `eve:workflow-tool-run:<operationId>` hook and settles by resuming the
+      // owner turn's outcome hook; cancellation rides `ctx.abortSignal` with a
+      // 30s grace period. An `ask()` hook stays answerable after the parent
+      // turn ends, so the run may outlive its turn until the interactive-class
+      // deadline reaps it like the session-timeout run; a late answer then
+      // gets the hook route's own 404. 0.52.2 re-checked 2026-09-07 and 0.52.5
+      // on 2026-09-10: the exported set and the bundler default are
+      // byte-identical to 0.51.1. 0.53.1 and 0.54.3 re-checked 2026-09-12:
+      // still byte-identical (0.53.1 "experimental.workflow.retention" only
+      // adds an `experimental_retention` start option, no new run).
       "WORKFLOW_TOOL_RUN_WORKFLOW_NAME",
       // 0.51.0: the shared execute body behind every subagent tool (local,
       // remote, dynamic, and self-agent). Audited 2026-09-04: it opens NO run
@@ -154,8 +150,8 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.50.x runs six; 0.51.x and 0.52.x run six plus the subagent body, with
-    // the tool run under its new name.
+    // Every line in the window (0.52.x, 0.53.x, 0.54.x) runs the same six plus
+    // the subagent body.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
       for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
@@ -193,7 +189,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.50/0.51/0.52 compatibility window", () => {
+  test("describes the supported 0.52/0.53/0.54 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-oldest", "eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
