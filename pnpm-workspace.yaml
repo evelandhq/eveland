@@ -2,11 +2,11 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.52.5
+  eve: 0.54.3
 catalogs:
   eve-matrix:
-    eve-oldest: npm:eve@0.50.0
-    eve-previous: npm:eve@0.51.1
+    eve-oldest: npm:eve@0.52.5
+    eve-previous: npm:eve@0.53.1
   # The published SDK's contract is narrower than the platform's. It imports
   # four primitives from eve/channels/auth, stable across 0.27-0.40, while the
   # policy's peerDependencyRange tracks what Eveland can actually host and
@@ -19,7 +19,7 @@ catalogs:
   # deliberately wider peer range. The platform's hosting window survives as
   # EVE_COMPATIBILITY_POLICY.peerDependencyRange, which still pins this floor.
   eve-sdk-peer:
-    eve: ">=0.50.0 <1.0.0"
+    eve: ">=0.52.0 <1.0.0"
 allowBuilds:
   cbor-extract: true
   esbuild: true
@@ -41,11 +41,11 @@ overrides:
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.50.x, 0.51.x, and 0.52.x -- three
-# consecutive lines, so the hull and the union of runs coincide; 0.49 retired
-# on 2026-09-07 when 0.52 entered, and 0.48, skipped on 2026-09-02 when 0.49
-# superseded it, is below the floor as well). eve-matrix names every line but
-# the newest, which is the plain `eve` catalog entry.
+# verified minor in the current window (0.52.x, 0.53.x, and 0.54.x -- three
+# consecutive lines, so the hull and the union of runs coincide; 0.50 and 0.51
+# retired together on 2026-09-12 when 0.53 and 0.54 entered in one pass, and
+# every earlier line is below the floor as well). eve-matrix names every line
+# but the newest, which is the plain `eve` catalog entry.
 #
 # The release-age cooldown is waived only for explicitly reviewed packages.
 # `eve`, `@evelandhq/sandbox-bwrap`, and `@evelandhq/workflow-world` are
@@ -57,8 +57,11 @@ overrides:
 # `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
 # before the shared World and never selected for a new build. The beta.20/10/
-# 42/33 line is what `@evelandhq/workflow-world` 0.15.0 bundles -- the set eve
-# 0.51 carries. That line's `@workflow/world` reports SPEC_VERSION_CURRENT 7,
+# 42/33 line is what `@evelandhq/workflow-world` 0.16.0 bundles -- the set eve
+# 0.51 through 0.52 carry (0.53.0 moved eve's own bundle to beta.21/10/43/34;
+# eve compares only the major and prerelease tag of the World's declaration,
+# so the World keeps working across the window until it follows on its own
+# release). That line's `@workflow/world` reports SPEC_VERSION_CURRENT 7,
 # and the shared World still DECLARES 6 (`SPEC_VERSION_SUPPORTS_SLOT_IDENTITY`)
 # because v7's sealed log has not been reviewed against every supported eve
 # line. eve gates on the declared number, which the contract ratchet asserts
@@ -69,7 +72,7 @@ minimumReleaseAgeExclude:
   - "@evelandhq/workflow-world"
   - "@ai-sdk/gateway@4.0.33"
   - "@ai-sdk/provider-utils@5.0.16"
-  - ai@7.0.85
+  - ai@7.0.97
   - "@workflow/errors@5.0.0-beta.17"
   - "@workflow/errors@5.0.0-beta.20"
   - "@workflow/utils@5.0.0-beta.8"
