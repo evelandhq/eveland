@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
@@ -221,7 +221,9 @@ export {
 type UpdateContext = {
   io: LifecycleIo;
   repo: string;
-  layout: { runDir: string };
+  layout: { runDir: string; backupsDir: string };
+  /** Newest pre-upgrade dumps kept in backups/ once the update completes. */
+  keepBackups: number;
   git: (gitArgs: string[]) => Promise<{ code: number | null; output: string }>;
   streamCommand: NonNullable<LifecycleIo["streamCommand"]>;
   prompter: { confirm: (question: string, defaultValue: boolean) => Promise<boolean> };
@@ -271,9 +273,15 @@ async function runUpdateLocked(
       yes: { type: "boolean" },
       "no-prompt": { type: "boolean" },
       "skip-backup": { type: "boolean" },
+      "keep-backups": { type: "string" },
     },
     allowPositionals: false,
   });
+  const keepBackups = parseKeepBackups(parsed.values["keep-backups"]);
+  if (keepBackups === null) {
+    io.stderr("--keep-backups takes a whole number of dumps to keep, at least 1.");
+    return 1;
+  }
   const metadata = await readInstallMetadata(resolved.layout);
   if (!metadata) {
     io.stderr(
@@ -295,6 +303,7 @@ async function runUpdateLocked(
     git,
     streamCommand,
     prompter,
+    keepBackups,
   };
 
   // An interrupted update comes first: the checkout may already report the
@@ -614,9 +623,55 @@ async function completeUpdate(
   // nothing an interrupted run still owed can be lost with it.
   await rm(pendingUpdatePath(context.layout), { force: true });
 
+  // Only now, with the update complete and its own dump the newest: every
+  // earlier dump was the floor for an upgrade that has since been superseded.
+  const pruned = await pruneBackups(context.layout.backupsDir, context.keepBackups);
+  if (pruned.length > 0) {
+    io.stdout(
+      `Removed ${pruned.length} older database backup(s); keeping the newest ${context.keepBackups}.`,
+    );
+  }
+
   io.stdout("");
   io.stdout(`Updated to ${target}.`);
   return 0;
+}
+
+export const DEFAULT_KEEP_BACKUPS = 3;
+
+function parseKeepBackups(value: string | undefined): number | null {
+  if (value === undefined) return DEFAULT_KEEP_BACKUPS;
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return parsed >= 1 ? parsed : null;
+}
+
+const backupDumpPattern = /^eveland-v.+\.sql$/;
+
+/**
+ * Removes every automatic pre-upgrade dump beyond the `keep` newest, judged by
+ * modification time (names carry the version, which does not sort
+ * chronologically once a component crosses 10). Only files named like
+ * `eveland-v<version>-<stamp>.sql` are candidates: an operator's own files in
+ * backups/ and a `.partial` dump still being written are never touched.
+ */
+export async function pruneBackups(backupsDir: string, keep: number): Promise<string[]> {
+  const entries = await readdir(backupsDir).catch(() => [] as string[]);
+  const dumps: Array<{ file: string; mtimeMs: number }> = [];
+  for (const entry of entries) {
+    if (!backupDumpPattern.test(entry)) continue;
+    const file = path.join(backupsDir, entry);
+    const info = await stat(file).catch(() => null);
+    if (!info?.isFile()) continue;
+    dumps.push({ file, mtimeMs: info.mtimeMs });
+  }
+  dumps.sort((a, b) => b.mtimeMs - a.mtimeMs || a.file.localeCompare(b.file));
+  const removed: string[] = [];
+  for (const dump of dumps.slice(Math.max(1, keep))) {
+    await rm(dump.file, { force: true });
+    removed.push(dump.file);
+  }
+  return removed;
 }
 
 /**

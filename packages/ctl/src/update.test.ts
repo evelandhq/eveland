@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -337,6 +337,60 @@ describe("runUpdate (phase 1, the old code)", () => {
     expect(harness.out.join("\n")).toContain("Updated to v0.49.0.");
     const backups = await readdir(harness.layout.backupsDir);
     expect(backups[0]).toContain("v0.48.0");
+  });
+
+  test("a completed update keeps only the newest dumps (the new one included), never anything else in backups/", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    await mkdir(harness.layout.backupsDir, { recursive: true });
+    const olderDumps = ["v0.45.0", "v0.46.0", "v0.47.0", "v0.47.2"];
+    for (const [index, version] of olderDumps.entries()) {
+      const file = path.join(
+        harness.layout.backupsDir,
+        `eveland-${version}-2026-08-0${index + 1}.sql`,
+      );
+      await writeFile(file, "-- old dump", "utf8");
+      const when = new Date(Date.UTC(2026, 7, index + 1));
+      await utimes(file, when, when);
+    }
+    const keepsakes = ["operator-notes.txt", "eveland-v0.47.2-manual.sql.partial"];
+    for (const name of keepsakes) {
+      await writeFile(path.join(harness.layout.backupsDir, name), "keep me", "utf8");
+    }
+
+    expect(await runUpdate([], harness.io)).toBe(0);
+
+    const remaining = (await readdir(harness.layout.backupsDir)).sort();
+    expect(remaining).toEqual(
+      [
+        "eveland-v0.47.0-2026-08-03.sql",
+        "eveland-v0.47.2-2026-08-04.sql",
+        path.basename(harness.pgDumps[0]!),
+        ...keepsakes,
+      ].sort(),
+    );
+    expect(harness.out.join("\n")).toContain(
+      "Removed 2 older database backup(s); keeping the newest 3.",
+    );
+  });
+
+  test("--keep-backups sets how many dumps survive, and never below the dump this update just took", async () => {
+    const harness = await makeHarness({ confirmAnswers: [true] });
+    await mkdir(harness.layout.backupsDir, { recursive: true });
+    const stale = path.join(harness.layout.backupsDir, "eveland-v0.47.0-2026-08-01.sql");
+    await writeFile(stale, "-- old dump", "utf8");
+    await utimes(stale, new Date(Date.UTC(2026, 7, 1)), new Date(Date.UTC(2026, 7, 1)));
+
+    expect(await runUpdate(["--keep-backups", "1"], harness.io)).toBe(0);
+    expect(await readdir(harness.layout.backupsDir)).toEqual([path.basename(harness.pgDumps[0]!)]);
+  });
+
+  test("--keep-backups refuses anything but a whole number of at least 1, before touching anything", async () => {
+    for (const value of ["0", "-1", "two", "1.5"]) {
+      const harness = await makeHarness({ confirmAnswers: [true] });
+      expect(await runUpdate([`--keep-backups=${value}`], harness.io)).toBe(1);
+      expect(harness.pgDumps).toHaveLength(0);
+      expect(harness.err.join("\n")).toContain("--keep-backups");
+    }
   });
 
   test("the default target is the newest STABLE tag, not a pre-release that sorts above it", async () => {
