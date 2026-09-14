@@ -20,6 +20,8 @@ import postgres from "postgres";
 export type ActiveWorkflowRunDeployment = {
   projectId: string;
   deploymentId: string;
+  /** Distinct workflow names still non-terminal on this Deployment. */
+  workflowNames: string[];
 };
 
 /**
@@ -39,13 +41,17 @@ export async function listDeploymentsWithActiveWorkflowRunsAcrossProjects(
   const sql = postgres(worldUrl, { max: 1 });
   try {
     const rows = await sql`
-      select distinct runs.tenant_id, runs.deployment_id
+      select runs.tenant_id,
+             runs.deployment_id,
+             array_agg(distinct runs.name) as workflow_names
         from "workflow"."workflow_runs" as runs
        where runs.status in ('pending', 'running')
+       group by runs.tenant_id, runs.deployment_id
     `;
     return rows.map((row) => ({
       projectId: row.tenant_id as string,
       deploymentId: row.deployment_id as string,
+      workflowNames: (row.workflow_names as string[] | null) ?? [],
     }));
   } catch (error) {
     throw new Error(

@@ -374,11 +374,19 @@ if (releaseSweepIntervalMs > 0) {
 
 // Deployment-scoped on purpose: a run sleeping on a timer or waiting on a
 // session inbox hook is the intended durable state for a reaped process, so
-// nothing here keys off RuntimeInstance death. Only runs bound to a
+// nothing here keys off RuntimeInstance death. Runs are settled only on a
 // Deployment that can never activate again (missing, archived, or pinned to
-// an out-of-window Eve) are settled. Set the interval to 0 to disable.
+// an out-of-window Eve), or on a superseded one that the archive policy would
+// no longer keep if not for the runs themselves. Set the interval to 0 to
+// disable.
 const sweepAbandonedWorkflowRuns = () => {
-  reconcileAbandonedWorkflowRuns(store).catch((error: unknown) =>
+  reconcileAbandonedWorkflowRuns(store, {
+    // The same policy the release reaper archives by: a superseded Deployment
+    // it would no longer keep has session runs nothing can reach.
+    keepRecent: Number(process.env.EVELAND_RELEASE_RETENTION ?? 3),
+    playgroundIdleTtlMs: Number(process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000),
+    apiIdleTtlMs: Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000),
+  }).catch((error: unknown) =>
     console.error(
       "Abandoned workflow-run reconciliation failed:",
       error instanceof Error ? error.message : String(error),
