@@ -25,6 +25,7 @@ beforeAll(async () => {
       id varchar not null,
       deployment_id varchar not null,
       status varchar not null,
+      name varchar not null default 'workflow//eve//workflowEntry',
       constraint workflow_runs_test_pkey primary key (tenant_id, id)
     )
   `;
@@ -72,11 +73,12 @@ describe.skipIf(!sql)("listDeploymentsWithActiveWorkflowRuns", () => {
     const tenant = `proj_xruns_${Date.now().toString(36)}`;
     const other = `${tenant}_other`;
     await sql!`
-      insert into "workflow"."workflow_runs" (tenant_id, id, deployment_id, status) values
-        (${tenant}, 'xrun_sleeping', 'dep_x_sleeping', 'running'),
-        (${tenant}, 'xrun_done', 'dep_x_done', 'completed'),
-        (${tenant}, 'xrun_dead_lettered', 'dep_x_dead_lettered', 'running'),
-        (${other}, 'xrun_foreign', 'dep_x_foreign', 'pending')
+      insert into "workflow"."workflow_runs" (tenant_id, id, deployment_id, status, name) values
+        (${tenant}, 'xrun_sleeping', 'dep_x_sleeping', 'running', 'workflow//eve//workflowEntry'),
+        (${tenant}, 'xrun_timer', 'dep_x_sleeping', 'running', 'workflow//eve//sessionTimeoutWorkflow'),
+        (${tenant}, 'xrun_done', 'dep_x_done', 'completed', 'workflow//eve//workflowEntry'),
+        (${tenant}, 'xrun_dead_lettered', 'dep_x_dead_lettered', 'running', 'workflow//eve//workflowEntry'),
+        (${other}, 'xrun_foreign', 'dep_x_foreign', 'pending', 'workflow//agent//nightlyDigest')
     `;
     await sql!`
       insert into "workflow"."dispatch_dead_letters" (tenant_id, run_id, resolved_at) values
@@ -84,14 +86,30 @@ describe.skipIf(!sql)("listDeploymentsWithActiveWorkflowRuns", () => {
     `;
 
     const pairs = await listDeploymentsWithActiveWorkflowRunsAcrossProjects(databaseUrl);
-    const mine = pairs.filter((pair) => pair.projectId.startsWith(tenant));
+    const mine = pairs
+      .filter((pair) => pair.projectId.startsWith(tenant))
+      .map((pair) => ({ ...pair, workflowNames: [...pair.workflowNames].sort() }));
     expect(mine).toEqual(
       expect.arrayContaining([
-        { projectId: tenant, deploymentId: "dep_x_sleeping" },
+        // Every distinct workflow still open on the Deployment, so the
+        // reconciler can tell Eve's session family from project-authored work.
+        {
+          projectId: tenant,
+          deploymentId: "dep_x_sleeping",
+          workflowNames: ["workflow//eve//sessionTimeoutWorkflow", "workflow//eve//workflowEntry"],
+        },
         // A dead-lettered run stays a candidate: the reconciler exists to
         // settle exactly the wedged ones, unlike the retention read above.
-        { projectId: tenant, deploymentId: "dep_x_dead_lettered" },
-        { projectId: other, deploymentId: "dep_x_foreign" },
+        {
+          projectId: tenant,
+          deploymentId: "dep_x_dead_lettered",
+          workflowNames: ["workflow//eve//workflowEntry"],
+        },
+        {
+          projectId: other,
+          deploymentId: "dep_x_foreign",
+          workflowNames: ["workflow//agent//nightlyDigest"],
+        },
       ]),
     );
     expect(mine.map((pair) => pair.deploymentId)).not.toContain("dep_x_done");
