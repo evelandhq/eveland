@@ -7,7 +7,12 @@ import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discove
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
-import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
+import {
+  PNPM_FROZEN_INSTALL_COMMAND,
+  pnpmSharedStoreArgs,
+  resolvePnpmSharedStore,
+  type PnpmSharedStore,
+} from "./package-manager.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import { DEPLOYMENT_STOP_TIMEOUT_SECONDS } from "./shutdown-budget.js";
 import {
@@ -225,15 +230,16 @@ export function buildReleaseBuildCommand(
   context: RuntimeCommandContext,
   workflowWorld?: WorkflowWorldBuildConfig,
   integrateExtensions = true,
+  pnpmStore?: PnpmSharedStore,
 ): string {
   const install =
     context.packageManager === "pnpm"
-      ? PNPM_FROZEN_INSTALL_COMMAND
+      ? `${PNPM_FROZEN_INSTALL_COMMAND}${pnpmSharedStoreArgs(pnpmStore)}`
       : context.hasLockfile
         ? "npm ci"
         : "npm install";
   const worldInstall = workflowWorld
-    ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld, context.packageManager ?? "npm")}`
+    ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld, context.packageManager ?? "npm", pnpmStore)}`
     : "";
   // Extension packages can only be resolved after install. Materialize Eve's
   // source manifest, let the bundled platform integrator adapt Extension
@@ -440,6 +446,8 @@ export function createSystemdAdapter(
 ): CompleteRuntimeAdapter & PortOwnershipCapability {
   const dataDir = path.resolve(config.dataDir);
   const npmCacheDir = path.resolve(dataDir, "npm-cache");
+  // Inside the npm cache on purpose: see resolvePnpmSharedStore.
+  const pnpmStore = resolvePnpmSharedStore(npmCacheDir);
   const envDir = path.resolve(dataDir, "deployment-env");
   const projectCacheDir = (projectId: string) =>
     resolveProjectSandboxCacheDir(config.sandboxCacheDir, projectId);
@@ -481,6 +489,7 @@ export function createSystemdAdapter(
         input.commandContext,
         input.workflowWorld,
         Boolean(observerInjection.extensionIntegratorFile),
+        pnpmStore,
       );
       const { environment: buildEnv, rejectedKeys } = buildReleaseBuildEnvironment({
         npmCacheDir,

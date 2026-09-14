@@ -1,7 +1,11 @@
 import type { ReleaseWorkflowAttestation } from "@evelandhq/core/contracts";
 import { access, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { PNPM_RELEASE_AGE_CONFIG } from "./package-manager.js";
+import {
+  PNPM_RELEASE_AGE_CONFIG,
+  pnpmSharedStoreArgs,
+  type PnpmSharedStore,
+} from "./package-manager.js";
 
 /**
  * The world every deployment has been built with until now: one physical
@@ -126,6 +130,7 @@ const defaultEveAgentModel = "anthropic/claude-sonnet-5";
 export function buildWorkflowWorldInstallCommand(
   config: WorkflowWorldBuildConfig,
   packageManager: "npm" | "pnpm",
+  pnpmStore?: PnpmSharedStore,
 ): string {
   const packageSpec = `${config.packageName}@${config.packageVersion}`;
   if (packageManager === "pnpm") {
@@ -133,7 +138,7 @@ export function buildWorkflowWorldInstallCommand(
       'manifest_backup="$(mktemp)"' +
       ' && cp package.json "$manifest_backup"' +
       ' && trap \'cp "$manifest_backup" package.json; rm -f "$manifest_backup"\' EXIT' +
-      ` && pnpm add --lockfile=false --ignore-scripts ${PNPM_RELEASE_AGE_CONFIG} ${packageSpec}`
+      ` && pnpm add --lockfile=false --ignore-scripts ${PNPM_RELEASE_AGE_CONFIG}${pnpmSharedStoreArgs(pnpmStore)} ${packageSpec}`
     );
   }
   return `npm install --no-save --package-lock=false --ignore-scripts ${packageSpec}`;

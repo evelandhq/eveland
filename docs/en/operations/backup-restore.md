@@ -27,7 +27,7 @@ _Security Warning: Decrypting stored secrets requires the host `APP_SECRET_KEY`.
 
 When creating filesystem snapshots, exclude these temporary caches:
 
-- **npm cache directory** (`EVELAND_DATA_DIR/npm-cache/`): Rebuilt on demand;
+- **npm cache directory** (`EVELAND_DATA_DIR/npm-cache/`): Rebuilt on demand. It also holds the shared pnpm store and cache (`_pnpm-store/`, `_pnpm-cache/`) every Release build draws from, so a Release never carries its own copy; the store only grows, and `pnpm store prune --store-dir EVELAND_DATA_DIR/npm-cache/_pnpm-store` reclaims packages no build references any more;
 - **Platform checkout and dependencies** (`/opt/eveland` & `node_modules`): Fully reproducible via git tag and `pnpm install --frozen-lockfile`;
 - **OTel Collector exporter queues** (`EVELAND_DATA_DIR/otel/`): Transient telemetry buffers.
 

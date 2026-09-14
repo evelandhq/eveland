@@ -329,6 +329,41 @@ describe("buildReleaseBuildCommand", () => {
     expect(command).not.toMatch(/(^|&& )npm install/);
   });
 
+  test("sends every pnpm step to the shared store instead of the release's HOME", () => {
+    const pnpmStore = {
+      storeDir: "/var/lib/eveland-data/npm-cache/_pnpm-store",
+      cacheDir: "/var/lib/eveland-data/npm-cache/_pnpm-cache",
+    };
+    const command = buildReleaseBuildCommand(
+      { hasLockfile: true, packageManager: "pnpm" },
+      { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
+      true,
+      pnpmStore,
+    );
+
+    const storeArgs =
+      "--config.store-dir='/var/lib/eveland-data/npm-cache/_pnpm-store'" +
+      " --config.cache-dir='/var/lib/eveland-data/npm-cache/_pnpm-cache'" +
+      " --config.package-import-method=clone-or-copy";
+    expect(command).toContain(
+      `pnpm install --frozen-lockfile --config.minimum-release-age=0 ${storeArgs} && `,
+    );
+    expect(command).toContain(
+      `pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 ${storeArgs} @workflow/world-postgres@5.0.0-beta.34`,
+    );
+  });
+
+  test("the shared pnpm store never leaks into an npm build", () => {
+    const command = buildReleaseBuildCommand(
+      { hasLockfile: true },
+      { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
+      true,
+      { storeDir: "/data/npm-cache/_pnpm-store", cacheDir: "/data/npm-cache/_pnpm-cache" },
+    );
+    expect(command).not.toContain("store-dir");
+    expect(command.startsWith("npm ci && npm install --no-save")).toBe(true);
+  });
+
   test("installs the platform-owned world outside the project lock before building Eve", () => {
     expect(
       buildReleaseBuildCommand(

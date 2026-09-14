@@ -27,7 +27,7 @@ _安全提示：所有加密存储的凭据均依赖宿主机的 `APP_SECRET_KEY
 
 在做文件系统快照或备份同步时，可排除以下临时缓存：
 
-- **npm 缓存目录**（`EVELAND_DATA_DIR/npm-cache/`）：可随时在线重新下载；
+- **npm 缓存目录**（`EVELAND_DATA_DIR/npm-cache/`）：可随时在线重新下载。其中的 `_pnpm-store/` 与 `_pnpm-cache/` 是所有 Release 构建共用的 pnpm store 与缓存，Release 自身不再各带一份；store 只增不减，可用 `pnpm store prune --store-dir EVELAND_DATA_DIR/npm-cache/_pnpm-store` 清理无人引用的包；
 - **平台代码仓库与依赖**（`/opt/eveland` 及其 `node_modules`）：通过 Git Tag 与 `pnpm install --frozen-lockfile` 即可精准还原；
 - **OTel Collector 待发队列**（`EVELAND_DATA_DIR/otel/`）：仅包含临时遥测缓冲。
 

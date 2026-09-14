@@ -23,31 +23,31 @@ The installer prepares the host and hands off to `eveland-ctl start`, which perf
 
 The `EVELAND_HOME` environment variable specifies the appliance root directory (`/opt/eveland` on Linux, `~/.eveland` on macOS):
 
-| Directory / File   | Responsibility and Contents                                                                                       |
-| :----------------- | :---------------------------------------------------------------------------------------------------------------- |
-| `source/`          | Platform source checkout, tracking the current release tag. Replaced during upgrades.                             |
-| `etc/eveland.env`  | Global environment configuration; single source of truth for platform services.                                   |
-| `etc/install.json` | Metadata recording installation mode, dates, and database configuration.                                          |
-| `data/`            | Platform persistent data root (`EVELAND_DATA_DIR`), holding release builds, source checkouts, and sandbox caches. |
-| `logs/`            | Standard output and error logs from installation and supervised services.                                         |
-| `backups/`         | Database snapshots created automatically before each version upgrade.                                             |
+| Directory / File   | Responsibility and Contents                                                                                             |
+| :----------------- | :---------------------------------------------------------------------------------------------------------------------- |
+| `source/`          | Platform source checkout, tracking the current release tag. Replaced during upgrades.                                   |
+| `etc/eveland.env`  | Global environment configuration; single source of truth for platform services.                                         |
+| `etc/install.json` | Metadata recording installation mode, dates, and database configuration.                                                |
+| `data/`            | Platform persistent data root (`EVELAND_DATA_DIR`), holding release builds, source checkouts, and sandbox caches.       |
+| `logs/`            | Standard output and error logs from installation and supervised services.                                               |
+| `backups/`         | Database snapshots created automatically before each version upgrade; `update` keeps the newest 3 (`--keep-backups N`). |
 
 ---
 
 ## 3. Command reference
 
-| Command                         | Operational Behavior                                                                                                                                                                                           |
-| :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eveland-ctl start`             | Boots infrastructure containers (OTel Collector, bundled Postgres), then launches core platform processes. Supports `--foreground` and `--skip-infra`.                                                         |
-| `eveland-ctl stop`              | Gracefully terminates platform services (stopping systemd units in reverse order). Leaves infrastructure containers running.                                                                                   |
-| `eveland-ctl restart`           | Sequentially executes `stop` followed by `start`.                                                                                                                                                              |
-| `eveland-ctl status`            | Reports the release on disk (and any newer one), then inspects process liveness, HTTP health endpoints, and database connectivity. Exits 0 when fully healthy — a pending upgrade never changes the exit code. |
-| `eveland-ctl logs [process]`    | Streams logs for platform components. Supports `-f` (follow) and `--tail N`.                                                                                                                                   |
-| `eveland-ctl doctor`            | Runs comprehensive host diagnostics (sandboxing permissions, port availability, database connectivity). Reports all failures in one pass.                                                                      |
-| `eveland-ctl update`            | Creates database backups, fetches the latest stable release, executes migrations, and performs rolling restarts. Supports `--version vX.Y.Z`.                                                                  |
-| `eveland-ctl install --systemd` | Renders and registers systemd unit files for all core platform services.                                                                                                                                       |
-| `eveland-ctl dead-letters`      | Lists the workflow dispatches this installation dropped, grouped by Deployment, and resolves them with `--resolve`. Exits 1 while any are unresolved.                                                          |
-| `eveland-ctl dispatcher-lock`   | Shows which Postgres session holds the workflow dispatcher's ownership lock, and `--terminate` evicts a holder that died without releasing it.                                                                 |
+| Command                         | Operational Behavior                                                                                                                                                                                                                                      |
+| :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eveland-ctl start`             | Boots infrastructure containers (OTel Collector, bundled Postgres), then launches core platform processes. Supports `--foreground` and `--skip-infra`.                                                                                                    |
+| `eveland-ctl stop`              | Gracefully terminates platform services (stopping systemd units in reverse order). Leaves infrastructure containers running.                                                                                                                              |
+| `eveland-ctl restart`           | Sequentially executes `stop` followed by `start`.                                                                                                                                                                                                         |
+| `eveland-ctl status`            | Reports the release on disk (and any newer one), then inspects process liveness, HTTP health endpoints, and database connectivity. Exits 0 when fully healthy — a pending upgrade never changes the exit code.                                            |
+| `eveland-ctl logs [process]`    | Streams logs for platform components. Supports `-f` (follow) and `--tail N`.                                                                                                                                                                              |
+| `eveland-ctl doctor`            | Runs comprehensive host diagnostics (sandboxing permissions, port availability, database connectivity). Reports all failures in one pass.                                                                                                                 |
+| `eveland-ctl update`            | Creates a database backup, fetches the latest stable release, executes migrations, and performs rolling restarts. Supports `--version vX.Y.Z`; `--keep-backups N` sets how many pre-upgrade dumps survive afterwards (default 3, the fresh one included). |
+| `eveland-ctl install --systemd` | Renders and registers systemd unit files for all core platform services.                                                                                                                                                                                  |
+| `eveland-ctl dead-letters`      | Lists the workflow dispatches this installation dropped, grouped by Deployment, and resolves them with `--resolve`. Exits 1 while any are unresolved.                                                                                                     |
+| `eveland-ctl dispatcher-lock`   | Shows which Postgres session holds the workflow dispatcher's ownership lock, and `--terminate` evicts a holder that died without releasing it.                                                                                                            |
 
 ### Dispatch dead letters
 
