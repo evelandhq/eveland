@@ -57,14 +57,15 @@ overrides:
 # `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
 # before the shared World and never selected for a new build. The beta.21/10/
-# 43/34 line is what `@evelandhq/workflow-world` 0.17.0 bundles -- the set eve
+# 43/34 line is what `@evelandhq/workflow-world` 0.18.0 bundles -- the set eve
 # 0.53 and 0.54 carry (eve compares only the major and prerelease tag of the
 # World's declaration, so the same World also serves 0.52.x, which bundles
 # beta.20/10/42/33). That line's `@workflow/world` reports SPEC_VERSION_CURRENT 7,
-# and the shared World still DECLARES 6 (`SPEC_VERSION_SUPPORTS_SLOT_IDENTITY`)
-# because v7's sealed log has not been reviewed against every supported eve
-# line. eve gates on the declared number, which the contract ratchet asserts
-# per line; do not conflate the two.
+# and since 0.18.0 the shared World DECLARES `mintedSpecVersion()` -- 7 by
+# default, 6 for a Deployment that opts out with WORKFLOW_SEALED_LOG=0 (0.5.0
+# through 0.17.0 always declared 6). eve gates on the declared number, which
+# the contract ratchet reads out of the World's dist and asserts per line; the
+# platform admits both 6 and 7 (SUPPORTED_WORKFLOW_STORAGE_SPECS).
 minimumReleaseAgeExclude:
   - eve
   - "@evelandhq/sandbox-bwrap"

@@ -26,7 +26,7 @@ export const PLATFORM_WORKFLOW_WORLD = {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "0.17.0",
+  packageVersion: "0.18.0",
 } as const;
 
 export type WorkflowWorldBuildConfig = {
@@ -35,12 +35,22 @@ export type WorkflowWorldBuildConfig = {
 };
 
 /**
- * The Workflow SDK storage spec generation and Eveland external dispatch
- * protocol generation the pinned shared world implements. Bumped together
- * with `EVELAND_WORKFLOW_WORLD.packageVersion`; the eve↔world contract suite
- * gates the spec against the installed package.
+ * The Workflow SDK storage spec generation the pinned shared world DECLARES
+ * and the Eveland external dispatch protocol generation it implements. Bumped
+ * together with `EVELAND_WORKFLOW_WORLD.packageVersion`; the eve↔world
+ * contract suite asserts the spec against what the installed package's dist
+ * actually declares.
+ *
+ * Since 0.18.0 the World declares `mintedSpecVersion()`: the sealed log (7) by
+ * default, or slot identity (6) for a Deployment that opts out with
+ * `WORKFLOW_SEALED_LOG=0`. Every shared build from 0.5.0 through 0.17.0
+ * declared 6 unconditionally. A run stays pinned to the Deployment that
+ * created it and 7 changes nothing in this World's storage, so both
+ * generations are in `SUPPORTED_WORKFLOW_STORAGE_SPECS`; the attestation
+ * records the default the Release's World mints.
  */
-const EVELAND_WORKFLOW_WORLD_STORAGE_SPEC = 6;
+const EVELAND_WORKFLOW_WORLD_STORAGE_SPEC = 7;
+const SLOT_IDENTITY_WORKFLOW_STORAGE_SPEC = 6;
 const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = 1;
 
 /**
@@ -52,18 +62,25 @@ const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = 1;
  * deployment-side enqueue only scopes every job to the per-run
  * `wfrun:<tenant>:<run>` queue since 0.5.0 (3f0f483), so an earlier shared
  * artifact attests `unscoped` and is managed-terminated rather than resumed.
- * The legacy world never scoped its jobs.
+ * The legacy world never scoped its jobs. The storage spec is a version fact
+ * too: shared builds declare the sealed log (7) from 0.18.0 and slot identity
+ * (6) from 0.5.0, while the legacy world is 6 throughout.
  */
 export function deriveWorkflowWorldAttestation(
   config: WorkflowWorldBuildConfig,
 ): ReleaseWorkflowAttestation {
   if (config.packageName === EVELAND_WORKFLOW_WORLD.packageName) {
     const perRunQueue = sharedWorldVersionAtLeast(config.packageVersion, 0, 5);
+    const sealedLog = sharedWorldVersionAtLeast(config.packageVersion, 0, 18);
     return {
       worldKind: "shared",
       worldPackage: config.packageName,
       worldVersion: config.packageVersion,
-      storageSpec: perRunQueue ? EVELAND_WORKFLOW_WORLD_STORAGE_SPEC : 5,
+      storageSpec: sealedLog
+        ? EVELAND_WORKFLOW_WORLD_STORAGE_SPEC
+        : perRunQueue
+          ? SLOT_IDENTITY_WORKFLOW_STORAGE_SPEC
+          : 5,
       dispatchProtocol: perRunQueue ? EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL : null,
       enqueueCapability: perRunQueue ? "per_run_queue_v1" : "unscoped",
     };
@@ -73,7 +90,7 @@ export function deriveWorkflowWorldAttestation(
       worldKind: "legacy_project",
       worldPackage: config.packageName,
       worldVersion: config.packageVersion,
-      storageSpec: EVELAND_WORKFLOW_WORLD_STORAGE_SPEC,
+      storageSpec: SLOT_IDENTITY_WORKFLOW_STORAGE_SPEC,
       dispatchProtocol: null,
       enqueueCapability: "unscoped",
     };

@@ -34,6 +34,23 @@ describe("deriveWorkflowWorldAttestation", () => {
     });
   });
 
+  test("the storage spec follows the World version: sealed log from 0.18.0, slot identity before", () => {
+    const attest = (packageVersion: string) =>
+      deriveWorkflowWorldAttestation({ packageName: "@evelandhq/workflow-world", packageVersion })
+        .storageSpec;
+    expect(attest("0.18.0")).toBe(7);
+    expect(attest("1.0.0")).toBe(7);
+    expect(attest("0.17.0")).toBe(6);
+    expect(attest("0.5.0")).toBe(6);
+    expect(attest("0.4.0")).toBe(5);
+    expect(
+      deriveWorkflowWorldAttestation({
+        packageName: "@workflow/world-postgres",
+        packageVersion: "5.0.0-beta.34",
+      }).storageSpec,
+    ).toBe(6);
+  });
+
   test("the legacy world is legacy_project/unscoped and anything else unknown", () => {
     expect(
       deriveWorkflowWorldAttestation({
