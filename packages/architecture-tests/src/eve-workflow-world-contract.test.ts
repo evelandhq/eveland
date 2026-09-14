@@ -126,42 +126,43 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
  * The spec version the shared World actually DECLARES, read out of its own
  * dist rather than assumed to be the package's current one.
  *
- * The two parted company when the World picked up the `@workflow/*` set eve
- * 0.51 bundles: that `@workflow/world` reports `SPEC_VERSION_CURRENT` 7, while
- * the World keeps declaring `SPEC_VERSION_SUPPORTS_SLOT_IDENTITY` (6) until
- * v7's sealed log has been reviewed against every eve line the platform hosts.
- * eve gates on the declared number, so every range check below has to use this
- * one — reading `SPEC_VERSION_CURRENT` was only ever right by coincidence.
+ * The two have parted company before: from 0.15.0 through 0.17.0 the World
+ * named `SPEC_VERSION_SUPPORTS_SLOT_IDENTITY` (6) while its bundled
+ * `@workflow/world` already reported `SPEC_VERSION_CURRENT` 7. Since 0.18.0 it
+ * declares `mintedSpecVersion()` as upstream recommends: the sealed log (7) by
+ * default, or 6 when `WORKFLOW_SEALED_LOG=0` opts a Deployment out. eve gates
+ * on the declared number, so every range check below has to use this one.
  *
- * Resolving the identifier the World names, rather than hardcoding it, is what
- * makes this catch the World changing its mind as well as the constant moving.
+ * The wiring is verified in the dist — one `mintedSpecVersion()` call bound to
+ * the `specVersion` the World object carries, and nothing else naming it — and
+ * the value comes from the `@workflow/world` the World itself resolves, called
+ * with an empty environment so the host running these tests cannot opt out on
+ * the World's behalf.
  */
 function declaredWorldSpecVersion(): number {
   const source = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
-  const declared = [...source.matchAll(/specVersion:\s*([A-Za-z_$][\w$]*)/g)];
-  // Exactly one, or this is reading the wrong site: a second declaration would
-  // make "the first match" an arbitrary choice, and silently answering for the
-  // wrong one is worse than failing here.
-  if (declared.length !== 1) {
+  const bound = [...source.matchAll(/const specVersion = mintedSpecVersion\(\);/g)];
+  const carried = [...source.matchAll(/^\s*specVersion,$/gm)];
+  // Exactly one of each, or this is reading the wrong site: a second binding
+  // or carrier would make "the first match" an arbitrary choice, and silently
+  // answering for the wrong one is worse than failing here.
+  if (bound.length !== 1 || carried.length !== 1) {
     throw new Error(
-      `expected exactly one declared specVersion in the World's dist, found ${String(declared.length)}`,
+      `expected the World's dist to bind specVersion to mintedSpecVersion() once and carry it once, found ${String(bound.length)} binding(s) and ${String(carried.length)} carrier(s)`,
     );
   }
-  const identifier = declared[0]![1]!;
-  const constants = require(require.resolve("@workflow/world", { paths: [worldRoot] })) as Record<
-    string,
-    unknown
-  >;
-  const value = constants[identifier];
-  if (typeof value !== "number") {
-    throw new Error(`@workflow/world does not export ${identifier} as a number`);
+  const { mintedSpecVersion } = require(
+    require.resolve("@workflow/world", { paths: [worldRoot] }),
+  ) as { mintedSpecVersion?: (env?: Record<string, string | undefined>) => number };
+  if (typeof mintedSpecVersion !== "function") {
+    throw new Error("@workflow/world does not export mintedSpecVersion()");
   }
-  return value;
+  return mintedSpecVersion({});
 }
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.17.0");
+    expect(worldManifest.version).toBe("0.18.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and
@@ -176,11 +177,13 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     const { SPEC_VERSION_CURRENT: postgresSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [postgresWorldRoot] }),
     ) as { SPEC_VERSION_CURRENT: number };
-    // Capability and declaration, held apart deliberately: the shared World's
-    // package can do v7's sealed log, and the World still declares v6. Moving
-    // the second number is an eve-window decision, not a lockfile outcome.
+    // Capability and declaration, asserted separately even though they agree
+    // again: the shared World's package can write v7's sealed log and, since
+    // 0.18.0, declares it by default. The legacy World stays on slot identity.
+    // Moving the declared number is an eve-window decision, not a lockfile
+    // outcome — every line in the window must read what new Releases stamp.
     expect(sharedSpecVersion).toBe(7);
-    expect(declaredWorldSpecVersion()).toBe(6);
+    expect(declaredWorldSpecVersion()).toBe(7);
     expect(postgresSpecVersion).toBe(6);
   });
 
@@ -232,6 +235,16 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       "could not find PLATFORM_WORKFLOW_WORLD in workflow-world.ts",
     ).not.toBeNull();
     expect(postgresInjected![1]).toBe(postgresWorldManifest.version);
+
+    // The attestation every new Release carries must name the generation the
+    // installed World declares by default, or the activation gate would admit
+    // Releases on a number these tests never verified against any eve line.
+    const attestedSpec = /const EVELAND_WORKFLOW_WORLD_STORAGE_SPEC = (\d+);/.exec(injectionSource);
+    expect(
+      attestedSpec,
+      "could not find EVELAND_WORKFLOW_WORLD_STORAGE_SPEC in workflow-world.ts",
+    ).not.toBeNull();
+    expect(Number(attestedSpec![1])).toBe(declaredWorldSpecVersion());
 
     // spec.md deliberately carries no version pins (see the spec.md guard in
     // eve-compatibility-consistency.test.ts); the pinned world versions are
@@ -289,8 +302,8 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
         ).toBeDefined();
 
         // The declared number, not the package's current one: eve compares the
-        // `specVersion` the World hands it, and since the World's package moved
-        // to v7 while it keeps declaring v6 those are different values.
+        // `specVersion` the World hands it, and the two have differed before
+        // (0.15.0 through 0.17.0 declared 6 on a package whose current was 7).
         const declared = declaredWorldSpecVersion();
         expect(declared).toBeGreaterThanOrEqual(enforced!.min);
         expect(declared).toBeLessThanOrEqual(enforced!.max);
