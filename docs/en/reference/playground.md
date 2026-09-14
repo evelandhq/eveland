@@ -11,6 +11,7 @@ The Playground provides an interactive in-dashboard debugging environment direct
 
 - **Streaming transport**: The frontend communicates via internal, service-authenticated gateway paths, consuming NDJSON streams incrementally (text chunks, reasoning blocks, tool executions, and human-in-the-loop HITL prompts).
 - **Session mapping**: Opening or refreshing the Playground creates a new clean Eve Session. Subsequent turns, approvals, and tool outputs within that page remain attached to this session.
+- **Approval visibility**: When a streamed tool call enters an approval-required state, the Playground opens its tool card automatically so the Approve and Cancel controls are visible. Users can still collapse the card afterward.
 - **Cooperative turn cancellation**: Clicking cancel during streaming issues a canonical `cancel()` command to the server and keeps the stream attached until confirmation boundaries arrive, maintaining server-side state integrity.
 - **Attachment limits**: Supports up to 4 attachments per turn (text, code, images, or PDFs), maximum 5 MiB per file and 10 MiB total per turn.
 
