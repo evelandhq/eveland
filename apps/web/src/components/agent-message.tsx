@@ -11,7 +11,7 @@ import type {
   EveMessageInputRequest,
   EveMessagePart,
 } from "eve/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRightIcon,
   CheckCircleIcon,
@@ -139,34 +139,56 @@ function AgentMessagePart({
       }
 
       return (
-        <Tool
-          defaultOpen={part.state === "approval-requested" || part.state === "approval-responded"}
-        >
-          <ToolHeader
-            state={part.state}
-            title={part.toolName}
-            toolName={part.toolName}
-            type="dynamic-tool"
-          />
-          <ToolContent>
-            {part.toolName === "bash" ? (
-              <BashToolContent errorText={part.errorText} input={part.input} output={part.output} />
-            ) : (
-              <ToolInput input={part.input} />
-            )}
-            <InputRequestActions
-              canRespond={canRespond}
-              part={part}
-              onInputResponses={onInputResponses}
-            />
-            {part.toolName === "bash" ? null : (
-              <ToolOutput errorText={part.errorText} output={part.output} />
-            )}
-          </ToolContent>
-        </Tool>
+        <DynamicToolPart canRespond={canRespond} onInputResponses={onInputResponses} part={part} />
       );
     }
   }
+}
+
+function DynamicToolPart({
+  canRespond,
+  onInputResponses,
+  part,
+}: {
+  readonly canRespond: boolean;
+  readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
+  readonly part: EveDynamicToolPart;
+}) {
+  const isApprovalState =
+    part.state === "approval-requested" || part.state === "approval-responded";
+  const [open, setOpen] = useState(isApprovalState);
+
+  useEffect(() => {
+    if (isApprovalState) {
+      setOpen(true);
+    }
+  }, [isApprovalState]);
+
+  return (
+    <Tool onOpenChange={(nextOpen) => setOpen(nextOpen)} open={open}>
+      <ToolHeader
+        state={part.state}
+        title={part.toolName}
+        toolName={part.toolName}
+        type="dynamic-tool"
+      />
+      <ToolContent>
+        {part.toolName === "bash" ? (
+          <BashToolContent errorText={part.errorText} input={part.input} output={part.output} />
+        ) : (
+          <ToolInput input={part.input} />
+        )}
+        <InputRequestActions
+          canRespond={canRespond}
+          part={part}
+          onInputResponses={onInputResponses}
+        />
+        {part.toolName === "bash" ? null : (
+          <ToolOutput errorText={part.errorText} output={part.output} />
+        )}
+      </ToolContent>
+    </Tool>
+  );
 }
 
 function QuestionRequest({
