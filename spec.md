@@ -321,6 +321,10 @@ substitutes for the Agent's own authentication and never stores, decrypts, or
 refreshes provider credentials — credentials are resolved per request by the API
 and delivered through a strictly validated versioned envelope.
 
+When a streamed tool call enters a waiting-for-human-input state, the Dashboard
+automatically opens its tool card so the approval controls remain visible; users
+can still collapse the card manually afterward.
+
 Each managed project has at most one Playground authentication configuration. It is
 the client configuration the Playground uses to call the Agent — not the project,
 the deployment, an Eve Connection, or the platform login session; the user must

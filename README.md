@@ -38,6 +38,10 @@ The managed Collector groups a root Agent conversation and its descendant sessio
 together in Langfuse. See [Observability](docs/en/reference/observability.md) for
 the session mapping and compatibility behavior.
 
+In the Dashboard Playground, a tool card opens automatically when a streamed tool
+call starts waiting for approval, keeping its decision controls visible while
+remaining manually collapsible.
+
 ## Quickstart (local development)
 
 ```bash
