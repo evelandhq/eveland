@@ -19,7 +19,7 @@ const evePackageRoot = path.resolve(
 const eveBin = path.join(evePackageRoot, "bin/eve.js");
 const oldestEvePackageRoot = path.resolve(
   import.meta.dirname,
-  "../../../../packages/agent-scheduler/node_modules/eve-oldest",
+  "../../../../packages/agent-scheduler/node_modules/eve-previous",
 );
 const oldestEveBin = path.join(oldestEvePackageRoot, "bin/eve.js");
 
@@ -172,15 +172,15 @@ test("builds Extension schedules and observed Extension subagents with the real 
   }
 }, 120_000);
 
-test("keeps the Extension integrator compatible with the oldest supported Eve 0.50 manifest", async () => {
+test("keeps the Extension integrator compatible with the oldest supported Eve line", async () => {
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-oldest-"));
   roots.push(releaseDir);
   const extensionPackageRoot = path.join(releaseDir, "packages/crm");
-  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.52.5", false);
+  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.54.5", false);
   await execFileAsync(process.execPath, [oldestEveBin, "extension", "build"], {
     cwd: extensionPackageRoot,
   });
-  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.52.5");
+  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.54.5");
 
   await injectObserverHooks({ releaseDir });
   await injectSchedulerAdapter({ releaseDir });
@@ -204,7 +204,7 @@ test("keeps the Extension integrator compatible with the oldest supported Eve 0.
 async function writeFixtureExtension(
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.52.5",
+  eveVersion = "0.55.0",
   includeScheduleSubagents = true,
 ): Promise<void> {
   await write(
@@ -258,7 +258,7 @@ async function writeConsumer(
   releaseDir: string,
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.52.5",
+  eveVersion = "0.55.0",
 ): Promise<void> {
   await write(
     releaseDir,
