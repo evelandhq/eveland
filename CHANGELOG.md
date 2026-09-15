@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.57.1](https://github.com/evelandhq/eveland/compare/v0.57.0...v0.57.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **deps:** patch sharp, js-yaml, browserslist, and qs advisories ([#552](https://github.com/evelandhq/eveland/issues/552)) ([4fe78be](https://github.com/evelandhq/eveland/commit/4fe78beb6b0cebc54184e283848f6417d3d1cbf1))
+* **workflow:** consume @evelandhq/workflow-world 0.19.0 ([#550](https://github.com/evelandhq/eveland/issues/550)) ([5eabc05](https://github.com/evelandhq/eveland/commit/5eabc05b1a5ee898837fb67dbe2fb69c70b46205))
+
 ## [0.57.0](https://github.com/evelandhq/eveland/compare/v0.56.0...v0.57.0) (2026-09-15)
 
 
