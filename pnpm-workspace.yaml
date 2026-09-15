@@ -56,10 +56,10 @@ overrides:
 # `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
 # before the shared World and never selected for a new build. The beta.21/10/
-# 43/34 line is what `@evelandhq/workflow-world` 0.18.0 bundles -- the set eve
-# 0.53.0 through 0.54.3 carry (0.54.4 moved eve's own bundle to beta.21/10/44/35
-# and 0.55.0 keeps it there; eve compares only the major and prerelease tag of
-# the World's declaration, so the same World serves the whole window). That
+# 44/35 line is what `@evelandhq/workflow-world` 0.19.0 bundles -- the set eve
+# 0.54.4 and later carry, 0.55.0 included (0.53.0 through 0.54.3 carry
+# beta.21/10/43/34; eve compares only the major and prerelease tag of the
+# World's declaration, so the same World serves the whole window). That
 # line's `@workflow/world` reports SPEC_VERSION_CURRENT 7,
 # and since 0.18.0 the shared World DECLARES `mintedSpecVersion()` -- 7 by
 # default, 6 for a Deployment that opts out with WORKFLOW_SEALED_LOG=0 (0.5.0
@@ -78,7 +78,7 @@ minimumReleaseAgeExclude:
   - "@workflow/utils@5.0.0-beta.8"
   - "@workflow/utils@5.0.0-beta.10"
   - "@workflow/world-local@5.0.0-beta.36"
-  - "@workflow/world-local@5.0.0-beta.43"
+  - "@workflow/world-local@5.0.0-beta.44"
   - "@workflow/world-postgres@5.0.0-beta.34"
   - "@workflow/world@5.0.0-beta.27"
-  - "@workflow/world@5.0.0-beta.34"
+  - "@workflow/world@5.0.0-beta.35"
