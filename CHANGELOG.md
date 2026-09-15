@@ -4,6 +4,21 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.57.0](https://github.com/evelandhq/eveland/compare/v0.56.0...v0.57.0) (2026-09-15)
+
+
+### Features
+
+* slide the Eve compatibility window to 0.54.x and 0.55.x ([#547](https://github.com/evelandhq/eveland/issues/547)) ([7308a5a](https://github.com/evelandhq/eveland/commit/7308a5a86da096e5e81849ee2a5cb0173d55adc3))
+* **workflow:** consume @evelandhq/workflow-world 0.18.0 and admit storage spec 7 ([#546](https://github.com/evelandhq/eveland/issues/546)) ([f086da9](https://github.com/evelandhq/eveland/commit/f086da9bbd49a7f586f998e41242c5dcfa3909a9))
+
+
+### Bug Fixes
+
+* stop each Release carrying its own pnpm store, and rotate pre-upgrade dumps ([#540](https://github.com/evelandhq/eveland/issues/540)) ([0d8ba95](https://github.com/evelandhq/eveland/commit/0d8ba95d5c070c696074fd09c490c6399f7f7d50))
+* **web:** open the Playground tool card when a call starts awaiting approval ([#545](https://github.com/evelandhq/eveland/issues/545)) ([8c79919](https://github.com/evelandhq/eveland/commit/8c799196ece6ddba9a946ed9fd4d54d59261f6b9))
+* **worker:** settle session runs on superseded Deployments nothing can reach ([#541](https://github.com/evelandhq/eveland/issues/541)) ([8a52409](https://github.com/evelandhq/eveland/commit/8a5240993e9e864ff10c8a0c00f632529929e8c3))
+
 ## [0.56.0](https://github.com/evelandhq/eveland/compare/v0.55.3...v0.56.0) (2026-09-12)
 
 
