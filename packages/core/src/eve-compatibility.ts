@@ -1,31 +1,25 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.52.x",
-      verifiedVersion: "0.52.5",
-      dependencyName: "eve-oldest",
-    },
-    {
-      range: "0.53.x",
-      verifiedVersion: "0.53.1",
+      range: "0.54.x",
+      verifiedVersion: "0.54.5",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.54.x",
-      verifiedVersion: "0.54.3",
+      range: "0.55.x",
+      verifiedVersion: "0.55.0",
       dependencyName: "eve",
     },
   ],
-  // A sliding three-line window: 0.53 and 0.54 entered together on 2026-09-12
-  // (0.53 was superseded by 0.54.0 within a day, and both were verified in the
-  // same pass), so 0.50 and 0.51 retired at once -- the first double
-  // retirement -- and the published SDK's peer floor moved with them. The floor
-  // is now the first line whose Deployments Eve's own client can reach (0.52.3
-  // introduced the delivery-id acknowledgement the Playground depends on), so
-  // only 0.52.0-0.52.2 remain accepted-but-unreachable from the Playground.
-  // All three minors are consecutive, so the range is a single contiguous
-  // interval rather than the union of runs a gapped window needs.
-  peerDependencyRange: ">=0.52.0 <0.55.0",
+  // A sliding two-line window: 0.55 entered on 2026-09-15 and the window
+  // narrowed from three lines to two in the same pass, so 0.52 and 0.53 retired
+  // together and the published SDK's peer floor moved with them. 0.54 was
+  // re-verified at 0.54.5 (0.54.4 and 0.54.5 are patches: a Vercel-only
+  // `./vercel` entry, `ctx.model.id`, Slack/Telegram approval routing, and an
+  // `@workflow/*` beta bump eve compares only by major and prerelease tag).
+  // Both minors are consecutive, so the range is a single contiguous interval
+  // rather than the union of runs a gapped window needs.
+  peerDependencyRange: ">=0.54.0 <0.56.0",
 } as const;
 
 export type SupportedEveVersionRange =

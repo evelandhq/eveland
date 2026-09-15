@@ -33,12 +33,11 @@ const RESOLUTION_ANCHORS: Record<string, string> = {
   "@evelandhq/workflow-world": "apps/worker",
   "@workflow/world-postgres": "apps/worker",
   eve: "packages/agent-observer",
-  "eve-oldest": "packages/agent-observer",
   "eve-previous": "packages/agent-observer",
 };
 
 /** The supported eve lines, newest first; alias names are pnpm catalog entries. */
-const EVE_LINES = ["eve", "eve-previous", "eve-oldest"] as const;
+const EVE_LINES = ["eve", "eve-previous"] as const;
 
 function resolveInstalled(specifier: string): string {
   const packageName = specifier.startsWith("@")

@@ -96,7 +96,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.54.3");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.55.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -130,7 +130,9 @@ describe("Eve compatibility repository contract", () => {
       // on 2026-09-10: the exported set and the bundler default are
       // byte-identical to 0.51.1. 0.53.1 and 0.54.3 re-checked 2026-09-12:
       // still byte-identical (0.53.1 "experimental.workflow.retention" only
-      // adds an `experimental_retention` start option, no new run).
+      // adds an `experimental_retention` start option, no new run). 0.54.5 and
+      // 0.55.0 re-checked 2026-09-15: the exported set and the bundler default
+      // are still byte-identical.
       "WORKFLOW_TOOL_RUN_WORKFLOW_NAME",
       // 0.51.0: the shared execute body behind every subagent tool (local,
       // remote, dynamic, and self-agent). Audited 2026-09-04: it opens NO run
@@ -150,8 +152,8 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // Every line in the window (0.52.x, 0.53.x, 0.54.x) runs the same six plus
-    // the subagent body.
+    // Every line in the window (0.54.x, 0.55.x) runs the same six plus the
+    // subagent body.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
       for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
@@ -189,9 +191,9 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.52/0.53/0.54 compatibility window", () => {
+  test("describes the supported 0.54/0.55 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
-    const stableDependencyNames = ["eve-oldest", "eve-previous", "eve"];
+    const stableDependencyNames = ["eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
       const rangeMatch = /^0\.(\d+)\.x$/.exec(line.range);
       const verifiedMatch = /^0\.(\d+)\.(\d+)$/.exec(line.verifiedVersion);
@@ -205,7 +207,7 @@ describe("Eve compatibility repository contract", () => {
       return minor;
     });
 
-    expect(supportedLines).toHaveLength(3);
+    expect(supportedLines).toHaveLength(2);
     // Lines are strictly ascending but need not be contiguous: a minor that
     // was superseded before it could host a real deployment may be skipped
     // (0.40/0.41 were replaced by 0.42 within 48 hours of release, 0.43 by
