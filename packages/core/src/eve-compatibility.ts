@@ -1,25 +1,22 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.54.x",
-      verifiedVersion: "0.54.5",
+      range: "0.55.x",
+      verifiedVersion: "0.55.0",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.55.x",
-      verifiedVersion: "0.55.0",
+      range: "0.56.x",
+      verifiedVersion: "0.56.0",
       dependencyName: "eve",
     },
   ],
-  // A sliding two-line window: 0.55 entered on 2026-09-15 and the window
-  // narrowed from three lines to two in the same pass, so 0.52 and 0.53 retired
-  // together and the published SDK's peer floor moved with them. 0.54 was
-  // re-verified at 0.54.5 (0.54.4 and 0.54.5 are patches: a Vercel-only
-  // `./vercel` entry, `ctx.model.id`, Slack/Telegram approval routing, and an
-  // `@workflow/*` beta bump eve compares only by major and prerelease tag).
-  // Both minors are consecutive, so the range is a single contiguous interval
-  // rather than the union of runs a gapped window needs.
-  peerDependencyRange: ">=0.54.0 <0.56.0",
+  // A sliding two-line window: 0.56 entered on 2026-09-16 into a window that
+  // was already two lines wide, so 0.54 retired alone and the published SDK's
+  // peer floor moved with it. 0.55 stays, still verified at 0.55.0 -- the line
+  // published no patch. Both minors are consecutive, so the range is a single
+  // contiguous interval rather than the union of runs a gapped window needs.
+  peerDependencyRange: ">=0.55.0 <0.57.0",
 } as const;
 
 export type SupportedEveVersionRange =
