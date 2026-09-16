@@ -6,9 +6,9 @@
  * the innermost one wins. Verified against the pinned tree (eve 0.50.0 ->
  * nitro@3.0.260610-beta -> srvx@0.11.21), re-verified for eve 0.52.5
  * (nitro@3.0.260903-beta -> srvx@1.0.3: the graceful-shutdown plugin body is
- * byte-identical), again for 0.53.1 and 0.54.3 on 2026-09-12, and again for
- * 0.54.5 and 0.55.0 on 2026-09-15 (the nitro and srvx pins did not move), so
- * every number below still holds:
+ * byte-identical), again for 0.53.1 and 0.54.3 on 2026-09-12, for 0.54.5 and
+ * 0.55.0 on 2026-09-15, and again for 0.56.0 on 2026-09-16 (the nitro and srvx
+ * pins did not move), so every number below still holds:
  *
  * 1. The systemd unit. SIGTERM reaches the whole cgroup, so the
  *    `sh -lc` -> `npx` -> node wrapper chain does not swallow it, and the unit

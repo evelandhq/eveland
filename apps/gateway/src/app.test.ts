@@ -169,8 +169,8 @@ describe("Gateway", () => {
     });
     repo.getDeploymentEveVersion = vi.fn(async () => ({
       version: "0.22.6",
-      expected: "0.54.x or 0.55.x" as const,
-      supportedRanges: ["0.54.x", "0.55.x"] as const,
+      expected: "0.55.x or 0.56.x" as const,
+      supportedRanges: ["0.55.x", "0.56.x"] as const,
       supported: false,
       sourceRevisionId: "src_old",
     }));
@@ -201,11 +201,11 @@ describe("Gateway", () => {
       await expect(response.json()).resolves.toEqual({
         error: "Unsupported Eve version",
         detail:
-          'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.54.x or 0.55.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+          'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.55.x or 0.56.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
         eveVersion: {
           version: "0.22.6",
-          expected: "0.54.x or 0.55.x",
-          supportedRanges: ["0.54.x", "0.55.x"],
+          expected: "0.55.x or 0.56.x",
+          supportedRanges: ["0.55.x", "0.56.x"],
           supported: false,
           sourceRevisionId: "src_old",
         },
@@ -227,8 +227,8 @@ describe("Gateway", () => {
     const repo = repository([route({ hostPort: upstream.port })]);
     repo.getDeploymentEveVersion = vi.fn(async () => ({
       version: "0.37.1",
-      expected: "0.54.x or 0.55.x" as const,
-      supportedRanges: ["0.54.x", "0.55.x"] as const,
+      expected: "0.55.x or 0.56.x" as const,
+      supportedRanges: ["0.55.x", "0.56.x"] as const,
       supported: false,
       sourceRevisionId: "src_old",
     }));
@@ -252,7 +252,7 @@ describe("Gateway", () => {
       await expect(response.json()).resolves.toMatchObject({
         error: "Unsupported Eve version",
         detail:
-          'Unsupported Eve dependency "0.37.1". Eveland requires Eve 0.54.x or 0.55.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+          'Unsupported Eve dependency "0.37.1". Eveland requires Eve 0.55.x or 0.56.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
       });
     }
 
@@ -264,8 +264,8 @@ describe("Gateway", () => {
     const repo = repository([route({ deploymentStatus: "stopped" })]);
     repo.getDeploymentEveVersion = vi.fn(async () => ({
       version: "0.37.1",
-      expected: "0.54.x or 0.55.x" as const,
-      supportedRanges: ["0.54.x", "0.55.x"] as const,
+      expected: "0.55.x or 0.56.x" as const,
+      supportedRanges: ["0.55.x", "0.56.x"] as const,
       supported: false,
       sourceRevisionId: "src_old",
     }));
