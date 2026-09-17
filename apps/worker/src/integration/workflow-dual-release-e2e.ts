@@ -400,21 +400,32 @@ try {
     },
     60_000,
   );
-  await waitFor(
+  // The durable sleep's timer job belongs to the run that executes the sleep:
+  // the turn run itself on 0.55, or -- from 0.57, where the sleep tool is a
+  // workflow tool run of its own -- a child `workflowToolRunWorkflow` run in
+  // the raced session's family. Resolve that run from the job rather than
+  // assuming it is the executor, and ignore the immediate continuations a
+  // session run enqueues for itself (see workflow-wake-e2e.ts).
+  const timerJob = await waitFor(
     "the raced run's durable sleep to enqueue its delayed continuation",
     async () => {
-      const { rows } = await worldPool.query<{ id: string }>(
-        `select jobs.id::text as id
+      const { rows } = await worldPool.query<{ id: string; run_id: string }>(
+        `select jobs.id::text as id,
+                convert_from(decode(jobs.payload ->> 'data', 'base64'), 'utf8')::jsonb ->> 'runId' as run_id
            from graphile_worker._private_jobs as jobs
           where jobs.payload ->> 'tenantId' = $1
-            and convert_from(decode(jobs.payload ->> 'data', 'base64'), 'utf8')::jsonb ->> 'runId' = $2
-            and jobs.run_at > now()`,
+            and convert_from(decode(jobs.payload ->> 'data', 'base64'), 'utf8')::jsonb ->> 'runId' in (
+              select id from workflow.workflow_runs
+               where tenant_id = $1
+                 and (id = $2 or attributes ->> '$rootRunId' = $2 or attributes ->> '$parentRunId' = $2))
+            and jobs.run_at > now() + interval '15 seconds'`,
         [project.id, racedRun.id],
       );
       return rows[0] ?? null;
     },
     60_000,
   );
+  const timerRunId = timerJob.run_id;
   await dispatcher.stop();
   log("dispatcher stopped before the continuation came due");
   const { rows: firstDeliveries } = await worldPool.query<{
@@ -430,10 +441,10 @@ try {
       where tasks.identifier = 'eveland_wf_flows'
         and jobs.payload ->> 'tenantId' = $1
         and convert_from(decode(jobs.payload ->> 'data', 'base64'), 'utf8')::jsonb ->> 'runId' = $2`,
-    [project.id, racedRun.id],
+    [project.id, timerRunId],
   );
   assert.ok(firstDeliveries.length >= 1, "the raced run must have a pending delivery");
-  const expectedQueue = runQueueName(project.id, racedRun.id);
+  const expectedQueue = runQueueName(project.id, timerRunId);
   for (const job of firstDeliveries) {
     assert.equal(job.queue_name, expectedQueue, "every delivery sits on the exact per-run queue");
   }
@@ -452,6 +463,7 @@ try {
   );
   log("duplicated the pending delivery at its original due time", {
     runId: racedRun.id,
+    timerRunId,
     queue: expectedQueue,
   });
 
