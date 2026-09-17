@@ -117,7 +117,7 @@ export async function collectProjectFiles(root: string): Promise<PreflightResult
 
 /**
  * The platform's eve-specifier grammar, checked against the ranges the
- * instance reports (e.g. ["0.55.x", "0.56.x"]). The server re-validates at
+ * instance reports (e.g. ["0.55.x", "0.58.x"]). The server re-validates at
  * import and activation; this only moves the same verdict earlier.
  */
 export function eveSpecifierProblem(

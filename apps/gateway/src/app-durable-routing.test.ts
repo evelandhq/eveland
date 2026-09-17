@@ -15,8 +15,8 @@ registerGatewayTestCleanup();
 function version(version: string, deploymentId: string): EveVersionInfo {
   return {
     version,
-    expected: "0.55.x or 0.56.x",
-    supportedRanges: ["0.55.x", "0.56.x"],
+    expected: "0.55.x or 0.58.x",
+    supportedRanges: ["0.55.x", "0.58.x"],
     supported: true,
     sourceRevisionId: `src-${deploymentId}`,
   };
