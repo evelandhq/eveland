@@ -32,6 +32,13 @@ import { runMigrations } from "@evelandhq/workflow-world";
 import { Pool } from "pg";
 import { spawnDispatcherApp, waitForDispatcherRegistration } from "./dispatcher-process.js";
 
+/**
+ * The Eve-owned run that executes a turn's steps, per line: `turnWorkflow` is
+ * the child run every 0.55/0.56 turn dispatches, `workflowEntry` is the
+ * session's own run, which from 0.57 executes the turns itself.
+ */
+const EVE_TURN_EXECUTOR_RUN_NAMES = ["workflow//eve//turnWorkflow", "workflow//eve//workflowEntry"];
+
 const IDLE_TTL_MS = Number(process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 60_000);
 /** Comfortably past the reap, so the job can only run on a woken deployment. */
 const WAKE_DELAY_MS = IDLE_TTL_MS * 2;
@@ -128,8 +135,13 @@ try {
   const startResult = JSON.parse(startBody) as { sessionId?: unknown };
   assert.equal(typeof startResult.sessionId, "string", "workflow start must return a session id");
 
+  // The run that executes the turn's durable sleep depends on the Eve line:
+  // through 0.56 every turn is a child `turnWorkflow` run started after the
+  // session's own `workflowEntry` run, so "newest first" picks the turn run;
+  // from 0.57 the turn runs as steps inside the session run itself and no
+  // per-turn run exists. Either way the newest of the two is the executor.
   const run = await waitFor(
-    "the fixture's real Eve turn workflow to be persisted",
+    "the fixture's real Eve turn-executing workflow run to be persisted",
     async () => {
       const { rows } = await worldPool.query<{
         id: string;
@@ -141,10 +153,10 @@ try {
            from workflow.workflow_runs
           where tenant_id = $1
             and deployment_id = $2
-            and name = 'workflow//eve//turnWorkflow'
+            and name = any($3)
           order by created_at desc
           limit 1`,
-        [project.id, deployment.id],
+        [project.id, deployment.id, EVE_TURN_EXECUTOR_RUN_NAMES],
       );
       return rows[0] ?? null;
     },
@@ -235,7 +247,20 @@ try {
   );
   log("deployment woken by the dispatcher", { wokeAt: wokeAt.toISOString() });
 
-  const completedRun = await waitFor(
+  // A per-turn run (through 0.56) completes with the turn; the session run
+  // that executes turns from 0.57 stays `running` between turns, so the proof
+  // that the body resumed is the second completed `//turnStep` on the run --
+  // the same step name on both lines -- not the run's own status.
+  const completedTurnSteps = async () => {
+    const { rows } = await worldPool.query<{ step_name: string }>(
+      `select step_name
+         from workflow.workflow_steps
+        where tenant_id = $1 and run_id = $2 and status = 'completed'`,
+      [project.id, run.id],
+    );
+    return rows.filter((step) => step.step_name.endsWith("//turnStep")).length;
+  };
+  const settledRun = await waitFor(
     "the recovered workflow body to finish",
     async () => {
       const { rows } = await worldPool.query<{ status: string }>(
@@ -248,21 +273,18 @@ try {
       if (current?.status === "failed" || current?.status === "cancelled") {
         throw new Error(`recovered workflow became terminal with status ${current.status}`);
       }
-      return current?.status === "completed" ? current : null;
+      if (current?.status === "completed") return current;
+      return current?.status === "running" && (await completedTurnSteps()) >= 2 ? current : null;
     },
     WAKE_DELAY_MS + 5 * 60_000,
   );
-  assert.equal(completedRun.status, "completed");
-
-  const { rows: completedSteps } = await worldPool.query<{ step_name: string; status: string }>(
-    `select step_name, status
-       from workflow.workflow_steps
-      where tenant_id = $1 and run_id = $2 and status = 'completed'`,
-    [project.id, run.id],
+  assert.ok(
+    settledRun.status === "completed" || settledRun.status === "running",
+    `the recovered run must be settled or idle, not ${settledRun.status}`,
   );
   assert.ok(
-    completedSteps.filter((step) => step.step_name.endsWith("//turnStep")).length >= 2,
-    "the Eve turn workflow must complete a second turnStep after its durable sleep",
+    (await completedTurnSteps()) >= 2,
+    "the Eve turn body must complete a second turnStep after its durable sleep",
   );
 
   const { rows: deadLetters } = await worldPool.query<{ reason: string }>(

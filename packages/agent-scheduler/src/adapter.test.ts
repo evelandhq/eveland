@@ -25,7 +25,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.55/0.56 compatibility window", async () => {
+  test("fails closed outside the 0.55/0.58 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -87,7 +87,18 @@ describe("injectSchedulerAdapter", () => {
       "~0.54.5",
       "^0.54.5",
       "0.54.x",
+      // 0.56 and 0.57 are the skipped lines of the current window: inside the
+      // hull, superseded on 2026-09-17 before any Eveland release carried
+      // them, so never verified and rejected like a retired line.
+      "0.56.0",
+      "~0.56.0",
+      "^0.56.0",
+      "0.56.x",
       "0.57.0",
+      "~0.57.0",
+      "^0.57.0",
+      "0.57.x",
+      "0.59.0",
       ">=0.55.0",
       "*",
       "latest",
@@ -110,12 +121,12 @@ describe("injectSchedulerAdapter", () => {
       "0.55",
       "0.55.x",
       "0.55.*",
-      "0.56.0",
-      "~0.56.0",
-      "^0.56.0",
-      "0.56",
-      "0.56.x",
-      "0.56.*",
+      "0.58.0",
+      "~0.58.0",
+      "^0.58.0",
+      "0.58",
+      "0.58.x",
+      "0.58.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -257,7 +268,7 @@ Produce the daily report.
     // Eve 0.33 made "steer" the default send policy, which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every line in the
-    // current 0.55/0.56 window supports the explicit `turnPolicy` option.
+    // current 0.55/0.58 window supports the explicit `turnPolicy` option.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };

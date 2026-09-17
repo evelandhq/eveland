@@ -95,23 +95,52 @@ async function startWake(
   return { sessionId: parsed.sessionId as string };
 }
 
+/**
+ * The Eve-owned run that executes a turn's steps, per line: `turnWorkflow` is
+ * the child run every 0.55/0.56 turn dispatches (created after the session's
+ * own run, so "newest first" picks it), `workflowEntry` is the session's own
+ * run, which from 0.57 executes the turns itself and is the only candidate.
+ */
+const EVE_TURN_EXECUTOR_RUN_NAMES = ["workflow//eve//turnWorkflow", "workflow//eve//workflowEntry"];
+
 async function latestTurnRun(projectId: string, deploymentId: string) {
   const { rows } = await worldPool.query<{
     id: string;
+    name: string;
     deployment_id: string;
     queue_namespace: string | null;
     status: string;
   }>(
-    `select id, deployment_id, queue_namespace, status
+    `select id, name, deployment_id, queue_namespace, status
        from workflow.workflow_runs
       where tenant_id = $1
         and deployment_id = $2
-        and name = 'workflow//eve//turnWorkflow'
+        and name = any($3)
       order by created_at desc
       limit 1`,
-    [projectId, deploymentId],
+    [projectId, deploymentId, EVE_TURN_EXECUTOR_RUN_NAMES],
   );
   return rows[0] ?? null;
+}
+
+/**
+ * Whether the turn this run executed has settled. A per-turn run (through
+ * 0.56) completes with its turn; a session run (from 0.57) stays `running`
+ * between turns, so its proof is a Release marker among the replies on the
+ * session stream -- either marker, since which one answered is asserted
+ * separately.
+ */
+async function turnSettled(
+  run: { id: string; status: string },
+  sessionRunId: string,
+): Promise<boolean> {
+  if (run.status === "failed" || run.status === "cancelled") {
+    throw new Error(`run ${run.id} became ${run.status}`);
+  }
+  if (run.status === "completed") return true;
+  if (run.status !== "running") return false;
+  const replies = await sessionReplies(sessionRunId);
+  return replies.includes("awake") || replies.includes(VARIANT_B_MARKER);
 }
 
 /**
@@ -133,12 +162,28 @@ async function assertRunSemantics(
   );
   const run = rows[0];
   assert.ok(run, `run ${runId} must exist`);
-  assert.equal(run.status, "completed", `run ${runId} must complete`);
+  assert.ok(
+    await turnSettled({ id: runId, status: run.status }, sessionRunId),
+    `run ${runId} must have settled its turn (status ${run.status})`,
+  );
   assert.equal(
     run.deployment_id,
     deploymentId,
     "the run's immutable deployment_id must stay on its owner",
   );
+  const replies = await sessionReplies(sessionRunId);
+  assert.ok(
+    replies.includes("awake"),
+    `the reply must carry Release A's marker (saw: ${JSON.stringify(replies)})`,
+  );
+  assert.ok(
+    !replies.includes(VARIANT_B_MARKER),
+    "Release B must never have answered this run — its marker in the reply means the dispatch went to the wrong Release",
+  );
+}
+
+/** The `message.completed` replies streamed on a session run, in chunk order. */
+async function sessionReplies(sessionRunId: string): Promise<string[]> {
   const { rows: chunks } = await worldPool.query<{ data: Buffer }>(
     `select data from workflow.workflow_stream_chunks where run_id = $1`,
     [sessionRunId],
@@ -160,14 +205,7 @@ async function assertRunSemantics(
       }
     }
   }
-  assert.ok(
-    replies.includes("awake"),
-    `the reply must carry Release A's marker (saw: ${JSON.stringify(replies)})`,
-  );
-  assert.ok(
-    !replies.includes(VARIANT_B_MARKER),
-    "Release B must never have answered this run — its marker in the reply means the dispatch went to the wrong Release",
-  );
+  return replies;
 }
 
 async function assertNoPoison(projectId: string) {
@@ -307,13 +345,14 @@ try {
     WAKE_DELAY_MS + 5 * 60_000,
   );
   await waitFor(
-    "the recovered run to complete",
+    "the recovered run to settle its turn",
     async () => {
-      const run = await latestTurnRun(project.id, deploymentA.id);
-      if (run?.status === "failed" || run?.status === "cancelled") {
-        throw new Error(`recovered run became ${run.status}`);
-      }
-      return run?.status === "completed" ? run : null;
+      const { rows } = await worldPool.query<{ id: string; status: string }>(
+        `select id, status from workflow.workflow_runs where tenant_id = $1 and id = $2`,
+        [project.id, parkedRun.id],
+      );
+      const run = rows[0];
+      return run && (await turnSettled(run, sessionId)) ? run : null;
     },
     WAKE_DELAY_MS + 5 * 60_000,
   );
@@ -420,18 +459,15 @@ try {
   await waitForDispatcherRegistration(store, { notInstanceId: secondRegistration.instanceId });
 
   await waitFor(
-    "the raced run to complete despite the duplicate delivery",
+    "the raced run to settle its turn despite the duplicate delivery",
     async () => {
-      const { rows } = await worldPool.query<{ status: string; deployment_id: string }>(
-        `select status, deployment_id from workflow.workflow_runs
+      const { rows } = await worldPool.query<{ id: string; status: string }>(
+        `select id, status from workflow.workflow_runs
           where tenant_id = $1 and id = $2`,
         [project.id, racedRun.id],
       );
       const run = rows[0];
-      if (run?.status === "failed" || run?.status === "cancelled") {
-        throw new Error(`raced run became ${run.status}`);
-      }
-      return run?.status === "completed" ? run : null;
+      return run && (await turnSettled(run, racedSessionId)) ? run : null;
     },
     10 * 60_000,
   );

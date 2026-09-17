@@ -12,7 +12,7 @@ import {
 import { createZipArchive } from "./zip.ts";
 
 const execFileAsync = promisify(execFile);
-const WINDOW = ["0.55.x", "0.56.x"];
+const WINDOW = ["0.55.x", "0.58.x"];
 
 async function makeProject(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-"));
@@ -127,15 +127,19 @@ describe("deploy preflight", () => {
   test("judges eve specifiers against the instance window", () => {
     expect(eveSpecifierProblem("0.55.0", WINDOW)).toBeNull();
     expect(eveSpecifierProblem("^0.55.0", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("0.56.x", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("0.58.x", WINDOW)).toBeNull();
     expect(eveSpecifierProblem("0.46.0", WINDOW)).toContain("outside this instance's supported");
+    // Skipped on 2026-09-17 (0.56, 0.57): inside the hull but never verified,
+    // so a line between two supported ones reads like any other outsider.
+    expect(eveSpecifierProblem("0.56.x", WINDOW)).toContain("outside this instance's supported");
+    expect(eveSpecifierProblem("0.57.0", WINDOW)).toContain("outside this instance's supported");
     // Retired on 2026-09-07 (0.49), 2026-09-12 (0.50, 0.51), 2026-09-15 (0.52, 0.53), and 2026-09-16 (0.54): a formerly supported line reads exactly like any other outsider.
     expect(eveSpecifierProblem("0.49.0", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.51.1", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.53.1", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.54.5", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("^0.55", WINDOW)).toContain("Unsupported");
-    expect(eveSpecifierProblem(">=0.55.0 <0.57.0", WINDOW)).toContain("Unsupported");
+    expect(eveSpecifierProblem(">=0.55.0 <0.58.0", WINDOW)).toContain("Unsupported");
     expect(eveSpecifierProblem("catalog:", WINDOW)).toContain("Unsupported");
     expect(eveSpecifierProblem(null, WINDOW)).toContain("Missing");
   });

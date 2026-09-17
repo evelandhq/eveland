@@ -6,17 +6,20 @@ export const EVE_COMPATIBILITY_POLICY = {
       dependencyName: "eve-previous",
     },
     {
-      range: "0.56.x",
-      verifiedVersion: "0.56.0",
+      range: "0.58.x",
+      verifiedVersion: "0.58.0",
       dependencyName: "eve",
     },
   ],
-  // A sliding two-line window: 0.56 entered on 2026-09-16 into a window that
-  // was already two lines wide, so 0.54 retired alone and the published SDK's
-  // peer floor moved with it. 0.55 stays, still verified at 0.55.0 -- the line
-  // published no patch. Both minors are consecutive, so the range is a single
-  // contiguous interval rather than the union of runs a gapped window needs.
-  peerDependencyRange: ">=0.55.0 <0.57.0",
+  // A gapped two-line window: 0.58.0 (published 2026-09-17) entered on
+  // 2026-09-17 and 0.56/0.57 are skipped. 0.56 was admitted on main for one
+  // day and 0.57 for a few hours, and no Eveland release ever carried either,
+  // so no Deployment ran on them; 0.58 ships the execution model 0.57
+  // introduced (turns run inside the session's own workflow run) with every
+  // wire surface byte-identical to 0.57. 0.55 stays as the floor, still
+  // verified at 0.55.0. The range is the union of the two contiguous runs,
+  // never the hull, which would admit the skipped lines.
+  peerDependencyRange: ">=0.55.0 <0.56.0 || >=0.58.0 <0.59.0",
 } as const;
 
 export type SupportedEveVersionRange =
