@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.0](https://github.com/evelandhq/eveland/compare/eveland-v0.12.0...eveland-v0.13.0) (2026-09-17)
+
+
+### Features
+
+* adopt eve 0.58.0 with a gapped {0.55.x, 0.58.x} window ([#556](https://github.com/evelandhq/eveland/issues/556)) ([56ace6d](https://github.com/evelandhq/eveland/commit/56ace6d430daf12e181a91b8fbddaf2b94b70537))
+* slide the Eve compatibility window to 0.55.x and 0.56.x ([#553](https://github.com/evelandhq/eveland/issues/553)) ([cda6fb8](https://github.com/evelandhq/eveland/commit/cda6fb85e0e4332259d81b63cebb26d040ff5254))
+
+
+### Bug Fixes
+
+* **eve:** verify the 0.58 line at eve 0.58.1 ([#558](https://github.com/evelandhq/eveland/issues/558)) ([21e5e1b](https://github.com/evelandhq/eveland/commit/21e5e1ba7cf20f980581f972ab8b04fcd5c2711c))
+
 ## [0.12.0](https://github.com/evelandhq/eveland/compare/eveland-v0.11.0...eveland-v0.12.0) (2026-09-15)
 
 
