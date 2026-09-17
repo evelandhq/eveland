@@ -8,7 +8,7 @@
  * (nitro@3.0.260903-beta -> srvx@1.0.3: the graceful-shutdown plugin body is
  * byte-identical), again for 0.53.1 and 0.54.3 on 2026-09-12, for 0.54.5 and
  * 0.55.0 on 2026-09-15, for 0.56.0 on 2026-09-16, and again for 0.57.0 and
- * 0.58.0 on 2026-09-17 (the nitro and srvx pins did not move), so every
+ * 0.58.0 and 0.58.1 on 2026-09-17 (the nitro and srvx pins did not move), so every
  * number below still holds:
  *
  * 1. The systemd unit. SIGTERM reaches the whole cgroup, so the

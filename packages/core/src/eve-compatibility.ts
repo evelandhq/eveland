@@ -7,7 +7,7 @@ export const EVE_COMPATIBILITY_POLICY = {
     },
     {
       range: "0.58.x",
-      verifiedVersion: "0.58.0",
+      verifiedVersion: "0.58.1",
       dependencyName: "eve",
     },
   ],
@@ -17,7 +17,11 @@ export const EVE_COMPATIBILITY_POLICY = {
   // so no Deployment ran on them; 0.58 ships the execution model 0.57
   // introduced (turns run inside the session's own workflow run) with every
   // wire surface byte-identical to 0.57. 0.55 stays as the floor, still
-  // verified at 0.55.0. The range is the union of the two contiguous runs,
+  // verified at 0.55.0. The newest line is verified at 0.58.1, published 53
+  // minutes after 0.58.0 and already what `^0.58.0` resolves to: it restamps
+  // the version-stamped workflow ids and fixes autoModel under `eve dev`, with
+  // dependencies, peers, exports and bundled versions identical to 0.58.0. The
+  // range is the union of the two contiguous runs,
   // never the hull, which would admit the skipped lines.
   peerDependencyRange: ">=0.55.0 <0.56.0 || >=0.58.0 <0.59.0",
 } as const;

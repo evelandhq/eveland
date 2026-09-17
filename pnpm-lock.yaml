@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     eve:
-      specifier: 0.58.0
-      version: 0.58.0
+      specifier: 0.58.1
+      version: 0.58.1
   eve-matrix:
     eve-previous:
       specifier: npm:eve@0.55.0
@@ -232,7 +232,7 @@ importers:
         version: 8.6.0(react@19.2.8)
       eve:
         specifier: 'catalog:'
-        version: 0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
+        version: 0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
       lucide-react:
         specifier: ^1.33.0
         version: 1.33.0(react@19.2.8)
@@ -326,7 +326,7 @@ importers:
         version: link:../../packages/platform-observability
       '@evelandhq/sandbox-bwrap':
         specifier: ^0.3.0
-        version: 0.3.0(eve@0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3)))
+        version: 0.3.0(eve@0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3)))
       '@evelandhq/workflow-world':
         specifier: ^0.19.1
         version: 0.19.1(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
@@ -397,7 +397,7 @@ importers:
         version: link:../core
       eve:
         specifier: 'catalog:'
-        version: 0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
+        version: 0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
       openid-client:
         specifier: ^6.8.7
         version: 6.8.7
@@ -450,7 +450,7 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
+        version: 0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
       eve-previous:
         specifier: catalog:eve-matrix
         version: eve@0.55.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
@@ -469,7 +469,7 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
+        version: 0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
       eve-previous:
         specifier: catalog:eve-matrix
         version: eve@0.55.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
@@ -546,8 +546,8 @@ importers:
   packages/eveland:
     devDependencies:
       eve:
-        specifier: 0.58.0
-        version: 0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
+        specifier: 0.58.1
+        version: 0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4))
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.5.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.12)(yaml@2.9.0))
@@ -4665,8 +4665,8 @@ packages:
       microsandbox:
         optional: true
 
-  eve@0.58.0:
-    resolution: {integrity: sha512-fQwTbIS3lNTmHNDRHj/mTZYCzqq46ay7J181m1EY7K+3MsOLde1BRFpyaoGHvQmK2DKaJfQzMb2JxWKmiOOQnw==}
+  eve@0.58.1:
+    resolution: {integrity: sha512-xgitCEwqpj9TQ0negHQ/sdxiXc7Jz0X28/v5fhtQW1CcwPYoeRs6fD4piQPPgaymLXmLamCsHQgHSMR3FunbLg==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
@@ -7910,9 +7910,9 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@evelandhq/sandbox-bwrap@0.3.0(eve@0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3)))':
+  '@evelandhq/sandbox-bwrap@0.3.0(eve@0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3)))':
     dependencies:
-      eve: 0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3))
+      eve: 0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3))
 
   '@evelandhq/workflow-world@0.19.1(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
     dependencies:
@@ -10817,7 +10817,7 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  eve@0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3)):
+  eve@0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3)):
     dependencies:
       ai: 7.0.105(zod@4.4.3)
       nitro: 3.0.260903-beta
@@ -10825,7 +10825,7 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  eve@0.58.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4)):
+  eve@0.58.1(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.5.4)):
     dependencies:
       ai: 7.0.105(zod@4.5.4)
       nitro: 3.0.260903-beta

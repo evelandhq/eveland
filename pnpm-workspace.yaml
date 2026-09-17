@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.58.0
+  eve: 0.58.1
 catalogs:
   eve-matrix:
     eve-previous: npm:eve@0.55.0
@@ -59,8 +59,8 @@ overrides:
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
 # before the shared World and never selected for a new build. The beta.21/10/
 # 44/35 line is what `@evelandhq/workflow-world` 0.19.1 bundles -- the set eve
-# has carried unchanged since 0.54.4, 0.55.0 and 0.58.0 included (0.57.0 and
-# 0.58.0 re-bundled the same versions, moving only the vendor stamp's script
+# has carried unchanged since 0.54.4, 0.55.0 and 0.58.1 included (0.57.0,
+# 0.58.0 and 0.58.1 re-bundled the same versions, moving only the vendor stamp's script
 # hash and, in 0.58.0, @ai-sdk/code-mode; eve compares
 # only the major and prerelease tag of the World's declaration, so the same
 # World serves the whole window). That line's `@workflow/world` reports

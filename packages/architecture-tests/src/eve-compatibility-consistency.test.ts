@@ -96,7 +96,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.58.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.58.1");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -132,7 +132,7 @@ describe("Eve compatibility repository contract", () => {
       // still byte-identical (0.53.1 "experimental.workflow.retention" only
       // adds an `experimental_retention` start option, no new run). 0.54.5 and
       // 0.55.0 re-checked 2026-09-15, 0.56.0 on 2026-09-16, 0.57.0 and
-      // 0.58.0 on 2026-09-17: the exported set and the bundler default are
+      // 0.58.0 (and its 0.58.1 patch) on 2026-09-17: the exported set and the bundler default are
       // still byte-identical. 0.56.0 rebuilt the `workflow` tool around a
       // model-supplied JS program, but its steps run inside this same run
       // rather than opening one of their own. 0.57.0 moved turn execution
