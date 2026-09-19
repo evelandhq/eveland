@@ -1,29 +1,31 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.55.x",
-      verifiedVersion: "0.55.0",
+      range: "0.58.x",
+      verifiedVersion: "0.58.1",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.58.x",
-      verifiedVersion: "0.58.1",
+      range: "0.62.x",
+      verifiedVersion: "0.62.0",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.58.0 (published 2026-09-17) entered on
-  // 2026-09-17 and 0.56/0.57 are skipped. 0.56 was admitted on main for one
-  // day and 0.57 for a few hours, and no Eveland release ever carried either,
-  // so no Deployment ran on them; 0.58 ships the execution model 0.57
-  // introduced (turns run inside the session's own workflow run) with every
-  // wire surface byte-identical to 0.57. 0.55 stays as the floor, still
-  // verified at 0.55.0. The newest line is verified at 0.58.1, published 53
-  // minutes after 0.58.0 and already what `^0.58.0` resolves to: it restamps
-  // the version-stamped workflow ids and fixes autoModel under `eve dev`, with
-  // dependencies, peers, exports and bundled versions identical to 0.58.0. The
-  // range is the union of the two contiguous runs,
-  // never the hull, which would admit the skipped lines.
-  peerDependencyRange: ">=0.55.0 <0.56.0 || >=0.58.0 <0.59.0",
+  // A gapped two-line window: 0.62.0 (published 2026-09-18) entered on
+  // 2026-09-19 and 0.59/0.60/0.61 are skipped. Four minors shipped in the day
+  // and a half after 0.58.1, each superseded before any Eveland release could
+  // carry it, so no Deployment ran on them. 0.55 retired the same day: its
+  // Releases answer 409 on activation and their parked runs are settled.
+  // Every wire surface is unchanged from 0.58.1 to 0.62.0 (message stream v25,
+  // discovery manifest v15, storage spec 7, the route set, the unstamped
+  // workflow names), so what the newer line changes is authoring: 0.62 no
+  // longer discovers a flat `agent/instrumentation.ts` (path-named files under
+  // `agent/instrumentation/` replace it), 0.60 removed the deprecated span
+  // export helpers, 0.61 moved the bundled @workflow/* set (core beta.53,
+  // world beta.36, world-local beta.45) and 0.59 lets a client create a session
+  // before its first message. The range is the union of the two contiguous
+  // runs, never the hull, which would admit the skipped lines.
+  peerDependencyRange: ">=0.58.0 <0.59.0 || >=0.62.0 <0.63.0",
 } as const;
 
 export type SupportedEveVersionRange =
