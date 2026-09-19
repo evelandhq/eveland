@@ -101,6 +101,41 @@ describe("buildTranscriptTurns", () => {
     });
   });
 
+  test("does not render a runtime-authored background task wake-up as user input", () => {
+    const turns = buildTranscriptTurns([
+      event("message.received", { message: "Start the report", turnId: "turn_0" }),
+      event("message.completed", { message: "Working on it", turnId: "turn_0" }),
+      event("turn.completed", { turnId: "turn_0" }),
+      // eve 0.61+ marks input it authored itself; eve's own reducer skips these.
+      event(
+        "message.received",
+        {
+          kind: "execution.background_task",
+          message: "Background task finished: report.pdf",
+          turnId: "turn_1",
+        },
+        { second: 5 },
+      ),
+      event(
+        "message.completed",
+        { message: "The report is ready", turnId: "turn_1" },
+        { second: 6 },
+      ),
+      event("turn.completed", { turnId: "turn_1" }, { second: 7 }),
+    ]);
+
+    expect(turns).toHaveLength(2);
+    expect(turns[0]!.userMessage).toBe("Start the report");
+    expect(turns[1]).toMatchObject({
+      turnId: "turn_1",
+      startedAt: at(5),
+      userMessage: null,
+      assistantMessage: "The report is ready",
+      status: "completed",
+    });
+    expect(turns[1]!.items.map((item) => item.kind)).toEqual(["assistant"]);
+  });
+
   test("keeps unanswered tool calls pending and separates turns by turnId", () => {
     const turns = buildTranscriptTurns([
       event("message.received", { message: "First", turnId: "turn_0" }),
