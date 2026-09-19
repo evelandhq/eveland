@@ -169,6 +169,9 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
       case "message.received": {
         const text = messageText(payload);
         const turn = turnFor(payload, event.eventAt);
+        // Eve 0.61+ marks input it authored itself (a background task or
+        // subagent wake-up); nobody typed it, and Eve's own reducer skips it.
+        if (asString(payload?.kind) === "execution.background_task") break;
         turn.items.push({ kind: "user", text, eventAt: event.eventAt });
         turn.userMessage ??= text;
         break;
