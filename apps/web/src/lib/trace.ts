@@ -1,7 +1,11 @@
 import type { TranscriptUsage } from "@evelandhq/core/transcript";
 import type { SessionEvent, SessionNode } from "./api";
 
-export type TraceRole = "user" | "assistant" | "reasoning" | "tool" | "lifecycle";
+/**
+ * `runtime` is input Eve authored itself (a background task or subagent
+ * wake-up), which opens a turn like a user message but was typed by nobody.
+ */
+export type TraceRole = "user" | "runtime" | "assistant" | "reasoning" | "tool" | "lifecycle";
 
 export type TraceRowStatus = "completed" | "failed" | "cancelled" | "pending";
 
@@ -108,7 +112,7 @@ export function buildSessionTrace(
         push(event, {
           ...base,
           id: event.id,
-          role: "user",
+          role: payload?.kind === "execution.background_task" ? "runtime" : "user",
           type: event.type,
           turn: turnOf(payload),
           status: null,

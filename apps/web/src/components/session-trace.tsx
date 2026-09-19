@@ -24,6 +24,7 @@ type SessionTraceProps = {
 
 const ROLE_LABEL: Record<TraceRole, string> = {
   user: "USER",
+  runtime: "RUNTIME",
   assistant: "ASSISTANT",
   reasoning: "REASONING",
   tool: "TOOL",
@@ -32,6 +33,7 @@ const ROLE_LABEL: Record<TraceRole, string> = {
 
 const ROLE_CHIP: Record<TraceRole, string> = {
   user: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  runtime: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
   assistant: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
   reasoning: "bg-violet-50 text-violet-500 dark:bg-violet-950/50 dark:text-violet-400",
   tool: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
@@ -41,7 +43,7 @@ const ROLE_CHIP: Record<TraceRole, string> = {
 type MinimapTrack = 0 | 1 | 2;
 
 function minimapTrack(role: TraceRole): MinimapTrack | null {
-  if (role === "user") return 0;
+  if (role === "user" || role === "runtime") return 0;
   if (role === "assistant" || role === "reasoning") return 1;
   if (role === "tool") return 2;
   return null;
