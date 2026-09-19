@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.59.0](https://github.com/evelandhq/eveland/compare/v0.58.0...v0.59.0) (2026-09-19)
+
+
+### Features
+
+* adopt eve 0.62.0 with a gapped {0.58.x, 0.62.x} window ([#560](https://github.com/evelandhq/eveland/issues/560)) ([816a79e](https://github.com/evelandhq/eveland/commit/816a79ee6baaa02bcca1926fd2d371a1c44e4ce4))
+
+
+### Bug Fixes
+
+* **core:** skip eve-authored background task wake-ups in the session transcript ([#563](https://github.com/evelandhq/eveland/issues/563)) ([1f4204f](https://github.com/evelandhq/eveland/commit/1f4204f67a1f213db3b99e57edf377c23081e453))
+* **web:** attribute background task wake-ups to the runtime in trace and telemetry ([#564](https://github.com/evelandhq/eveland/issues/564)) ([60a35c2](https://github.com/evelandhq/eveland/commit/60a35c242ae3e804b5692880c8a2c3d7abfccdd6))
+
 ## [0.58.0](https://github.com/evelandhq/eveland/compare/v0.57.1...v0.58.0) (2026-09-17)
 
 
