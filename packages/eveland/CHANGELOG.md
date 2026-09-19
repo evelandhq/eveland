@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/evelandhq/eveland/compare/eveland-v0.13.0...eveland-v0.14.0) (2026-09-19)
+
+
+### Features
+
+* adopt eve 0.62.0 with a gapped {0.58.x, 0.62.x} window ([#560](https://github.com/evelandhq/eveland/issues/560)) ([816a79e](https://github.com/evelandhq/eveland/commit/816a79ee6baaa02bcca1926fd2d371a1c44e4ce4))
+
 ## [0.13.0](https://github.com/evelandhq/eveland/compare/eveland-v0.12.0...eveland-v0.13.0) (2026-09-17)
 
 
