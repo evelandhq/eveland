@@ -561,6 +561,76 @@ describe("private Agent telemetry runtime", () => {
     ).not.toContain("gen_ai.client.token.usage");
   });
 
+  test("marks a turn Eve woke itself for a background task, even when inputs are not recorded", async () => {
+    const traces = new InMemorySpanExporter();
+    const logs = new InMemoryLogRecordExporter();
+    const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy(),
+      exporters: { traces, logs, metrics },
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+
+    await runtime.capture(
+      { type: "turn.started", data: { sequence: 1, turnId: "turn_1" } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "message.received",
+        data: { sequence: 2, turnId: "turn_1", message: "typed by a person" },
+      },
+      context,
+    );
+    await runtime.capture(
+      { type: "turn.completed", data: { sequence: 3, turnId: "turn_1" } },
+      context,
+    );
+    await runtime.capture(
+      { type: "turn.started", data: { sequence: 4, turnId: "turn_2" } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "message.received",
+        data: {
+          kind: "execution.background_task",
+          sequence: 5,
+          turnId: "turn_2",
+          message: "Background task finished",
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      { type: "turn.completed", data: { sequence: 6, turnId: "turn_2" } },
+      context,
+    );
+    await runtime.forceFlush();
+
+    const turnSpans = traces
+      .getFinishedSpans()
+      .filter((span) => span.name === "invoke_agent Researcher");
+    const spanFor = (turnId: string) =>
+      turnSpans.find((span) => span.attributes["eveland.eve.turn.id"] === turnId);
+    expect(spanFor("turn_1")?.attributes).not.toHaveProperty("eveland.eve.message.kind");
+    expect(spanFor("turn_2")?.attributes).toMatchObject({
+      "eveland.eve.message.kind": "execution.background_task",
+    });
+
+    // The session transcript keys off `kind` in the stored event, so it must
+    // survive the input-capture policy that strips the message itself.
+    const wakeUpLog = logs
+      .getFinishedLogRecords()
+      .filter((record) => record.eventName === "eve.message.received")
+      .at(-1);
+    expect(wakeUpLog?.body).toEqual({
+      type: "message.received",
+      data: { kind: "execution.background_task", sequence: 5, turnId: "turn_2" },
+    });
+  });
+
   test("ends open child spans when a turn is cancelled", async () => {
     const traces = new InMemorySpanExporter();
     const logs = new InMemoryLogRecordExporter();

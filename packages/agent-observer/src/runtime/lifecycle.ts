@@ -110,6 +110,11 @@ export function mapAgentTelemetryLifecycle(input: {
     case "message.received": {
       const span = turnKey ? state.turns.get(turnKey) : undefined;
       const message = asString(data.message);
+      // Eve 0.61+ marks input it authored itself (a background task wake-up).
+      // Eve still hands it to the model as a user-role message, so the role
+      // below stays `user`; this attribute records that nobody typed it.
+      const messageKind = asString(data.kind);
+      if (span && messageKind) span.setAttribute("eveland.eve.message.kind", messageKind);
       if (turnKey && message) {
         transcriptFor(state, turnKey).push({
           role: "user",
