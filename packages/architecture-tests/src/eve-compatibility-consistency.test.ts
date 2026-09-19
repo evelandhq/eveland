@@ -96,7 +96,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.58.1");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.62.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -132,8 +132,10 @@ describe("Eve compatibility repository contract", () => {
       // still byte-identical (0.53.1 "experimental.workflow.retention" only
       // adds an `experimental_retention` start option, no new run). 0.54.5 and
       // 0.55.0 re-checked 2026-09-15, 0.56.0 on 2026-09-16, 0.57.0 and
-      // 0.58.0 (and its 0.58.1 patch) on 2026-09-17: the exported set and the bundler default are
-      // still byte-identical. 0.56.0 rebuilt the `workflow` tool around a
+      // 0.58.0 (and its 0.58.1 patch) on 2026-09-17, 0.62.0 on 2026-09-19: the
+      // exported set and the bundler default are still byte-identical (0.60.1
+      // added `executeAgentRouterTool`, which is version-stamped like the sleep
+      // and workflow-program tools and so is not in this set). 0.56.0 rebuilt the `workflow` tool around a
       // model-supplied JS program, but its steps run inside this same run
       // rather than opening one of their own. 0.57.0 moved turn execution
       // into the session's own WORKFLOW_ENTRY_NAME run and 0.58.0 keeps that:
@@ -159,9 +161,9 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // Every line in the window (0.55.x, 0.58.x) exports the same six plus the
-    // subagent body; 0.58.x opens no per-turn run any more but keeps the name
-    // for legacy-session import.
+    // Every line in the window (0.58.x, 0.62.x) exports the same six plus the
+    // subagent body; neither opens a per-turn run any more, but both keep the
+    // name for legacy-session import.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
       for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
@@ -199,7 +201,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.55/0.58 compatibility window", () => {
+  test("describes the supported 0.58/0.62 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
