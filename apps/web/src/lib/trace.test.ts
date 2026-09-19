@@ -115,6 +115,35 @@ describe("buildSessionTrace", () => {
     expect(preTurn.turn).toBeNull();
   });
 
+  test("attributes a background task wake-up to the runtime, not the user", () => {
+    const trace = buildSessionTrace(
+      [
+        event("message.received", { message: "start", turnId: "turn_0" }),
+        event("turn.completed", { turnId: "turn_0" }),
+        // Eve 0.61+ marks input it authored itself.
+        event("message.received", {
+          kind: "execution.background_task",
+          message: "Background task finished",
+          turnId: "turn_1",
+        }),
+        event("message.completed", { message: "done", turnId: "turn_1" }),
+      ],
+      [],
+    );
+
+    expect(trace.rows.map((row) => row.role)).toEqual([
+      "user",
+      "lifecycle",
+      "runtime",
+      "assistant",
+    ]);
+    expect(trace.rows[2]).toMatchObject({
+      type: "message.received",
+      turn: 2,
+      payload: "Background task finished",
+    });
+  });
+
   test("marks failed results and keeps unmatched results as their own rows", () => {
     const trace = buildSessionTrace(
       [
