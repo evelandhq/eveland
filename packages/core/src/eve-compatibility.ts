@@ -1,31 +1,31 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.58.x",
-      verifiedVersion: "0.58.1",
+      range: "0.62.x",
+      verifiedVersion: "0.62.0",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.62.x",
-      verifiedVersion: "0.62.0",
+      range: "0.63.x",
+      verifiedVersion: "0.63.0",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.62.0 (published 2026-09-18) entered on
-  // 2026-09-19 and 0.59/0.60/0.61 are skipped. Four minors shipped in the day
-  // and a half after 0.58.1, each superseded before any Eveland release could
-  // carry it, so no Deployment ran on them. 0.55 retired the same day: its
-  // Releases answer 409 on activation and their parked runs are settled.
-  // Every wire surface is unchanged from 0.58.1 to 0.62.0 (message stream v25,
-  // discovery manifest v15, storage spec 7, the route set, the unstamped
-  // workflow names), so what the newer line changes is authoring: 0.62 no
-  // longer discovers a flat `agent/instrumentation.ts` (path-named files under
-  // `agent/instrumentation/` replace it), 0.60 removed the deprecated span
-  // export helpers, 0.61 moved the bundled @workflow/* set (core beta.53,
-  // world beta.36, world-local beta.45) and 0.59 lets a client create a session
-  // before its first message. The range is the union of the two contiguous
-  // runs, never the hull, which would admit the skipped lines.
-  peerDependencyRange: ">=0.58.0 <0.59.0 || >=0.62.0 <0.63.0",
+  // A contiguous two-line window again: 0.63.0 (published 2026-09-19) entered
+  // on 2026-09-20 and 0.58 retired the same day -- its Releases answer 409 on
+  // activation and their parked runs are settled. Every wire surface is
+  // byte-identical from 0.62.0 to 0.63.0 (message stream v25, discovery
+  // manifest v15, storage spec 7, the route set, the client, the channel
+  // files) and so are the dependencies, peers and the bundled @workflow/* set.
+  // What 0.63 changes is background work: `defineTool({ execution:
+  // "background" })`, background dynamic tools and the `TaskExec` /
+  // `postMessage` authoring APIs are gone in favour of `defineWorkflowTool`,
+  // the unstamped `taskRunWorkflow` run went with them, and
+  // `subagent.completed` is emitted only once the parent has recorded a
+  // successful result -- a background receipt is now just the `action.result`
+  // tool output. The `tool`, `dynamicTool` and `channel` extension contracts
+  // dropped every version a 0.62 build emits.
+  peerDependencyRange: ">=0.62.0 <0.64.0",
 } as const;
 
 export type SupportedEveVersionRange =

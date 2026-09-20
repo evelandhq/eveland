@@ -176,11 +176,11 @@ test("keeps the Extension integrator compatible with the oldest supported Eve li
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-oldest-"));
   roots.push(releaseDir);
   const extensionPackageRoot = path.join(releaseDir, "packages/crm");
-  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.58.1", false);
+  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.62.0", false);
   await execFileAsync(process.execPath, [oldestEveBin, "extension", "build"], {
     cwd: extensionPackageRoot,
   });
-  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.58.1");
+  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.62.0");
 
   await injectObserverHooks({ releaseDir });
   await injectSchedulerAdapter({ releaseDir });
@@ -204,7 +204,7 @@ test("keeps the Extension integrator compatible with the oldest supported Eve li
 async function writeFixtureExtension(
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.62.0",
+  eveVersion = "0.63.0",
   includeScheduleSubagents = true,
 ): Promise<void> {
   await write(
@@ -258,7 +258,7 @@ async function writeConsumer(
   releaseDir: string,
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.62.0",
+  eveVersion = "0.63.0",
 ): Promise<void> {
   await write(
     releaseDir,
