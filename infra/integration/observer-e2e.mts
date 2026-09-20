@@ -249,8 +249,11 @@ async function runDirectTurn(hostPort: number): Promise<string> {
       const line = buffer.slice(0, newline).trim();
       buffer = buffer.slice(newline + 1);
       if (!line) continue;
-      const event = JSON.parse(line) as { type?: string };
+      const event = JSON.parse(line) as { type?: string; data?: unknown };
       if (event.type) seen.push(event.type);
+      // A bare `session.failed` says nothing about why; keep the payload.
+      if (event.type === "turn.failed" || event.type === "session.failed")
+        seen.push(JSON.stringify(event.data));
       watch.observe(event);
     }
   }
