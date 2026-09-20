@@ -58,7 +58,7 @@ overrides:
 # `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
 # before the shared World and never selected for a new build. The beta.21/10/
-# 45/36 line is what `@evelandhq/workflow-world` 0.20.0 bundles -- the set eve
+# 45/36 line is what `@evelandhq/workflow-world` 0.20.1 bundles -- the set eve
 # moved to at 0.61.0 and 0.62.0 re-bundled unchanged. 0.58.1 still carries the
 # previous set (beta.51/21/35/44, unchanged from 0.54.4 through 0.60.1); eve
 # compares only the major and prerelease tag of the World's declaration, so

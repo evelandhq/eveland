@@ -328,8 +328,8 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0(eve@0.62.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3)))
       '@evelandhq/workflow-world':
-        specifier: ^0.20.0
-        version: 0.20.0(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
+        specifier: ^0.20.1
+        version: 0.20.1(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -383,8 +383,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/platform-observability
       '@evelandhq/workflow-world':
-        specifier: ^0.20.0
-        version: 0.20.0(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
+        specifier: ^0.20.1
+        version: 0.20.1(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)
     devDependencies:
       vitest:
         specifier: ^4.1.11
@@ -1550,8 +1550,8 @@ packages:
     peerDependencies:
       eve: '>=0.27.0 <1.0.0'
 
-  '@evelandhq/workflow-world@0.20.0':
-    resolution: {integrity: sha512-ODwspEOo7hkancBkIYRAzWxLWc5szQLQQRVHnzJd2k1m3CYs/z4kbHt2EFY7WgaIUOSb47GNN7B5lkjoGpy2+A==}
+  '@evelandhq/workflow-world@0.20.1':
+    resolution: {integrity: sha512-oJ0hb0lKmgVVpNGUCaR3guqf2J51esABK8vX7YvwlSWzAvymgu1RFAkPigihZ+iY0vUF0quDZxxMWgYuNJnZKg==}
     engines: {node: '>=24.0.0'}
     hasBin: true
 
@@ -7914,7 +7914,7 @@ snapshots:
     dependencies:
       eve: 0.62.0(@opentelemetry/api@1.9.1)(ai@7.0.105(zod@4.4.3))
 
-  '@evelandhq/workflow-world@0.20.0(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
+  '@evelandhq/workflow-world@0.20.1(@electric-sql/pglite@0.5.5)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.2)(postgres@3.4.9)(typescript@6.0.3)':
     dependencies:
       '@workflow/errors': 5.0.0-beta.21
       '@workflow/utils': 5.0.0-beta.10
