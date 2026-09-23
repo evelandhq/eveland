@@ -317,15 +317,15 @@ describe("workflow dispatcher recovery preflight", () => {
 
     const reaped = await recordFixtureDeployment(store, {
       status: "stopped",
-      eveVersionResolved: "0.58.1",
+      eveVersionResolved: "0.62.0",
     });
     const crashed = await recordFixtureDeployment(store, {
       status: "failed",
-      eveVersionResolved: "0.58.1",
+      eveVersionResolved: "0.62.0",
     });
     const archived = await recordFixtureDeployment(store, {
       status: "archived",
-      eveVersionResolved: "0.58.1",
+      eveVersionResolved: "0.62.0",
     });
     const staleEve = await recordFixtureDeployment(store, {
       status: "stopped",

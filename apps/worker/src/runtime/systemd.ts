@@ -4,6 +4,7 @@ import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
 import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discovery-artifacts.js";
+import { assertReleaseSandboxArtifacts } from "./sandbox-artifacts.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
@@ -540,11 +541,22 @@ export function createSystemdAdapter(
       await execa("chown", ["-R", `${config.user}:`, releaseDir]);
       await execa("chown", ["-R", `${config.user}:`, cacheDir]);
 
+      // Eve >= 0.64 prepares every sandbox template during `eve build` and
+      // records which provider prepared it; the deployed runtime refuses a
+      // sandbox whose provider differs, so a Release with one that escaped the
+      // injected modules is refused now rather than on a user's first turn.
+      if (
+        injection.api === "provider" &&
+        injection.generated.length + injection.rewritten.length > 0
+      ) {
+        await assertReleaseSandboxArtifacts(releaseDir);
+      }
+
       // Runs after both chowns: the check executes as the unprivileged service
-      // user, so it needs to read the release and write the cache dir. eve build
-      // never calls prewarm on a self-hosted release and /eve/v1/health returns
-      // 200 regardless of sandbox health, so without this a host that cannot run
-      // bwrap would deploy "successfully" and only fail on a user's first turn.
+      // user, so it needs to read the release and write the cache dir.
+      // /eve/v1/health returns 200 regardless of sandbox health, so without
+      // this a host that cannot run bwrap would deploy "successfully" and only
+      // fail on a user's first turn.
       await verifySandbox({ releaseDir, user: config.user, cacheDir });
       await execa("chmod", ["-R", "g+rwX,g-s", releaseDir]);
       await execa("chmod", ["-R", "g+rwX,g-s", cacheDir]);
@@ -552,7 +564,7 @@ export function createSystemdAdapter(
       const injectionLog = injection
         ? [
             `Injected eve sandbox modules: ${injection.generated.join(", ") || "none"}`,
-            ...(injection.generated.length === 0
+            ...(injection.generated.length + injection.rewritten.length === 0
               ? [
                   "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
                     "be injected. The deployed agent will fall back to eve's default sandbox backend chain.",
@@ -565,11 +577,20 @@ export function createSystemdAdapter(
                     "revalidationKey remain active, while workspace seeds are preserved.",
                 ]
               : []),
+            ...(injection.rewritten.length
+              ? [
+                  `Redirected the project's authored sandbox (${injection.rewritten.join(", ")}) to ` +
+                    "Eveland's bwrap provider. Its prepare and selector still run; eve's built-in providers " +
+                    "are replaced, so provider-specific options such as images and Dockerfiles are ignored.",
+                ]
+              : []),
             ...(injection.replaced.length
               ? [
                   `WARNING: replaced the project's authored sandbox (${injection.replaced.join(", ")}). ` +
-                    "eveland selects the sandbox backend; the authored module's bootstrap() and onSession() " +
-                    "are not used, while workspace seeds are preserved.",
+                    (injection.api === "provider"
+                      ? "eve would not load it, or it is not a regular file; workspace seeds are preserved."
+                      : "eveland selects the sandbox backend; the authored module's bootstrap() and onSession() " +
+                        "are not used, while workspace seeds are preserved."),
                 ]
               : []),
             "Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.",

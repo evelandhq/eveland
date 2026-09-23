@@ -62,7 +62,7 @@ _For comprehensive hardware sizing recommendations, see [Capacity planning](/doc
 
 Built-in Eve tools for code execution and file inspection (`bash`, `read_file`, `write_file`) are driven by `@evelandhq/sandbox-bwrap`:
 
-- **Native compatibility**: Eveland injects the bubblewrap backend into compiled releases while preserving user-defined `bootstrap()`, `onSession()`, and workspace seeds (`agent/sandbox/workspace/**`).
+- **Native compatibility**: Eveland injects the bubblewrap sandbox into compiled releases while preserving the project's own sandbox setup — `bootstrap()` and `onSession()` on Eve lines with sandbox backends, the environment's `prepare` and the `defineSandbox()` selector on lines with provider environments — and the workspace seeds (`agent/sandbox/workspace/**`). On provider lines the build fails if any sandbox was prepared by a provider other than bwrap; see [Eve compatibility](/docs/reference/eve-compatibility).
 - **Session workspace isolation**: Each persistent conversation retains its own isolated `/workspace` directory. Redeployments or cold starts preserve existing session workspaces without data loss.
 
 ---
@@ -73,7 +73,7 @@ Durable workflows ensure timers and asynchronous callbacks resume accurately eve
 
 - **Singleton external dispatcher**: Driven by a single [Workflow Dispatcher](/docs/production/workflow-dispatcher) holding a PostgreSQL advisory lock across the cluster.
 - **Tenant isolation**: All agents share a single workflow database (`EVELAND_WORKFLOW_WORLD_URL`), partitioned logically by `tenant_id` (project ID).
-- **Engine injection**: During release compilation, Eveland automatically injects `@evelandhq/workflow-world@0.20.1` (superseding legacy `@workflow/world-postgres@5.0.0-beta.34`), delegating execution states strictly to the external dispatcher.
+- **Engine injection**: During release compilation, Eveland automatically injects `@evelandhq/workflow-world@0.22.0` (superseding legacy `@workflow/world-postgres@5.0.0-beta.34`), delegating execution states strictly to the external dispatcher.
 - **Automated migrations**: Worker startup and project provisioning automatically apply schema migrations safely.
 
 ### Workflow retention classes

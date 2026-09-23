@@ -26,7 +26,7 @@ export const PLATFORM_WORKFLOW_WORLD = {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "0.20.1",
+  packageVersion: "0.22.0",
 } as const;
 
 export type WorkflowWorldBuildConfig = {

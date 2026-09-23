@@ -1,31 +1,32 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.58.x",
-      verifiedVersion: "0.58.1",
+      range: "0.62.x",
+      verifiedVersion: "0.62.0",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.62.x",
-      verifiedVersion: "0.62.0",
+      range: "0.64.x",
+      verifiedVersion: "0.64.1",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.62.0 (published 2026-09-18) entered on
-  // 2026-09-19 and 0.59/0.60/0.61 are skipped. Four minors shipped in the day
-  // and a half after 0.58.1, each superseded before any Eveland release could
-  // carry it, so no Deployment ran on them. 0.55 retired the same day: its
-  // Releases answer 409 on activation and their parked runs are settled.
-  // Every wire surface is unchanged from 0.58.1 to 0.62.0 (message stream v25,
-  // discovery manifest v15, storage spec 7, the route set, the unstamped
-  // workflow names), so what the newer line changes is authoring: 0.62 no
-  // longer discovers a flat `agent/instrumentation.ts` (path-named files under
-  // `agent/instrumentation/` replace it), 0.60 removed the deprecated span
-  // export helpers, 0.61 moved the bundled @workflow/* set (core beta.53,
-  // world beta.36, world-local beta.45) and 0.59 lets a client create a session
-  // before its first message. The range is the union of the two contiguous
-  // runs, never the hull, which would admit the skipped lines.
-  peerDependencyRange: ">=0.58.0 <0.59.0 || >=0.62.0 <0.63.0",
+  // A gapped two-line window: 0.64.1 (published 2026-09-22) entered on
+  // 2026-09-23 and 0.63 is skipped. 0.63.0 failed every session whose
+  // background subagent call met a hook subscribed to subagent events or "*"
+  // -- Eveland's observer is one -- so it never entered a window, and 0.64.0
+  // shipped the fix. 0.58 retired the same day: its Releases answer 409 on
+  // activation and their parked runs are settled. The wire surfaces are
+  // unchanged from 0.62.0 (message stream v25, discovery manifest v15,
+  // storage spec 7, the route set, the unstamped workflow names apart from
+  // `taskRunWorkflow`, which 0.63 dropped together with background
+  // `defineTool` and `TaskExec`). What 0.64 changes is the sandbox API:
+  // backends and object-form `defineSandbox` gave way to provider
+  // environments that `eve build` prepares, so Eveland generates a provider
+  // module for a 0.64 build and a backend module for a 0.62 one. The range is
+  // the union of the two contiguous runs, never the hull, which would admit
+  // the skipped line.
+  peerDependencyRange: ">=0.62.0 <0.63.0 || >=0.64.0 <0.65.0",
 } as const;
 
 export type SupportedEveVersionRange =

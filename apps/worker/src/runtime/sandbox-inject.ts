@@ -1,5 +1,14 @@
 import { access, cp, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  buildGeneratedProviderSandboxModule,
+  buildPlatformSandboxModule,
+  buildSandboxShimModule,
+  rewriteEveSandboxImports,
+  SANDBOX_PLATFORM_DIR,
+  SHIMMED_SANDBOX_ENTRY_POINTS,
+  type ShimmedSandboxEntryPoint,
+} from "./sandbox-provider-modules.js";
 
 /** Where the built backend is vendored inside the release directory. */
 export const VENDORED_BACKEND_DIR = ".eveland/sandbox-bwrap";
@@ -25,14 +34,50 @@ export type SandboxInjectionInput = {
   backendDistDir: string;
 };
 
+/**
+ * The sandbox shape a Release's Eve line compiles. Eve 0.64 replaced
+ * object-form `defineSandbox({ backend })` with provider environments that
+ * `eve build` prepares, and a module in one shape does not compile on the
+ * other line.
+ */
+export type SandboxApi = "backend" | "provider";
+
+/** The first Eve minor whose sandbox modules export provider environments. */
+export const EVE_SANDBOX_PROVIDER_MINOR = 64;
+
 export type SandboxInjectionResult = {
+  api: SandboxApi;
   /** Paths (relative to releaseDir) of generated sandbox modules. */
   generated: string[];
-  /** Authored definitions whose lifecycle fields are retained by the generated wrapper. */
+  /** Backend shape: authored definitions whose lifecycle fields the generated wrapper retains. */
   wrapped: string[];
+  /** Provider shape: authored modules kept in place with their eve sandbox imports redirected. */
+  rewritten: string[];
   /** Paths (relative to releaseDir) of authored sandbox modules that were replaced. */
   replaced: string[];
 };
+
+/**
+ * Chooses the sandbox shape from the Eve dependency the Release declares.
+ * Injection runs before dependencies are installed, so the declaration is all
+ * there is; the platform's version gate has already required it to resolve
+ * inside one supported minor, and a declaration that does not name exactly
+ * one minor is refused here too rather than guessed.
+ */
+export async function resolveSandboxApi(releaseDir: string): Promise<SandboxApi> {
+  const packageJson = JSON.parse(await readFile(path.join(releaseDir, "package.json"), "utf8")) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const declared = packageJson.dependencies?.eve ?? packageJson.devDependencies?.eve ?? null;
+  const minor = declared?.trim().match(/^[~^]?0\.(\d+)(?:\.(?:\d+|[x*]))?$/)?.[1];
+  if (minor === undefined) {
+    throw new Error(
+      `Cannot choose the sandbox shape: the Release declares ${declared === null ? "no Eve dependency" : `Eve "${declared}"`}, which does not name a single Eve minor.`,
+    );
+  }
+  return Number(minor) >= EVE_SANDBOX_PROVIDER_MINOR ? "provider" : "backend";
+}
 
 export function resolveSandboxRunTimeoutMs(env: NodeJS.ProcessEnv): string {
   const value = Number(env.EVELAND_SANDBOX_RUN_TIMEOUT_MS ?? 600_000);
@@ -271,10 +316,8 @@ export async function resolveSandboxRoots(releaseDir: string): Promise<string[]>
 export async function injectSandboxModules(
   input: SandboxInjectionInput,
 ): Promise<SandboxInjectionResult> {
+  const api = await resolveSandboxApi(input.releaseDir);
   const roots = await resolveSandboxRoots(input.releaseDir);
-  const generated: string[] = [];
-  const wrapped: string[] = [];
-  const replaced: string[] = [];
 
   // Vendoring is a host-capability concern -- it must happen for every release
   // regardless of project layout, so `verifySandbox` (which imports the
@@ -292,14 +335,36 @@ export async function injectSandboxModules(
         "The package ships prebuilt, so this means an incomplete install. Run `pnpm install`, then retry.",
     );
   }
+  if (
+    api === "provider" &&
+    (await pathKind(path.join(input.backendDistDir, "provider.js"))) === null
+  ) {
+    throw new Error(
+      `@evelandhq/sandbox-bwrap at ${input.backendDistDir} has no provider.js, which Eve ` +
+        `0.${EVE_SANDBOX_PROVIDER_MINOR} and later need. Install @evelandhq/sandbox-bwrap 0.4.0 or newer, then retry.`,
+    );
+  }
 
   const vendorDir = path.join(input.releaseDir, VENDORED_BACKEND_DIR);
   await rm(vendorDir, { force: true, recursive: true });
   await mkdir(path.dirname(vendorDir), { recursive: true });
   await cp(input.backendDistDir, vendorDir, { recursive: true });
 
+  return api === "provider"
+    ? await injectProviderModules(input.releaseDir, roots)
+    : await injectBackendModules(input.releaseDir, roots);
+}
+
+async function injectBackendModules(
+  releaseDir: string,
+  roots: string[],
+): Promise<SandboxInjectionResult> {
+  const generated: string[] = [];
+  const wrapped: string[] = [];
+  const replaced: string[] = [];
+
   for (const root of roots) {
-    const rootDir = path.join(input.releaseDir, root);
+    const rootDir = path.join(releaseDir, root);
     let generatedRoot = root;
     let authoredImportPath: string | undefined;
 
@@ -336,12 +401,119 @@ export async function injectSandboxModules(
       "index.js",
     );
     await writeFile(
-      path.join(input.releaseDir, generatedRoot, "sandbox.js"),
+      path.join(releaseDir, generatedRoot, "sandbox.js"),
       buildGeneratedSandboxModule(importPath, authoredImportPath),
       "utf8",
     );
     generated.push(path.posix.join(generatedRoot, "sandbox.js"));
   }
 
-  return { generated, replaced, wrapped };
+  return { api: "backend", generated, wrapped, rewritten: [], replaced };
+}
+
+/**
+ * The Eve >= 0.64 shape. Every slot ends up with exactly one module eve loads:
+ * the authored one, kept in place with its eve sandbox imports redirected to
+ * the platform shims, or a generated one when the project left the slot
+ * empty. A kept module needs no companion file, because redirecting its
+ * imports is enough to put its environment on the platform provider.
+ */
+async function injectProviderModules(
+  releaseDir: string,
+  roots: string[],
+): Promise<SandboxInjectionResult> {
+  const generated: string[] = [];
+  const rewritten: string[] = [];
+  const replaced: string[] = [];
+
+  const platformDir = path.join(releaseDir, SANDBOX_PLATFORM_DIR);
+  await rm(platformDir, { force: true, recursive: true });
+  await mkdir(platformDir, { recursive: true });
+  await writeFile(
+    path.join(platformDir, "platform.js"),
+    buildPlatformSandboxModule(GENERATED_MODULE_MARKER),
+    "utf8",
+  );
+  for (const entryPoint of Object.keys(
+    SHIMMED_SANDBOX_ENTRY_POINTS,
+  ) as ShimmedSandboxEntryPoint[]) {
+    await writeFile(
+      path.join(platformDir, `${entryPoint}.js`),
+      buildSandboxShimModule(entryPoint, GENERATED_MODULE_MARKER),
+      "utf8",
+    );
+  }
+
+  for (const root of roots) {
+    const rootDir = path.join(releaseDir, root);
+    let slot = root;
+    const sandboxDir = path.join(rootDir, "sandbox");
+    const sandboxKind = await pathKind(sandboxDir);
+    if (sandboxKind === "directory") {
+      // eve resolves `sandbox/` before `sandbox.<ext>`, and the directory
+      // carries the workspace seeds, so the module lives inside it and a flat
+      // module beside it is shadowed.
+      slot = path.posix.join(root, "sandbox");
+      replaced.push(...(await removeAuthoredSandboxModules(rootDir, root)));
+    } else if (sandboxKind !== null) {
+      await rm(sandboxDir, { force: true, recursive: true });
+      replaced.push(path.posix.join(root, "sandbox"));
+    }
+
+    const slotDir = path.join(releaseDir, slot);
+    const authored = await keepEffectiveAuthoredModule(slotDir, slot);
+    replaced.push(...authored.replaced);
+    const toPlatform = path.posix.relative(slot, SANDBOX_PLATFORM_DIR);
+    if (authored.modulePath) {
+      const source = await readFile(authored.modulePath, "utf8");
+      const result = rewriteEveSandboxImports(
+        source,
+        (entryPoint) => `${toPlatform}/${entryPoint}.js`,
+      );
+      if (result.source !== source) await writeFile(authored.modulePath, result.source, "utf8");
+      rewritten.push(path.posix.join(slot, path.basename(authored.modulePath)));
+      continue;
+    }
+    await writeFile(
+      path.join(slotDir, "sandbox.js"),
+      buildGeneratedProviderSandboxModule(`${toPlatform}/platform.js`, GENERATED_MODULE_MARKER),
+      "utf8",
+    );
+    generated.push(path.posix.join(slot, "sandbox.js"));
+  }
+
+  return { api: "provider", generated, wrapped: [], rewritten, replaced };
+}
+
+/**
+ * Finds the authored module eve would load from one slot and removes the
+ * rest: lower-priority duplicates it would shadow, anything that is not a
+ * regular file, and this function's own earlier output.
+ */
+async function keepEffectiveAuthoredModule(
+  slotDir: string,
+  slot: string,
+): Promise<{ modulePath?: string; replaced: string[] }> {
+  const replaced: string[] = [];
+  let modulePath: string | undefined;
+  for (const extension of AUTHORED_MODULE_EXTENSIONS) {
+    const candidate = path.join(slotDir, `sandbox${extension}`);
+    const kind = await pathKind(candidate);
+    if (kind === null) continue;
+    const logicalPath = path.posix.join(slot, `sandbox${extension}`);
+    if (kind !== "file") {
+      await rm(candidate, { force: true, recursive: true });
+      replaced.push(logicalPath);
+      continue;
+    }
+    const contents = await readFile(candidate, "utf8").catch(() => "");
+    const isOwnOutput = extension === ".js" && contents.startsWith(GENERATED_MODULE_MARKER);
+    if (isOwnOutput || modulePath !== undefined) {
+      await rm(candidate, { force: true });
+      if (!isOwnOutput) replaced.push(logicalPath);
+      continue;
+    }
+    modulePath = candidate;
+  }
+  return { ...(modulePath ? { modulePath } : {}), replaced };
 }

@@ -411,13 +411,19 @@ function findConcreteDefaultExport(sourceFile: ts.SourceFile):
 // Eve 0.33 changed the default send policy to `"steer"`, which cancels and
 // replaces a turn already running on the target session. A schedule is a
 // background actor, so every supported Eve line explicitly asks for `"queue"`.
-// An authored handler still wins because its own options are spread last.
+// Eve 0.64 added `taskDeliveryPolicy`: channel sessions default to `"auto"`,
+// which may report background results piecemeal, while Eve's own schedules
+// default to `"cohort"`, one report once the related work settles. A schedule
+// dispatched through this channel asks for `"cohort"` to behave like Eve's;
+// 0.62 ignores the option. An authored handler still wins because its own
+// options are spread last.
 function fixedSessionDispatchBlock(): string {
   return `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
           const session = await withScheduledRunRetention(() => from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
             auth: scheduleAppAuth,
             turnPolicy: "queue",
+            taskDeliveryPolicy: "cohort",
             mode: "task",
             title: \`Schedule · \${scheduleKey}\`,
           }));
@@ -429,7 +435,7 @@ function fixedSessionDispatchBlock(): string {
             const handle = to(channel, target);
             return {
               send(message, options) {
-                const task = withScheduledRunRetention(() => handle.send(message, { turnPolicy: "queue", ...options }));
+                const task = withScheduledRunRetention(() => handle.send(message, { turnPolicy: "queue", taskDeliveryPolicy: "cohort", ...options }));
                 sendTasks.push(task);
                 return task;
               },

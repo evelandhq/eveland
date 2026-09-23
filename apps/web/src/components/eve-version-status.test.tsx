@@ -10,9 +10,9 @@ import { EveVersionStatus } from "./eve-version-status";
 // UI marks only that line healthy and shows every other supported line with an
 // upgrade reminder, so this fixture has to move with the window.
 const currentVersion = {
-  version: "0.62.0",
-  expected: "0.58.x or 0.62.x",
-  supportedRanges: ["0.58.x", "0.62.x"],
+  version: "0.64.1",
+  expected: "0.62.x or 0.64.x",
+  supportedRanges: ["0.62.x", "0.64.x"],
   supported: true,
   sourceRevisionId: "src_1",
 } satisfies EveVersionInfo;
@@ -35,7 +35,7 @@ describe("EveVersionStatus", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.getByText("Eve 0.62.0")).toBeDefined();
+    expect(screen.getByText("Eve 0.64.1")).toBeDefined();
     expect(container.querySelector('[data-slot="tooltip-trigger"]')).toBeNull();
   });
 

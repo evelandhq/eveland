@@ -161,7 +161,7 @@ function declaredWorldSpecVersion(): number {
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.20.1");
+    expect(worldManifest.version).toBe("0.22.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and

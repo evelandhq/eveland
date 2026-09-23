@@ -31,8 +31,9 @@ Eve 框架通过一条默认的后端探测链来解析代码执行沙箱（Exec
 
 ## 注入机制与构建期即时自检
 
-1. **发布阶段动态注入**：Eveland 在发布打包（Release）阶段自动将 bubblewrap 后端包装进部署产物，绝不侵入修改用户原始代码库，项目无需手动声明对平台的依赖。
-2. **构建期即时自检 (Sandbox Self-check)**：Eve 框架采用惰性加载机制，沙箱损坏并不会导致启动探针失败。为了避免把错误带到线上对话中，Eveland 在每次构建完成后，立即在与生产完全一致的加固权限下执行真实脚本探针。任何沙箱配置缺陷（如缺少 AppArmor 规则或缺失系统工具）均会在构建阶段立即暴露并阻断部署。
+1. **发布阶段动态注入**：Eveland 在发布打包（Release）阶段自动将 bubblewrap Sandbox 注入部署产物，绝不侵入修改用户原始代码库，项目无需手动声明对平台的依赖。注入形态取决于 Release 所用的 Eve 线：要么生成一个保留 Agent 编写的生命周期回调的 Backend 模块，要么——在 Eve 改为 Provider Environment 之后——保留项目自己的 Sandbox 模块、只重定向其 `eve/sandbox` 导入，让 Agent 编写的准备逻辑与 Selector 原样运行在 bwrap 之上。
+2. **Provider 检查**：采用 Provider Environment 后，`eve build` 会准备每个 Sandbox Template 并记录准备它的 Provider，运行时会拒绝打开由其他 Provider 准备的 Sandbox。Eveland 在构建后读取这份记录，只要有 Sandbox 逃出了重定向——在辅助文件里构建的 Environment、自定义 Provider，或由 Extension 提供的 Sandbox——就拒绝该 Release，而不是等到用户的第一个 Turn 才失败。
+3. **构建期即时自检 (Sandbox Self-check)**：Eve 框架采用惰性加载机制，沙箱损坏并不会导致启动探针失败。为了避免把错误带到线上对话中，Eveland 在每次构建完成后，立即在与生产完全一致的加固权限下执行真实脚本探针。任何沙箱配置缺陷（如缺少 AppArmor 规则或缺失系统工具）均会在构建阶段立即暴露并阻断部署。
 
 ## 相关参考
 
