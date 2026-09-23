@@ -25,7 +25,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.62/0.64 compatibility window", async () => {
+  test("fails closed outside the 0.62/0.65 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -116,8 +116,8 @@ describe("injectSchedulerAdapter", () => {
       "~0.61.1",
       "^0.61.1",
       "0.61.x",
-      // 0.58 retired on 2026-09-23 when 0.64 entered; 0.63 is the line that
-      // round skipped inside the hull.
+      // 0.58 retired on 2026-09-23 when 0.65 entered; 0.63 and 0.64 are the
+      // lines that round skipped inside the hull.
       "0.58.1",
       "~0.58.1",
       "^0.58.1",
@@ -126,10 +126,13 @@ describe("injectSchedulerAdapter", () => {
       "~0.63.0",
       "^0.63.0",
       "0.63.x",
-      "0.65.0",
+      "0.64.1",
+      "^0.64.1",
+      "0.64.x",
+      "0.66.0",
       ">=0.58.0",
       ">=0.62.0",
-      ">=0.62.0 <0.65.0",
+      ">=0.62.0 <0.66.0",
       "*",
       "latest",
     ]) {
@@ -151,12 +154,12 @@ describe("injectSchedulerAdapter", () => {
       "0.62",
       "0.62.x",
       "0.62.*",
-      "0.64.1",
-      "~0.64.1",
-      "^0.64.1",
-      "0.64",
-      "0.64.x",
-      "0.64.*",
+      "0.65.0",
+      "~0.65.0",
+      "^0.65.0",
+      "0.65",
+      "0.65.x",
+      "0.65.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -298,7 +301,7 @@ Produce the daily report.
     // Eve 0.33 made "steer" the default send policy, which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every line in the
-    // current 0.62/0.64 window supports the explicit `turnPolicy` option.
+    // current 0.62/0.65 window supports the explicit `turnPolicy` option.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };
@@ -331,7 +334,7 @@ Produce the daily report.
     // Eveland dispatches schedules through a channel, so it asks for "cohort"
     // explicitly; 0.62 ignores the option. An authored handler still wins.
     const releaseDir = await fixture({
-      eveVersion: "0.64.1",
+      eveVersion: "0.65.0",
       files: { "agent/schedules/report.md": `---\ncron: "30 5 * * *"\n---\nReport.\n` },
     });
     await injectSchedulerAdapter({ releaseDir });

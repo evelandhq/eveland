@@ -1074,7 +1074,7 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
   });
 });
 
-describe("createSystemdAdapter buildRelease (Eve 0.64 sandbox providers)", () => {
+describe("createSystemdAdapter buildRelease (Eve >= 0.64 sandbox providers)", () => {
   const buildInput = {
     projectId: "proj_123",
     releaseId: "rel_789",

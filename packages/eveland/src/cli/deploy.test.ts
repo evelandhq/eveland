@@ -106,8 +106,8 @@ function fakePlatform(options: {
     if (pathname === "/api/instance") {
       return json(200, {
         eve: {
-          supportedRanges: ["0.62.x", "0.64.x"],
-          expected: "0.62.x or 0.64.x",
+          supportedRanges: ["0.62.x", "0.65.x"],
+          expected: "0.62.x or 0.65.x",
         },
       });
     }

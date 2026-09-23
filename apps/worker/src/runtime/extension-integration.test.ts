@@ -204,7 +204,7 @@ test("keeps the Extension integrator compatible with the oldest supported Eve li
 async function writeFixtureExtension(
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.64.1",
+  eveVersion = "0.65.0",
   includeScheduleSubagents = true,
 ): Promise<void> {
   await write(
@@ -258,7 +258,7 @@ async function writeConsumer(
   releaseDir: string,
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.64.1",
+  eveVersion = "0.65.0",
 ): Promise<void> {
   await write(
     releaseDir,

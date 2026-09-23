@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.64.1
+  eve: 0.65.0
 catalogs:
   eve-matrix:
     eve-previous: npm:eve@0.62.0
@@ -41,11 +41,12 @@ overrides:
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.62.x and 0.64.x -- a gapped window:
+# verified minor in the current window (0.62.x and 0.65.x -- a gapped window:
 # 0.63 never entered one, since its background-subagent regression kept it
-# out until 0.64 superseded it, so it sits inside the hull unverified and is
-# rejected; 0.58 retired on 2026-09-23, and every earlier line is below the
-# floor as well). eve-matrix names every line but the newest, which is the plain `eve`
+# out until 0.64 superseded it, and 0.65 superseded 0.64 within a day, before
+# any Eveland release carried it, so both sit inside the hull unverified and
+# are rejected; 0.58 retired on 2026-09-23, and every earlier line is below
+# the floor as well). eve-matrix names every line but the newest, which is the plain `eve`
 # catalog entry.
 #
 # The release-age cooldown is waived only for explicitly reviewed packages.
@@ -59,7 +60,7 @@ overrides:
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
 # before the shared World and never selected for a new build. The beta.22/10/
 # 46/37 line is what `@evelandhq/workflow-world` 0.22.0 bundles -- the set eve
-# moved to at 0.64.0 and 0.64.1 re-bundled unchanged. 0.62.0 still carries the
+# moved to at 0.64.0 and 0.64.1 and 0.65.0 re-bundled unchanged. 0.62.0 still carries the
 # previous set (beta.53/21/36/45, which eve moved to at 0.61.0); eve compares
 # only the major and prerelease tag of the World's declaration, so the same
 # World serves the whole window). That line's `@workflow/world` reports

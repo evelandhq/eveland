@@ -603,7 +603,7 @@ describe("createDockerAdapter", () => {
     expect(result.log).not.toContain("are not used");
   });
 
-  test("checks the image's prepared sandboxes for an Eve 0.64 Release before the self-check", async () => {
+  test("checks the image's prepared sandboxes for an Eve >= 0.64 Release before the self-check", async () => {
     vi.mocked(execa).mockClear();
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
       api: "provider",
@@ -624,7 +624,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "0.64.1",
+          resolvedEveVersion: "0.65.0",
           schedulerDefinitions: [],
         }),
       } as never);
@@ -648,7 +648,7 @@ describe("createDockerAdapter", () => {
     expect(result.log).not.toContain("no agent/ directory");
   });
 
-  test("refuses an Eve 0.64 image whose sandbox was prepared by another provider", async () => {
+  test("refuses an Eve >= 0.64 image whose sandbox was prepared by another provider", async () => {
     vi.mocked(execa).mockClear();
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
       api: "provider",

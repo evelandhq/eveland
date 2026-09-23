@@ -96,7 +96,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.64.1");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.65.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -105,7 +105,7 @@ describe("Eve compatibility repository contract", () => {
       "TURN_WORKFLOW_NAME",
       "SESSION_TIMEOUT_WORKFLOW_NAME",
       // 0.63.0 removed this run together with background `defineTool` and
-      // `TaskExec`, and 0.64 kept it out: background work is a workflow-tool
+      // `TaskExec`, and 0.64/0.65 keep it out: background work is a workflow-tool
       // run there, audited below. It stays covered only because 0.62.x still
       // exports it; delete the entry when 0.62 retires (the equality check at
       // the end of this test fails on an entry no supported line runs).
@@ -143,7 +143,10 @@ describe("Eve compatibility repository contract", () => {
       // and workflow-program tools and so is not in this set). 0.64.1 re-checked
       // 2026-09-23: background invocations moved into this run at 0.63 (its
       // `start.js` still starts it with `startWorkflowOnCurrentDeployment`),
-      // and the exported set lost TASK_RUN_WORKFLOW_NAME and nothing else. 0.56.0 rebuilt the `workflow` tool around a
+      // and the exported set lost TASK_RUN_WORKFLOW_NAME and nothing else.
+      // 0.65.0 re-checked the same day: byte-identical to 0.64.1; its new
+      // `executeAskQuestionTool` (the opt-in `ask_question` workflow tool) is
+      // version-stamped like the sleep tool and runs inside this run. 0.56.0 rebuilt the `workflow` tool around a
       // model-supplied JS program, but its steps run inside this same run
       // rather than opening one of their own. 0.57.0 moved turn execution
       // into the session's own WORKFLOW_ENTRY_NAME run and 0.58.0 keeps that:
@@ -169,7 +172,7 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.62.x exports six plus the subagent body and 0.64.x the same set minus
+    // 0.62.x exports six plus the subagent body and 0.65.x the same set minus
     // TASK_RUN_WORKFLOW_NAME; neither opens a per-turn run any more, but both
     // keep the turn name for legacy-session import.
     const observedConstants = new Set<string>();
@@ -209,7 +212,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.62/0.64 compatibility window", () => {
+  test("describes the supported 0.62/0.65 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
