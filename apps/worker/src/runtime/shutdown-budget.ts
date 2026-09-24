@@ -9,7 +9,7 @@
  * byte-identical), again for 0.53.1 and 0.54.3 on 2026-09-12, for 0.54.5 and
  * 0.55.0 on 2026-09-15, for 0.56.0 on 2026-09-16, and again for 0.57.0 and
  * 0.58.0 and 0.58.1 on 2026-09-17, for 0.62.0 on 2026-09-19, and for 0.64.1
- * and 0.65.0 on 2026-09-23 (the nitro and srvx pins did not move, and `eve start` still
+ * and 0.65.0 on 2026-09-23, and for 0.66.0 and 0.66.1 on 2026-09-24 (the nitro and srvx pins did not move, and `eve start` still
  * SIGKILLs its child after 20 seconds), so every number below still holds:
  *
  * 1. The systemd unit. SIGTERM reaches the whole cgroup, so the

@@ -116,8 +116,9 @@ describe("injectSchedulerAdapter", () => {
       "~0.61.1",
       "^0.61.1",
       "0.61.x",
-      // 0.58 retired on 2026-09-23 when 0.65 entered; 0.63 and 0.64 are the
-      // lines that round skipped inside the hull.
+      // 0.58 retired on 2026-09-23 when the window slid to 0.62 and 0.65; 0.63
+      // and 0.64 are the lines that round skipped inside the hull, and 0.65
+      // joined them on 2026-09-24 when 0.66 took its place before any release.
       "0.58.1",
       "~0.58.1",
       "^0.58.1",
@@ -129,10 +130,15 @@ describe("injectSchedulerAdapter", () => {
       "0.64.1",
       "^0.64.1",
       "0.64.x",
-      "0.66.0",
+      "0.65.0",
+      "~0.65.0",
+      "^0.65.0",
+      "0.65.x",
+      "0.67.0",
       ">=0.58.0",
       ">=0.62.0",
-      ">=0.62.0 <0.66.0",
+      ">=0.62.0 <0.66.1",
+      ">=0.62.0 <0.67.0",
       "*",
       "latest",
     ]) {
@@ -154,12 +160,12 @@ describe("injectSchedulerAdapter", () => {
       "0.62",
       "0.62.x",
       "0.62.*",
-      "0.65.0",
-      "~0.65.0",
-      "^0.65.0",
-      "0.65",
-      "0.65.x",
-      "0.65.*",
+      "0.66.1",
+      "~0.66.1",
+      "^0.66.1",
+      "0.66",
+      "0.66.x",
+      "0.66.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -334,7 +340,7 @@ Produce the daily report.
     // Eveland dispatches schedules through a channel, so it asks for "cohort"
     // explicitly; 0.62 ignores the option. An authored handler still wins.
     const releaseDir = await fixture({
-      eveVersion: "0.65.0",
+      eveVersion: "0.66.1",
       files: { "agent/schedules/report.md": `---\ncron: "30 5 * * *"\n---\nReport.\n` },
     });
     await injectSchedulerAdapter({ releaseDir });

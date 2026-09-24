@@ -624,7 +624,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "0.65.0",
+          resolvedEveVersion: "0.66.1",
           schedulerDefinitions: [],
         }),
       } as never);
