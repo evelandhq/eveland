@@ -655,9 +655,11 @@ class details live in `docs/en/operations/runtime.md` and
 An Eve deployment's built-in execution tools must connect to an executable isolated
 sandbox — never silently degrading under production-style `eve start` to a
 `just-bash` missing its optional peer. The platform injects
-`@evelandhq/sandbox-bwrap` and replaces the user-authored sandbox backend while
-preserving the authored lifecycle (`bootstrap()`, `onSession()`, `description`,
-`revalidationKey`) and the `agent/sandbox/workspace/**` seeds. The durable session
+`@evelandhq/sandbox-bwrap` and puts every sandbox the Agent builds on it, whatever
+backend or provider the project authored, while preserving the authored sandbox setup
+(its lifecycle callbacks, or its environment preparation and selector, depending on
+the Eve line's sandbox API) and the `agent/sandbox/workspace/**` seeds. A Release in
+which a sandbox escapes that injection is refused at build time. The durable session
 workspace lives outside the Release directory — a redeploy/restart must not lose a
 session's `/workspace` — and workspace templates are isolated per immutable
 Release. After a Release build completes, the sandbox and the platform command

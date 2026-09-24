@@ -18,6 +18,7 @@ import {
   resolveSandboxCacheRoot,
   resolveSystemdDeploymentUser,
 } from "./systemd.js";
+import { assertReleaseSandboxArtifacts } from "./sandbox-artifacts.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { verifySandbox } from "./sandbox-verify.js";
 import { DEPLOYMENT_STOP_TIMEOUT_SECONDS } from "./shutdown-budget.js";
@@ -37,7 +38,7 @@ vi.mock("execa", () => ({
 
 vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
-    eveVersion: "0.58.1",
+    eveVersion: "0.62.0",
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),
@@ -47,9 +48,17 @@ vi.mock("@evelandhq/agent-scheduler", () => ({
 // real filesystem fixture; here it's mocked so createSystemdAdapter's buildRelease
 // tests can pin call *ordering* and the cache-dir/log-prefixing wiring in isolation.
 vi.mock("./sandbox-inject.js", () => ({
-  injectSandboxModules: vi
-    .fn()
-    .mockResolvedValue({ generated: ["agent/sandbox.js"], replaced: [], wrapped: [] }),
+  injectSandboxModules: vi.fn().mockResolvedValue({
+    api: "backend",
+    generated: ["agent/sandbox.js"],
+    replaced: [],
+    wrapped: [],
+    rewritten: [],
+  }),
+}));
+
+vi.mock("./sandbox-artifacts.js", () => ({
+  assertReleaseSandboxArtifacts: vi.fn().mockResolvedValue(undefined),
 }));
 
 // verifySandbox shells out to the real vendored backend under systemd-run; it has its
@@ -985,6 +994,8 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
 
   test("injects the sandbox after cp -a and before the build command, then creates and chowns the project cache dir", async () => {
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "backend",
+      rewritten: [],
       generated: ["agent/sandbox.js"],
       replaced: [],
       wrapped: [],
@@ -1038,6 +1049,8 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
 
   test("reports every authored sandbox whose lifecycle is preserved", async () => {
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "backend",
+      rewritten: [],
       generated: ["agent/sandbox.js"],
       replaced: [],
       wrapped: ["agent/sandbox.ts", "agent/subagents/researcher/sandbox.js"],
@@ -1058,6 +1071,76 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     expect(result.log).toContain("onSession()");
     expect(result.log).toContain("revalidationKey");
     expect(result.log).not.toContain("are not used");
+  });
+});
+
+describe("createSystemdAdapter buildRelease (Eve >= 0.64 sandbox providers)", () => {
+  const buildInput = {
+    projectId: "proj_123",
+    releaseId: "rel_789",
+    sourcePath: "/data/sources/proj_123",
+    buildDir: "/data/builds/proj_123/rel_789",
+    commandContext: { hasLockfile: true },
+  };
+
+  test("checks every prepared sandbox is on bwrap and reports redirected authored modules", async () => {
+    vi.mocked(assertReleaseSandboxArtifacts).mockClear();
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "provider",
+      generated: ["agent/subagents/researcher/sandbox.js"],
+      rewritten: ["agent/sandbox.ts"],
+      replaced: [],
+      wrapped: [],
+    });
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    const result = await adapter.buildRelease(buildInput);
+
+    expect(assertReleaseSandboxArtifacts).toHaveBeenCalledWith(
+      path.resolve("/data/builds/proj_123/rel_789"),
+    );
+    expect(result.log).toContain("Redirected the project's authored sandbox (agent/sandbox.ts)");
+    expect(result.log).not.toContain("bootstrap()");
+  });
+
+  test("does not warn about a missing agent/ directory when every sandbox module was authored", async () => {
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "provider",
+      generated: [],
+      rewritten: ["agent/sandbox/sandbox.ts"],
+      replaced: [],
+      wrapped: [],
+    });
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    const result = await adapter.buildRelease(buildInput);
+
+    expect(result.log).not.toContain("no agent/ directory");
+  });
+
+  test("refuses the Release when a prepared sandbox escaped the platform provider", async () => {
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "provider",
+      generated: ["agent/sandbox.js"],
+      rewritten: [],
+      replaced: [],
+      wrapped: [],
+    });
+    vi.mocked(assertReleaseSandboxArtifacts).mockRejectedValueOnce(
+      new Error("eve build prepared a sandbox for helper (docker) on a provider other than bwrap."),
+    );
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    await expect(adapter.buildRelease(buildInput)).rejects.toThrow(/helper \(docker\)/);
+  });
+
+  test("leaves a backend-era Release to the self-check alone", async () => {
+    vi.mocked(assertReleaseSandboxArtifacts).mockClear();
+    const adapter = createSystemdAdapter({ ...baseAdapterConfig, buildSandbox: "none" });
+
+    await adapter.buildRelease(buildInput);
+
+    expect(assertReleaseSandboxArtifacts).not.toHaveBeenCalled();
   });
 });
 
@@ -1262,6 +1345,8 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
 describe("createSystemdAdapter buildRelease (no sandbox roots found)", () => {
   test("still vendors and verifies, but warns loudly instead of failing the build", async () => {
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "backend",
+      rewritten: [],
       generated: [],
       replaced: [],
       wrapped: [],

@@ -991,6 +991,197 @@ describe("private Agent telemetry runtime", () => {
     expect(subagentSpan?.attributes).not.toHaveProperty("gen_ai.output.messages");
   });
 
+  test("keeps a 0.62 background subagent span open through the receipt's action.result", async () => {
+    // 0.62 emits the admission marker on `subagent.completed` and then the
+    // receipt as the call's `action.result`; the result must not end a span
+    // the marker just declared background.
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const parentContext = hookContext();
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
+    await runtime.capture(
+      {
+        type: "subagent.called",
+        data: { callId: "call_bg", name: "Background researcher", turnId: "turn_1" },
+      },
+      parentContext,
+    );
+    await runtime.capture(
+      {
+        type: "subagent.completed",
+        data: {
+          backgroundTask: { status: "working", taskId: "task_1" },
+          callId: "call_bg",
+          output: '{"status":"working","taskId":"task_1"}',
+        },
+      },
+      parentContext,
+    );
+    await runtime.capture(
+      {
+        type: "action.result",
+        data: {
+          turnId: "turn_1",
+          status: "completed",
+          result: {
+            callId: "call_bg",
+            output: { agentId: "agent_1", status: "working", taskId: "task_1" },
+          },
+        },
+      },
+      parentContext,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, parentContext);
+    await runtime.forceFlush();
+
+    expect(traces.getFinishedSpans().map((span) => span.name)).not.toContain(
+      "invoke_agent Background researcher",
+    );
+  });
+
+  test("keeps a 0.64 background subagent span open at its receipt and ends it with the real output", async () => {
+    // From 0.63 the receipt arrives only as the call's `action.result`
+    // ({ agentId, status: "working", taskId }), and `subagent.completed` fires
+    // once, after the parent has recorded the child's actual result.
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const parentContext = hookContext();
+    const childContext = {
+      session: {
+        id: "eve_child",
+        parent: { sessionId: "eve_session_1", callId: "call_bg" },
+      },
+      agent: { name: "Background researcher", nodeId: "root/background-researcher" },
+      channel: { kind: "http" },
+    };
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
+    await runtime.capture(
+      {
+        type: "subagent.called",
+        data: { callId: "call_bg", name: "Background researcher", turnId: "turn_1" },
+      },
+      parentContext,
+    );
+    await runtime.capture(
+      {
+        type: "action.result",
+        data: {
+          turnId: "turn_1",
+          status: "completed",
+          result: {
+            callId: "call_bg",
+            output: { agentId: "agent_1", status: "working", taskId: "task_1" },
+          },
+        },
+      },
+      parentContext,
+    );
+    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, parentContext);
+    await runtime.capture({ type: "turn.started", data: { turnId: "child_turn" } }, childContext);
+    await runtime.capture({ type: "turn.completed", data: { turnId: "child_turn" } }, childContext);
+    await runtime.forceFlush();
+    // Turn spans are `invoke_agent <agent>` too, so the call is found by its id.
+    const callSpan = () =>
+      traces
+        .getFinishedSpans()
+        .find((span) => span.attributes["gen_ai.tool.call.id"] === "call_bg");
+    expect(callSpan()).toBeUndefined();
+
+    await runtime.capture(
+      {
+        type: "subagent.completed",
+        data: { callId: "call_bg", output: "three findings" },
+      },
+      parentContext,
+    );
+    await runtime.forceFlush();
+
+    const finished = traces.getFinishedSpans();
+    const subagentSpan = callSpan();
+    expect(subagentSpan?.attributes).toMatchObject({
+      "eveland.eve.background_task.id": "task_1",
+      "eveland.eve.background_task.status": "working",
+    });
+    expect(JSON.parse(String(subagentSpan?.attributes["gen_ai.output.messages"]))).toEqual([
+      {
+        finish_reason: "stop",
+        parts: [{ content: "three findings", type: "text" }],
+        role: "assistant",
+      },
+    ]);
+    const childTurn = finished.find(
+      (span) => span.attributes["eveland.eve.session.id"] === "eve_child",
+    );
+    expect(childTurn?.parentSpanContext?.spanId).toBe(subagentSpan?.spanContext().spanId);
+  });
+
+  test("ends a 0.64 background subagent span with an error when the child session fails", async () => {
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const parentContext = hookContext();
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
+    await runtime.capture(
+      { type: "subagent.called", data: { callId: "call_bg", name: "Worker", turnId: "turn_1" } },
+      parentContext,
+    );
+    await runtime.capture(
+      {
+        type: "action.result",
+        data: {
+          turnId: "turn_1",
+          status: "completed",
+          result: {
+            callId: "call_bg",
+            output: '{"agentId":"agent_1","status":"working","taskId":"task_2"}',
+          },
+        },
+      },
+      parentContext,
+    );
+    await runtime.capture(
+      { type: "session.failed", data: { error: { message: "child crashed" } } },
+      {
+        session: { id: "eve_child", parent: { sessionId: "eve_session_1", callId: "call_bg" } },
+        agent: { name: "Worker", nodeId: "root/worker" },
+        channel: { kind: "http" },
+      },
+    );
+    await runtime.forceFlush();
+
+    const subagentSpan = traces
+      .getFinishedSpans()
+      .find((span) => span.name === "invoke_agent Worker");
+    expect(subagentSpan?.status).toMatchObject({ code: 2, message: "child crashed" });
+    expect(subagentSpan?.attributes["eveland.eve.background_task.id"]).toBe("task_2");
+  });
+
   test("keeps reasoning out of spans when outputs are not recorded", async () => {
     const traces = new InMemorySpanExporter();
     const runtime = createPrivateAgentTelemetryRuntime({

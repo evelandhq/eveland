@@ -35,7 +35,7 @@ vi.mock("execa", () => ({
 
 vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
-    eveVersion: "0.58.1",
+    eveVersion: "0.62.0",
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),
@@ -44,9 +44,11 @@ vi.mock("@evelandhq/agent-scheduler", () => ({
 
 vi.mock("./runtime/sandbox-inject.js", () => ({
   injectSandboxModules: vi.fn(async () => ({
+    api: "backend",
     generated: ["agent/sandbox.js"],
     replaced: [],
     wrapped: [],
+    rewritten: [],
   })),
 }));
 
@@ -409,7 +411,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
-          resolvedEveVersion: "0.58.1",
+          resolvedEveVersion: "0.62.0",
           schedulerDefinitions: [
             {
               key: "crm__sync",
@@ -452,7 +454,7 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("Docker sandbox self-check passed");
     expect(result.discovery).toEqual({
       manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
-      resolvedEveVersion: "0.58.1",
+      resolvedEveVersion: "0.62.0",
       schedulerDefinitions: [
         {
           key: "crm__sync",
@@ -528,6 +530,8 @@ describe("createDockerAdapter", () => {
   test("warns when an Eve release has no agent root to receive the sandbox module", async () => {
     vi.mocked(execa).mockClear();
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "backend",
+      rewritten: [],
       generated: [],
       replaced: [],
       wrapped: [],
@@ -540,7 +544,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "0.58.1",
+          resolvedEveVersion: "0.62.0",
           schedulerDefinitions: [],
         }),
       } as never);
@@ -562,6 +566,8 @@ describe("createDockerAdapter", () => {
   test("reports preserved authored sandbox lifecycle while overriding its backend", async () => {
     vi.mocked(execa).mockClear();
     vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "backend",
+      rewritten: [],
       generated: ["agent/sandbox/sandbox.js"],
       replaced: [],
       wrapped: ["agent/sandbox/sandbox.ts"],
@@ -574,7 +580,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "0.58.1",
+          resolvedEveVersion: "0.62.0",
           schedulerDefinitions: [],
         }),
       } as never);
@@ -595,6 +601,81 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("overrides only the backend");
     expect(result.log).toContain("revalidationKey");
     expect(result.log).not.toContain("are not used");
+  });
+
+  test("checks the image's prepared sandboxes for an Eve >= 0.64 Release before the self-check", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "provider",
+      generated: [],
+      rewritten: ["agent/sandbox.ts"],
+      replaced: [],
+      wrapped: [],
+    });
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ all: "" } as never)
+      .mockResolvedValueOnce({ all: "docker build ok" } as never)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify({ entries: [{ nodeId: "__root__", providerName: "bwrap" }] }),
+      } as never)
+      .mockResolvedValueOnce({ exitCode: 0, all: "SANDBOX VERIFY OK" } as never)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          manifest: null,
+          resolvedEveVersion: "0.66.1",
+          schedulerDefinitions: [],
+        }),
+      } as never);
+    const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    const result = await adapter.buildRelease({
+      projectId: "Proj_123",
+      releaseId: "Rel_456",
+      sourcePath: "/workspace/source",
+      buildDir,
+      commandContext: { hasLockfile: true },
+    });
+
+    const reader = vi.mocked(execa).mock.calls[2]!;
+    expect(reader[1]).toEqual(expect.arrayContaining(["run", "--rm", "--network", "none"]));
+    expect(String((reader[1] as string[]).at(-1))).toContain(
+      "/app/.output/.eve/compile/sandbox-prepared-artifacts.json",
+    );
+    expect(result.log).toContain("Redirected the project's authored sandbox (agent/sandbox.ts)");
+    expect(result.log).not.toContain("no agent/ directory");
+  });
+
+  test("refuses an Eve >= 0.64 image whose sandbox was prepared by another provider", async () => {
+    vi.mocked(execa).mockClear();
+    vi.mocked(injectSandboxModules).mockResolvedValueOnce({
+      api: "provider",
+      generated: ["agent/sandbox.js"],
+      rewritten: [],
+      replaced: [],
+      wrapped: [],
+    });
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ all: "" } as never)
+      .mockResolvedValueOnce({ all: "docker build ok" } as never)
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: JSON.stringify({ entries: [{ nodeId: "__root__", providerName: "default" }] }),
+      } as never);
+    const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
+    const adapter = createDockerAdapter(dockerAdapterConfig);
+
+    await expect(
+      adapter.buildRelease({
+        projectId: "Proj_123",
+        releaseId: "Rel_456",
+        sourcePath: "/workspace/source",
+        buildDir,
+        commandContext: { hasLockfile: true },
+      }),
+    ).rejects.toThrow(/__root__ \(default\)/);
   });
 
   test("startProcess publishes the configured internal port and runs the eve start command", async () => {
@@ -994,7 +1075,7 @@ describe("readImageDiscovery", () => {
       exitCode: 0,
       stdout: JSON.stringify({
         manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
-        resolvedEveVersion: "0.58.1",
+        resolvedEveVersion: "0.62.0",
       }),
     } as never);
 

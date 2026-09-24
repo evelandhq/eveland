@@ -268,6 +268,27 @@ export function mapAgentTelemetryLifecycle(input: {
       }
       state.actionToolNames.delete(actionKey);
       if (span) {
+        // A background subagent call returns a receipt as its result while
+        // the child keeps running. Eve 0.62 announces that on
+        // `subagent.completed` just before this result; from 0.63 the receipt
+        // is the only signal and `subagent.completed` arrives once, with the
+        // child's real output. Either way the span stays open for it (or for
+        // the child session's end), so the child's spans keep their parent.
+        const isSubagentCall = !state.actions.has(actionKey);
+        const receipt =
+          isSubagentCall && data.status === "completed" && data.error === undefined
+            ? backgroundTaskReceipt(result?.output)
+            : undefined;
+        if (isSubagentCall && (receipt || state.backgroundSubagents.has(actionKey))) {
+          if (receipt) {
+            span.setAttributes({
+              "eveland.eve.background_task.id": receipt.taskId,
+              "eveland.eve.background_task.status": "working",
+            });
+          }
+          state.backgroundSubagents.add(actionKey);
+          return span;
+        }
         if (capture.recordOutputs && result?.output !== undefined) {
           if (state.actions.has(actionKey)) {
             span.setAttribute(ATTR_GEN_AI_TOOL_CALL_RESULT, serializeAttribute(result.output));
@@ -485,4 +506,23 @@ export function mapAgentTelemetryLifecycle(input: {
           ? state.turns.get(turnKey)
           : undefined;
   }
+}
+
+/**
+ * The receipt a background subagent call returns in place of a result:
+ * `{ agentId, status: "working", taskId }` (Eve's
+ * SUBAGENT_TASK_RECEIPT_OUTPUT_SCHEMA), as an object or its JSON text.
+ */
+function backgroundTaskReceipt(output: unknown): { taskId: string } | undefined {
+  let value = output;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+  const receipt = asRecord(value);
+  const taskId = asString(receipt?.taskId);
+  return receipt?.status === "working" && taskId ? { taskId } : undefined;
 }

@@ -31,8 +31,9 @@ In Eveland's host-native architecture, production hosts run neither a Docker dae
 
 ## Release Injection and Build-time Self-checks
 
-1. **Release-time injection**: Eveland injects the bubblewrap backend into immutable release artifacts during compilation without touching user source trees or manifests.
-2. **Post-build self-checks**: Eve initializes sandboxes lazily, meaning broken sandbox configurations do not cause HTTP readiness checks to fail. Eveland runs an immediate runtime probe right after build under production-equivalent hardening, ensuring configuration defects (such as missing AppArmor profiles) fail the build loudly rather than failing during customer turns.
+1. **Release-time injection**: Eveland injects the bubblewrap sandbox into immutable release artifacts during compilation without touching user source trees or manifests. It generates whichever shape the Release's Eve line compiles: a backend module that keeps the authored lifecycle callbacks, or — once Eve moved to provider environments — the project's own sandbox module with its `eve/sandbox` imports redirected, so the authored preparation and selector run unchanged on top of bwrap.
+2. **Provider check**: With provider environments, `eve build` prepares every sandbox template and records the provider that prepared it, and the runtime refuses to open a sandbox prepared by a different one. Eveland reads that record after the build and refuses a Release in which any sandbox escaped the redirection — an environment built in a helper file, a custom provider, or a sandbox shipped by an Extension — instead of letting it fail on a customer's first turn.
+3. **Post-build self-checks**: Eve initializes sandboxes lazily, meaning broken sandbox configurations do not cause HTTP readiness checks to fail. Eveland runs an immediate runtime probe right after build under production-equivalent hardening, ensuring configuration defects (such as missing AppArmor profiles) fail the build loudly rather than failing during customer turns.
 
 ## Deeper reference
 

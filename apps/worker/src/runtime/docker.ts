@@ -6,6 +6,10 @@ import { parseSchedulerDefinitions } from "@evelandhq/agent-scheduler";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
 import { prepareReleaseTree } from "./prepare-release.js";
 import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
+import {
+  platformSandboxArtifactsProblem,
+  SANDBOX_PREPARED_ARTIFACTS_RELEASE_PATH,
+} from "./sandbox-artifacts.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
 import { PNPM_FROZEN_INSTALL_COMMAND } from "./package-manager.js";
 import { SANDBOX_PNPM_VERSION, SANDBOX_TOOLCHAIN_APK_PACKAGES } from "./sandbox-toolchain.js";
@@ -254,6 +258,30 @@ export async function readImageDiscovery(imageTag: string): Promise<ReleaseDisco
   }
 }
 
+/**
+ * Reads the sandbox templates `eve build` recorded inside an image and refuses
+ * the Release unless every one is on the platform provider (see
+ * `platformSandboxArtifactsProblem`). A missing file reads as no templates.
+ */
+export async function assertImageSandboxArtifacts(imageTag: string): Promise<void> {
+  const script =
+    'const fs=require("fs");let a=null;' +
+    `try{a=JSON.parse(fs.readFileSync("/app/${SANDBOX_PREPARED_ARTIFACTS_RELEASE_PATH}","utf8"))}catch{}` +
+    "process.stdout.write(JSON.stringify(a))";
+  const result = await execa(
+    "docker",
+    ["run", "--rm", "--network", "none", imageTag, "node", "-e", script],
+    { reject: false },
+  );
+  if (result.exitCode !== 0 || typeof result.stdout !== "string") {
+    throw new Error(
+      `Could not read the prepared sandboxes from Docker image ${imageTag}: ${result.stderr || "reader failed"}`,
+    );
+  }
+  const problem = platformSandboxArtifactsProblem(JSON.parse(result.stdout || "null"));
+  if (problem) throw new Error(problem);
+}
+
 export async function verifyDockerSandbox(imageTag: string): Promise<void> {
   const result = await execa("docker", buildDockerSandboxVerifyArgs(imageTag), {
     all: true,
@@ -483,6 +511,12 @@ export function createDockerAdapter(
           variables: buildVariables.variables,
           ...(input.signal ? { signal: input.signal } : {}),
         });
+        if (
+          sandboxInjection.api === "provider" &&
+          sandboxInjection.generated.length + sandboxInjection.rewritten.length > 0
+        ) {
+          await assertImageSandboxArtifacts(imageTag);
+        }
         if (sandboxInjection) {
           await verifyDockerSandbox(imageTag);
         }
@@ -506,7 +540,8 @@ export function createDockerAdapter(
             sandboxInjection
               ? `Injected eve sandbox modules: ${sandboxInjection.generated.join(", ") || "none"}`
               : undefined,
-            sandboxInjection?.generated.length === 0
+            sandboxInjection &&
+            sandboxInjection.generated.length + sandboxInjection.rewritten.length === 0
               ? "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
                 "be injected. The deployed agent will fall back to eve's default sandbox backend chain."
               : undefined,
@@ -515,10 +550,17 @@ export function createDockerAdapter(
                 "Eveland overrides only the backend; authored bootstrap(), onSession(), description, and " +
                 "revalidationKey remain active, while workspace seeds are preserved."
               : undefined,
+            sandboxInjection?.rewritten.length
+              ? `Redirected the project's authored sandbox (${sandboxInjection.rewritten.join(", ")}) to ` +
+                "Eveland's bwrap provider. Its prepare and selector still run; eve's built-in providers " +
+                "are replaced, so provider-specific options such as images and Dockerfiles are ignored."
+              : undefined,
             sandboxInjection?.replaced.length
               ? `WARNING: replaced the project's authored sandbox (${sandboxInjection.replaced.join(", ")}). ` +
-                "eveland selects the sandbox backend for Docker deployments; the authored module's " +
-                "bootstrap() and onSession() are not used, while workspace seeds are preserved."
+                (sandboxInjection.api === "provider"
+                  ? "eve would not load it, or it is not a regular file; workspace seeds are preserved."
+                  : "eveland selects the sandbox backend for Docker deployments; the authored module's " +
+                    "bootstrap() and onSession() are not used, while workspace seeds are preserved.")
               : undefined,
             sandboxInjection
               ? "Docker sandbox self-check passed: bwrap executed TypeScript with deployment-equivalent permissions."

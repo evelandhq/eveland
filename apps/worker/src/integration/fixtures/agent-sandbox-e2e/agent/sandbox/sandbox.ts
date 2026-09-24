@@ -1,28 +1,22 @@
-// The authored backend is deliberately broken: Eveland must override it with
-// bwrap. The lifecycle fields are equally deliberate: injection preserves them
-// through a same-directory companion module, and the integration smoke proves
-// Eve executes both callbacks in the deployed runtime.
+// The authored provider is deliberately one Eveland must never run: a Docker
+// image the host never pulls. Eveland redirects it to bwrap. The preparation
+// and the selector setup are equally deliberate: the integration smoke proves
+// that eve ran the authored prepare inside bwrap during `eve build` (it reads
+// the workspace seed) and the selector for a live session.
 import { defineSandbox } from "eve/sandbox";
+import { DockerSandbox } from "eve/sandbox/docker";
 
-export default defineSandbox({
-  description: "Eveland sandbox lifecycle integration fixture",
-  backend: () => {
-    throw new Error("BROKEN AUTHORED SANDBOX: eveland must never let this reach a deployed agent.");
-  },
-  revalidationKey: () => "eveland-authored-lifecycle-v1",
-  async bootstrap({ use }) {
-    const sandbox = await use();
-    const seed = await sandbox.readTextFile({ path: "eveland-seed.txt" });
-    await sandbox.writeTextFile({
-      path: "eveland-bootstrap.txt",
-      content: `authored-bootstrap-saw:${seed ?? "missing"}`,
+export const environment = DockerSandbox.image("eveland.invalid/never-pulled:e2e", {
+  prepare: async (sandbox) => {
+    const result = await sandbox.run({
+      command: 'printf "authored-prepare-saw:%s" "$(cat eveland-seed.txt)" > eveland-prepare.txt',
     });
+    if (result.exitCode !== 0) throw new Error(`authored prepare failed: ${result.stderr}`);
   },
-  async onSession({ use }) {
-    const sandbox = await use();
-    await sandbox.writeTextFile({
-      path: "eveland-on-session.txt",
-      content: "authored-on-session-ran",
-    });
-  },
+});
+
+export default defineSandbox(async () => {
+  const sandbox = await environment.open();
+  await sandbox.writeTextFile({ path: "eveland-selector.txt", content: "authored-selector-ran" });
+  return sandbox;
 });
