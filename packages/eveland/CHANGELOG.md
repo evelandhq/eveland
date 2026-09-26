@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/evelandhq/eveland/compare/eveland-v0.14.0...eveland-v0.15.0) (2026-09-26)
+
+
+### Features
+
+* adopt eve 0.66.1 with a gapped {0.62.x, 0.66.x} window ([#569](https://github.com/evelandhq/eveland/issues/569)) ([2055544](https://github.com/evelandhq/eveland/commit/20555445ec5e9c0e44079c4ea644b3112b20cbe4))
+* adopt eve 0.67.0 with a gapped {0.62.x, 0.67.x} window ([#571](https://github.com/evelandhq/eveland/issues/571)) ([ff7ff5a](https://github.com/evelandhq/eveland/commit/ff7ff5a911adb3f3035c21d151404fe5fa56e039))
+
 ## [0.14.0](https://github.com/evelandhq/eveland/compare/eveland-v0.13.0...eveland-v0.14.0) (2026-09-19)
 
 
