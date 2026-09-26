@@ -26,7 +26,7 @@ export const PLATFORM_WORKFLOW_WORLD = {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "0.22.0",
+  packageVersion: "0.23.0",
 } as const;
 
 export type WorkflowWorldBuildConfig = {
@@ -43,8 +43,10 @@ export type WorkflowWorldBuildConfig = {
  *
  * Since 0.18.0 the World declares `mintedSpecVersion()`: the sealed log (7) by
  * default, or slot identity (6) for a Deployment that opts out with
- * `WORKFLOW_SEALED_LOG=0`. Every shared build from 0.5.0 through 0.17.0
- * declared 6 unconditionally. A run stays pinned to the Deployment that
+ * `WORKFLOW_SEALED_LOG=0`; since 0.23.0 it caps that at the sealed log, because
+ * its `@workflow/world` beta.38 (eve 0.66.3) mints 8 and a runtime refuses a
+ * World above its ceiling, which 0.62.0's is 7. Every shared build from 0.5.0
+ * through 0.17.0 declared 6 unconditionally. A run stays pinned to the Deployment that
  * created it and 7 changes nothing in this World's storage, so both
  * generations are in `SUPPORTED_WORKFLOW_STORAGE_SPECS`; the attestation
  * records the default the Release's World mints.

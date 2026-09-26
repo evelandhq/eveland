@@ -363,7 +363,7 @@ describe("resolveSandboxApi", () => {
     ["0.64", "provider"],
     ["0.65.0", "provider"],
     ["0.65.*", "provider"],
-    ["0.66.1", "provider"],
+    ["0.67.0", "provider"],
     ["0.66.*", "provider"],
   ])("a project declaring eve %s gets the %s sandbox shape", async (eve, api) => {
     const { releaseDir } = await makeRelease(eve);
@@ -383,7 +383,7 @@ describe("injectSandboxModules on Eve >= 0.64 (provider environments)", () => {
   const platformDir = (releaseDir: string) => path.join(releaseDir, ".eveland", "sandbox-platform");
 
   test("generates a provider module for an empty slot, plus the platform module and every shim", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1");
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0");
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
 
@@ -412,7 +412,7 @@ describe("injectSandboxModules on Eve >= 0.64 (provider environments)", () => {
   });
 
   test("keeps an authored module in place and redirects its eve sandbox imports to the shims", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1");
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0");
     await writeFile(
       path.join(releaseDir, "agent", "sandbox.ts"),
       `import { defineSandbox } from "eve/sandbox";
@@ -446,7 +446,7 @@ export default defineSandbox(async () => {
   });
 
   test("uses eve's folder layout: rewrites the folder module, keeps seeds, drops the shadowed flat module", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1");
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0");
     await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
     await writeFile(
       path.join(releaseDir, "agent", "sandbox", "sandbox.ts"),
@@ -474,7 +474,7 @@ export default defineSandbox(async () => {
   });
 
   test("generates into an empty sandbox folder so its workspace seeds still compile", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1");
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0");
     await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
 
     const result = await injectSandboxModules({ releaseDir, backendDistDir });
@@ -486,7 +486,7 @@ export default defineSandbox(async () => {
   });
 
   test("covers every subagent: a parent-sharing module is only redirected, an empty one is generated", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1");
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0");
     await mkdir(path.join(releaseDir, "agent", "subagents", "reviewer"), { recursive: true });
     await mkdir(path.join(releaseDir, "agent", "subagents", "researcher"), { recursive: true });
     await writeFile(
@@ -510,7 +510,7 @@ export default defineSandbox(async () => {
   });
 
   test("leaves a custom provider import alone for the post-build check to refuse", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1");
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0");
     const authored =
       'import { defineSandbox } from "eve/sandbox";\n' +
       'import { defineSandboxProvider } from "eve/sandbox/provider";\n';
@@ -525,7 +525,7 @@ export default defineSandbox(async () => {
   });
 
   test("keeps only the module eve would load and reports the shadowed ones as replaced", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1");
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0");
     await writeFile(path.join(releaseDir, "agent", "sandbox.ts"), 'import "eve/sandbox";\n');
     await writeFile(path.join(releaseDir, "agent", "sandbox.js"), "export default {};\n");
 
@@ -539,7 +539,7 @@ export default defineSandbox(async () => {
   });
 
   test("replaces a symlinked authored module with a generated one", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1");
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0");
     const target = path.join(releaseDir, "outside-sandbox.ts");
     await writeFile(target, 'import "eve/sandbox";\n');
     symlinkSync(target, path.join(releaseDir, "agent", "sandbox.ts"));
@@ -555,7 +555,7 @@ export default defineSandbox(async () => {
   });
 
   test("re-running is idempotent for generated and authored modules alike", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1");
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0");
     await mkdir(path.join(releaseDir, "agent", "subagents", "researcher"), { recursive: true });
     await writeFile(
       path.join(releaseDir, "agent", "subagents", "researcher", "sandbox.ts"),
@@ -576,7 +576,7 @@ export default defineSandbox(async () => {
   });
 
   test("refuses a vendored sandbox-bwrap that predates the provider", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease("0.66.1", { providerEntry: false });
+    const { releaseDir, backendDistDir } = await makeRelease("0.67.0", { providerEntry: false });
 
     await expect(injectSandboxModules({ releaseDir, backendDistDir })).rejects.toThrow(
       /sandbox-bwrap .*provider\.js/,

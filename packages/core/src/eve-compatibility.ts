@@ -6,32 +6,37 @@ export const EVE_COMPATIBILITY_POLICY = {
       dependencyName: "eve-previous",
     },
     {
-      range: "0.66.x",
-      verifiedVersion: "0.66.1",
+      range: "0.67.x",
+      verifiedVersion: "0.67.0",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.66.1 (published 2026-09-24, six hours after
-  // 0.66.0 and a day after 0.65.0) entered the same day; 0.63, 0.64, and
-  // 0.65 are skipped. 0.63.0 failed every
-  // session whose background subagent call met a hook subscribed to subagent
-  // events or "*" -- Eveland's observer is one -- so it never entered a
-  // window; 0.64.0 shipped the fix, 0.65.0 superseded 0.64.1 within a day,
-  // and 0.66.0 superseded 0.65.0 within six hours (0.66.1 following overnight
-  // with no wire change), before any Eveland release carried any of them. 0.58 retired on 2026-09-23: its Releases answer 409
-  // on activation and their parked runs are settled. The wire surfaces are
-  // unchanged from 0.62.0 (message stream v25, discovery manifest v15,
-  // storage spec 7, the route set, the unstamped workflow names apart from
-  // `taskRunWorkflow`, which 0.63 dropped together with background
-  // `defineTool` and `TaskExec`). What the newer line changes is the sandbox
-  // API (0.64: backends and object-form `defineSandbox` gave way to provider
-  // environments that `eve build` prepares, so Eveland generates a provider
-  // module for a >= 0.64 build and a backend module for a 0.62 one), the
-  // tool set (0.65: `todo` removed, `ask_question` opt-in), and the skill and
-  // tool-schema surface (0.66: `ctx.getSkill()` removed, tool schemas reach
-  // the model as JSON Schema, one private Zod). The range is the union of the
-  // two contiguous runs, never the hull, which would admit the skipped lines.
-  peerDependencyRange: ">=0.62.0 <0.63.0 || >=0.66.0 <0.67.0",
+  // A gapped two-line window: 0.67.0 (published 2026-09-26) entered the same
+  // day and 0.66 retired with it, two days after it had entered; 0.63, 0.64,
+  // 0.65, and now 0.66 are skipped. 0.63.0 failed every session whose
+  // background subagent call met a hook subscribed to subagent events or "*"
+  // -- Eveland's observer is one -- so it never entered a window; 0.64.0
+  // shipped the fix, 0.65.0 superseded 0.64.1 within a day, 0.66.0
+  // superseded 0.65.0 within six hours, and 0.66.x carried no Eveland
+  // release either before 0.67.0 replaced it. 0.58 retired on 2026-09-23:
+  // its Releases answer 409 on activation and their parked runs are settled,
+  // as 0.66's do now. The wire surfaces are unchanged from 0.62.0 (message
+  // stream v25, discovery manifest v15, the route set, the unstamped workflow
+  // names apart from `taskRunWorkflow`, which 0.63 dropped together with
+  // background `defineTool` and `TaskExec`); 0.66.3 raised the Workflow
+  // storage spec a runtime can read from 7 to 8, while the platform's World
+  // keeps declaring 7 so both lines read what it stamps. What the newer line
+  // changes is the sandbox API (0.64: backends and object-form
+  // `defineSandbox` gave way to provider environments that `eve build`
+  // prepares, so Eveland generates a provider module for a >= 0.64 build and
+  // a backend module for a 0.62 one), the tool set (0.65: `todo` removed,
+  // `ask_question` opt-in), the skill and tool-schema surface (0.66:
+  // `ctx.getSkill()` removed, tool schemas reach the model as JSON Schema,
+  // one private Zod), and the session lifecycle (0.67: the `task` run mode is
+  // gone, every session parks after its turn, and `outputSchema` left the
+  // agent definitions). The range is the union of the two contiguous runs,
+  // never the hull, which would admit the skipped lines.
+  peerDependencyRange: ">=0.62.0 <0.63.0 || >=0.67.0 <0.68.0",
 } as const;
 
 export type SupportedEveVersionRange =

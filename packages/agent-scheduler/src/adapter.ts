@@ -417,15 +417,26 @@ function findConcreteDefaultExport(sourceFile: ts.SourceFile):
 // dispatched through this channel asks for `"cohort"` to behave like Eve's;
 // 0.62 ignores the option. An authored handler still wins because its own
 // options are spread last.
-function fixedSessionDispatchBlock(): string {
+//
+// Through 0.66 a markdown schedule was sent as a `mode: "task"` session: it
+// ended once its turn settled and, lacking the request-input capability,
+// failed fast on a tool approval instead of parking for an answer nobody could
+// give. Eve 0.67 removed the run mode -- every session parks after its turn
+// until `limits.sessionTimeoutMs` ends it, and a channel send always grants
+// request-input -- and silently ignores the option, so the line is emitted only
+// for a Release whose Eve still reads it.
+const LAST_EVE_MINOR_WITH_TASK_RUN_MODE = 66;
+
+function fixedSessionDispatchBlock(eveMinor: number): string {
+  const runMode =
+    eveMinor <= LAST_EVE_MINOR_WITH_TASK_RUN_MODE ? `            mode: "task",\n` : "";
   return `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
           const session = await withScheduledRunRetention(() => from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
             auth: scheduleAppAuth,
             turnPolicy: "queue",
             taskDeliveryPolicy: "cohort",
-            mode: "task",
-            title: \`Schedule · \${scheduleKey}\`,
+${runMode}            title: \`Schedule · \${scheduleKey}\`,
           }));
           sessionIds.push(session.id);
         } else {
@@ -459,7 +470,20 @@ function fixedSessionDispatchBlock(): string {
         }`;
 }
 
-function generateSchedulerChannel(definitions: SchedulerDefinition[]): string {
+/**
+ * The minor of the Eve line a Release declares (`0.67.0`, `^0.62.0`, `0.62.x`
+ * all name one), for the few generated lines that differ between lines. The
+ * declaration was validated against the window before this runs.
+ */
+function declaredEveMinor(eveVersion: string): number {
+  const minor = /^[~^]?0\.(\d+)/.exec(eveVersion.trim())?.[1];
+  if (minor === undefined) {
+    throw new Error(`Cannot read an Eve minor out of the declared dependency "${eveVersion}".`);
+  }
+  return Number(minor);
+}
+
+function generateSchedulerChannel(definitions: SchedulerDefinition[], eveVersion: string): string {
   const imports = definitions.map((definition, index) => {
     const exportName = definition.sourcePath.endsWith(".md")
       ? reservedOriginalMarkdown
@@ -477,7 +501,7 @@ function generateSchedulerChannel(definitions: SchedulerDefinition[]): string {
     return `  ${JSON.stringify(definition.key)}: ${value},`;
   });
   const routeArgs = "{ params, from, to }";
-  const dispatchBlock = fixedSessionDispatchBlock();
+  const dispatchBlock = fixedSessionDispatchBlock(declaredEveMinor(eveVersion));
 
   return `${imports.length > 0 ? `${imports.join("\n")}\n` : ""}import { AsyncLocalStorage } from "node:async_hooks";
 import { defineChannel, POST } from "eve/channels";
@@ -733,11 +757,15 @@ async function writeSchedulerArtifacts(
   releaseDir: string,
   definitions: SchedulerDefinition[],
 ): Promise<void> {
+  const eveVersion = await readDeclaredEveVersion(releaseDir);
+  if (eveVersion === null) {
+    throw new Error("Cannot write the scheduler channel: the Release declares no Eve dependency.");
+  }
   const channelPath = path.join(releaseDir, reservedChannelPath);
   const definitionsPath = path.join(releaseDir, SCHEDULER_DEFINITIONS_RELEASE_PATH);
   await mkdir(path.dirname(channelPath), { recursive: true });
   await mkdir(path.dirname(definitionsPath), { recursive: true });
-  await atomicWriteFile(channelPath, generateSchedulerChannel(definitions));
+  await atomicWriteFile(channelPath, generateSchedulerChannel(definitions, eveVersion));
   await atomicWriteFile(definitionsPath, `${JSON.stringify(definitions, null, 2)}\n`);
 }
 

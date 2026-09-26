@@ -12,7 +12,7 @@ import {
 import { createZipArchive } from "./zip.ts";
 
 const execFileAsync = promisify(execFile);
-const WINDOW = ["0.62.x", "0.66.x"];
+const WINDOW = ["0.62.x", "0.67.x"];
 
 async function makeProject(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-"));
@@ -127,18 +127,21 @@ describe("deploy preflight", () => {
   test("judges eve specifiers against the instance window", () => {
     expect(eveSpecifierProblem("0.62.0", WINDOW)).toBeNull();
     expect(eveSpecifierProblem("^0.62.0", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("0.66.x", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("0.67.x", WINDOW)).toBeNull();
     expect(eveSpecifierProblem("0.46.0", WINDOW)).toContain("outside this instance's supported");
     // Skipped on 2026-09-17 (0.56, 0.57), 2026-09-19 (0.59, 0.60, 0.61),
-    // 2026-09-23 (0.63 and 0.64), and 2026-09-24 (0.65) -- the last three
-    // inside today's hull: never verified, so a line between two supported
-    // ones reads like any other outsider.
+    // 2026-09-23 (0.63 and 0.64), and 2026-09-24 (0.65), and 0.66 retired on
+    // 2026-09-26 -- the last four inside today's hull: never verified, or no
+    // longer, so a line between two supported ones reads like any other
+    // outsider.
     expect(eveSpecifierProblem("0.63.0", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.63.x", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.64.1", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.64.x", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.65.0", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.65.x", WINDOW)).toContain("outside this instance's supported");
+    expect(eveSpecifierProblem("0.66.1", WINDOW)).toContain("outside this instance's supported");
+    expect(eveSpecifierProblem("0.66.x", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.59.1", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.60.x", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.61.1", WINDOW)).toContain("outside this instance's supported");
@@ -152,7 +155,7 @@ describe("deploy preflight", () => {
     expect(eveSpecifierProblem("0.55.0", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.58.1", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("^0.58", WINDOW)).toContain("Unsupported");
-    expect(eveSpecifierProblem(">=0.62.0 <0.67.0", WINDOW)).toContain("Unsupported");
+    expect(eveSpecifierProblem(">=0.62.0 <0.68.0", WINDOW)).toContain("Unsupported");
     expect(eveSpecifierProblem("catalog:", WINDOW)).toContain("Unsupported");
     expect(eveSpecifierProblem(null, WINDOW)).toContain("Missing");
   });

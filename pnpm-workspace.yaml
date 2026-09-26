@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.66.1
+  eve: 0.67.0
 catalogs:
   eve-matrix:
     eve-previous: npm:eve@0.62.0
@@ -41,14 +41,14 @@ overrides:
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.62.x and 0.66.x -- a gapped window:
+# verified minor in the current window (0.62.x and 0.67.x -- a gapped window:
 # 0.63 never entered one, since its background-subagent regression kept it
-# out until 0.64 superseded it, 0.65 superseded 0.64 within a day, and 0.66
-# superseded 0.65 within six hours, before any Eveland release carried any of
-# them, so all three sit inside the hull unverified and are rejected; 0.58
-# retired on 2026-09-23, and every earlier line is below
-# the floor as well). eve-matrix names every line but the newest, which is the plain `eve`
-# catalog entry.
+# out until 0.64 superseded it, 0.65 superseded 0.64 within a day, 0.66
+# superseded 0.65 within six hours, and 0.67.0 replaced 0.66 two days after
+# it entered, before any Eveland release carried any of them, so all four sit
+# inside the hull unverified and are rejected; 0.58 retired on 2026-09-23,
+# and every earlier line is below the floor as well). eve-matrix names every
+# line but the newest, which is the plain `eve` catalog entry.
 #
 # The release-age cooldown is waived only for explicitly reviewed packages.
 # `eve`, `@evelandhq/sandbox-bwrap`, and `@evelandhq/workflow-world` are
@@ -59,18 +59,21 @@ overrides:
 # The @workflow/* entries are TWO reviewed graphs that coexist on purpose.
 # `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
-# before the shared World and never selected for a new build. The beta.22/10/
-# 46/37 line is what `@evelandhq/workflow-world` 0.22.0 bundles -- the set eve
-# moved to at 0.64.0 and 0.64.1, 0.65.0, and 0.66.1 re-bundled unchanged (0.66.0 too). 0.62.0 still carries the
-# previous set (beta.53/21/36/45, which eve moved to at 0.61.0); eve compares
+# before the shared World and never selected for a new build. The beta.23/10/
+# 47/38 line is what `@evelandhq/workflow-world` 0.23.0 bundles -- the set eve
+# moved to at 0.66.3 and 0.67.0 re-bundled unchanged. 0.62.0 still carries an
+# older set (beta.53/21/36/45, which eve moved to at 0.61.0); eve compares
 # only the major and prerelease tag of the World's declaration, so the same
-# World serves the whole window). That line's `@workflow/world` reports
-# SPEC_VERSION_CURRENT 7,
-# and since 0.18.0 the shared World DECLARES `mintedSpecVersion()` -- 7 by
-# default, 6 for a Deployment that opts out with WORKFLOW_SEALED_LOG=0 (0.5.0
-# through 0.17.0 always declared 6). eve gates on the declared number, which
-# the contract ratchet reads out of the World's dist and asserts per line; the
-# platform admits both 6 and 7 (SUPPORTED_WORKFLOW_STORAGE_SPECS).
+# World serves the whole window. That line's `@workflow/world` reports
+# SPEC_VERSION_CURRENT 8 (the hook force-claim reader contract), but since
+# 0.23.0 the shared World DECLARES `Math.min(mintedSpecVersion(), 7)` -- the
+# sealed log, or 6 for a Deployment that opts out with WORKFLOW_SEALED_LOG=0
+# (0.18.0 through 0.22.0 declared `mintedSpecVersion()` outright, which was 7
+# on their @workflow/world; 0.5.0 through 0.17.0 always declared 6) -- because
+# 0.62.0's runtime reads spec 6 through 7 only and would refuse a World
+# declaring 8 at startup. eve gates on the declared number, which the contract
+# ratchet reads out of the World's dist and asserts per line; the platform
+# admits both 6 and 7 (SUPPORTED_WORKFLOW_STORAGE_SPECS).
 minimumReleaseAgeExclude:
   - eve
   - "@evelandhq/sandbox-bwrap"
@@ -80,11 +83,11 @@ minimumReleaseAgeExclude:
   - "@ai-sdk/provider@4.0.17"
   - ai@7.0.105
   - "@workflow/errors@5.0.0-beta.17"
-  - "@workflow/errors@5.0.0-beta.22"
+  - "@workflow/errors@5.0.0-beta.23"
   - "@workflow/utils@5.0.0-beta.8"
   - "@workflow/utils@5.0.0-beta.10"
   - "@workflow/world-local@5.0.0-beta.36"
-  - "@workflow/world-local@5.0.0-beta.46"
+  - "@workflow/world-local@5.0.0-beta.47"
   - "@workflow/world-postgres@5.0.0-beta.34"
   - "@workflow/world@5.0.0-beta.27"
-  - "@workflow/world@5.0.0-beta.37"
+  - "@workflow/world@5.0.0-beta.38"
