@@ -4,6 +4,20 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.60.0](https://github.com/evelandhq/eveland/compare/v0.59.0...v0.60.0) (2026-09-29)
+
+
+### Features
+
+* adopt eve 0.66.1 with a gapped {0.62.x, 0.66.x} window ([#569](https://github.com/evelandhq/eveland/issues/569)) ([2055544](https://github.com/evelandhq/eveland/commit/20555445ec5e9c0e44079c4ea644b3112b20cbe4))
+* adopt eve 0.67.0 with a gapped {0.62.x, 0.67.x} window ([#571](https://github.com/evelandhq/eveland/issues/571)) ([ff7ff5a](https://github.com/evelandhq/eveland/commit/ff7ff5a911adb3f3035c21d151404fe5fa56e039))
+* adopt eve 0.68.0 with a gapped {0.62.x, 0.68.x} window ([#573](https://github.com/evelandhq/eveland/issues/573)) ([6329706](https://github.com/evelandhq/eveland/commit/63297065505ff7472d13986bca0901e7fe0cc808))
+
+
+### Bug Fixes
+
+* **deps:** consume @evelandhq/workflow-world 0.20.1 ([#567](https://github.com/evelandhq/eveland/issues/567)) ([27abb84](https://github.com/evelandhq/eveland/commit/27abb84133fe460358cbf78b5a40596ca98e0997))
+
 ## [0.59.0](https://github.com/evelandhq/eveland/compare/v0.58.0...v0.59.0) (2026-09-19)
 
 
