@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.67.0
+  eve: 0.68.0
 catalogs:
   eve-matrix:
     eve-previous: npm:eve@0.62.0
@@ -41,12 +41,13 @@ overrides:
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.62.x and 0.67.x -- a gapped window:
+# verified minor in the current window (0.62.x and 0.68.x -- a gapped window:
 # 0.63 never entered one, since its background-subagent regression kept it
 # out until 0.64 superseded it, 0.65 superseded 0.64 within a day, 0.66
-# superseded 0.65 within six hours, and 0.67.0 replaced 0.66 two days after
-# it entered, before any Eveland release carried any of them, so all four sit
-# inside the hull unverified and are rejected; 0.58 retired on 2026-09-23,
+# superseded 0.65 within six hours, 0.67.0 replaced 0.66 two days after it
+# entered, and 0.68.0 replaced 0.67 three days after that, before any Eveland
+# release carried any of them, so all five sit inside the hull and are
+# rejected; 0.58 retired on 2026-09-23,
 # and every earlier line is below the floor as well). eve-matrix names every
 # line but the newest, which is the plain `eve` catalog entry.
 #
@@ -61,7 +62,9 @@ overrides:
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
 # before the shared World and never selected for a new build. The beta.23/10/
 # 47/38 line is what `@evelandhq/workflow-world` 0.23.0 bundles -- the set eve
-# moved to at 0.66.3 and 0.67.0 re-bundled unchanged. 0.62.0 still carries an
+# moved to at 0.66.3 and 0.67.0 re-bundled unchanged; 0.67.2 moved eve's own
+# bundle one step further (beta.57/24/39/48, spec constants untouched), which
+# is what 0.68.0 carries. 0.62.0 still carries an
 # older set (beta.53/21/36/45, which eve moved to at 0.61.0); eve compares
 # only the major and prerelease tag of the World's declaration, so the same
 # World serves the whole window. That line's `@workflow/world` reports

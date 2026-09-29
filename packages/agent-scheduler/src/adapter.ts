@@ -471,7 +471,7 @@ ${runMode}            title: \`Schedule · \${scheduleKey}\`,
 }
 
 /**
- * The minor of the Eve line a Release declares (`0.67.0`, `^0.62.0`, `0.62.x`
+ * The minor of the Eve line a Release declares (`0.68.0`, `^0.62.0`, `0.62.x`
  * all name one), for the few generated lines that differ between lines. The
  * declaration was validated against the window before this runs.
  */
