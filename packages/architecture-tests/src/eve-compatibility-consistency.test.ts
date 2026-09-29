@@ -51,6 +51,10 @@ function readParameterList(source: string, declaration: string): string {
  * bundler's default is the authority, and an unrecognized shape fails loudly
  * rather than silently auditing a subset.
  */
+const INLINED_STABLE_WORKFLOW_CONSTANTS: Record<string, string> = {
+  turnWorkflow: "TURN_WORKFLOW_NAME",
+};
+
 function readUnstampedWorkflowConstants(dependencyName: string): string[] {
   const evePackage = `packages/agent-scheduler/node_modules/${dependencyName}/dist/src`;
   // 0.48.0 moved the exported set out of workflow-runtime.js into its own
@@ -62,7 +66,24 @@ function readUnstampedWorkflowConstants(dependencyName: string): string[] {
   if (exportedSet === undefined) {
     throw new Error(`${dependencyName}: could not read STABLE_WORKFLOW_NAMES`);
   }
-  const exported = exportedSet.split(",").map((constant) => constant.trim());
+  // 0.67.2 dropped the `TURN_WORKFLOW_NAME` constant and spells that one
+  // member inline as the string it held, so a member is either a constant or
+  // a backticked workflow name. A literal is mapped back onto the constant it
+  // replaced; an unknown one fails here rather than being audited under a
+  // name nobody reviewed.
+  const exported = exportedSet.split(",").map((member) => {
+    const constant = member.trim();
+    const literal = /^`([^`]+)`$/.exec(constant)?.[1];
+    if (literal === undefined) return constant;
+    const replaced = INLINED_STABLE_WORKFLOW_CONSTANTS[literal];
+    if (replaced === undefined) {
+      throw new Error(
+        `${dependencyName}: STABLE_WORKFLOW_NAMES inlines the workflow name "${literal}", ` +
+          "which no audited constant is known to have held",
+      );
+    }
+    return replaced;
+  });
 
   const builderSource = repositoryFile(
     `${evePackage}/internal/workflow-bundle/workflow-builders.js`,
@@ -96,7 +117,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.67.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.68.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -105,7 +126,7 @@ describe("Eve compatibility repository contract", () => {
       "TURN_WORKFLOW_NAME",
       "SESSION_TIMEOUT_WORKFLOW_NAME",
       // 0.63.0 removed this run together with background `defineTool` and
-      // `TaskExec`, and 0.64 through 0.67 keep it out: background work is a workflow-tool
+      // `TaskExec`, and 0.64 through 0.68 keep it out: background work is a workflow-tool
       // run there, audited below. It stays covered only because 0.62.x still
       // exports it; delete the entry when 0.62 retires (the equality check at
       // the end of this test fails on an entry no supported line runs).
@@ -151,11 +172,14 @@ describe("Eve compatibility repository contract", () => {
       // 0.65.0 (its tool-schema rework touched the workflow tool's schema, not
       // its run). 0.66.2, 0.66.3, and 0.67.0 re-checked 2026-09-26: still
       // byte-identical (0.67.0 removed the `task` run mode, which changes when
-      // the session run parks, not which runs exist). 0.56.0 rebuilt the `workflow` tool around a
+      // the session run parks, not which runs exist). 0.67.2 and 0.68.0
+      // re-checked 2026-09-29: the same five members plus the subagent body,
+      // with `turnWorkflow` now spelled inline (see
+      // readUnstampedWorkflowConstants). 0.56.0 rebuilt the `workflow` tool around a
       // model-supplied JS program, but its steps run inside this same run
       // rather than opening one of their own. 0.57.0 moved turn execution
       // into the session's own WORKFLOW_ENTRY_NAME run and 0.58.0 keeps that:
-      // TURN_WORKFLOW_NAME stays exported and unstamped, but on those lines
+      // the turn workflow name stays in the unstamped set, but on those lines
       // it is started only to import a session from the former driver model
       // (a 0.45+ driver's next turn dispatch), never per message.
       "WORKFLOW_TOOL_RUN_WORKFLOW_NAME",
@@ -177,7 +201,7 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.62.x exports six plus the subagent body and 0.67.x the same set minus
+    // 0.62.x exports six plus the subagent body and 0.68.x the same set minus
     // TASK_RUN_WORKFLOW_NAME; neither opens a per-turn run any more, but both
     // keep the turn name for legacy-session import.
     const observedConstants = new Set<string>();
@@ -217,7 +241,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.62/0.67 compatibility window", () => {
+  test("describes the supported 0.62/0.68 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {

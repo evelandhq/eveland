@@ -55,7 +55,8 @@ describe("Eve observer hook compatibility matrix", () => {
       // files, no flat module, no `capture` -- and left this expression alone;
       // 0.64.1, re-verified 2026-09-23, only added an `installAiSdkWarningLogger`
       // entry beside `runStep`, and 0.65.0, 0.66.0, 0.66.1, 0.66.2, 0.66.3, and
-      // 0.67.0 shipped runtime.js byte-identical to 0.64.1). If the pinned expression changes
+      // 0.67.0 shipped runtime.js byte-identical to 0.64.1; 0.67.1 only moved
+      // an import path, and 0.67.2 and 0.68.0 are byte-identical to that). If the pinned expression changes
       // shape in a new Eve line, re-verify model-capture.ts against it before
       // bumping the matrix. The minifier is free to rename the locals (0.44.0
       // emitted `r`, 0.44.3 `i`), so the pin captures identifiers instead of

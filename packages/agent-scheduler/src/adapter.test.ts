@@ -25,7 +25,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.62/0.67 compatibility window", async () => {
+  test("fails closed outside the 0.62/0.68 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -119,7 +119,8 @@ describe("injectSchedulerAdapter", () => {
       // 0.58 retired on 2026-09-23 when the window slid to 0.62 and 0.65; 0.63
       // and 0.64 are the lines that round skipped inside the hull, 0.65
       // joined them on 2026-09-24 when 0.66 took its place before any release,
-      // and 0.66 itself retired on 2026-09-26 when 0.67 entered two days later.
+      // 0.66 itself retired on 2026-09-26 when 0.67 entered two days later, and
+      // 0.67 on 2026-09-29 when 0.68 replaced it, again before any release.
       "0.58.1",
       "~0.58.1",
       "^0.58.1",
@@ -139,12 +140,17 @@ describe("injectSchedulerAdapter", () => {
       "~0.66.1",
       "^0.66.1",
       "0.66.x",
-      "0.68.0",
+      "0.67.0",
+      "~0.67.0",
+      "^0.67.0",
+      "0.67.x",
+      "0.69.0",
       ">=0.58.0",
       ">=0.62.0",
       ">=0.62.0 <0.66.1",
       ">=0.62.0 <0.67.0",
       ">=0.62.0 <0.68.0",
+      ">=0.62.0 <0.69.0",
       "*",
       "latest",
     ]) {
@@ -166,12 +172,12 @@ describe("injectSchedulerAdapter", () => {
       "0.62",
       "0.62.x",
       "0.62.*",
-      "0.67.0",
-      "~0.67.0",
-      "^0.67.0",
-      "0.67",
-      "0.67.x",
-      "0.67.*",
+      "0.68.0",
+      "~0.68.0",
+      "^0.68.0",
+      "0.68",
+      "0.68.x",
+      "0.68.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -313,7 +319,7 @@ Produce the daily report.
     // Eve 0.33 made "steer" the default send policy, which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every line in the
-    // current 0.62/0.67 window supports the explicit `turnPolicy` option.
+    // current 0.62/0.68 window supports the explicit `turnPolicy` option.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };
@@ -373,7 +379,7 @@ Produce the daily report.
     // Eveland dispatches schedules through a channel, so it asks for "cohort"
     // explicitly; 0.62 ignores the option. An authored handler still wins.
     const releaseDir = await fixture({
-      eveVersion: "0.67.0",
+      eveVersion: "0.68.0",
       files: { "agent/schedules/report.md": `---\ncron: "30 5 * * *"\n---\nReport.\n` },
     });
     await injectSchedulerAdapter({ releaseDir });
