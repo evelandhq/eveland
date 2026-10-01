@@ -25,6 +25,14 @@
  * `subagent.completed` is deliberately not delegation proof: under 0.51 it is
  * emitted for the tool call that merely handed back the task handle, before
  * any child run exists.
+ *
+ * eve 0.69 removed the `subagent.*` events and background tasks. An agent call
+ * is a task the root turn holds for: `task.started` and a text receipt, then
+ * `agent.started` once the child session opens, `turn.waiting` while it
+ * works, `task.settled` with its reply, and only then `turn.completed` and
+ * `session.waiting`. `agent.started` is the delegation proof there (a
+ * `task.started` alone is not: the call can fail before the child opens), and
+ * the same "idle after the child was reported" settle point still holds.
  */
 export type SessionStreamEvent = {
   type?: string;
@@ -58,7 +66,10 @@ export function watchDelegatedTurn(input: { subagentName?: string } = {}): Deleg
     observe(event) {
       if (event.type === "turn.completed") turnCompleted = true;
       if (event.type === "turn.failed" || event.type === "session.failed") turnFailed = true;
-      if (event.type === "subagent.called" && matchesSubagent(event.data, input.subagentName)) {
+      if (
+        (event.type === "subagent.called" || event.type === "agent.started") &&
+        matchesSubagent(event.data, input.subagentName)
+      ) {
         subagentCalled = true;
         return;
       }
@@ -84,7 +95,7 @@ export function watchDelegatedTurn(input: { subagentName?: string } = {}): Deleg
 }
 
 /**
- * eve names the delegated agent on `subagent.called` as `name`; `toolName`
+ * eve names the delegated agent on `subagent.called` and `agent.started` as `name`; `toolName`
  * carries the same value on 0.51 and is accepted so the match does not depend
  * on which of the two a given line in the window happens to populate.
  */

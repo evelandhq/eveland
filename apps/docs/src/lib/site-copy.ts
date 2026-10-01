@@ -88,7 +88,7 @@ const copy = {
       events: [
         ["09:41:02", "message.received", "stable route"],
         ["09:41:03", "runtime.activated", "deployment dep_42"],
-        ["09:41:05", "subagent.called", "researcher"],
+        ["09:41:05", "agent.started", "researcher"],
         ["09:41:11", "step.completed", "2,184 tokens"],
         ["09:41:12", "session.completed", "observed"],
       ],
@@ -189,7 +189,7 @@ const copy = {
       events: [
         ["09:41:02", "message.received", "stable route"],
         ["09:41:03", "runtime.activated", "deployment dep_42"],
-        ["09:41:05", "subagent.called", "researcher"],
+        ["09:41:05", "agent.started", "researcher"],
         ["09:41:11", "step.completed", "2,184 tokens"],
         ["09:41:12", "session.completed", "observed"],
       ],

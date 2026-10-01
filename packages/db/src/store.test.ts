@@ -992,8 +992,8 @@ describe("SQL Store jobs", () => {
 
     await expect(store.getDeploymentEveVersion(oldDeployment.id)).resolves.toEqual({
       version: "0.22.6",
-      expected: "0.62.x or 0.68.x",
-      supportedRanges: ["0.62.x", "0.68.x"],
+      expected: "0.68.x or 0.69.x",
+      supportedRanges: ["0.68.x", "0.69.x"],
       supported: false,
       sourceRevisionId: oldRevision.id,
     });
@@ -1015,7 +1015,7 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:resolved",
-      summary: { summarySource: "build-manifest", eveVersionResolved: "0.62.0" },
+      summary: { summarySource: "build-manifest", eveVersionResolved: "0.68.0" },
       containerName: "eveland-proj-resolved",
       internalPort: 3000,
       hostPort: 41014,
@@ -1025,7 +1025,7 @@ describe("SQL Store jobs", () => {
     // The build installed a concrete version; the gate reads it instead of
     // the declared range the import scan captured.
     await expect(store.getDeploymentEveVersion(deployment.id)).resolves.toMatchObject({
-      version: "0.62.0",
+      version: "0.68.0",
       supported: true,
       sourceRevisionId: revision.id,
     });

@@ -2,9 +2,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
- * Where `eve build` (Eve >= 0.64) records the template it prepared for each
- * sandbox environment. The deployed runtime opens and resumes sandboxes from
- * these entries and never prepares one itself.
+ * Where `eve build` records the template it prepared for each sandbox
+ * environment. The deployed runtime opens and resumes sandboxes from these
+ * entries and never prepares one itself.
  */
 export const SANDBOX_PREPARED_ARTIFACTS_RELEASE_PATH =
   ".output/.eve/compile/sandbox-prepared-artifacts.json";

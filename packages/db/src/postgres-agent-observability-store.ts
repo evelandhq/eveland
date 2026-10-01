@@ -480,9 +480,14 @@ async function ingestPostgresAgentEventOnce(
       }
     }
 
-    if (type === "subagent.called") {
+    // Eve <= 0.68 announces a delegated child with `subagent.called`
+    // (`childSessionId`); 0.69 replaced it with `agent.started`, whose
+    // `sessionId` names the child. Both carry `name` and `remote.url`.
+    if (type === "subagent.called" || type === "agent.started") {
       const subagentPayload = recordValue(payload);
-      const childEveSessionId = stringValue(subagentPayload?.childSessionId);
+      const childEveSessionId = stringValue(
+        type === "agent.started" ? subagentPayload?.sessionId : subagentPayload?.childSessionId,
+      );
       const remoteUrl = stringValue(recordValue(subagentPayload?.remote)?.url);
       if (childEveSessionId) {
         let [child] = await tx

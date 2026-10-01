@@ -3,11 +3,19 @@ import { MockLanguageModelV3 } from "ai/test";
 type GenerateOptions = Parameters<MockLanguageModelV3["doGenerate"]>[0];
 type GenerateResult = Awaited<ReturnType<MockLanguageModelV3["doGenerate"]>>;
 
-const QUALIFIED_CONNECTION_TOOLS = [
-  "warehouse__getConnectionStatus",
-  "knowledge__lookupConnectionRecord",
-  "research__lookupConnectionRecord",
-] as const;
+/**
+ * The tool each test Connection exposes, by Connection name. Since eve 0.69
+ * the model never sees a discovered tool in its tool list: it finds it with
+ * `connection_search` and calls it through `connection_execute`, naming the
+ * Connection and the tool's own (unqualified) name.
+ */
+const CONNECTION_TOOLS = {
+  warehouse: "getConnectionStatus",
+  knowledge: "lookupConnectionRecord",
+  research: "lookupConnectionRecord",
+} as const;
+
+type ConnectionName = keyof typeof CONNECTION_TOOLS;
 
 export function connectionTestModel(): MockLanguageModelV3 {
   const generate = (options: GenerateOptions): GenerateResult => {
@@ -18,29 +26,34 @@ export function connectionTestModel(): MockLanguageModelV3 {
     const toolNames = (options.tools ?? []).flatMap((tool) =>
       tool.type === "function" ? [tool.name] : [],
     );
-
-    if (
+    const lastToolResult = (toolName: string) =>
       lastMessage.includes('"type":"tool-result"') &&
-      [...QUALIFIED_CONNECTION_TOOLS, "researcher", "agent"].some((toolName) =>
-        lastMessage.includes(`"toolName":"${toolName}"`),
-      )
-    ) {
+      lastMessage.includes(`"toolName":"${toolName}"`);
+    const connection: ConnectionName = userPrompt.includes('connection \\"warehouse\\"')
+      ? "warehouse"
+      : userPrompt.includes('connection \\"research\\"')
+        ? "research"
+        : "knowledge";
+
+    // A Connection call or a delegation came back: the flow is done. On eve
+    // 0.69 a delegation first answers with its task receipt; the turn then
+    // holds for the child and calls the model again with its result, which
+    // falls through to the same closing text below.
+    if (["connection_execute", "researcher", "agent"].some(lastToolResult)) {
       return textResult("managed Connection flow complete");
     }
 
-    for (const toolName of QUALIFIED_CONNECTION_TOOLS) {
-      if (toolNames.includes(toolName) && userPrompt.includes(toolName.split("__")[0]!)) {
-        return toolCallResult(toolName, {});
+    if (lastToolResult("connection_search")) {
+      // A failed discovery must terminate instead of asking for the same tool
+      // forever; the integration assertions will report the missing HTTP call.
+      if (!lastMessage.includes(CONNECTION_TOOLS[connection])) {
+        return textResult("managed Connection discovery failed");
       }
-    }
-
-    // A failed discovery must terminate instead of asking for the same tool
-    // forever; the integration assertions will report the missing HTTP call.
-    if (
-      lastMessage.includes('"type":"tool-result"') &&
-      lastMessage.includes('"toolName":"connection_search"')
-    ) {
-      return textResult("managed Connection discovery failed");
+      return toolCallResult("connection_execute", {
+        connection,
+        tool: CONNECTION_TOOLS[connection],
+        input: {},
+      });
     }
 
     if (
@@ -49,19 +62,14 @@ export function connectionTestModel(): MockLanguageModelV3 {
     ) {
       return toolCallResult(toolNames.includes("researcher") ? "researcher" : "agent", {
         message:
-          'Use connection_search with connection "research" and keywords "connection record", then call research__lookupConnectionRecord.',
+          'Use connection_search with connection "research" and query "connection record", then call lookupConnectionRecord with connection_execute.',
       });
     }
 
     if (toolNames.includes("connection_search") && userPrompt.includes("connection_search")) {
-      const connection = userPrompt.includes('connection \\"warehouse\\"')
-        ? "warehouse"
-        : userPrompt.includes('connection \\"research\\"')
-          ? "research"
-          : "knowledge";
       return toolCallResult("connection_search", {
         connection,
-        keywords: connection === "warehouse" ? "connection status" : "connection record",
+        query: connection === "warehouse" ? "connection status" : "connection record",
       });
     }
 

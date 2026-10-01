@@ -922,133 +922,7 @@ describe("private Agent telemetry runtime", () => {
     ]);
   });
 
-  test("keeps a background subagent span open until the child session terminates", async () => {
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordOutputs: true }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const parentContext = hookContext();
-
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
-    await runtime.capture(
-      {
-        type: "subagent.called",
-        data: {
-          callId: "call_background",
-          childSessionId: "eve_child",
-          name: "Background researcher",
-          turnId: "turn_1",
-        },
-      },
-      parentContext,
-    );
-    await runtime.capture(
-      {
-        type: "subagent.completed",
-        data: {
-          backgroundTask: { status: "working", taskId: "task_123" },
-          callId: "call_background",
-          output: '{"status":"working","taskId":"task_123"}',
-          subagentName: "Background researcher",
-        },
-      },
-      parentContext,
-    );
-    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, parentContext);
-    await runtime.forceFlush();
-
-    expect(traces.getFinishedSpans().map((span) => span.name)).not.toContain(
-      "invoke_agent Background researcher",
-    );
-
-    await runtime.capture(
-      { type: "session.completed", data: {} },
-      {
-        session: {
-          id: "eve_child",
-          parent: { sessionId: "eve_session_1", callId: "call_background" },
-        },
-        agent: { name: "Background researcher", nodeId: "root/background-researcher" },
-        channel: { kind: "http" },
-      },
-    );
-    await runtime.forceFlush();
-
-    const subagentSpan = traces
-      .getFinishedSpans()
-      .find((span) => span.name === "invoke_agent Background researcher");
-    expect(subagentSpan?.attributes).toMatchObject({
-      "gen_ai.tool.call.id": "call_background",
-      "eveland.eve.background_task.id": "task_123",
-      "eveland.eve.background_task.status": "working",
-    });
-    expect(subagentSpan?.attributes).not.toHaveProperty("gen_ai.output.messages");
-  });
-
-  test("keeps a 0.62 background subagent span open through the receipt's action.result", async () => {
-    // 0.62 emits the admission marker on `subagent.completed` and then the
-    // receipt as the call's `action.result`; the result must not end a span
-    // the marker just declared background.
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordOutputs: true }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const parentContext = hookContext();
-
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
-    await runtime.capture(
-      {
-        type: "subagent.called",
-        data: { callId: "call_bg", name: "Background researcher", turnId: "turn_1" },
-      },
-      parentContext,
-    );
-    await runtime.capture(
-      {
-        type: "subagent.completed",
-        data: {
-          backgroundTask: { status: "working", taskId: "task_1" },
-          callId: "call_bg",
-          output: '{"status":"working","taskId":"task_1"}',
-        },
-      },
-      parentContext,
-    );
-    await runtime.capture(
-      {
-        type: "action.result",
-        data: {
-          turnId: "turn_1",
-          status: "completed",
-          result: {
-            callId: "call_bg",
-            output: { agentId: "agent_1", status: "working", taskId: "task_1" },
-          },
-        },
-      },
-      parentContext,
-    );
-    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, parentContext);
-    await runtime.forceFlush();
-
-    expect(traces.getFinishedSpans().map((span) => span.name)).not.toContain(
-      "invoke_agent Background researcher",
-    );
-  });
-
-  test("keeps a 0.64 background subagent span open at its receipt and ends it with the real output", async () => {
+  test("keeps a 0.68 background subagent span open at its receipt and ends it with the real output", async () => {
     // From 0.63 the receipt arrives only as the call's `action.result`
     // ({ agentId, status: "working", taskId }), and `subagent.completed` fires
     // once, after the parent has recorded the child's actual result.
@@ -1133,7 +1007,7 @@ describe("private Agent telemetry runtime", () => {
     expect(childTurn?.parentSpanContext?.spanId).toBe(subagentSpan?.spanContext().spanId);
   });
 
-  test("ends a 0.64 background subagent span with an error when the child session fails", async () => {
+  test("ends a 0.68 background subagent span with an error when the child session fails", async () => {
     const traces = new InMemorySpanExporter();
     const runtime = createPrivateAgentTelemetryRuntime({
       policy: policy({ recordOutputs: true }),
@@ -1180,6 +1054,343 @@ describe("private Agent telemetry runtime", () => {
       .find((span) => span.name === "invoke_agent Worker");
     expect(subagentSpan?.status).toMatchObject({ code: 2, message: "child crashed" });
     expect(subagentSpan?.attributes["eveland.eve.background_task.id"]).toBe("task_2");
+  });
+
+  test("keeps a 0.69 agent task's span open from its receipt to task.settled, with the child under it", async () => {
+    // 0.69: the model requests the agent as an ordinary tool call, `task.started`
+    // says it is an agent, the call's `action.result` is only a plain-text
+    // receipt, and the reply arrives on `task.settled`.
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const parentContext = hookContext();
+    const childContext = (callId: string) => ({
+      session: { id: "eve_child", parent: { sessionId: "eve_session_1", callId } },
+      agent: { name: "researcher", nodeId: "root/researcher" },
+      channel: { kind: "http" },
+    });
+    const callSpan = (callId: string) =>
+      traces.getFinishedSpans().find((span) => span.attributes["gen_ai.tool.call.id"] === callId);
+    const childTurn = (turnId: string) =>
+      traces.getFinishedSpans().find((span) => span.attributes["eveland.eve.turn.id"] === turnId);
+    const requestAgent = async (callId: string, turnId: string) => {
+      await runtime.capture(
+        {
+          type: "actions.requested",
+          data: {
+            turnId,
+            stepIndex: 0,
+            actions: [
+              { kind: "tool-call", callId, toolName: "researcher", input: { message: "look" } },
+            ],
+          },
+        },
+        parentContext,
+      );
+      await runtime.capture(
+        {
+          type: "task.started",
+          data: { callId, kind: "agent", name: "researcher", taskId: "task_1", turnId },
+        },
+        parentContext,
+      );
+      await runtime.capture(
+        {
+          type: "action.result",
+          data: {
+            turnId,
+            stepIndex: 0,
+            status: "completed",
+            result: {
+              callId,
+              output: "Started task task_1. Its result will arrive in a <task_result> message.",
+            },
+          },
+        },
+        parentContext,
+      );
+    };
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
+      parentContext,
+    );
+    await requestAgent("call_1", "turn_1");
+    await runtime.capture(
+      {
+        type: "agent.started",
+        data: {
+          callId: "call_1",
+          name: "researcher",
+          sessionId: "eve_child",
+          streamPath: "/eve/v1/session/eve_session_1/subagents/call_1/eve_child/stream",
+          taskId: "task_1",
+          turnId: "turn_1",
+        },
+      },
+      parentContext,
+    );
+    await runtime.capture(
+      { type: "turn.started", data: { turnId: "child_turn_1" } },
+      childContext("call_1"),
+    );
+    await runtime.capture(
+      { type: "turn.completed", data: { turnId: "child_turn_1" } },
+      childContext("call_1"),
+    );
+    await runtime.capture(
+      { type: "turn.waiting", data: { turnId: "turn_1", sequence: 9 } },
+      parentContext,
+    );
+    await runtime.forceFlush();
+    expect(callSpan("call_1")).toBeUndefined();
+
+    await runtime.capture(
+      {
+        type: "task.settled",
+        data: {
+          callId: "call_1",
+          kind: "agent",
+          name: "researcher",
+          output: "three findings",
+          status: "completed",
+          taskId: "task_1",
+          turnId: "turn_1",
+        },
+      },
+      parentContext,
+    );
+    await runtime.forceFlush();
+
+    const firstCall = callSpan("call_1");
+    expect(firstCall?.name).toBe("invoke_agent researcher");
+    expect(firstCall?.attributes).toMatchObject({
+      "gen_ai.operation.name": "invoke_agent",
+      "gen_ai.agent.name": "researcher",
+      "eveland.eve.task.id": "task_1",
+      "eveland.eve.task.status": "completed",
+      "eveland.eve.child_session.id": "eve_child",
+    });
+    expect(JSON.parse(String(firstCall?.attributes["gen_ai.output.messages"]))).toEqual([
+      {
+        finish_reason: "stop",
+        parts: [{ content: "three findings", type: "text" }],
+        role: "assistant",
+      },
+    ]);
+    expect(childTurn("child_turn_1")?.parentSpanContext?.spanId).toBe(
+      firstCall?.spanContext().spanId,
+    );
+
+    // A follow-up call continues the same task. The child still names the
+    // call that opened it, but its new turn belongs under the follow-up.
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 1 } },
+      parentContext,
+    );
+    await requestAgent("call_2", "turn_1");
+    await runtime.capture(
+      { type: "turn.started", data: { turnId: "child_turn_2" } },
+      childContext("call_1"),
+    );
+    await runtime.capture(
+      { type: "turn.completed", data: { turnId: "child_turn_2" } },
+      childContext("call_1"),
+    );
+    await runtime.capture(
+      {
+        type: "task.settled",
+        data: {
+          callId: "call_2",
+          output: "a fourth",
+          status: "completed",
+          taskId: "task_1",
+          turnId: "turn_1",
+        },
+      },
+      parentContext,
+    );
+    await runtime.forceFlush();
+
+    expect(childTurn("child_turn_2")?.parentSpanContext?.spanId).toBe(
+      callSpan("call_2")?.spanContext().spanId,
+    );
+  });
+
+  test("ends a 0.69 tool task's span with how task.settled says the call ended", async () => {
+    const traces = new InMemorySpanExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy({ recordOutputs: true }),
+      exporters: {
+        traces,
+        logs: new InMemoryLogRecordExporter(),
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+
+    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
+    await runtime.capture(
+      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "actions.requested",
+        data: {
+          turnId: "turn_1",
+          stepIndex: 0,
+          actions: [
+            { kind: "tool-call", callId: "call_failed", toolName: "crawl", input: {} },
+            { kind: "tool-call", callId: "call_stopped", toolName: "crawl", input: {} },
+          ],
+        },
+      },
+      context,
+    );
+    for (const [callId, taskId] of [
+      ["call_failed", "task_a"],
+      ["call_stopped", "task_b"],
+    ] as const) {
+      await runtime.capture(
+        {
+          type: "task.started",
+          data: { callId, kind: "tool", name: "crawl", taskId, turnId: "turn_1" },
+        },
+        context,
+      );
+      await runtime.capture(
+        {
+          type: "action.result",
+          data: {
+            turnId: "turn_1",
+            status: "completed",
+            result: { callId, output: `Started task ${taskId}.` },
+          },
+        },
+        context,
+      );
+    }
+    await runtime.forceFlush();
+    expect(traces.getFinishedSpans().filter((span) => span.name === "execute_tool crawl")).toEqual(
+      [],
+    );
+
+    await runtime.capture(
+      {
+        type: "task.settled",
+        data: {
+          callId: "call_failed",
+          error: { message: "site unreachable" },
+          status: "failed",
+          taskId: "task_a",
+          turnId: "turn_1",
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "task.settled",
+        data: {
+          callId: "call_stopped",
+          cancel: { reason: "task_cancel" },
+          status: "cancelled",
+          taskId: "task_b",
+          turnId: "turn_1",
+        },
+      },
+      context,
+    );
+    await runtime.forceFlush();
+
+    const spans = traces.getFinishedSpans();
+    const failed = spans.find((span) => span.attributes["gen_ai.tool.call.id"] === "call_failed");
+    const stopped = spans.find((span) => span.attributes["gen_ai.tool.call.id"] === "call_stopped");
+    expect(failed?.name).toBe("execute_tool crawl");
+    expect(failed?.status).toMatchObject({
+      code: SpanStatusCode.ERROR,
+      message: "site unreachable",
+    });
+    expect(failed?.attributes["gen_ai.tool.call.result"]).toBeUndefined();
+    expect(stopped?.status.code).not.toBe(SpanStatusCode.ERROR);
+    expect(stopped?.attributes).toMatchObject({
+      "eveland.eve.task.status": "cancelled",
+      "eveland.eve.task.cancel_reason": "task_cancel",
+    });
+  });
+
+  test("exports 0.69 task and resolution events without their outputs and answers", async () => {
+    const logs = new InMemoryLogRecordExporter();
+    const runtime = createPrivateAgentTelemetryRuntime({
+      policy: policy(),
+      exporters: {
+        traces: new InMemorySpanExporter(),
+        logs,
+        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
+      },
+    });
+    activeRuntimes.push(runtime);
+    const context = hookContext();
+
+    await runtime.capture(
+      {
+        type: "task.settled",
+        data: {
+          callId: "call_1",
+          output: "private findings",
+          status: "completed",
+          taskId: "task_1",
+          turnId: "turn_1",
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      {
+        type: "input.resolved",
+        data: {
+          sequence: 4,
+          stepIndex: 0,
+          turnId: "turn_1",
+          resolutions: [
+            {
+              kind: "question",
+              outcome: "answered",
+              requestId: "run_1-ask-0",
+              response: { text: "my private answer" },
+            },
+          ],
+        },
+      },
+      context,
+    );
+    await runtime.capture(
+      { type: "turn.waiting", data: { sequence: 5, turnId: "turn_1" } },
+      context,
+    );
+    await runtime.forceFlush();
+
+    const records = logs.getFinishedLogRecords();
+    expect(records.map((record) => record.eventName)).toEqual([
+      "eve.task.settled",
+      "eve.input.resolved",
+      "eve.turn.waiting",
+    ]);
+    const serialized = JSON.stringify(records.map((record) => record.body));
+    expect(serialized).not.toContain("private findings");
+    expect(serialized).not.toContain("my private answer");
+    expect(serialized).toContain("run_1-ask-0");
+    expect(serialized).toContain("answered");
   });
 
   test("keeps reasoning out of spans when outputs are not recorded", async () => {

@@ -7,6 +7,8 @@ export type TranscriptSourceEvent = {
 
 export type TranscriptSourceNode = {
   id: string;
+  /** The node's Eve session, matched against an Eve 0.69 `agent.started`. */
+  eveSessionId?: string | null;
   parentNodeId: string | null;
   nodeId: string | null;
   agentId: string | null;
@@ -33,6 +35,8 @@ export type TranscriptToolCall = {
   errorText: string | null;
   usage: TranscriptUsage | null;
   targetNodeId: string | null;
+  /** The Eve session an Eve 0.69 `agent.started` says this call opened. */
+  childEveSessionId: string | null;
   eventAt: string;
   child: TranscriptNode | null;
 };
@@ -129,7 +133,10 @@ export function buildSessionTranscript(
     const view = views.get(node.id);
     if (!view) continue;
     const parentView = node.parentNodeId ? views.get(node.parentNodeId) : null;
-    const slot = parentView ? findOpenSubagentCall(parentView, node.nodeId) : null;
+    const slot = parentView
+      ? (findCallThatOpened(parentView, node.eveSessionId ?? null) ??
+        findOpenSubagentCall(parentView, node.nodeId))
+      : null;
     if (slot) {
       slot.child = view;
     } else {
@@ -144,6 +151,9 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
   const turns: TranscriptTurn[] = [];
   const turnsById = new Map<string, TranscriptTurn>();
   const callsById = new Map<string, TranscriptToolCall>();
+  // Eve 0.69 runs every agent call as a task: its `action.result` is only a
+  // receipt, and `task.settled` carries how the call really ended.
+  const taskCallIds = new Set<string>();
 
   const turnFor = (payload: Record<string, unknown> | null, eventAt: string): TranscriptTurn => {
     const turnId = asString(payload?.turnId);
@@ -215,6 +225,7 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
             errorText: null,
             usage: null,
             targetNodeId: asString(action.nodeId),
+            childEveSessionId: null,
             eventAt: event.eventAt,
             child: null,
           };
@@ -229,6 +240,7 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
         const failed = status !== null && status !== "completed";
         const callId = asString(result?.callId);
         const call = callId ? callsById.get(callId) : undefined;
+        if (call && callId && taskCallIds.has(callId)) break;
         const output = result && "output" in result ? result.output : null;
         const errorText = failed ? (errorMessage(result) ?? errorMessage(payload) ?? status) : null;
         if (call) {
@@ -254,11 +266,45 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
               errorText,
               usage: usageFrom(result?.usage),
               targetNodeId: null,
+              childEveSessionId: null,
               eventAt: event.eventAt,
               child: null,
             },
           });
         }
+        break;
+      }
+      case "task.started": {
+        const callId = asString(payload?.callId);
+        const call = callId ? callsById.get(callId) : undefined;
+        if (!callId || !call) break;
+        taskCallIds.add(callId);
+        if (asString(payload?.kind) === "agent") call.isSubagent = true;
+        break;
+      }
+      case "agent.started": {
+        const callId = asString(payload?.callId);
+        const call = callId ? callsById.get(callId) : undefined;
+        if (call) {
+          call.isSubagent = true;
+          call.childEveSessionId = asString(payload?.sessionId);
+        }
+        break;
+      }
+      case "task.settled": {
+        const callId = asString(payload?.callId);
+        const call = callId ? callsById.get(callId) : undefined;
+        if (!call) break;
+        const status = asString(payload?.status);
+        call.status =
+          status === "failed" ? "failed" : status === "cancelled" ? "cancelled" : "completed";
+        call.output = payload && "output" in payload ? payload.output : null;
+        call.errorText =
+          status === "failed"
+            ? (errorMessage(payload) ?? "failed")
+            : status === "cancelled"
+              ? (asString(asRecord(payload?.cancel)?.reason) ?? null)
+              : null;
         break;
       }
       case "step.completed": {
@@ -421,6 +467,18 @@ function activityStatus(
 
 export function turnToolCalls(turn: TranscriptTurn): TranscriptToolCall[] {
   return turn.items.flatMap((item) => (item.kind === "tool" ? [item.call] : []));
+}
+
+function findCallThatOpened(
+  view: TranscriptNode,
+  eveSessionId: string | null,
+): TranscriptToolCall | null {
+  if (eveSessionId === null) return null;
+  return (
+    view.turns
+      .flatMap(turnToolCalls)
+      .find((call) => call.child === null && call.childEveSessionId === eveSessionId) ?? null
+  );
 }
 
 function findOpenSubagentCall(

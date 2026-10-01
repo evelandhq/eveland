@@ -414,29 +414,28 @@ function findConcreteDefaultExport(sourceFile: ts.SourceFile):
 // Eve 0.64 added `taskDeliveryPolicy`: channel sessions default to `"auto"`,
 // which may report background results piecemeal, while Eve's own schedules
 // default to `"cohort"`, one report once the related work settles. A schedule
-// dispatched through this channel asks for `"cohort"` to behave like Eve's;
-// 0.62 ignores the option. An authored handler still wins because its own
-// options are spread last.
-//
-// Through 0.66 a markdown schedule was sent as a `mode: "task"` session: it
-// ended once its turn settled and, lacking the request-input capability,
-// failed fast on a tool approval instead of parking for an answer nobody could
-// give. Eve 0.67 removed the run mode -- every session parks after its turn
-// until `limits.sessionTimeoutMs` ends it, and a channel send always grants
-// request-input -- and silently ignores the option, so the line is emitted only
-// for a Release whose Eve still reads it.
-const LAST_EVE_MINOR_WITH_TASK_RUN_MODE = 66;
+// dispatched through this channel asks for `"cohort"` to behave like Eve's.
+// An authored handler still wins because its own options are spread last.
+// Eve 0.69 removed background tasks together with the option -- every
+// workflow tool and agent call blocks its turn until it settles -- and
+// silently ignores it, so the option is emitted only for a Release whose Eve
+// still reads it. What 0.69 keys a schedule's final-reply-only turn on is
+// Eve's own schedule dispatcher, which this channel is not: text the model
+// writes before it waits on a task completes as its own message here.
+const LAST_EVE_MINOR_WITH_TASK_DELIVERY_POLICY = 68;
 
 function fixedSessionDispatchBlock(eveMinor: number): string {
-  const runMode =
-    eveMinor <= LAST_EVE_MINOR_WITH_TASK_RUN_MODE ? `            mode: "task",\n` : "";
+  const readsTaskDeliveryPolicy = eveMinor <= LAST_EVE_MINOR_WITH_TASK_DELIVERY_POLICY;
+  const markdownTaskDelivery = readsTaskDeliveryPolicy
+    ? `            taskDeliveryPolicy: "cohort",\n`
+    : "";
+  const handlerTaskDelivery = readsTaskDeliveryPolicy ? ` taskDeliveryPolicy: "cohort",` : "";
   return `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
           const session = await withScheduledRunRetention(() => from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
             auth: scheduleAppAuth,
             turnPolicy: "queue",
-            taskDeliveryPolicy: "cohort",
-${runMode}            title: \`Schedule · \${scheduleKey}\`,
+${markdownTaskDelivery}            title: \`Schedule · \${scheduleKey}\`,
           }));
           sessionIds.push(session.id);
         } else {
@@ -446,7 +445,7 @@ ${runMode}            title: \`Schedule · \${scheduleKey}\`,
             const handle = to(channel, target);
             return {
               send(message, options) {
-                const task = withScheduledRunRetention(() => handle.send(message, { turnPolicy: "queue", taskDeliveryPolicy: "cohort", ...options }));
+                const task = withScheduledRunRetention(() => handle.send(message, { turnPolicy: "queue",${handlerTaskDelivery} ...options }));
                 sendTasks.push(task);
                 return task;
               },
@@ -471,7 +470,7 @@ ${runMode}            title: \`Schedule · \${scheduleKey}\`,
 }
 
 /**
- * The minor of the Eve line a Release declares (`0.68.0`, `^0.62.0`, `0.62.x`
+ * The minor of the Eve line a Release declares (`0.69.0`, `^0.68.0`, `0.68.x`
  * all name one), for the few generated lines that differ between lines. The
  * declaration was validated against the window before this runs.
  */

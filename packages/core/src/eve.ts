@@ -379,6 +379,10 @@ export const EVE_SESSION_BOUNDARY_EVENT_TYPES = [
   "turn.completed",
   "turn.failed",
   "turn.cancelled",
+  // Eve 0.69: a turn that parks without ending -- on a question asked inside
+  // a running call, or while its tasks work -- emits this instead of
+  // `session.waiting`; it ends a scheduled run only under a pending question.
+  "turn.waiting",
   "session.waiting",
   "session.completed",
   "session.failed",
@@ -388,6 +392,9 @@ export const EVE_SESSION_BOUNDARY_EVENT_TYPES = [
  * Projects an eve event onto the platform Session status vocabulary, or null
  * when the event does not move the projection. `session.waiting` keeps an
  * approval-parked session parked instead of demoting it to plain waiting.
+ * From Eve 0.69 a question asked inside a running call parks the turn without
+ * ending it, and the answer resumes that same turn with no `turn.started`, so
+ * `input.resolved` is what takes an approval-parked session back to running.
  */
 export function sessionStatusFromEveEvent(
   type: string,
@@ -395,6 +402,7 @@ export function sessionStatusFromEveEvent(
 ): "running" | "waiting_approval" | "waiting" | "completed" | "failed" | null {
   if (type === "session.started" || type === "turn.started") return "running";
   if (type === "input.requested") return "waiting_approval";
+  if (type === "input.resolved") return currentStatus === "waiting_approval" ? "running" : null;
   if (type === "session.waiting")
     return currentStatus === "waiting_approval" ? "waiting_approval" : "waiting";
   if (type === "session.completed") return "completed";
@@ -404,9 +412,10 @@ export function sessionStatusFromEveEvent(
 
 /**
  * Projects an eve event onto a scheduled execution's outcome. Total: any
- * non-boundary event leaves the execution "running". A `session.waiting`
- * under an approval request parks the run; otherwise waiting means the turn
- * finished and the run succeeded.
+ * non-boundary event leaves the execution "running". A `session.waiting` --
+ * or, from Eve 0.69, a `turn.waiting` -- under an approval request parks the
+ * run; otherwise `session.waiting` means the turn finished and the run
+ * succeeded, while `turn.waiting` means the turn still runs (its tasks work).
  */
 export function scheduleExecutionStatusFromEveEvent(
   type: string | undefined,
@@ -414,7 +423,12 @@ export function scheduleExecutionStatusFromEveEvent(
 ): "running" | "succeeded" | "failed" | "parked" {
   if (type === "turn.failed" || type === "turn.cancelled" || type === "session.failed")
     return "failed";
-  if (type === "session.waiting" && sessionStatus === "waiting_approval") return "parked";
+  if (
+    (type === "session.waiting" || type === "turn.waiting") &&
+    sessionStatus === "waiting_approval"
+  )
+    return "parked";
+  if (type === "turn.waiting") return "running";
   if (type === "turn.completed" || type === "session.waiting" || type === "session.completed")
     return "succeeded";
   return "running";

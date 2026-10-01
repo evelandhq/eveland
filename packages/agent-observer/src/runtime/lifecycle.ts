@@ -38,6 +38,7 @@ import {
   setErrorStatus,
   spanContext,
   spanKey,
+  taskKey,
   type AgentTelemetryRuntimeState,
 } from "./spans.js";
 import { asNonNegativeInteger, asRecord, asString, serializeAttribute } from "./values.js";
@@ -267,13 +268,17 @@ export function mapAgentTelemetryLifecycle(input: {
         });
       }
       state.actionToolNames.delete(actionKey);
+      // Eve 0.69 answers a call that started a task with a plain-text receipt
+      // ("Started task ..."); the call's real outcome arrives on
+      // `task.settled`, which ends the span. The receipt still goes into the
+      // transcript above because it is what the model saw as the result.
+      if (span && state.taskCalls.has(actionKey)) return span;
       if (span) {
-        // A background subagent call returns a receipt as its result while
-        // the child keeps running. Eve 0.62 announces that on
-        // `subagent.completed` just before this result; from 0.63 the receipt
-        // is the only signal and `subagent.completed` arrives once, with the
-        // child's real output. Either way the span stays open for it (or for
-        // the child session's end), so the child's spans keep their parent.
+        // On Eve 0.68 a background subagent call returns a receipt as its
+        // result while the child keeps running, and `subagent.completed`
+        // arrives once, with the child's real output. The span stays open for
+        // it (or for the child session's end), so the child's spans keep
+        // their parent.
         const isSubagentCall = !state.actions.has(actionKey);
         const receipt =
           isSubagentCall && data.status === "completed" && data.error === undefined
@@ -354,6 +359,108 @@ export function mapAgentTelemetryLifecycle(input: {
           ? state.turns.get(turnKey)
           : undefined;
     }
+    case "task.started": {
+      // Eve 0.69: every agent call, and every call to a `task()`/`serve()`
+      // workflow tool, runs as a task. `task.started` comes before the call's
+      // receipt and before anything the task's run causes.
+      const callId = asString(data.callId);
+      if (!callId) return turnKey ? state.turns.get(turnKey) : undefined;
+      const actionKey = spanKey(sessionId, callId);
+      const isAgent = asString(data.kind) === "agent";
+      const name = asString(data.name) ?? (isAgent ? "subagent" : "tool");
+      let span = state.subagents.get(actionKey) ?? state.actions.get(actionKey);
+      if (span && isAgent && state.actions.has(actionKey)) {
+        // The model requested the agent as an ordinary tool call; this is the
+        // first event that says the call invokes an agent.
+        span.updateName(`invoke_agent ${name}`);
+        span.setAttributes({
+          [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+          [ATTR_GEN_AI_AGENT_NAME]: name,
+        });
+        state.actions.delete(actionKey);
+        state.subagents.set(actionKey, span);
+      }
+      if (!span) {
+        span = tracer.startSpan(
+          isAgent ? `invoke_agent ${name}` : `execute_tool ${name}`,
+          {
+            kind: SpanKind.INTERNAL,
+            attributes: commonAttributes(sessionId, turnId, context, {
+              ...(isAgent
+                ? {
+                    [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+                    [ATTR_GEN_AI_AGENT_NAME]: name,
+                  }
+                : {
+                    [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_EXECUTE_TOOL,
+                    [ATTR_GEN_AI_TOOL_NAME]: name,
+                  }),
+              [ATTR_GEN_AI_TOOL_CALL_ID]: callId,
+            }),
+          },
+          spanContext(
+            (stepKey ? state.steps.get(stepKey) : undefined) ??
+              (turnKey ? state.turns.get(turnKey) : undefined),
+          ),
+        );
+        (isAgent ? state.subagents : state.actions).set(actionKey, span);
+      }
+      const taskId = asString(data.taskId);
+      if (taskId) {
+        span.setAttribute("eveland.eve.task.id", taskId);
+        state.taskCurrentCalls.set(taskKey(sessionId, taskId), actionKey);
+      }
+      state.taskCalls.add(actionKey);
+      return span;
+    }
+    case "agent.started": {
+      // Eve 0.69: a call's run opened an agent session. The child's own events
+      // name this call as its parent; remember the task behind it so the
+      // child's later turns, started by follow-up calls with the same
+      // `taskId`, nest under the call that is serving them.
+      const callId = asString(data.callId);
+      if (!callId) return turnKey ? state.turns.get(turnKey) : undefined;
+      const actionKey = spanKey(sessionId, callId);
+      const taskId = asString(data.taskId);
+      if (taskId) state.agentTasks.set(actionKey, taskKey(sessionId, taskId));
+      const span = state.subagents.get(actionKey) ?? state.actions.get(actionKey);
+      const childSessionId = asString(data.sessionId);
+      if (span && childSessionId) span.setAttribute("eveland.eve.child_session.id", childSessionId);
+      return span ?? (turnKey ? state.turns.get(turnKey) : undefined);
+    }
+    case "task.settled": {
+      const callId = asString(data.callId);
+      if (!callId) return turnKey ? state.turns.get(turnKey) : undefined;
+      const actionKey = spanKey(sessionId, callId);
+      const isAgent = state.subagents.has(actionKey);
+      const span = state.subagents.get(actionKey) ?? state.actions.get(actionKey);
+      const status = asString(data.status);
+      if (span) {
+        if (status) span.setAttribute("eveland.eve.task.status", status);
+        const cancelReason = asString(asRecord(data.cancel)?.reason);
+        if (cancelReason) span.setAttribute("eveland.eve.task.cancel_reason", cancelReason);
+        if (status === "completed" && capture.recordOutputs && data.output !== undefined) {
+          span.setAttribute(
+            isAgent ? ATTR_GEN_AI_OUTPUT_MESSAGES : ATTR_GEN_AI_TOOL_CALL_RESULT,
+            serializeAttribute(
+              isAgent
+                ? [toOutputMessage(serializedTextMessage("assistant", data.output))]
+                : data.output,
+            ),
+          );
+        }
+        if (status === "failed") setErrorStatus(span, data);
+        span.end();
+        state.subagents.delete(actionKey);
+        state.actions.delete(actionKey);
+      }
+      state.taskCalls.delete(actionKey);
+      const taskId = asString(data.taskId);
+      if (taskId && state.taskCurrentCalls.get(taskKey(sessionId, taskId)) === actionKey) {
+        state.taskCurrentCalls.delete(taskKey(sessionId, taskId));
+      }
+      return span;
+    }
     case "subagent.called":
     case "subagent.started": {
       const callId = asString(data.callId);
@@ -382,16 +489,6 @@ export function mapAgentTelemetryLifecycle(input: {
       const actionKey = callId ? spanKey(sessionId, callId) : undefined;
       const span = actionKey ? state.subagents.get(actionKey) : undefined;
       if (span) {
-        const backgroundTask = asRecord(data.backgroundTask);
-        const backgroundTaskId = asString(backgroundTask?.taskId);
-        if (backgroundTaskId && backgroundTask?.status === "working") {
-          span.setAttributes({
-            "eveland.eve.background_task.id": backgroundTaskId,
-            "eveland.eve.background_task.status": "working",
-          });
-          state.backgroundSubagents.add(actionKey!);
-          return span;
-        }
         if (capture.recordOutputs && data.output !== undefined) {
           span.setAttribute(
             ATTR_GEN_AI_OUTPUT_MESSAGES,
