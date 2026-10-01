@@ -19,10 +19,12 @@ import { watchDelegatedTurn } from "../../apps/worker/src/integration/delegated-
 import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
 
 /**
- * One budget for the whole delegation. eve 0.51 finishes the root turn while
- * the subagent is still a background task, so `subagent.called` arrives on the
- * parent stream only after `turn.completed`, once the external dispatcher has
- * driven the child run's first durable steps.
+ * One budget for the whole delegation. eve 0.51 through 0.68 finish the root
+ * turn while the subagent is still a background task, so `subagent.called`
+ * arrives on the parent stream only after `turn.completed`, once the external
+ * dispatcher has driven the child run's first durable steps. eve 0.69 holds
+ * the root turn for the agent task instead (`agent.started`, `turn.waiting`,
+ * `task.settled`), so the same budget covers the child inside the turn.
  */
 const DELEGATED_TURN_BUDGET_MS = 60_000;
 
@@ -234,8 +236,9 @@ async function runDirectTurn(hostPort: number): Promise<string> {
   assert.ok(stream.ok && stream.body, `session stream failed (${stream.status})`);
   const reader = stream.body.getReader();
   const decoder = new TextDecoder();
-  // The delegated child run outlives the root turn under eve 0.51, so the read
-  // runs to the end of the whole delegation, not to the root turn's boundary.
+  // The delegated child run outlives the root turn under eve 0.51 through
+  // 0.68, so the read runs to the end of the whole delegation, not to the root
+  // turn's boundary.
   const watch = watchDelegatedTurn({ subagentName: "researcher" });
   const deadline = Date.now() + DELEGATED_TURN_BUDGET_MS;
   let buffer = "";

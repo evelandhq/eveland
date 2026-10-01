@@ -66,6 +66,60 @@ describe("delegated turn watch", () => {
     expect(watch.settled).toBe(true);
   });
 
+  test("an eve 0.69 agent task settles when the session waits after agent.started", () => {
+    // 0.69 runs the agent call as a task inside the root turn: the call's
+    // result is a receipt, the child is announced by `agent.started`, the turn
+    // holds (`turn.waiting`) until `task.settled`, and only then completes.
+    const watch = watchDelegatedTurn({ subagentName: "researcher" });
+
+    watch.observe({ type: "turn.started", data: { turnId: "turn_0" } });
+    watch.observe({
+      type: "task.started",
+      data: {
+        callId: "call_r",
+        kind: "agent",
+        name: "researcher",
+        taskId: "task_1",
+        turnId: "turn_0",
+      },
+    });
+    watch.observe({
+      type: "action.result",
+      data: { result: { callId: "call_r", output: "Started task task_1." }, status: "completed" },
+    });
+    // The receipt alone is not delegation proof: an agent call can still fail
+    // before its session opens.
+    expect(watch.subagentCalled).toBe(false);
+    watch.observe({
+      type: "agent.started",
+      data: {
+        callId: "call_r",
+        name: "researcher",
+        sessionId: "eve_child",
+        taskId: "task_1",
+        turnId: "turn_0",
+      },
+    });
+    watch.observe({ type: "turn.waiting", data: { turnId: "turn_0", sequence: 7 } });
+    expect(watch.subagentCalled).toBe(true);
+    expect(watch.settled).toBe(false);
+
+    watch.observe({
+      type: "task.settled",
+      data: {
+        callId: "call_r",
+        output: "found it",
+        status: "completed",
+        taskId: "task_1",
+        turnId: "turn_0",
+      },
+    });
+    watch.observe({ type: "turn.completed", data: { turnId: "turn_0" } });
+    expect(watch.settled).toBe(false);
+    watch.observe({ type: "session.waiting", data: {} });
+    expect(watch.settled).toBe(true);
+  });
+
   test("a background-task handle alone is never a delegation proof", () => {
     const watch = watchDelegatedTurn({ subagentName: "researcher" });
 

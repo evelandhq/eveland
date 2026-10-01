@@ -2,10 +2,10 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.68.0
+  eve: 0.69.0
 catalogs:
   eve-matrix:
-    eve-previous: npm:eve@0.62.0
+    eve-previous: npm:eve@0.68.0
   # The published SDK's contract is narrower than the platform's. It imports
   # four primitives from eve/channels/auth, stable across 0.27-0.40, while the
   # policy's peerDependencyRange tracks what Eveland can actually host and
@@ -18,7 +18,7 @@ catalogs:
   # deliberately wider peer range. The platform's hosting window survives as
   # EVE_COMPATIBILITY_POLICY.peerDependencyRange, which still pins this floor.
   eve-sdk-peer:
-    eve: ">=0.62.0 <1.0.0"
+    eve: ">=0.68.0 <1.0.0"
 allowBuilds:
   cbor-extract: true
   esbuild: true

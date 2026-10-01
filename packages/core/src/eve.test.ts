@@ -306,12 +306,20 @@ describe("eve event projections", () => {
       "parked",
     );
     expect(scheduleExecutionStatusFromEveEvent("session.waiting", "waiting")).toBe("succeeded");
+    // 0.69: a question inside a running call parks the turn without ending it.
+    expect(scheduleExecutionStatusFromEveEvent("turn.waiting", "waiting_approval")).toBe("parked");
+    // A turn waiting on its own tasks is still running.
+    expect(scheduleExecutionStatusFromEveEvent("turn.waiting", "running")).toBe("running");
     // Total mapping: anything outside the boundary vocabulary keeps running.
     expect(scheduleExecutionStatusFromEveEvent("step.completed", "running")).toBe("running");
     expect(scheduleExecutionStatusFromEveEvent(undefined, "running")).toBe("running");
-    // Every declared boundary event resolves to a non-running outcome.
+    // Every declared boundary event resolves to a non-running outcome once a
+    // question is pending, and all but `turn.waiting` without one.
     for (const type of EVE_SESSION_BOUNDARY_EVENT_TYPES) {
-      expect(scheduleExecutionStatusFromEveEvent(type, "running")).not.toBe("running");
+      expect(scheduleExecutionStatusFromEveEvent(type, "waiting_approval")).not.toBe("running");
+      if (type !== "turn.waiting") {
+        expect(scheduleExecutionStatusFromEveEvent(type, "running")).not.toBe("running");
+      }
     }
   });
 
@@ -327,6 +335,11 @@ describe("eve event projections", () => {
     expect(sessionStatusFromEveEvent("session.completed", "running")).toBe("completed");
     expect(sessionStatusFromEveEvent("session.failed", "running")).toBe("failed");
     expect(sessionStatusFromEveEvent("step.completed", "running")).toBeNull();
+    // 0.69 resumes an answered turn under the same turnId, with no turn.started.
+    expect(sessionStatusFromEveEvent("input.resolved", "waiting_approval")).toBe("running");
+    expect(sessionStatusFromEveEvent("input.resolved", "waiting")).toBeNull();
+    expect(sessionStatusFromEveEvent("turn.waiting", "waiting_approval")).toBeNull();
+    expect(sessionStatusFromEveEvent("turn.waiting", "running")).toBeNull();
   });
 
   test("renders the Session failure line from the boundary payload", () => {

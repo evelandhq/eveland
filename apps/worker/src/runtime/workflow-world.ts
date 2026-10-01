@@ -45,7 +45,9 @@ export type WorkflowWorldBuildConfig = {
  * default, or slot identity (6) for a Deployment that opts out with
  * `WORKFLOW_SEALED_LOG=0`; since 0.23.0 it caps that at the sealed log, because
  * its `@workflow/world` beta.38 (eve 0.66.3) mints 8 and a runtime refuses a
- * World above its ceiling, which 0.62.0's is 7. Every shared build from 0.5.0
+ * World above its ceiling, which 0.62.0's was 7. 0.62 retired on 2026-10-02 and
+ * 0.68 and 0.69 bundle the same runtime, which reads 6 through 8, so the cap is
+ * no longer a window constraint. Every shared build from 0.5.0
  * through 0.17.0 declared 6 unconditionally. A run stays pinned to the Deployment that
  * created it and 7 changes nothing in this World's storage, so both
  * generations are in `SUPPORTED_WORKFLOW_STORAGE_SPECS`; the attestation

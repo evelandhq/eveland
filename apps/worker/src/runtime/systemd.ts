@@ -541,14 +541,11 @@ export function createSystemdAdapter(
       await execa("chown", ["-R", `${config.user}:`, releaseDir]);
       await execa("chown", ["-R", `${config.user}:`, cacheDir]);
 
-      // Eve >= 0.64 prepares every sandbox template during `eve build` and
+      // Eve prepares every sandbox template during `eve build` and
       // records which provider prepared it; the deployed runtime refuses a
       // sandbox whose provider differs, so a Release with one that escaped the
       // injected modules is refused now rather than on a user's first turn.
-      if (
-        injection.api === "provider" &&
-        injection.generated.length + injection.rewritten.length > 0
-      ) {
+      if (injection.generated.length + injection.rewritten.length > 0) {
         await assertReleaseSandboxArtifacts(releaseDir);
       }
 
@@ -570,13 +567,6 @@ export function createSystemdAdapter(
                     "be injected. The deployed agent will fall back to eve's default sandbox backend chain.",
                 ]
               : []),
-            ...(injection.wrapped.length
-              ? [
-                  `Preserved the project's authored sandbox lifecycle (${injection.wrapped.join(", ")}). ` +
-                    "Eveland overrides only the backend; authored bootstrap(), onSession(), description, and " +
-                    "revalidationKey remain active, while workspace seeds are preserved.",
-                ]
-              : []),
             ...(injection.rewritten.length
               ? [
                   `Redirected the project's authored sandbox (${injection.rewritten.join(", ")}) to ` +
@@ -587,10 +577,7 @@ export function createSystemdAdapter(
             ...(injection.replaced.length
               ? [
                   `WARNING: replaced the project's authored sandbox (${injection.replaced.join(", ")}). ` +
-                    (injection.api === "provider"
-                      ? "eve would not load it, or it is not a regular file; workspace seeds are preserved."
-                      : "eveland selects the sandbox backend; the authored module's bootstrap() and onSession() " +
-                        "are not used, while workspace seeds are preserved."),
+                    "eve would not load it, or it is not a regular file; workspace seeds are preserved.",
                 ]
               : []),
             "Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.",

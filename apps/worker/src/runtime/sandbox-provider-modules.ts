@@ -1,9 +1,8 @@
 /**
- * Source builders for the Eve >= 0.64 sandbox shape, where a sandbox module
- * exports an `environment` built by a provider and a `defineSandbox()`
- * selector that opens it. Eveland owns the provider: every environment a
- * Release builds must be the vendored bwrap provider, whatever the project
- * authored.
+ * Source builders for Eve's sandbox shape, where a sandbox module exports an
+ * `environment` built by a provider and a `defineSandbox()` selector that
+ * opens it. Eveland owns the provider: every environment a Release builds
+ * must be the vendored bwrap provider, whatever the project authored.
  *
  * Two kinds of module do that. A project without a sandbox module gets a
  * generated one. A project with its own module keeps it, with its

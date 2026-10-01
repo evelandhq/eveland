@@ -463,6 +463,130 @@ describe("buildSessionTranscript", () => {
     });
   });
 
+  test("nests an Eve 0.69 agent task's child and shows its settled reply, not the receipt", () => {
+    // 0.69: the agent is requested as a plain tool call, its result is a
+    // text receipt, the child is announced by `agent.started`, and the reply
+    // arrives on `task.settled`.
+    const v069Nodes: TranscriptSourceNode[] = [
+      { ...nodes[0]!, eveSessionId: "eve_root" },
+      { ...nodes[1]!, eveSessionId: "eve_child", nodeId: null },
+      {
+        ...nodes[1]!,
+        id: "node_other",
+        eveSessionId: "eve_other",
+        agentName: "reviewer",
+        nodeId: null,
+      },
+    ];
+    const root = { sessionNodeId: "node_root" };
+    const v069Events: TranscriptSourceEvent[] = [
+      event("message.received", { message: "Ask the researcher.", turnId: "turn_0" }, root),
+      event(
+        "actions.requested",
+        {
+          actions: [
+            {
+              callId: "call_r",
+              kind: "tool-call",
+              toolName: "researcher",
+              input: { message: "q" },
+            },
+            { callId: "call_v", kind: "tool-call", toolName: "reviewer", input: { message: "r" } },
+          ],
+          turnId: "turn_0",
+        },
+        { ...root, second: 1 },
+      ),
+      ...(["call_r", "call_v"] as const).flatMap((callId, index) => [
+        event(
+          "task.started",
+          {
+            callId,
+            kind: "agent",
+            name: callId === "call_r" ? "researcher" : "reviewer",
+            taskId: `task_${index}`,
+            turnId: "turn_0",
+          },
+          { ...root, second: 1 },
+        ),
+        event(
+          "action.result",
+          {
+            result: { callId, kind: "tool-result", output: `Started task task_${index}.` },
+            status: "completed",
+            turnId: "turn_0",
+          },
+          { ...root, second: 1 },
+        ),
+      ]),
+      // The second call's child announces itself first.
+      event(
+        "agent.started",
+        {
+          callId: "call_v",
+          name: "reviewer",
+          sessionId: "eve_other",
+          taskId: "task_1",
+          turnId: "turn_0",
+        },
+        { ...root, second: 2 },
+      ),
+      event(
+        "agent.started",
+        {
+          callId: "call_r",
+          name: "researcher",
+          sessionId: "eve_child",
+          taskId: "task_0",
+          turnId: "turn_0",
+        },
+        { ...root, second: 2 },
+      ),
+      event(
+        "message.received",
+        { message: "Verify streaming.", turnId: "turn_c" },
+        { sessionNodeId: "node_child", second: 3 },
+      ),
+      event(
+        "task.settled",
+        {
+          callId: "call_r",
+          output: "Verified.",
+          status: "completed",
+          taskId: "task_0",
+          turnId: "turn_0",
+        },
+        { ...root, second: 4 },
+      ),
+      event(
+        "task.settled",
+        {
+          callId: "call_v",
+          error: { message: "reviewer crashed" },
+          status: "failed",
+          taskId: "task_1",
+          turnId: "turn_0",
+        },
+        { ...root, second: 4 },
+      ),
+    ];
+
+    const transcript = buildSessionTranscript(v069Events, v069Nodes);
+
+    expect(transcript.detached).toHaveLength(0);
+    const [researcher, reviewer] = transcript.root!.turns.flatMap(turnToolCalls);
+    expect(researcher).toMatchObject({
+      isSubagent: true,
+      output: "Verified.",
+      status: "completed",
+      errorText: null,
+    });
+    expect(researcher!.child?.sessionNodeId).toBe("node_child");
+    expect(researcher!.child?.turns[0]?.userMessage).toBe("Verify streaming.");
+    expect(reviewer).toMatchObject({ status: "failed", errorText: "reviewer crashed" });
+    expect(reviewer!.child?.sessionNodeId).toBe("node_other");
+  });
+
   test("builds a root transcript from bare events when no nodes were recorded", () => {
     const transcript = buildSessionTranscript(
       [event("message.received", { message: "Hello", turnId: "turn_0" }, { sessionNodeId: null })],

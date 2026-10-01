@@ -17,8 +17,8 @@ import { watchDelegatedTurn } from "./delegated-turn.js";
 
 /**
  * One budget for a whole session read. It has to cover the delegated child
- * run too: under eve 0.51 that starts only after the root session is
- * already waiting.
+ * run too: under eve 0.51 through 0.68 that started only after the root
+ * session was already waiting; eve 0.69 holds the root turn for it.
  */
 const SESSION_STREAM_BUDGET_MS = 60_000;
 
@@ -286,7 +286,7 @@ async function verifyRootConnections(port: number, counts: ConnectionServerCount
   await runConnectionFlow({
     port,
     message:
-      'Use connection_search with connection "warehouse" and keywords "connection status", then call warehouse__getConnectionStatus.',
+      'Use connection_search with connection "warehouse" and query "connection status", then call getConnectionStatus with connection_execute.',
   });
   assert.equal(
     counts.openapiCalls,
@@ -299,7 +299,7 @@ async function verifyRootConnections(port: number, counts: ConnectionServerCount
   await runConnectionFlow({
     port,
     message:
-      'Use connection_search with connection "knowledge" and keywords "connection record", then call knowledge__lookupConnectionRecord.',
+      'Use connection_search with connection "knowledge" and query "connection record", then call lookupConnectionRecord with connection_execute.',
   });
   assert.ok(counts.mcpLists > beforeMcpLists, "root MCP tools were not discovered");
   assert.equal(counts.mcpCalls, beforeMcpCalls + 1, "root MCP tool was not called exactly once");
@@ -313,10 +313,10 @@ async function verifySubagentConnection(
   const beforeMcpCalls = counts.mcpCalls;
   const session = await startSession(
     port,
-    'delegate to a subagent: Use connection_search with connection "research" and keywords "connection record".',
-    // eve 0.51 dispatches the subagent as a background task, so its child run
-    // — and the Connection calls this check counts — happen after the root
-    // turn has completed and the session is already waiting.
+    'delegate to a subagent: Use connection_search with connection "research" and query "connection record".',
+    // The read settles once the session is idle after the child was reported
+    // (`agent.started` on eve 0.69, `subagent.called` before), by which time
+    // the child's Connection calls this check counts have happened.
     { subagentName: "researcher" },
   );
   assert.ok(
@@ -381,9 +381,10 @@ async function startSession(
 
 /**
  * Reads to `session.waiting`, and — when a delegated subagent is expected —
- * past it: eve 0.51 hands the root turn a background-task handle, so the child
- * run only starts (and only reports `subagent.called`, and only then uses its
- * own Connections) after the root session is already waiting.
+ * past it when needed: eve 0.51 through 0.68 handed the root turn a
+ * background-task handle, so the child run only started after the root
+ * session was already waiting. eve 0.69 holds the turn for the agent task, so
+ * the first `session.waiting` after `agent.started` already settles it.
  */
 async function readUntilWaiting(
   port: number,
@@ -405,8 +406,8 @@ async function readUntilWaiting(
   const deadline = Date.now() + SESSION_STREAM_BUDGET_MS;
   let buffer = "";
   let waiting = false;
-  // A delegating session is read past its first `session.waiting`: under eve
-  // 0.51 the child run — and the Connections it uses — comes after it.
+  // A delegating session is read until the delegation settles, which on eve
+  // 0.51 through 0.68 is past its first `session.waiting`.
   const done = () => (options.subagentName === undefined ? waiting : watch.settled);
   try {
     while (!done() && Date.now() < deadline) {

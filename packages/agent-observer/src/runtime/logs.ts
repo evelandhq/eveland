@@ -22,16 +22,23 @@ const collectedEventTypes = new Set([
   "input.requested",
   "authorization.required",
   "authorization.completed",
+  "input.resolved",
+  // Eve <= 0.68 reports delegation with these; 0.69 replaced them with the
+  // task events below.
   "subagent.called",
   "subagent.started",
   "subagent.event",
   "subagent.completed",
+  "task.started",
+  "task.settled",
+  "agent.started",
   "step.started",
   "step.completed",
   "step.failed",
   "turn.completed",
   "turn.failed",
   "turn.cancelled",
+  "turn.waiting",
   "session.waiting",
   "session.completed",
   "session.failed",
@@ -166,6 +173,9 @@ function isInputKey(eventType: string, keyName: string): boolean {
   if (eventType === "input.requested") {
     return keyName === "requests";
   }
+  if (eventType === "input.resolved") {
+    return keyName === "response";
+  }
   return keyName === "clientContext";
 }
 
@@ -173,7 +183,11 @@ function isOutputKey(eventType: string, keyName: string): boolean {
   if (isReasoningKey(keyName)) return true;
   if (eventType === "message.completed") return keyName === "message";
   if (eventType === "result.completed") return keyName === "result";
-  if (eventType === "action.result" || eventType === "subagent.completed") {
+  if (
+    eventType === "action.result" ||
+    eventType === "subagent.completed" ||
+    eventType === "task.settled"
+  ) {
     return keyName === "output";
   }
   return false;
