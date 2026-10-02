@@ -1,6 +1,5 @@
 import {
   authAccounts,
-  authSessions,
   authVerifications,
   invitations,
   teamMemberships,
@@ -9,6 +8,7 @@ import {
 } from "@evelandhq/db/schema";
 import { createPgliteTestStore } from "@evelandhq/db/test";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { betterAuthSchema } from "./auth-schema.js";
 import { describe, expect, onTestFinished, test } from "vitest";
 import { createBetterAuthRuntime, invitationHandle, SESSION_COOKIE_NAME } from "./auth.js";
 
@@ -19,15 +19,7 @@ async function createTestRuntime(
   onTestFinished(() => database.close());
   const baseAdapter = drizzleAdapter(database.db, {
     provider: "pg",
-    schema: {
-      user: users,
-      session: authSessions,
-      account: authAccounts,
-      verification: authVerifications,
-      organization: teams,
-      member: teamMemberships,
-      invitation: invitations,
-    },
+    schema: betterAuthSchema,
   });
   const databaseOption = interceptAdapter
     ? (options: unknown) =>

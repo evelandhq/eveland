@@ -25,12 +25,12 @@
   },
   "dependencies": {
     "@evelandhq/core": "workspace:*",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^0.45.3",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.5",
-    "drizzle-kit": "^0.31.10",
-    "vitest": "^4.1.11"
+    "@electric-sql/pglite": "^0.5.8",
+    "drizzle-kit": "^0.31.11",
+    "vitest": "^5.0.3"
   }
 }

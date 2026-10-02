@@ -27,8 +27,8 @@ allowBuilds:
   simple-git-hooks: true
   workerd: true
 overrides:
-  "react-jsx-parser>@types/react": 19.2.17
-  "react-jsx-parser>@types/react-dom": 19.2.3
+  "react-jsx-parser>@types/react": 19.3.0
+  "react-jsx-parser>@types/react-dom": 19.3.0
   # Security floors for transitive deps whose parents pin vulnerable versions
   # exactly (Dependabot alerts, 2026-08-24). Drop each once the parent moves:
   # miniflare pins sharp/undici exactly per release; ansi-to-react declares
@@ -39,17 +39,22 @@ overrides:
   "miniflare>undici": "^7.29.0"
   "ansi-to-react>linkify-it": "^5.0.2"
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
+peerDependencyRules:
+  allowedVersions:
+    # @pierre/trees 1.0.0-beta.6 (still the latest) pins @pierre/theming 1.0.0,
+    # whose peer range predates @pierre/theme 2.0 that @pierre/diffs 1.3+ pins.
+    # theming only lazy-imports the ten `@pierre/theme/pierre-*` subpaths, and
+    # theme 2.0 still exports every one of them (theming 1.0.1 widened its own
+    # range to ^1.1.0 || ^2.0.0). Drop this once trees moves to theming 1.0.1+.
+    "@pierre/theming@1.0.0>@pierre/theme": "2"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.62.x and 0.68.x -- a gapped window:
-# 0.63 never entered one, since its background-subagent regression kept it
-# out until 0.64 superseded it, 0.65 superseded 0.64 within a day, 0.66
-# superseded 0.65 within six hours, 0.67.0 replaced 0.66 two days after it
-# entered, and 0.68.0 replaced 0.67 three days after that, before any Eveland
-# release carried any of them, so all five sit inside the hull and are
-# rejected; 0.58 retired on 2026-09-23,
-# and every earlier line is below the floor as well). eve-matrix names every
-# line but the newest, which is the plain `eve` catalog entry.
+# verified minor in the current window (0.68.x and 0.70.x -- a gapped window:
+# 0.69 entered on 2026-10-02 and 0.70.0 replaced it the same day, before any
+# Eveland release carried it, so it sits inside the hull and is rejected; 0.62
+# retired when 0.69 entered, and every earlier line is below the floor as
+# well). eve-matrix names every line but the newest, which is the plain `eve`
+# catalog entry.
 #
 # The release-age cooldown is waived only for explicitly reviewed packages.
 # `eve`, `@evelandhq/sandbox-bwrap`, and `@evelandhq/workflow-world` are
