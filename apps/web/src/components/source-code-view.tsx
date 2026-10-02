@@ -44,7 +44,7 @@ const fileOptions = {
   disableFileHeader: true,
   overflow: "scroll",
   unsafeCSS: sourceCodeCss,
-} satisfies FileOptions<undefined>;
+} satisfies FileOptions<undefined, undefined>;
 
 export function SourceCodeView({
   cacheKey,

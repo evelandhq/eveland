@@ -25,15 +25,15 @@
   },
   "devDependencies": {
     "@conventional-commits/parser": "0.4.1",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.6.3",
     "node-addon-api": "^8.9.2",
-    "node-gyp": "^12.4.0",
-    "oxfmt": "0.64.0",
-    "oxlint": "1.79.0",
-    "simple-git-hooks": "2.13.1",
-    "tsx": "^4.23.12",
+    "node-gyp": "^13.0.2",
+    "oxfmt": "0.71.0",
+    "oxlint": "1.86.0",
+    "simple-git-hooks": "2.14.0",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.3"
   },
   "simple-git-hooks": {
     "pre-commit": "node ./scripts/pre-commit-fmt.mjs"
