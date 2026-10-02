@@ -1,15 +1,7 @@
 import { describe, expect, onTestFinished, test } from "vitest";
-import {
-  authAccounts,
-  authSessions,
-  authVerifications,
-  invitations,
-  teamMemberships,
-  teams,
-  users,
-} from "@evelandhq/db/schema";
 import { createPgliteTestStore, disableSeededOpenIdentityProvider } from "@evelandhq/db/test";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { betterAuthSchema } from "./auth-schema.js";
 import { createApp } from "./app.js";
 import { createBetterAuthRuntime } from "./auth.js";
 
@@ -24,15 +16,7 @@ async function createIdentityApp({ keepOpenAccess = false } = {}) {
   const auth = createBetterAuthRuntime({
     database: drizzleAdapter(database.db, {
       provider: "pg",
-      schema: {
-        user: users,
-        session: authSessions,
-        account: authAccounts,
-        verification: authVerifications,
-        organization: teams,
-        member: teamMemberships,
-        invitation: invitations,
-      },
+      schema: betterAuthSchema,
     }),
     baseURL: apiOrigin,
     webOrigin,

@@ -3,25 +3,9 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import {
-  authAccounts,
-  authDeviceCodes,
-  authSessions,
-  authVerifications,
-  invitations,
-  oauthAccessTokens,
-  oauthClientAssertions,
-  oauthClientResources,
-  oauthClients,
-  oauthConsents,
-  oauthRefreshTokens,
-  oauthResources,
-  teamMemberships,
-  teams,
-  users,
-} from "@evelandhq/db/schema";
 import type { Store } from "@evelandhq/db";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { betterAuthSchema } from "./auth-schema.js";
 import { createBetterAuthRuntime } from "./auth.js";
 
 const execFileAsync = promisify(execFile);
@@ -42,23 +26,7 @@ export function createControlPlaneAuthRuntime(input: {
   return createBetterAuthRuntime({
     database: drizzleAdapter(input.db as Parameters<typeof drizzleAdapter>[0], {
       provider: "pg",
-      schema: {
-        user: users,
-        session: authSessions,
-        account: authAccounts,
-        verification: authVerifications,
-        organization: teams,
-        member: teamMemberships,
-        invitation: invitations,
-        deviceCode: authDeviceCodes,
-        oauthClient: oauthClients,
-        oauthResource: oauthResources,
-        oauthClientResource: oauthClientResources,
-        oauthAccessToken: oauthAccessTokens,
-        oauthRefreshToken: oauthRefreshTokens,
-        oauthConsent: oauthConsents,
-        oauthClientAssertion: oauthClientAssertions,
-      },
+      schema: betterAuthSchema,
     }),
     baseURL: input.baseURL,
     webOrigin: input.webOrigin,

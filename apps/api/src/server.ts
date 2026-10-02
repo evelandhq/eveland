@@ -6,24 +6,8 @@ import { formatBuildInfo } from "@evelandhq/core/build-info";
 import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
 import { createApp } from "./app.js";
 import { createStoreFromEnv } from "@evelandhq/db/factory";
-import {
-  authAccounts,
-  authDeviceCodes,
-  authSessions,
-  authVerifications,
-  invitations,
-  oauthAccessTokens,
-  oauthClientAssertions,
-  oauthClientResources,
-  oauthClients,
-  oauthConsents,
-  oauthRefreshTokens,
-  oauthResources,
-  teamMemberships,
-  teams,
-  users,
-} from "@evelandhq/db/schema";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { betterAuthSchema } from "./auth-schema.js";
 import { createBetterAuthRuntime } from "./auth.js";
 import { resolveAdminConfig, resolveBetterAuthConfig } from "./auth-config.js";
 import { collectSystemConfigurationDiagnostics } from "./config-diagnostics.js";
@@ -43,23 +27,7 @@ const storeFactory = createStoreFromEnv();
 const betterAuthConfig = resolveBetterAuthConfig(process.env);
 const authDatabase = drizzleAdapter(storeFactory.database.db, {
   provider: "pg",
-  schema: {
-    user: users,
-    session: authSessions,
-    account: authAccounts,
-    verification: authVerifications,
-    organization: teams,
-    member: teamMemberships,
-    invitation: invitations,
-    deviceCode: authDeviceCodes,
-    oauthClient: oauthClients,
-    oauthResource: oauthResources,
-    oauthClientResource: oauthClientResources,
-    oauthAccessToken: oauthAccessTokens,
-    oauthRefreshToken: oauthRefreshTokens,
-    oauthConsent: oauthConsents,
-    oauthClientAssertion: oauthClientAssertions,
-  },
+  schema: betterAuthSchema,
 });
 const auth = createBetterAuthRuntime({ database: authDatabase, ...betterAuthConfig });
 await auth.bootstrapDefaultAdmin(resolveAdminConfig(process.env));

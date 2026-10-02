@@ -19,6 +19,6 @@
   "devDependencies": {
     "eve": "catalog:",
     "eve-previous": "catalog:eve-matrix",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.3"
   }
 }

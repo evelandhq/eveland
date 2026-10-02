@@ -1,22 +1,6 @@
-import {
-  authAccounts,
-  authDeviceCodes,
-  authSessions,
-  authVerifications,
-  invitations,
-  oauthAccessTokens,
-  oauthClientAssertions,
-  oauthClientResources,
-  oauthClients,
-  oauthConsents,
-  oauthRefreshTokens,
-  oauthResources,
-  teamMemberships,
-  teams,
-  users,
-} from "@evelandhq/db/schema";
 import { createPgliteTestStore } from "@evelandhq/db/test";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { betterAuthSchema } from "./auth-schema.js";
 import { onTestFinished } from "vitest";
 import { createApp } from "./app.js";
 import { createBetterAuthRuntime } from "./auth.js";
@@ -27,23 +11,7 @@ export async function createAuthTestContext() {
   const auth = createBetterAuthRuntime({
     database: drizzleAdapter(database.db, {
       provider: "pg",
-      schema: {
-        user: users,
-        session: authSessions,
-        account: authAccounts,
-        verification: authVerifications,
-        organization: teams,
-        member: teamMemberships,
-        invitation: invitations,
-        deviceCode: authDeviceCodes,
-        oauthClient: oauthClients,
-        oauthResource: oauthResources,
-        oauthClientResource: oauthClientResources,
-        oauthAccessToken: oauthAccessTokens,
-        oauthRefreshToken: oauthRefreshTokens,
-        oauthConsent: oauthConsents,
-        oauthClientAssertion: oauthClientAssertions,
-      },
+      schema: betterAuthSchema,
     }),
     baseURL: "http://localhost:4000",
     webOrigin: "http://localhost:3000",
