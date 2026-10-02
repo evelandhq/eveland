@@ -6,34 +6,33 @@ export const EVE_COMPATIBILITY_POLICY = {
       dependencyName: "eve-previous",
     },
     {
-      range: "0.69.x",
-      verifiedVersion: "0.69.0",
+      range: "0.70.x",
+      verifiedVersion: "0.70.0",
       dependencyName: "eve",
     },
   ],
-  // A contiguous two-line window: 0.69.0 (published 2026-10-01) entered on
-  // 2026-10-02 and 0.62 retired with it. 0.68 stays because Eveland v0.60.0,
-  // the first release past the {0.58, 0.62} window, ships it; 0.63 through
-  // 0.67 never reached a release. 0.62's Releases now answer 409 on
-  // activation and their parked runs are settled, as 0.58's did when it
-  // retired on 2026-09-23. Everything the window kept for 0.62 alone is gone
-  // with it: the object-form sandbox backend module (every line builds a
-  // provider environment since 0.64), the scheduler's `mode: "task"` line
-  // (0.67 removed the run mode), and the `taskRunWorkflow` audit entry.
+  // A gapped two-line window: 0.70.0 (published 2026-10-02) entered the same
+  // day and 0.69 retired with it, one day after it had entered and before any
+  // Eveland release carried it. 0.68 stays because Eveland v0.60.0 ships it.
+  // 0.62 retired on 2026-10-02 when 0.69 entered: its Releases answer 409 on
+  // activation and their parked runs are settled, as 0.69's do now.
   //
-  // 0.69 is the largest protocol move since 0.31. Background tasks are gone:
+  // 0.69 was the largest protocol move since 0.31: background tasks are gone,
   // every workflow tool and agent call blocks its turn until it settles, the
   // `subagent.*` stream events and hooks are replaced by `task.started`,
-  // `task.settled`, and `agent.started`, a call's receipt is plain text, and
-  // a question raised inside a running call parks the turn with
-  // `turn.waiting` instead of ending it. The message stream moves to v26
-  // (the 0.69 client still reads v21-v25, so one Dashboard client serves
-  // both lines), the session checkpoint to 10 (eve rejects a handoff across
-  // the boundary; Eveland pins each session to its Deployment and never
-  // hands off), and every extension contract family drops its 0.68 epochs.
-  // The discovery manifest (v15), the route set Eveland forwards, the
-  // bundled Workflow runtime, and the sandbox provider API are unchanged.
-  peerDependencyRange: ">=0.68.0 <0.70.0",
+  // `task.settled`, and `agent.started`, a call's receipt is plain text, and a
+  // question raised inside a running call parks the turn with `turn.waiting`
+  // instead of ending it. 0.70 extends the hold to tool approvals and
+  // connection sign-ins (`turn.waiting` now says what it waits `on`), keeps the
+  // message stream at v26 (the client still reads v21-v25, so one Dashboard
+  // client serves both lines), moves the session checkpoint to 11 (eve rejects
+  // a handoff across the boundary; Eveland pins each session to its Deployment
+  // and never hands off), and only adds extension contract versions. Between
+  // 0.68 and 0.70 the discovery manifest (v15), the route set Eveland forwards
+  // (0.69 dropped the activity route), the bundled Workflow runtime, and the
+  // sandbox provider API are unchanged. The range is the union of the two
+  // contiguous runs, never the hull, which would admit 0.69.
+  peerDependencyRange: ">=0.68.0 <0.69.0 || >=0.70.0 <0.71.0",
 } as const;
 
 export type SupportedEveVersionRange =

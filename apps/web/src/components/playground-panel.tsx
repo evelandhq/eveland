@@ -41,6 +41,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { resetPlaygroundOnPageLeave } from "@/lib/client-api";
 import {
+  canAnswerInputRequests,
   clearPendingSessionCreate,
   createPlaygroundTurnCanceller,
   createPlaygroundMessage,
@@ -296,7 +297,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               isPendingAssistantShell &&
               message.id === lastMessage?.id ? null : (
                 <AgentMessage
-                  canRespond={!isBusy && !isResuming}
+                  canRespond={canAnswerInputRequests(agent.status)}
                   isStreaming={
                     agent.status === "streaming" && index === agent.data.messages.length - 1
                   }

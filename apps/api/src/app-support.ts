@@ -6,7 +6,12 @@ import type {
   RuntimeInstance,
   SessionStatus,
 } from "@evelandhq/core/contracts";
-import { getEveString, parseEveJsonObject, sessionErrorFromEveEvent } from "@evelandhq/core/eve";
+import {
+  getEveString,
+  parseEveJsonObject,
+  sessionErrorFromEveEvent,
+  sessionStatusFromEveEvent,
+} from "@evelandhq/core/eve";
 import { assertSafeArchivePath } from "@evelandhq/core/server/archive";
 import {
   createEveVersionInfo,
@@ -267,13 +272,9 @@ export async function projectPlaygroundStreamLine(
 ): Promise<SessionStatus> {
   const event = parseEveJsonObject(line);
   const type = getEveString(event, "type");
-  let nextStatus: SessionStatus | null = null;
-  if (type === "session.started" || type === "turn.started") nextStatus = "running";
-  else if (type === "input.requested") nextStatus = "waiting_approval";
-  else if (type === "session.waiting")
-    nextStatus = currentStatus === "waiting_approval" ? "waiting_approval" : "waiting";
-  else if (type === "session.completed") nextStatus = "completed";
-  else if (type === "session.failed") nextStatus = "failed";
+  // The same projection the observed Session uses, so the Playground's eager
+  // write never disagrees with what the Observer records for the same event.
+  const nextStatus = type ? sessionStatusFromEveEvent(type, currentStatus) : null;
   if (!nextStatus) return currentStatus;
   await store
     .completeSession(platformSessionId, {

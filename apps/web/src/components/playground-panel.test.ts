@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import * as ClientApi from "../lib/client-api.js";
 import {
+  canAnswerInputRequests,
   cancelPlaygroundTurn,
   clearPendingSessionCreate,
   createPlaygroundTurnCanceller,
@@ -10,6 +11,22 @@ import {
   resumePendingPlaygroundTurn,
   stashPendingSessionCreate,
 } from "../lib/playground-session.js";
+
+describe("Playground input-request answering", () => {
+  test("answers a question or approval while the turn holds for it", () => {
+    // eve 0.69 holds a turn for a question asked inside a running call and
+    // 0.70 for every approval and sign-in; the 0.70 client reports a held
+    // turn as "streaming" and accepts the answer in flight.
+    expect(canAnswerInputRequests("streaming")).toBe(true);
+    expect(canAnswerInputRequests("ready")).toBe(true);
+    expect(canAnswerInputRequests("error")).toBe(true);
+  });
+
+  test("waits while a message is still being submitted or the session resumes", () => {
+    expect(canAnswerInputRequests("submitted")).toBe(false);
+    expect(canAnswerInputRequests("resuming")).toBe(false);
+  });
+});
 
 describe("Playground route-auth turn resume", () => {
   test("replays the interrupted session before re-sending the message", async () => {
