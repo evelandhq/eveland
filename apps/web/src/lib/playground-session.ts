@@ -128,6 +128,20 @@ export type PlaygroundTurnCancellation = {
   abort: () => void;
 };
 
+/** The `useEveAgent` statuses the Playground reads; `ready` and `error` are idle. */
+export type PlaygroundAgentStatus = "ready" | "resuming" | "submitted" | "streaming" | "error";
+
+/**
+ * Whether a pending question, approval, or sign-in can be answered now. A held
+ * turn reports `streaming`: eve 0.69 holds a turn for a question asked inside a
+ * running call, 0.70 for every approval and sign-in too, and the client sends
+ * the answer into the running turn. Only a message still being submitted, or a
+ * session still checking for an in-flight turn, has nothing to answer yet.
+ */
+export function canAnswerInputRequests(status: PlaygroundAgentStatus): boolean {
+  return status !== "submitted" && status !== "resuming";
+}
+
 export async function cancelPlaygroundTurn(input: PlaygroundTurnCancellation): Promise<void> {
   if (!input.session) {
     input.abort();

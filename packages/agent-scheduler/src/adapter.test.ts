@@ -25,7 +25,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.68/0.69 compatibility window", async () => {
+  test("fails closed outside the 0.68/0.70 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -144,19 +144,24 @@ describe("injectSchedulerAdapter", () => {
       "~0.67.0",
       "^0.67.0",
       "0.67.x",
-      // 0.62 retired on 2026-10-02 when 0.69 entered and the window became
-      // contiguous again.
+      // 0.62 retired on 2026-10-02 when 0.69 entered, and 0.69 the same day
+      // when 0.70 replaced it.
       "0.62.0",
       "~0.62.0",
       "^0.62.0",
       "0.62.x",
-      "0.70.0",
-      "^0.70.0",
       ">=0.58.0",
       ">=0.62.0",
       ">=0.62.0 <0.69.0",
       ">=0.68.0",
       ">=0.68.0 <0.70.0",
+      ">=0.68.0 <0.71.0",
+      "0.69.0",
+      "~0.69.0",
+      "^0.69.0",
+      "0.69.x",
+      "0.71.0",
+      "^0.71.0",
       "*",
       "latest",
     ]) {
@@ -178,12 +183,12 @@ describe("injectSchedulerAdapter", () => {
       "0.68",
       "0.68.x",
       "0.68.*",
-      "0.69.0",
-      "~0.69.0",
-      "^0.69.0",
-      "0.69",
-      "0.69.x",
-      "0.69.*",
+      "0.70.0",
+      "~0.70.0",
+      "^0.70.0",
+      "0.70",
+      "0.70.x",
+      "0.70.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -195,7 +200,7 @@ describe("injectSchedulerAdapter", () => {
 
   test("rewrites module and Markdown schedules to native no-ops while preserving originals", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "agent/schedules/billing/sweep.ts": `import { defineSchedule } from "eve/schedules";
 import { helper } from "../../lib/helper";
@@ -259,7 +264,7 @@ Produce the daily report.
 
   test("generates a closed authenticated dispatch Channel without embedding secrets", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
       },
@@ -292,7 +297,7 @@ Produce the daily report.
 
   test("generates the fixed-session dispatch Channel", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "agent/schedules/report.md": `---
 cron: "30 5 * * *"
@@ -325,7 +330,7 @@ Produce the daily report.
     // Eve 0.33 made "steer" the default send policy, which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every line in the
-    // current 0.68/0.69 window supports the explicit `turnPolicy` option.
+    // current 0.68/0.70 window supports the explicit `turnPolicy` option.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };
@@ -355,7 +360,7 @@ Produce the daily report.
     // schedules default to "cohort": one report once related work settles.
     // Eveland dispatches schedules through a channel, so it asks for "cohort"
     // explicitly; an authored handler still wins. Eve 0.69 removed background
-    // tasks with the option and silently ignores it, so a 0.69 Release does
+    // tasks with the option and silently ignores it, so a 0.69+ Release does
     // not carry it.
     const files = {
       "agent/schedules/report.md": `---\ncron: "30 5 * * *"\n---\nReport.\n`,
@@ -374,14 +379,14 @@ Produce the daily report.
     );
     expect(previous).toContain('taskDeliveryPolicy: "cohort", ...options })');
 
-    const current = await readChannel("0.69.0");
+    const current = await readChannel("0.70.0");
     expect(current).not.toContain("taskDeliveryPolicy");
     expect(current).not.toContain("mode:");
   });
 
   test("marks every scheduler-created root in async context without changing existing sessions", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "agent/schedules/report.md": `---\ncron: "30 5 * * *"\n---\nProduce the daily report.\n`,
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
@@ -409,7 +414,7 @@ Produce the daily report.
     async (extension) => {
       const sourcePath = `agent/schedules/nested/direct.${extension}`;
       const releaseDir = await fixture({
-        eveVersion: "0.69.0",
+        eveVersion: "0.70.0",
         files: { [sourcePath]: `export default { cron: "0 6 * * *", async run() {} };` },
       });
 
@@ -426,7 +431,7 @@ Produce the daily report.
 
   test("rejects reserved authored identifiers and the reserved Channel path", async () => {
     const identifierCollision = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "agent/schedules/collision.ts": `const __evelandOriginalSchedule = {}; export default __evelandOriginalSchedule;`,
       },
@@ -436,7 +441,7 @@ Produce the daily report.
     );
 
     const channelCollision = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "agent/schedules/ok.ts": `export default { cron: "* * * * *", async run() {} };`,
         "agent/channels/eveland-scheduler.ts": `export default {};`,
@@ -447,7 +452,7 @@ Produce the daily report.
     );
 
     const defaultReExport = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "agent/lib/shared.ts": `export default { cron: "0 7 * * *", async run() {} };`,
         "agent/schedules/re-export.ts": `export { default } from "../lib/shared";`,
@@ -703,7 +708,7 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
 describe("injectExtensionSchedules", () => {
   test("namespaces Extension schedules, honors consumer overrides, and regenerates the dispatch Channel", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "agent/schedules/root.ts": 'export default { cron: "0 1 * * *", async run() {} };',
         "node_modules/@acme/crm/package.json": JSON.stringify({
@@ -752,7 +757,7 @@ describe("injectExtensionSchedules", () => {
   });
 
   test("rejects Extension source paths outside the disposable Release", async () => {
-    const releaseDir = await fixture({ eveVersion: "0.69.0", files: {} });
+    const releaseDir = await fixture({ eveVersion: "0.70.0", files: {} });
     await injectSchedulerAdapter({ releaseDir });
     const outsideRoot = path.join(path.dirname(releaseDir), "outside-extension");
 
@@ -770,7 +775,7 @@ describe("injectExtensionSchedules", () => {
 
   test("fails closed when an Extension schedule key collides with an existing root key", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "agent/schedules/crm__sync.ts": 'export default { cron: "0 1 * * *", async run() {} };',
         "node_modules/@acme/crm/dist/extension/schedules/sync.mjs":
@@ -797,7 +802,7 @@ describe("injectExtensionSchedules", () => {
 
   test("fails closed when separate namespace and local-key pairs produce the same key", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "node_modules/@acme/one/dist/extension/schedules/b__c.mjs":
           'export default { cron: "0 2 * * *", async run() {} };',
@@ -833,7 +838,7 @@ describe("injectExtensionSchedules", () => {
   });
 
   test("rejects symlinked Extension schedule sources that escape the Release", async () => {
-    const releaseDir = await fixture({ eveVersion: "0.69.0", files: {} });
+    const releaseDir = await fixture({ eveVersion: "0.70.0", files: {} });
     await injectSchedulerAdapter({ releaseDir });
     const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-scheduler-outside-"));
     await mkdir(path.join(outsideRoot, "schedules"), { recursive: true });
@@ -859,7 +864,7 @@ describe("injectExtensionSchedules", () => {
 
   test("reports the generated module path for transformed Markdown schedules", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.69.0",
+      eveVersion: "0.70.0",
       files: {
         "node_modules/@acme/crm/dist/extension/schedules/report.md":
           '---\ncron: "0 3 * * *"\n---\nProduce the extension report.\n',

@@ -310,6 +310,14 @@ describe("eve event projections", () => {
     expect(scheduleExecutionStatusFromEveEvent("turn.waiting", "waiting_approval")).toBe("parked");
     // A turn waiting on its own tasks is still running.
     expect(scheduleExecutionStatusFromEveEvent("turn.waiting", "running")).toBe("running");
+    // 0.70: a schedule whose turn holds for a sign-in parks like one holding
+    // for an approval, once the sign-in moved the session to waiting_approval.
+    expect(
+      scheduleExecutionStatusFromEveEvent(
+        "turn.waiting",
+        Eve.sessionStatusFromEveEvent("authorization.required", "running")!,
+      ),
+    ).toBe("parked");
     // Total mapping: anything outside the boundary vocabulary keeps running.
     expect(scheduleExecutionStatusFromEveEvent("step.completed", "running")).toBe("running");
     expect(scheduleExecutionStatusFromEveEvent(undefined, "running")).toBe("running");
@@ -340,6 +348,13 @@ describe("eve event projections", () => {
     expect(sessionStatusFromEveEvent("input.resolved", "waiting")).toBeNull();
     expect(sessionStatusFromEveEvent("turn.waiting", "waiting_approval")).toBeNull();
     expect(sessionStatusFromEveEvent("turn.waiting", "running")).toBeNull();
+    // A connection sign-in waits on a person like an approval does; eve 0.70
+    // holds the turn for it, so `authorization.completed` resumes the session.
+    expect(sessionStatusFromEveEvent("authorization.required", "running")).toBe("waiting_approval");
+    expect(sessionStatusFromEveEvent("authorization.completed", "waiting_approval")).toBe(
+      "running",
+    );
+    expect(sessionStatusFromEveEvent("authorization.completed", "waiting")).toBeNull();
   });
 
   test("renders the Session failure line from the boundary payload", () => {

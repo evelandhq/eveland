@@ -58,7 +58,9 @@ describe("Eve observer hook compatibility matrix", () => {
       // 0.67.0 shipped runtime.js byte-identical to 0.64.1; 0.67.1 only moved
       // an import path, and 0.67.2 and 0.68.0 are byte-identical to that; 0.69.0,
       // re-verified 2026-10-02, only reordered imports and dropped the
-      // background-task instrumentation, leaving this expression alone). If the pinned expression changes
+      // background-task instrumentation, leaving this expression alone; 0.70.0,
+      // re-verified the same day, only threads a trace-root session id through
+      // the runtime). If the pinned expression changes
       // shape in a new Eve line, re-verify model-capture.ts against it before
       // bumping the matrix. The minifier is free to rename the locals (0.44.0
       // emitted `r`, 0.44.3 `i`), so the pin captures identifiers instead of
