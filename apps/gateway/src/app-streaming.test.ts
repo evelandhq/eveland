@@ -21,18 +21,36 @@ describe("Gateway", () => {
     const closed = new Promise<void>((resolve) => {
       markClosed = resolve;
     });
+    // The upstream holds its first event until the test has received the
+    // leading whitespace, so the first chunk can only arrive if the Gateway
+    // forwards it before the first event and before end-of-stream. Ordering,
+    // not wall-clock time, carries the assertion.
+    let releaseFirstEvent!: () => void;
+    const firstEventReleased = new Promise<void>((resolve) => {
+      releaseFirstEvent = resolve;
+    });
+    let firstEventWritten = false;
     const upstream = await startUpstream((_request, response) => {
       response.once("close", markClosed);
       response.writeHead(200, { "content-type": "application/x-ndjson" });
       response.write("\n");
-      setTimeout(() => response.write('{"type":"turn.started"}\n'), 50);
-      setTimeout(() => response.end('{"type":"turn.completed"}\n'), 250);
+      void firstEventReleased.then(() => {
+        firstEventWritten = true;
+        response.write('{"type":"turn.started"}\n');
+      });
+      // Failure-path only: a buffering Gateway never hands the test the
+      // leading chunk, so release and end the stream ourselves and let the
+      // assertions below fail instead of deadlocking the test and cleanup.
+      const giveUp = setTimeout(() => {
+        releaseFirstEvent();
+        setImmediate(() => response.end());
+      }, 2_000);
+      response.once("close", () => clearTimeout(giveUp));
     });
     const app = createGatewayApp(repository([route({ hostPort: upstream.port })]), {
       allowedBaseDomains: ["agent.localhost"],
       affinitySecret,
     });
-    const startedAt = Date.now();
     const response = await app.request(
       "http://p-alpha.agent.localhost/eve/v1/session/eve_1/stream",
       {
@@ -43,7 +61,8 @@ describe("Gateway", () => {
     const first = await reader.read();
 
     expect(new TextDecoder().decode(first.value)).toBe("\n");
-    expect(Date.now() - startedAt).toBeLessThan(200);
+    expect(firstEventWritten).toBe(false);
+    releaseFirstEvent();
     const second = await reader.read();
     expect(new TextDecoder().decode(second.value)).toContain("turn.started");
     await reader.cancel();
