@@ -363,7 +363,7 @@ async function ingestPostgresAgentEventOnce(
     });
 
     const projectedStatus = isLatestObservation
-      ? sessionStatusFromEveEvent(type, node.status)
+      ? sessionStatusFromEveEvent(type, node.status, payload)
       : null;
     const runtime = type === "session.started" ? recordValue(recordValue(payload)?.runtime) : null;
     // Eve <=0.32 put the configured model in the session's runtime identity;

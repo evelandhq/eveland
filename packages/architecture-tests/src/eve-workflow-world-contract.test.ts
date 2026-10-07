@@ -78,6 +78,19 @@ function versionLine(version: string): { major: string; tag: string | undefined 
   return { major: core!.split(".")[0]!, tag: prerelease?.split(".")[0] };
 }
 
+// eve's `isDefiniteLineMismatch`: a stable declaration on either side matches
+// any prerelease of the same major, so one World serves an eve line bundling
+// the @workflow betas and a line bundling the stable release.
+function isDefiniteLineMismatch(
+  world: ReturnType<typeof versionLine>,
+  eve: ReturnType<typeof versionLine>,
+): boolean {
+  return (
+    world.major !== eve.major ||
+    (world.tag !== undefined && eve.tag !== undefined && world.tag !== eve.tag)
+  );
+}
+
 function walkJsFiles(root: string): string[] {
   const collected: string[] = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -194,7 +207,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     // again: the shared World's `@workflow/world` beta.38 can write spec 8
     // (the hook force-claim reader contract eve 0.66.3 brought in), while the
     // World declares the sealed log, 7, which every line in the window reads
-    // (0.68.0 and 0.70.0 accept 6 through 8). The legacy World
+    // (0.68.0 and 0.72.1 accept 6 through 8). The legacy World
     // stays on slot identity. Moving the declared number is an eve-window
     // decision, not a lockfile outcome — every line in the window must read
     // what new Releases stamp.
@@ -276,6 +289,16 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     }
   });
 
+  test("the line rule rejects what eve rejects and nothing more", () => {
+    const line = (version: string) => versionLine(version);
+    expect(isDefiniteLineMismatch(line("5.0.0-beta.38"), line("5.0.1"))).toBe(false);
+    expect(isDefiniteLineMismatch(line("5.0.1"), line("5.0.0-beta.57"))).toBe(false);
+    expect(isDefiniteLineMismatch(line("5.0.0-beta.38"), line("5.0.0-beta.57"))).toBe(false);
+    expect(isDefiniteLineMismatch(line("5.0.0-beta.38"), line("5.0.0-rc.1"))).toBe(true);
+    expect(isDefiniteLineMismatch(line("4.1.0"), line("5.0.1"))).toBe(true);
+    expect(isDefiniteLineMismatch(line("^6.0.0-beta.1"), line("5.0.1"))).toBe(true);
+  });
+
   for (const line of EVE_LINES) {
     describe(`against ${line}`, () => {
       // Non-default names are pnpm catalog aliases for pinned Eve lines.
@@ -287,7 +310,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
         peerDependencies?: Record<string, string>;
       };
 
-      test("the world declares the same @workflow major and prerelease line eve bundles", () => {
+      test("the world declares a @workflow line eve accepts", () => {
         // Mirrors eve's `assertWorkflowWorldCompatibility`: it reads the first
         // of `@workflow/core` then `@workflow/world` from the world's manifest
         // and throws when the major differs, or when both carry prerelease
@@ -307,7 +330,12 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
           worldManifest.dependencies["@workflow/world"];
         expect(declared, "the world must declare a @workflow dependency").toBeTypeOf("string");
 
-        expect(versionLine(declared!)).toEqual(versionLine(eveWorkflowCore!));
+        const world = versionLine(declared!);
+        const eve = versionLine(eveWorkflowCore!);
+        expect(
+          isDefiniteLineMismatch(world, eve),
+          `the world's ${declared} is not on the line eve ${eveManifest.version} bundles (${eveWorkflowCore})`,
+        ).toBe(false);
       });
 
       test("the world's specVersion falls inside the range this eve release enforces", () => {

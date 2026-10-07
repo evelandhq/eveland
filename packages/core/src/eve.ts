@@ -397,15 +397,21 @@ export const EVE_SESSION_BOUNDARY_EVENT_TYPES = [
  * `input.resolved` is what takes an approval-parked session back to running.
  * A connection sign-in waits on a person the same way (0.70 holds the turn
  * for it too), so it parks the session until `authorization.completed`.
+ * Answering one of several pending requests resolves only that one, and eve
+ * parks the turn again with `turn.waiting { on: "input" }`, so that event --
+ * read from the event's `data` -- puts the session back in waiting_approval.
  */
 export function sessionStatusFromEveEvent(
   type: string,
   currentStatus: string,
+  data?: unknown,
 ): "running" | "waiting_approval" | "waiting" | "completed" | "failed" | null {
   if (type === "session.started" || type === "turn.started") return "running";
   if (type === "input.requested" || type === "authorization.required") return "waiting_approval";
   if (type === "input.resolved" || type === "authorization.completed")
     return currentStatus === "waiting_approval" ? "running" : null;
+  if (type === "turn.waiting")
+    return isEveRecord(data) && data.on === "input" ? "waiting_approval" : null;
   if (type === "session.waiting")
     return currentStatus === "waiting_approval" ? "waiting_approval" : "waiting";
   if (type === "session.completed") return "completed";

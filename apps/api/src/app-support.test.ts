@@ -37,4 +37,22 @@ describe("projectPlaygroundStreamLine", () => {
     await expect(project("session.completed", "running")).resolves.toBe("completed");
     await expect(project("step.completed", "running")).resolves.toBe("running");
   });
+
+  test("parks a held turn again when it still waits on a person", async () => {
+    // A partial answer resolves one request, then eve re-parks the same turn
+    // with `turn.waiting { on: "input" }` while the others stay open.
+    const { store, completeSession } = recordingStore();
+    const line = JSON.stringify({
+      type: "turn.waiting",
+      data: { on: "input", sequence: 7, turnId: "turn_1" },
+    });
+
+    await expect(
+      projectPlaygroundStreamLine(line, "running", store, "sess_1", "eve_1"),
+    ).resolves.toBe("waiting_approval");
+    expect(completeSession).toHaveBeenCalledWith("sess_1", {
+      status: "waiting_approval",
+      eveSessionId: "eve_1",
+    });
+  });
 });

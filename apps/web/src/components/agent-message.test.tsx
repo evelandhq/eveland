@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 
-import type { EveDynamicToolPart, EveMessage, EveMessageInputRequest } from "eve/react";
+import type {
+  ConversationInput,
+  EveDynamicToolPart,
+  EveMessage,
+  EveMessageInputRequest,
+} from "eve/react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
@@ -39,15 +44,33 @@ function message(part: EveDynamicToolPart): EveMessage {
   return { id: "message-1", parts: [part], role: "assistant" };
 }
 
+const always = () => true;
+const noQuestions = () => [];
+
 function renderMessage(part: EveDynamicToolPart) {
   return render(
     <AgentMessage
-      canRespond
+      canRespond={always}
       isStreaming={false}
       message={message(part)}
       onInputResponses={() => undefined}
+      questionsFor={noQuestions}
     />,
   );
+}
+
+function question(requestId: string, prompt: string): ConversationInput {
+  return {
+    request: {
+      action: { callId: "call-1", kind: "tool-call", name: "deploy" },
+      kind: "question",
+      prompt,
+      requestId,
+    },
+    status: "open",
+    stepIndex: 0,
+    turnId: "turn-1",
+  } as unknown as ConversationInput;
 }
 
 describe("AgentMessage", () => {
@@ -59,10 +82,11 @@ describe("AgentMessage", () => {
 
     rerender(
       <AgentMessage
-        canRespond
+        canRespond={always}
         isStreaming={false}
         message={message(toolPart("approval-requested"))}
         onInputResponses={() => undefined}
+        questionsFor={noQuestions}
       />,
     );
 
@@ -74,13 +98,50 @@ describe("AgentMessage", () => {
 
     rerender(
       <AgentMessage
-        canRespond
+        canRespond={always}
         isStreaming={false}
         message={message(toolPart("approval-requested"))}
         onInputResponses={() => undefined}
+        questionsFor={noQuestions}
       />,
     );
 
     expect(trigger().hasAttribute("data-panel-open")).toBe(false);
+  });
+
+  test("shows every question a tool call asks at once", () => {
+    // The part keeps only the latest request; both questions must be answerable.
+    render(
+      <AgentMessage
+        canRespond={always}
+        isStreaming={false}
+        message={message(toolPart("input-available"))}
+        onInputResponses={() => undefined}
+        questionsFor={(callId) =>
+          callId === "call-1"
+            ? [question("q-1", "Which region?"), question("q-2", "Which day?")]
+            : []
+        }
+      />,
+    );
+
+    expect(screen.getByText("Which region?")).toBeDefined();
+    expect(screen.getByText("Which day?")).toBeDefined();
+  });
+
+  test("disables an approval that is no longer open", () => {
+    // eve 0.72 withdraws an approval when its turn is cancelled and renders it
+    // as denied; the buttons of a closed request must not stay live.
+    render(
+      <AgentMessage
+        canRespond={(requestId) => requestId !== "request-1"}
+        isStreaming={false}
+        message={message(toolPart("approval-requested"))}
+        onInputResponses={() => undefined}
+        questionsFor={noQuestions}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Approve" }).hasAttribute("disabled")).toBe(true);
   });
 });

@@ -274,7 +274,7 @@ export async function projectPlaygroundStreamLine(
   const type = getEveString(event, "type");
   // The same projection the observed Session uses, so the Playground's eager
   // write never disagrees with what the Observer records for the same event.
-  const nextStatus = type ? sessionStatusFromEveEvent(type, currentStatus) : null;
+  const nextStatus = type ? sessionStatusFromEveEvent(type, currentStatus, event?.data) : null;
   if (!nextStatus) return currentStatus;
   await store
     .completeSession(platformSessionId, {

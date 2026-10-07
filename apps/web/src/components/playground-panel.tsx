@@ -41,12 +41,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { resetPlaygroundOnPageLeave } from "@/lib/client-api";
 import {
-  canAnswerInputRequests,
+  canAnswerInputRequest,
   clearPendingSessionCreate,
   createPlaygroundTurnCanceller,
   createPlaygroundMessage,
   isDefiniteCreateRejection,
   peekPendingSessionCreate,
+  questionsForCall,
   resumePendingPlaygroundTurn,
   stashPendingSessionCreate,
   type PendingSessionCreate,
@@ -297,12 +298,15 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               isPendingAssistantShell &&
               message.id === lastMessage?.id ? null : (
                 <AgentMessage
-                  canRespond={canAnswerInputRequests(agent.status)}
+                  canRespond={(requestId) =>
+                    canAnswerInputRequest(agent.status, agent.data.inputs, requestId)
+                  }
                   isStreaming={
                     agent.status === "streaming" && index === agent.data.messages.length - 1
                   }
                   key={message.id}
                   message={message}
+                  questionsFor={(callId) => questionsForCall(agent.data.inputs, callId)}
                   onInputResponses={async (inputResponses) => {
                     setComposerError(null);
                     try {
