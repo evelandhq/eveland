@@ -16,7 +16,7 @@
 //     runtime -- not just the injected modules in isolation -- runs the
 //     redirected sandbox on bwrap for a real turn, with the authored
 //     preparation and selector applied.
-// Plain tsx script (no vitest) run against the real store + processNextJob
+// Plain tsx script (no vitest) run against the real store + job-runner
 // pipeline with EVELAND_RUNTIME=systemd, exactly as systemd-smoke.ts does.
 import assert from "node:assert/strict";
 import { execa } from "execa";
@@ -29,7 +29,7 @@ import type { DeploymentRecord } from "@evelandhq/core/contracts";
 import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import { materializeEveFixtureDirectory } from "@evelandhq/core/server/eve-fixture";
 import { createPgliteTestStore } from "@evelandhq/db/test";
-import { processNextJob } from "../jobs/process.js";
+import { describeProjectJobs, runExpectedJob } from "./job-steps.test-support.js";
 import { resolveRuntimeKind } from "../runtime/select.js";
 import {
   resolveProjectSandboxCacheDir,
@@ -44,7 +44,7 @@ if (resolveRuntimeKind(process.env) !== "systemd") {
 }
 
 // Matches jobs/process.ts's own dev fallback. Passed explicitly to every
-// processNextJob call below so secret encryption/decryption never depends on
+// job run below so secret encryption/decryption never depends on
 // an ambient APP_SECRET_KEY the VM shell may or may not have set.
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000";
 const DEPLOY_ACCESS_GROUP = process.env.EVELAND_APP_USER ?? "eveland-app";
@@ -500,18 +500,24 @@ await store.saveSharedAgentEnvironment({
 let deployment: DeploymentRecord | null = null;
 
 try {
-  if (!(await processNextJob(store, "e2e-worker", { appSecretKey: APP_SECRET_KEY }))) {
-    throw new Error("import_source job did not run.");
-  }
+  await runExpectedJob(
+    store,
+    "e2e-worker",
+    { projectId: project.id, type: "import_source" },
+    { appSecretKey: APP_SECRET_KEY },
+  );
   const imported = await store.getProject(project.id);
   if (imported?.status !== "imported")
     throw new Error(`Import failed: ${JSON.stringify(imported)}`);
 
   // --- Deploy 1 --------------------------------------------------------
-  await store.enqueueJob(project.id, "build_deploy");
-  if (!(await processNextJob(store, "e2e-worker", { appSecretKey: APP_SECRET_KEY }))) {
-    throw new Error("build_deploy job did not run (first deploy).");
-  }
+  const firstBuild = await store.enqueueJob(project.id, "build_deploy");
+  await runExpectedJob(
+    store,
+    "e2e-worker",
+    { projectId: project.id, type: "build_deploy", id: firstBuild.id },
+    { appSecretKey: APP_SECRET_KEY },
+  );
 
   const deployedOnce = await store.getProject(project.id);
   deployment = await store.getCurrentDeployment(project.id);
@@ -614,26 +620,32 @@ try {
   const deploymentIdsBeforeRedeploy = new Set(
     (await store.listDeployments(project.id)).map((item) => item.id),
   );
-  await store.enqueueJob(project.id, "import_source", {
+  const syncImport = await store.enqueueJob(project.id, "import_source", {
     sourcePath: syncedSourcePath,
     deployAfterImport: true,
   });
-  if (!(await processNextJob(store, "e2e-worker", { appSecretKey: APP_SECRET_KEY }))) {
-    throw new Error("import_source job did not run (sync and deploy).");
-  }
-  if (!(await processNextJob(store, "e2e-worker", { appSecretKey: APP_SECRET_KEY }))) {
-    throw new Error("build_deploy job did not run (sync and deploy).");
-  }
+  await runExpectedJob(
+    store,
+    "e2e-worker",
+    { projectId: project.id, type: "import_source", id: syncImport.id },
+    { appSecretKey: APP_SECRET_KEY },
+  );
+  await runExpectedJob(
+    store,
+    "e2e-worker",
+    { projectId: project.id, type: "build_deploy", parentJobId: syncImport.id },
+    { appSecretKey: APP_SECRET_KEY },
+  );
 
   const deployedTwice = await store.getProject(project.id);
   const newDeployments = (await store.listDeployments(project.id)).filter(
     (item) => !deploymentIdsBeforeRedeploy.has(item.id),
   );
-  assert.equal(
-    newDeployments.length,
-    1,
-    "redeploy must create exactly one concurrent preview Deployment",
-  );
+  if (newDeployments.length !== 1) {
+    throw new Error(
+      `redeploy must create exactly one concurrent preview Deployment, got ${newDeployments.length}.\n${await describeProjectJobs(store, project.id)}`,
+    );
+  }
   const deployment2 = newDeployments[0];
   if (deployedTwice?.deploymentStatus !== "running" || deployment2?.status !== "running") {
     const logs = await store.listLogs(project.id, "runtime");

@@ -1,7 +1,7 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { createApp } from "../../apps/api/src/app.js";
-import { processNextJob } from "../../apps/worker/src/jobs/process.js";
+import { runClaimedJob } from "../../apps/worker/src/jobs/process.js";
 import {
   spawnDispatcherApp,
   waitForDispatcherRegistration,
@@ -26,6 +26,8 @@ import pg from "../../apps/worker/node_modules/pg/lib/index.js";
  * Call it BEFORE the first build/deploy: it exports the scratch World URL
  * into process.env so the worker paths inject it into the Release.
  */
+const PUMPED_JOB_TYPES = ["ensure_deployment_running", "restart_deployment"] as const;
+
 export type WorkflowRuntime = {
   apiPort: number;
   worldUrl: string;
@@ -119,11 +121,16 @@ export async function startWorkflowRuntime(
     void (async () => {
       try {
         for (;;) {
-          const processed = await processNextJob(store, "workflow-runtime-pump", {
-            appSecretKey: process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000",
-            allowedJobTypes: ["ensure_deployment_running", "restart_deployment"],
+          // Filtered in the claim itself: once claimed, a job cannot be put
+          // back, and a pump that took the smoke's import_source/build_deploy
+          // would run it behind the smoke's back.
+          const job = await store.claimNextJob("workflow-runtime-pump", undefined, {
+            types: PUMPED_JOB_TYPES,
           });
-          if (!processed) break;
+          if (!job) break;
+          await runClaimedJob(store, job, {
+            appSecretKey: process.env.APP_SECRET_KEY ?? "eveland-dev-secret-key-000000000",
+          });
         }
       } catch (error) {
         log(`activation pump error: ${error instanceof Error ? error.message : String(error)}`);

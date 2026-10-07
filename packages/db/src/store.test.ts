@@ -596,6 +596,41 @@ describe("SQL Store jobs", () => {
     ).rejects.toThrow("Heavy-job concurrency cap must be a positive integer.");
   });
 
+  test("claims only the requested job types and leaves the rest queued", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Typed Claim Agent", importKind: "zip" });
+    const otherProject = await store.createProject({ name: "Other Agent", importKind: "zip" });
+    await store.enqueueJob(otherProject.id, "restart_deployment", { deploymentId: "dep_other" });
+
+    // Both imports are older, and nothing else runs, yet a typed claimer
+    // reaches past them to the only job of a type it was given.
+    await expect(
+      store.claimNextJob("activation-pump", undefined, {
+        types: ["ensure_deployment_running", "restart_deployment"],
+      }),
+    ).resolves.toMatchObject({ projectId: otherProject.id, type: "restart_deployment" });
+    await expect(
+      store.claimNextJob("activation-pump", undefined, {
+        types: ["ensure_deployment_running", "restart_deployment"],
+      }),
+    ).resolves.toBeNull();
+    await expect(store.listProjectJobs(project.id)).resolves.toMatchObject([
+      { type: "import_source", status: "queued" },
+    ]);
+    await expect(store.claimNextJob("worker-a")).resolves.toMatchObject({
+      projectId: project.id,
+      type: "import_source",
+    });
+  });
+
+  test("rejects an empty job-type filter instead of silently claiming everything", async () => {
+    const store = createTestStore();
+
+    await expect(store.claimNextJob("worker-a", undefined, { types: [] })).rejects.toThrow(
+      "Job-type claim filter must name at least one type.",
+    );
+  });
+
   test("recovers a running job after its lease becomes stale", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Recover Job Agent", importKind: "zip" });
