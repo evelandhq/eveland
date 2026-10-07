@@ -65,17 +65,15 @@ peerDependencyRules:
 # The @workflow/* entries are TWO reviewed graphs that coexist on purpose.
 # `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
-# before the shared World and never selected for a new build. The beta.23/10/
-# 47/38 line is what `@evelandhq/workflow-world` 0.23.0 bundles -- the set eve
-# moved to at 0.66.3 and 0.67.0 re-bundled unchanged; 0.67.2 moved eve's own
-# bundle one step further (beta.57/24/39/48, spec constants untouched), which
-# is what 0.68.0 carries. 0.70.2 moved eve to the stable 5.0.1 release of the
-# same family (core/world/world-local/errors 5.0.1, serde 5.0.0; spec
-# constants untouched, the World interface only gains optional members), which
-# is what 0.72.1 carries. eve compares only the major and prerelease tag of
-# the World's declaration, and a stable version on either side matches any
-# prerelease of its major, so the same beta-declaring World serves the whole
-# window. The beta.38 `@workflow/world` reports
+# before the shared World and never selected for a new build. The stable
+# 5.0.1 line (world/world-local/errors 5.0.1, utils 5.0.0) is what
+# `@evelandhq/workflow-world` 0.24.0 pins -- the release of the family eve
+# moved to at 0.70.2 (spec constants untouched, the World interface only gains
+# optional members), which is what 0.72.1 carries; 0.68.0 carries the
+# beta.57/24/39/48 set 0.67.2 moved to. eve compares only the major and
+# prerelease tag of the World's declaration, and a stable version on either
+# side matches any prerelease of its major, so the same World serves the whole
+# window. The 5.0.1 `@workflow/world` reports
 # SPEC_VERSION_CURRENT 8 (the hook force-claim reader contract), but since
 # 0.23.0 the shared World DECLARES `Math.min(mintedSpecVersion(), 7)` -- the
 # sealed log, or 6 for a Deployment that opts out with WORKFLOW_SEALED_LOG=0
@@ -94,11 +92,11 @@ minimumReleaseAgeExclude:
   - "@ai-sdk/provider@4.0.17"
   - ai@7.0.105
   - "@workflow/errors@5.0.0-beta.17"
-  - "@workflow/errors@5.0.0-beta.23"
+  - "@workflow/errors@5.0.1"
   - "@workflow/utils@5.0.0-beta.8"
-  - "@workflow/utils@5.0.0-beta.10"
+  - "@workflow/utils@5.0.0"
   - "@workflow/world-local@5.0.0-beta.36"
-  - "@workflow/world-local@5.0.0-beta.47"
+  - "@workflow/world-local@5.0.1"
   - "@workflow/world-postgres@5.0.0-beta.34"
   - "@workflow/world@5.0.0-beta.27"
-  - "@workflow/world@5.0.0-beta.38"
+  - "@workflow/world@5.0.1"
