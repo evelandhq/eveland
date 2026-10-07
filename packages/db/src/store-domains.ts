@@ -535,12 +535,15 @@ export interface JobStore {
    * At most one job runs per project; when `maxConcurrentHeavyJobs` is set, a
    * HEAVY_JOB_TYPES candidate is additionally claimable only while fewer heavy
    * jobs than the cap are running — light jobs skip past capped-out builds.
-   * Omitting the option leaves heavy jobs uncapped.
+   * Omitting the option leaves heavy jobs uncapped. `types` restricts the
+   * claim to those job types (the integration harnesses' activation pump must
+   * never take the import/build jobs the harness itself drives); omitting it
+   * claims any type.
    */
   claimNextJob(
     workerId: string,
     now?: Date,
-    options?: { maxConcurrentHeavyJobs?: number },
+    options?: { maxConcurrentHeavyJobs?: number; types?: readonly JobType[] },
   ): Promise<Job | null>;
   heartbeatJob(jobId: string, attempt: number, now?: Date): Promise<boolean>;
   replaceJobPayload<Type extends JobType>(

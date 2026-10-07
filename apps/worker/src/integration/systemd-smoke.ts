@@ -9,10 +9,10 @@ import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { processNextJob } from "../jobs/process.js";
 import { sweepReleaseRetention } from "../runtime/release-reaper.js";
 import { createRuntimeAdapterFromEnv, resolveRuntimeKind } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
+import { describeProjectJobs, runExpectedJob } from "./job-steps.test-support.js";
 
 async function pathExists(target: string): Promise<boolean> {
   return await stat(target).then(
@@ -61,15 +61,17 @@ const { store, close } = await createPgliteTestStore();
 const project = await store.createProject({ name: "Systemd Smoke", importKind: "zip", sourcePath });
 
 try {
-  if (!(await processNextJob(store, "smoke-worker")))
-    throw new Error("import_source job did not run.");
+  await runExpectedJob(store, "smoke-worker", { projectId: project.id, type: "import_source" });
   const imported = await store.getProject(project.id);
   if (imported?.status !== "imported")
     throw new Error(`Import failed: ${JSON.stringify(imported)}`);
 
-  await store.enqueueJob(project.id, "build_deploy");
-  if (!(await processNextJob(store, "smoke-worker")))
-    throw new Error("build_deploy job did not run.");
+  const firstBuild = await store.enqueueJob(project.id, "build_deploy");
+  await runExpectedJob(store, "smoke-worker", {
+    projectId: project.id,
+    type: "build_deploy",
+    id: firstBuild.id,
+  });
 
   const deployed = await store.getProject(project.id);
   const deployment = await store.getCurrentDeployment(project.id);
@@ -90,9 +92,12 @@ try {
     await execa("systemctl", ["show", "--property=MainPID", "--value", unit])
   ).stdout.trim();
 
-  await store.enqueueJob(project.id, "restart_deployment");
-  if (!(await processNextJob(store, "smoke-worker")))
-    throw new Error("restart_deployment job did not run.");
+  const restart = await store.enqueueJob(project.id, "restart_deployment");
+  await runExpectedJob(store, "smoke-worker", {
+    projectId: project.id,
+    type: "restart_deployment",
+    id: restart.id,
+  });
 
   const restarted = await store.getProject(project.id);
   if (restarted?.deploymentStatus !== "running") {
@@ -131,15 +136,20 @@ try {
   const knownDeploymentIds = new Set([deployment.id]);
   let newestDeployment = deployment;
   for (let index = 0; index < 3; index += 1) {
-    await store.enqueueJob(project.id, "build_deploy");
-    if (!(await processNextJob(store, "smoke-worker"))) {
-      throw new Error(`retention build_deploy ${index + 2} did not run.`);
-    }
+    const retentionBuild = await store.enqueueJob(project.id, "build_deploy");
+    await runExpectedJob(store, "smoke-worker", {
+      projectId: project.id,
+      type: "build_deploy",
+      id: retentionBuild.id,
+    });
     const created = (await store.listDeployments(project.id)).find(
       (entry) => !knownDeploymentIds.has(entry.id),
     );
-    if (!created)
-      throw new Error(`retention build_deploy ${index + 2} did not record a new Deployment.`);
+    if (!created) {
+      throw new Error(
+        `retention build_deploy ${index + 2} did not record a new Deployment.\n${await describeProjectJobs(store, project.id)}`,
+      );
+    }
     knownDeploymentIds.add(created.id);
     newestDeployment = created;
   }
@@ -161,9 +171,10 @@ try {
   if (enqueuedArchives !== 1) {
     throw new Error(`Expected one automatic archive job, got ${enqueuedArchives}.`);
   }
-  if (!(await processNextJob(store, "smoke-worker"))) {
-    throw new Error("automatic archive_deployment job did not run.");
-  }
+  await runExpectedJob(store, "smoke-worker", {
+    projectId: project.id,
+    type: "archive_deployment",
+  });
 
   const archivedDeployment = await store.getDeployment(deployment.id);
   if (archivedDeployment?.status !== "archived") {
@@ -187,9 +198,12 @@ try {
   // --- delete_project: prove it stops the unit, removes its env file, and drops the project.
   // This replaces the manual `systemctl stop`/`reset-failed` teardown this script used to do
   // by hand -- deletion IS the teardown now, exercised through the real job pipeline. ---
-  await store.enqueueJob(project.id, "delete_project");
-  if (!(await processNextJob(store, "smoke-worker")))
-    throw new Error("delete_project job did not run.");
+  const deletion = await store.enqueueJob(project.id, "delete_project");
+  await runExpectedJob(store, "smoke-worker", {
+    projectId: project.id,
+    type: "delete_project",
+    id: deletion.id,
+  });
 
   const unitStatus = await execa("systemctl", ["is-active", unit], { reject: false });
   if (unitStatus.exitCode === 0)
@@ -240,13 +254,12 @@ try {
     importKind: "zip",
     sourcePath: failSourcePath,
   });
-  if (!(await processNextJob(store, "smoke-worker")))
-    throw new Error("fail-fixture import_source job did not run.");
+  await runExpectedJob(store, "smoke-worker", { projectId: failProject.id, type: "import_source" });
   const failImported = await store.getProject(failProject.id);
   if (failImported?.status !== "imported")
     throw new Error(`Fail-fixture import failed: ${JSON.stringify(failImported)}`);
 
-  await store.enqueueJob(failProject.id, "build_deploy");
+  const failBuild = await store.enqueueJob(failProject.id, "build_deploy");
 
   // build_deploy reads EVELAND_HEALTH_TIMEOUT_MS straight off process.env per call (see
   // jobs/process.ts), not from job options -- shrink it for just this one job so the
@@ -260,16 +273,17 @@ try {
   // build_deploy only calls allocateAvailableHostPort for a *new* project (no
   // currentDeployment yet), which this fail-fixture is, so injecting this wins outright.
   const failHostPort = 44100;
-  let failDeployRan: boolean;
   try {
-    failDeployRan = await processNextJob(store, "smoke-worker", {
-      allocateHostPort: () => failHostPort,
-    });
+    await runExpectedJob(
+      store,
+      "smoke-worker",
+      { projectId: failProject.id, type: "build_deploy", id: failBuild.id, status: "failed" },
+      { allocateHostPort: () => failHostPort },
+    );
   } finally {
     if (previousHealthTimeoutMs === undefined) delete process.env.EVELAND_HEALTH_TIMEOUT_MS;
     else process.env.EVELAND_HEALTH_TIMEOUT_MS = previousHealthTimeoutMs;
   }
-  if (!failDeployRan) throw new Error("build_deploy (expected-fail) job did not run.");
 
   const failedProject = await store.getProject(failProject.id);
   if (failedProject?.status !== "failed" || failedProject.deploymentStatus !== "failed") {
@@ -348,9 +362,12 @@ try {
   // Re-proves delete_project on a project that never reached recordDeployment (no
   // deployment row at all, taking the `if (deployment)` branch's else path in
   // jobs/process.ts's delete_project case).
-  await store.enqueueJob(failProject.id, "delete_project");
-  if (!(await processNextJob(store, "smoke-worker")))
-    throw new Error("delete_project (fail fixture) job did not run.");
+  const failDeletion = await store.enqueueJob(failProject.id, "delete_project");
+  await runExpectedJob(store, "smoke-worker", {
+    projectId: failProject.id,
+    type: "delete_project",
+    id: failDeletion.id,
+  });
   const deletedFailProject = await store.getProject(failProject.id);
   if (deletedFailProject)
     throw new Error(

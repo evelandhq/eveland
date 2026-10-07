@@ -226,6 +226,17 @@ export function createPostgresJobSourceStore({
       if (heavyCap !== undefined && (!Number.isInteger(heavyCap) || heavyCap < 1)) {
         throw new Error("Heavy-job concurrency cap must be a positive integer.");
       }
+      if (options.types !== undefined && options.types.length === 0) {
+        throw new Error("Job-type claim filter must name at least one type.");
+      }
+      const typeFilterClause =
+        options.types === undefined
+          ? sql``
+          : sql`
+                  and candidate.type in (${sql.join(
+                    options.types.map((type) => sql`${type}`),
+                    sql`, `,
+                  )})`;
       const heavyTypes = sql.join(
         HEAVY_JOB_TYPES.map((type) => sql`${type}`),
         sql`, `,
@@ -316,7 +327,7 @@ export function createPostgresJobSourceStore({
                   and (
                     project.deletion_status is distinct from 'deleting'
                     or candidate.type = 'delete_project'
-                  )${heavyCapClause}
+                  )${heavyCapClause}${typeFilterClause}
                 order by
                   case when candidate.type in (${latencySensitiveTypes}) then 0 else 1 end asc,
                   candidate.created_at asc, candidate.sequence asc
