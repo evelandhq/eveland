@@ -144,7 +144,8 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
  * declared `mintedSpecVersion()` as upstream recommends: the sealed log (7) by
  * default, or 6 when `WORKFLOW_SEALED_LOG=0` opts a Deployment out. Since
  * 0.23.0 it caps that at `SPEC_VERSION_SUPPORTS_SEALED_LOG`: its
- * `@workflow/world` beta.38 (eve 0.66.3) mints 8, the hook force-claim reader
+ * `@workflow/world` beta.38 (eve 0.66.3), like the stable 5.0.1 that 0.24.0
+ * pins, mints 8, the hook force-claim reader
  * contract, and a runtime refuses a World above its ceiling at startup, which
  * would shut out every eve before 0.66.3 -- 0.62.0 among them. eve gates on
  * the declared number, so every range check below has to use this one.
@@ -188,14 +189,14 @@ function declaredWorldSpecVersion(): number {
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.23.0");
+    expect(worldManifest.version).toBe("0.24.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and
     // the one the shared World bundles. See the comment above the list.
     const workspace = readSource("pnpm-workspace.yaml");
     expect(workspace).toContain('  - "@workflow/utils@5.0.0-beta.8"');
-    expect(workspace).toContain('  - "@workflow/utils@5.0.0-beta.10"');
+    expect(workspace).toContain('  - "@workflow/utils@5.0.0"');
 
     const { SPEC_VERSION_CURRENT: sharedSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [worldRoot] }),
@@ -204,7 +205,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       require.resolve("@workflow/world", { paths: [postgresWorldRoot] }),
     ) as { SPEC_VERSION_CURRENT: number };
     // Capability and declaration, asserted separately because they differ
-    // again: the shared World's `@workflow/world` beta.38 can write spec 8
+    // again: the shared World's `@workflow/world` 5.0.1 can write spec 8
     // (the hook force-claim reader contract eve 0.66.3 brought in), while the
     // World declares the sealed log, 7, which every line in the window reads
     // (0.68.0 and 0.72.1 accept 6 through 8). The legacy World
