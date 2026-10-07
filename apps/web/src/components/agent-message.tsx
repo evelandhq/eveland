@@ -1,10 +1,13 @@
 "use client";
 
 // Ported from eve's generated Web Chat (apps/docs/registry/channel/web/app/
-// _components/agent-message.tsx @ 659774fdf841e419498552c8a3565d40f5298e0f).
-// Keep structural drift minimal so upstream refinements stay diffable.
+// _components/agent-message.tsx @ 659774fdf841e419498552c8a3565d40f5298e0f),
+// with the per-request `canRespond` and `questionsFor` of the template eve
+// 0.72.1 scaffolds. Keep structural drift minimal so upstream refinements stay
+// diffable.
 
 import type {
+  ConversationInput,
   EveAuthorizationPart,
   EveDynamicToolPart,
   EveMessage,
@@ -58,11 +61,13 @@ export function AgentMessage({
   isStreaming,
   message,
   onInputResponses,
+  questionsFor,
 }: {
-  readonly canRespond: boolean;
+  readonly canRespond: (requestId: string) => boolean;
   readonly isStreaming: boolean;
   readonly message: EveMessage;
   readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
+  readonly questionsFor: (callId: string) => readonly ConversationInput[];
 }) {
   const lastTextIndex = message.parts.reduce(
     (last, part, index) => (part.type === "text" ? index : last),
@@ -85,6 +90,7 @@ export function AgentMessage({
               key={partKey(part, index)}
               onInputResponses={onInputResponses}
               part={part}
+              questionsFor={questionsFor}
               showCaret={isStreaming && message.role === "assistant" && index === lastTextIndex}
             />
           ),
@@ -98,11 +104,13 @@ function AgentMessagePart({
   canRespond,
   onInputResponses,
   part,
+  questionsFor,
   showCaret,
 }: {
-  readonly canRespond: boolean;
+  readonly canRespond: (requestId: string) => boolean;
   readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
   readonly part: EveMessagePart;
+  readonly questionsFor: (callId: string) => readonly ConversationInput[];
   readonly showCaret: boolean;
 }) {
   switch (part.type) {
@@ -126,15 +134,21 @@ function AgentMessagePart({
     case "authorization":
       return <AuthorizationPrompt part={part} />;
     case "dynamic-tool": {
-      const inputRequest = part.toolMetadata?.eve?.inputRequest;
-      if (inputRequest?.kind === "question") {
+      // A tool call can ask several questions at once, and its part holds only the latest.
+      const questions = questionsFor(part.toolCallId);
+      if (questions.length > 0) {
         return (
-          <QuestionRequest
-            canRespond={canRespond}
-            inputRequest={inputRequest}
-            inputResponse={part.toolMetadata?.eve?.inputResponse}
-            onInputResponses={onInputResponses}
-          />
+          <div className="space-y-4">
+            {questions.map(({ request, response }) => (
+              <QuestionRequest
+                canRespond={canRespond(request.requestId)}
+                inputRequest={request}
+                inputResponse={response}
+                key={request.requestId}
+                onInputResponses={onInputResponses}
+              />
+            ))}
+          </div>
         );
       }
 
@@ -150,7 +164,7 @@ function DynamicToolPart({
   onInputResponses,
   part,
 }: {
-  readonly canRespond: boolean;
+  readonly canRespond: (requestId: string) => boolean;
   readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
   readonly part: EveDynamicToolPart;
 }) {
@@ -432,7 +446,7 @@ function InputRequestActions({
   onInputResponses,
   part,
 }: {
-  readonly canRespond: boolean;
+  readonly canRespond: (requestId: string) => boolean;
   readonly onInputResponses: (responses: readonly AgentInputResponse[]) => void | Promise<void>;
   readonly part: EveDynamicToolPart;
 }) {
@@ -457,7 +471,7 @@ function InputRequestActions({
         <div className="flex flex-wrap gap-2">
           {inputRequest.options?.map((option) => (
             <Button
-              disabled={!canRespond}
+              disabled={!canRespond(inputRequest.requestId)}
               key={option.id}
               onClick={() => {
                 void onInputResponses([

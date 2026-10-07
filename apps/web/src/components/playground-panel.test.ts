@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 import * as ClientApi from "../lib/client-api.js";
+import type { ConversationInput } from "eve/react";
 import {
+  canAnswerInputRequest,
   canAnswerInputRequests,
   cancelPlaygroundTurn,
   clearPendingSessionCreate,
@@ -8,6 +10,7 @@ import {
   createPlaygroundMessage,
   isDefiniteCreateRejection,
   peekPendingSessionCreate,
+  questionsForCall,
   resumePendingPlaygroundTurn,
   stashPendingSessionCreate,
 } from "../lib/playground-session.js";
@@ -26,7 +29,56 @@ describe("Playground input-request answering", () => {
     expect(canAnswerInputRequests("submitted")).toBe(false);
     expect(canAnswerInputRequests("resuming")).toBe(false);
   });
+
+  test("answers only a request that is still open", () => {
+    // eve 0.72 withdraws pending input when a turn is cancelled or cleared and
+    // renders a withdrawn approval as denied; its buttons must not stay live.
+    const inputs = {
+      open: input("open", { kind: "tool-approval", callId: "call_1" }),
+      settled: input("settled", { kind: "tool-approval", callId: "call_1" }, "settled"),
+      responded: input("responded", { kind: "question", callId: "call_1" }, "responded"),
+    };
+    expect(canAnswerInputRequest("streaming", inputs, "open")).toBe(true);
+    expect(canAnswerInputRequest("streaming", inputs, "settled")).toBe(false);
+    expect(canAnswerInputRequest("streaming", inputs, "responded")).toBe(false);
+    expect(canAnswerInputRequest("streaming", inputs, "missing")).toBe(false);
+    expect(canAnswerInputRequest("resuming", inputs, "open")).toBe(false);
+  });
+
+  test("lists every question a tool call asks, not only the latest", () => {
+    // A tool call can ask several questions at once (parallel `ctx.ask`), and
+    // its message part keeps only the latest request.
+    const inputs = {
+      q1: input("q1", { kind: "question", callId: "call_1" }),
+      q2: input("q2", { kind: "question", callId: "call_1" }),
+      approval: input("approval", { kind: "tool-approval", callId: "call_1" }),
+      other: input("other", { kind: "question", callId: "call_2" }),
+    };
+    expect(questionsForCall(inputs, "call_1").map(({ request }) => request.requestId)).toEqual([
+      "q1",
+      "q2",
+    ]);
+    expect(questionsForCall(inputs, "call_3")).toEqual([]);
+  });
 });
+
+function input(
+  requestId: string,
+  { kind, callId }: { kind: "question" | "tool-approval"; callId: string },
+  status: ConversationInput["status"] = "open",
+): ConversationInput {
+  return {
+    request: {
+      action: { callId, kind: "tool-call", name: "deploy" },
+      kind,
+      prompt: requestId,
+      requestId,
+    },
+    status,
+    stepIndex: 0,
+    turnId: "turn_1",
+  } as unknown as ConversationInput;
+}
 
 describe("Playground route-auth turn resume", () => {
   test("replays the interrupted session before re-sending the message", async () => {

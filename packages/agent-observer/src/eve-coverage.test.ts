@@ -60,7 +60,9 @@ describe("Eve observer hook compatibility matrix", () => {
       // re-verified 2026-10-02, only reordered imports and dropped the
       // background-task instrumentation, leaving this expression alone; 0.70.0,
       // re-verified the same day, only threads a trace-root session id through
-      // the runtime). If the pinned expression changes
+      // the runtime; 0.72.1, re-verified 2026-10-07, adds task-tool spans and
+      // an `isFrameworkTool` argument beside this expression and leaves it
+      // alone). If the pinned expression changes
       // shape in a new Eve line, re-verify model-capture.ts against it before
       // bumping the matrix. The minifier is free to rename the locals (0.44.0
       // emitted `r`, 0.44.3 `i`), so the pin captures identifiers instead of

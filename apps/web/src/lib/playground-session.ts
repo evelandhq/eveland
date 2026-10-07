@@ -1,4 +1,5 @@
 import type { FileUIPart, UserContent } from "ai";
+import type { ConversationInput } from "eve/react";
 import type {
   PendingPlaygroundMessage,
   PendingPlaygroundTurn,
@@ -140,6 +141,34 @@ export type PlaygroundAgentStatus = "ready" | "resuming" | "submitted" | "stream
  */
 export function canAnswerInputRequests(status: PlaygroundAgentStatus): boolean {
   return status !== "submitted" && status !== "resuming";
+}
+
+/**
+ * Whether one pending request can be answered now: the session must accept
+ * answers and the request must still be open. eve 0.72 withdraws pending input
+ * when a cancel, a context clear, or a finished workflow removes its owner,
+ * and renders a withdrawn approval as denied, so its buttons must not stay live.
+ */
+export function canAnswerInputRequest(
+  status: PlaygroundAgentStatus,
+  inputs: Readonly<Record<string, ConversationInput>>,
+  requestId: string,
+): boolean {
+  return canAnswerInputRequests(status) && inputs[requestId]?.status === "open";
+}
+
+/**
+ * Every question one tool call asks. A call can ask several at once (parallel
+ * `ctx.ask`), and its message part keeps only the latest request, so the
+ * conversation's inputs are the source of truth -- as in eve's Web Chat.
+ */
+export function questionsForCall(
+  inputs: Readonly<Record<string, ConversationInput>>,
+  callId: string,
+): readonly ConversationInput[] {
+  return Object.values(inputs).filter(
+    (input) => input.request.kind === "question" && input.request.action.callId === callId,
+  );
 }
 
 export async function cancelPlaygroundTurn(input: PlaygroundTurnCancellation): Promise<void> {

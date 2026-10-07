@@ -6,16 +6,17 @@ export const EVE_COMPATIBILITY_POLICY = {
       dependencyName: "eve-previous",
     },
     {
-      range: "0.70.x",
-      verifiedVersion: "0.70.0",
+      range: "0.72.x",
+      verifiedVersion: "0.72.1",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.70.0 (published 2026-10-02) entered the same
-  // day and 0.69 retired with it, one day after it had entered and before any
-  // Eveland release carried it. 0.68 stays because Eveland v0.60.0 ships it.
-  // 0.62 retired on 2026-10-02 when 0.69 entered: its Releases answer 409 on
-  // activation and their parked runs are settled, as 0.69's do now.
+  // A gapped two-line window: 0.72.1 (published 2026-10-07) entered the same
+  // day and 0.70 retired with it, five days after it had entered and before
+  // any Eveland release carried it. 0.68 stays because Eveland v0.60.0 ships
+  // it. 0.69 retired the same way on 2026-10-02, and 0.62 retired when 0.69
+  // entered: their Releases answer 409 on activation and their parked runs are
+  // settled.
   //
   // 0.69 was the largest protocol move since 0.31: background tasks are gone,
   // every workflow tool and agent call blocks its turn until it settles, the
@@ -23,16 +24,21 @@ export const EVE_COMPATIBILITY_POLICY = {
   // `task.settled`, and `agent.started`, a call's receipt is plain text, and a
   // question raised inside a running call parks the turn with `turn.waiting`
   // instead of ending it. 0.70 extends the hold to tool approvals and
-  // connection sign-ins (`turn.waiting` now says what it waits `on`), keeps the
-  // message stream at v26 (the client still reads v21-v25, so one Dashboard
-  // client serves both lines), moves the session checkpoint to 11 (eve rejects
-  // a handoff across the boundary; Eveland pins each session to its Deployment
-  // and never hands off), and only adds extension contract versions. Between
-  // 0.68 and 0.70 the discovery manifest (v15), the route set Eveland forwards
-  // (0.69 dropped the activity route), the bundled Workflow runtime, and the
+  // connection sign-ins (`turn.waiting` now says what it waits `on`). 0.71 and
+  // 0.72 keep the message stream at v26 (the client still reads v21-v25, so
+  // one Dashboard client serves both lines; `input.requested` only gains an
+  // optional `callId`), move the session checkpoint to 12 (eve rejects a
+  // handoff across the boundary; a session stays on its Deployment), bundle
+  // the stable @workflow 5.0.1 set instead of the 5.0.0 betas (the World
+  // interface only gains optional members and the spec range is unchanged),
+  // and drop the `tool` and `dynamicTool` extension contract versions built
+  // before 0.72 (`evaluate` became `decide`); Eveland's own extensions compile
+  // inside each Release. Approvals now answer only to the principal whose turn
+  // requested them. Between 0.68 and 0.72 the discovery manifest (v15), the
+  // route set Eveland forwards (0.69 dropped the activity route), and the
   // sandbox provider API are unchanged. The range is the union of the two
-  // contiguous runs, never the hull, which would admit 0.69.
-  peerDependencyRange: ">=0.68.0 <0.69.0 || >=0.70.0 <0.71.0",
+  // contiguous runs, never the hull, which would admit 0.69 through 0.71.
+  peerDependencyRange: ">=0.68.0 <0.69.0 || >=0.72.0 <0.73.0",
 } as const;
 
 export type SupportedEveVersionRange =

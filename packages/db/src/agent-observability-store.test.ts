@@ -404,6 +404,34 @@ describe("Agent observability ingestion repository", () => {
     },
   );
 
+  test("keeps a held turn waiting for approval after a partial answer", async () => {
+    // Answering one of two pending requests resolves only that one; eve then
+    // re-parks the same turn with `turn.waiting { on: "input" }`.
+    const { store, projectId, deploymentId } = await createStore();
+    const events = [
+      { type: "turn.started", data: { turnId: "turn_two" } },
+      { type: "input.requested", data: { turnId: "turn_two", requests: [{ requestId: "q_1" }] } },
+      { type: "input.requested", data: { turnId: "turn_two", requests: [{ requestId: "q_2" }] } },
+      {
+        type: "input.resolved",
+        data: { turnId: "turn_two", resolutions: [{ requestId: "q_1", outcome: "answered" }] },
+      },
+      { type: "turn.waiting", data: { on: "input", turnId: "turn_two", sequence: 5 } },
+    ];
+    for (const [index, event] of events.entries()) {
+      await store.ingestAgentEvent(
+        envelope(deploymentId, {
+          telemetryEventId: `partial-${index}`,
+          sourceSequence: index + 1,
+          event,
+        }),
+      );
+    }
+
+    const [session] = await store.listSessions(projectId);
+    expect(session).toMatchObject({ status: "waiting_approval", completedAt: null });
+  });
+
   test("projects an unresolved HITL request as waiting for approval", async () => {
     const { store, projectId, deploymentId } = await createStore();
 

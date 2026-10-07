@@ -357,6 +357,24 @@ describe("eve event projections", () => {
     expect(sessionStatusFromEveEvent("authorization.completed", "waiting")).toBeNull();
   });
 
+  test("keeps a session parked while a held turn still waits on a person", () => {
+    const { sessionStatusFromEveEvent, scheduleExecutionStatusFromEveEvent } = Eve;
+    // Answering one of several pending requests resolves it, then eve parks
+    // the same turn again with `turn.waiting { on: "input" }` (0.70 for
+    // approvals, 0.70.3 for questions); the session still waits on a person.
+    let status = sessionStatusFromEveEvent("input.requested", "running")!;
+    status = sessionStatusFromEveEvent("input.requested", status)!;
+    status = sessionStatusFromEveEvent("input.resolved", status)!;
+    expect(status).toBe("running");
+    status = sessionStatusFromEveEvent("turn.waiting", status, { on: "input", turnId: "t" })!;
+    expect(status).toBe("waiting_approval");
+    expect(scheduleExecutionStatusFromEveEvent("turn.waiting", status)).toBe("parked");
+    // A turn that waits on its own tasks keeps running, and an event without
+    // its payload projects nothing.
+    expect(sessionStatusFromEveEvent("turn.waiting", "running", { on: "tasks" })).toBeNull();
+    expect(sessionStatusFromEveEvent("turn.waiting", "running")).toBeNull();
+  });
+
   test("renders the Session failure line from the boundary payload", () => {
     const { sessionErrorFromEveEvent } = Eve;
     expect(sessionErrorFromEveEvent("session.failed", { message: "boom" })).toBe("boom");
