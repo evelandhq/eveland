@@ -116,11 +116,11 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(false);
     expect(result.eveVersion).toBe("0.22.6");
     expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.68.x or 0.72.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.68.x or 0.73.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
     );
   });
 
-  test("accepts dependency declarations contained inside the 0.68/0.72 compatibility window", () => {
+  test("accepts dependency declarations contained inside the 0.68/0.73 compatibility window", () => {
     for (const version of [
       "0.68.0",
       "~0.68.0",
@@ -128,20 +128,19 @@ describe("inspectEveProject", () => {
       "0.68",
       "0.68.x",
       "0.68.*",
-      "0.72.0",
-      "0.72.1",
-      "~0.72.1",
-      "^0.72.1",
-      "0.72",
-      "0.72.x",
-      "0.72.*",
+      "0.73.0",
+      "~0.73.0",
+      "^0.73.0",
+      "0.73",
+      "0.73.x",
+      "0.73.*",
     ]) {
       expect(isSupportedEveDependency(version)).toBe(true);
     }
     // The window is a set of verified lines, not "everything at or above the
-    // floor": 0.70.x sits inside the hull but retired on 2026-10-07 when 0.72
-    // replaced it, before any release carried it; 0.71.x was skipped the same
-    // day; 0.69.x retired on 2026-10-02 when 0.70 replaced it, the same way;
+    // floor": 0.72.x sits inside the hull but retired on 2026-10-08 when 0.73
+    // replaced it, before any release carried it; 0.70.x retired the same way
+    // on 2026-10-07 when 0.72 replaced it, and 0.71.x was skipped that day; 0.69.x retired on 2026-10-02 when 0.70 replaced it, the same way;
     // 0.62.x is below the floor
     // (retired the same day when 0.69 entered), 0.58.x retired on 2026-09-23 when the window slid to 0.62,
     // 0.55.x retired on 2026-09-19 (when 0.62 entered), 0.54.x
@@ -155,7 +154,7 @@ describe("inspectEveProject", () => {
     // 0.65.x sit inside the hull but were skipped on 2026-09-23 and
     // 2026-09-24, 0.66.x retired on 2026-09-26 two days after it entered (no
     // release carried it), 0.67.x retired the same way on 2026-09-29, and
-    // 0.73.x is not admitted before it has passed the matrix.
+    // 0.74.x is not admitted before it has passed the matrix.
     for (const version of [
       "0.30.8",
       "0.31.3",
@@ -189,6 +188,7 @@ describe("inspectEveProject", () => {
       ">=0.68.0 <0.70.0",
       ">=0.68.0 <0.71.0",
       ">=0.68.0 <0.73.0",
+      ">=0.68.0 <0.74.0",
       "0.43.0",
       "~0.43.0",
       "0.43.x",
@@ -333,8 +333,16 @@ describe("inspectEveProject", () => {
       "0.71.0",
       "^0.71.0",
       "0.71.x",
-      "0.73.0",
-      "^0.73.0",
+      // Retired on 2026-10-08, one day after it entered.
+      "0.72.0",
+      "0.72.1",
+      "~0.72.1",
+      "^0.72.1",
+      "0.72",
+      "0.72.x",
+      "0.72.*",
+      "0.74.0",
+      "^0.74.0",
       "*",
       "latest",
     ]) {
@@ -358,8 +366,8 @@ describe("inspectEveProject", () => {
   test("reports the sliding compatibility window as structured ranges", () => {
     expect(createEveVersionInfo("0.68.0", "src_1")).toEqual({
       version: "0.68.0",
-      expected: "0.68.x or 0.72.x",
-      supportedRanges: ["0.68.x", "0.72.x"],
+      expected: "0.68.x or 0.73.x",
+      supportedRanges: ["0.68.x", "0.73.x"],
       supported: true,
       sourceRevisionId: "src_1",
     });

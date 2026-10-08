@@ -6,17 +6,17 @@ export const EVE_COMPATIBILITY_POLICY = {
       dependencyName: "eve-previous",
     },
     {
-      range: "0.72.x",
-      verifiedVersion: "0.72.1",
+      range: "0.73.x",
+      verifiedVersion: "0.73.0",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.72.1 (published 2026-10-07) entered the same
-  // day and 0.70 retired with it, five days after it had entered and before
-  // any Eveland release carried it. 0.68 stays because Eveland v0.60.0 ships
-  // it. 0.69 retired the same way on 2026-10-02, and 0.62 retired when 0.69
-  // entered: their Releases answer 409 on activation and their parked runs are
-  // settled.
+  // A gapped two-line window: 0.73.0 (published 2026-10-07) entered on
+  // 2026-10-08 and 0.72 retired with it, one day after it had entered and
+  // before any Eveland release carried it. 0.68 stays because Eveland v0.60.0
+  // ships it. 0.70 (and the skipped 0.71) retired the same way on 2026-10-07,
+  // 0.69 on 2026-10-02, and 0.62 when 0.69 entered: their Releases answer 409
+  // on activation and their parked runs are settled.
   //
   // 0.69 was the largest protocol move since 0.31: background tasks are gone,
   // every workflow tool and agent call blocks its turn until it settles, the
@@ -34,11 +34,14 @@ export const EVE_COMPATIBILITY_POLICY = {
   // and drop the `tool` and `dynamicTool` extension contract versions built
   // before 0.72 (`evaluate` became `decide`); Eveland's own extensions compile
   // inside each Release. Approvals now answer only to the principal whose turn
-  // requested them. Between 0.68 and 0.72 the discovery manifest (v15), the
+  // requested them. 0.73 leaves every surface Eveland reads byte-identical to
+  // 0.72.1, only adds extension contract versions, and moves the bundled
+  // Workflow set to core 5.1.0 / world 5.0.2 with the same World calls and
+  // spec range. Between 0.68 and 0.73 the discovery manifest (v15), the
   // route set Eveland forwards (0.69 dropped the activity route), and the
   // sandbox provider API are unchanged. The range is the union of the two
-  // contiguous runs, never the hull, which would admit 0.69 through 0.71.
-  peerDependencyRange: ">=0.68.0 <0.69.0 || >=0.72.0 <0.73.0",
+  // contiguous runs, never the hull, which would admit 0.69 through 0.72.
+  peerDependencyRange: ">=0.68.0 <0.69.0 || >=0.73.0 <0.74.0",
 } as const;
 
 export type SupportedEveVersionRange =

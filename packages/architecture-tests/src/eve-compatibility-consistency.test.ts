@@ -117,7 +117,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.72.1");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.73.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -185,7 +185,9 @@ describe("Eve compatibility repository contract", () => {
       // 0.72.1 re-checked 2026-10-07: still byte-identical to 0.70.0. Its
       // compaction hop starts a fresh WORKFLOW_ENTRY_NAME run for an idle
       // session on the same Deployment (eve's handoff path), which is an
-      // ordinary run of a name already audited here.
+      // ordinary run of a name already audited here. 0.73.0 re-checked
+      // 2026-10-08: stable-workflow-names.js byte-identical to 0.72.1, and the
+      // bundler module differs only in import order.
       // 0.56.0 rebuilt the `workflow` tool around a
       // model-supplied JS program, but its steps run inside this same run
       // rather than opening one of their own. 0.57.0 moved turn execution
@@ -227,7 +229,7 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.68.x exports five plus the subagent execute body and 0.72.x, like
+    // 0.68.x exports five plus the subagent execute body and 0.73.x, like
     // 0.69.x, four (no activity collector) plus the agent serve body; neither opens a
     // per-turn run any more, but both keep the turn name for legacy-session
     // import.
@@ -268,7 +270,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.68/0.72 compatibility window", () => {
+  test("describes the supported 0.68/0.73 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {
