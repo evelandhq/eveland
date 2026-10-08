@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.72.1
+  eve: 0.73.0
 catalogs:
   eve-matrix:
     eve-previous: npm:eve@0.68.0
@@ -49,10 +49,10 @@ peerDependencyRules:
     "@pierre/theming@1.0.0>@pierre/theme": "2"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.68.x and 0.72.x -- a gapped window:
-# 0.70 entered on 2026-10-02 and 0.72.1 replaced it on 2026-10-07, before any
-# Eveland release carried it, as 0.70 had replaced 0.69; 0.69 through 0.71 sit
-# inside the hull and are rejected; 0.62 retired when 0.69 entered, and every
+# verified minor in the current window (0.68.x and 0.73.x -- a gapped window:
+# 0.72 entered on 2026-10-07 and 0.73.0 replaced it on 2026-10-08, before any
+# Eveland release carried it, as 0.72 had replaced 0.70 and 0.70 had replaced
+# 0.69; 0.69 through 0.72 sit inside the hull and are rejected; 0.62 retired when 0.69 entered, and every
 # earlier line is below the floor as well). eve-matrix names every line but the newest, which is the plain `eve`
 # catalog entry.
 #
@@ -69,7 +69,9 @@ peerDependencyRules:
 # 5.0.1 line (world/world-local/errors 5.0.1, utils 5.0.0) is what
 # `@evelandhq/workflow-world` 0.24.0 pins -- the release of the family eve
 # moved to at 0.70.2 (spec constants untouched, the World interface only gains
-# optional members), which is what 0.72.1 carries; 0.68.0 carries the
+# optional members), which 0.72.1 carried; 0.73.0 carries core 5.1.0 and
+# world/world-local/errors 5.0.2 (same World calls and spec constants, only
+# optional members added); 0.68.0 carries the
 # beta.57/24/39/48 set 0.67.2 moved to. eve compares only the major and
 # prerelease tag of the World's declaration, and a stable version on either
 # side matches any prerelease of its major, so the same World serves the whole
@@ -80,7 +82,7 @@ peerDependencyRules:
 # (0.18.0 through 0.22.0 declared `mintedSpecVersion()` outright, which was 7
 # on their @workflow/world; 0.5.0 through 0.17.0 always declared 6) -- because
 # 0.62.0's runtime read spec 6 through 7 only and would have refused a World
-# declaring 8 at startup (0.68.0 and 0.72.1 read 6 through 8). eve gates on the declared number, which the contract
+# declaring 8 at startup (0.68.0 and 0.73.0 read 6 through 8). eve gates on the declared number, which the contract
 # ratchet reads out of the World's dist and asserts per line; the platform
 # admits both 6 and 7 (SUPPORTED_WORKFLOW_STORAGE_SPECS).
 minimumReleaseAgeExclude:

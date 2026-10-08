@@ -12,7 +12,7 @@ import {
 import { createZipArchive } from "./zip.ts";
 
 const execFileAsync = promisify(execFile);
-const WINDOW = ["0.68.x", "0.72.x"];
+const WINDOW = ["0.68.x", "0.73.x"];
 
 async function makeProject(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-"));
@@ -127,7 +127,7 @@ describe("deploy preflight", () => {
   test("judges eve specifiers against the instance window", () => {
     expect(eveSpecifierProblem("0.68.0", WINDOW)).toBeNull();
     expect(eveSpecifierProblem("^0.68.0", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("0.72.x", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("0.73.x", WINDOW)).toBeNull();
     expect(eveSpecifierProblem("0.46.0", WINDOW)).toContain("outside this instance's supported");
     // Skipped on 2026-09-17 (0.56, 0.57), 2026-09-19 (0.59, 0.60, 0.61),
     // 2026-09-23 (0.63 and 0.64), and 2026-09-24 (0.65), and 0.66 and 0.67
