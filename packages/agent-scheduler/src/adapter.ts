@@ -470,7 +470,7 @@ ${markdownTaskDelivery}            title: \`Schedule · \${scheduleKey}\`,
 }
 
 /**
- * The minor of the Eve line a Release declares (`0.73.0`, `^0.68.0`, `0.68.x`
+ * The minor of the Eve line a Release declares (`0.74.0`, `^0.68.0`, `0.68.x`
  * all name one), for the few generated lines that differ between lines. The
  * declaration was validated against the window before this runs.
  */
