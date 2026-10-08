@@ -6,15 +6,16 @@ export const EVE_COMPATIBILITY_POLICY = {
       dependencyName: "eve-previous",
     },
     {
-      range: "0.73.x",
-      verifiedVersion: "0.73.0",
+      range: "0.74.x",
+      verifiedVersion: "0.74.0",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.73.0 (published 2026-10-07) entered on
-  // 2026-10-08 and 0.72 retired with it, one day after it had entered and
-  // before any Eveland release carried it. 0.68 stays because Eveland v0.60.0
-  // ships it. 0.70 (and the skipped 0.71) retired the same way on 2026-10-07,
+  // A gapped two-line window: 0.74.0 (published 2026-10-08) entered the same
+  // day and 0.73 retired with it, hours after it had entered and before any
+  // Eveland release carried it. 0.68 stays because Eveland v0.60.0 ships it.
+  // 0.72 retired the same way earlier on 2026-10-08, 0.70 (and the skipped
+  // 0.71) on 2026-10-07,
   // 0.69 on 2026-10-02, and 0.62 when 0.69 entered: their Releases answer 409
   // on activation and their parked runs are settled.
   //
@@ -37,11 +38,15 @@ export const EVE_COMPATIBILITY_POLICY = {
   // requested them. 0.73 leaves every surface Eveland reads byte-identical to
   // 0.72.1, only adds extension contract versions, and moves the bundled
   // Workflow set to core 5.1.0 / world 5.0.2 with the same World calls and
-  // spec range. Between 0.68 and 0.73 the discovery manifest (v15), the
+  // spec range. 0.74 again leaves every surface Eveland reads byte-identical,
+  // including the Workflow set, and adds experimental schedule collections
+  // (`defineDynamicSchedules`), which Eveland's scheduler refuses at build
+  // because they declare no static cron. Between 0.68 and 0.74 the discovery
+  // manifest (v15), the
   // route set Eveland forwards (0.69 dropped the activity route), and the
   // sandbox provider API are unchanged. The range is the union of the two
-  // contiguous runs, never the hull, which would admit 0.69 through 0.72.
-  peerDependencyRange: ">=0.68.0 <0.69.0 || >=0.73.0 <0.74.0",
+  // contiguous runs, never the hull, which would admit 0.69 through 0.73.
+  peerDependencyRange: ">=0.68.0 <0.69.0 || >=0.74.0 <0.75.0",
 } as const;
 
 export type SupportedEveVersionRange =

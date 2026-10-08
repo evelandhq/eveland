@@ -47,7 +47,7 @@ export type WorkflowWorldBuildConfig = {
  * its `@workflow/world` beta.38 (eve 0.66.3) minted 8 -- as the stable 5.0.1
  * that 0.24.0 pins still does -- and a runtime refuses a World above its
  * ceiling, which 0.62.0's was 7. 0.62 retired on 2026-10-02 and
- * 0.68 and 0.73 bundle runtimes that read 6 through 8 (0.73 carries the stable
+ * 0.68 and 0.74 bundle runtimes that read 6 through 8 (0.74 carries the stable
  * @workflow 5.x set -- core 5.1.0, world 5.0.2 -- whose spec range is
  * unchanged), so the cap is no longer
  * a window constraint. Every shared build from 0.5.0
