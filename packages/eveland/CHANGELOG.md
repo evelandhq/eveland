@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.16.0](https://github.com/evelandhq/eveland/compare/eveland-v0.15.0...eveland-v0.16.0) (2026-10-08)
+
+
+### Features
+
+* adopt eve 0.69.0 with a contiguous {0.68.x, 0.69.x} window ([#575](https://github.com/evelandhq/eveland/issues/575)) ([a533d33](https://github.com/evelandhq/eveland/commit/a533d330dccf4443174ae158da0655c569358fa9))
+* adopt eve 0.70.0 with a gapped {0.68.x, 0.70.x} window ([#580](https://github.com/evelandhq/eveland/issues/580)) ([80c78c0](https://github.com/evelandhq/eveland/commit/80c78c073b9a440acb6bd617579fe5e42f4b83cb))
+* adopt eve 0.72.1 with a gapped {0.68.x, 0.72.x} window ([#582](https://github.com/evelandhq/eveland/issues/582)) ([4cf58da](https://github.com/evelandhq/eveland/commit/4cf58daff25437812016052cab6ad95158f9e230))
+* adopt eve 0.73.0 with a gapped {0.68.x, 0.73.x} window ([#585](https://github.com/evelandhq/eveland/issues/585)) ([1cb888d](https://github.com/evelandhq/eveland/commit/1cb888dd48372c1cc5ab7ec3d217b983689263ed))
+* adopt eve 0.74.0 with a gapped {0.68.x, 0.74.x} window ([#586](https://github.com/evelandhq/eveland/issues/586)) ([ceb5bad](https://github.com/evelandhq/eveland/commit/ceb5bade0f3508fafcae158a914c81c8b91ef38f))
+
 ## [0.15.0](https://github.com/evelandhq/eveland/compare/eveland-v0.14.0...eveland-v0.15.0) (2026-09-29)
 
 
