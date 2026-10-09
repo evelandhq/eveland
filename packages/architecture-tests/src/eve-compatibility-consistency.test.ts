@@ -117,7 +117,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.74.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.75.1");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -125,16 +125,6 @@ describe("Eve compatibility repository contract", () => {
       "WORKFLOW_ENTRY_NAME",
       "TURN_WORKFLOW_NAME",
       "SESSION_TIMEOUT_WORKFLOW_NAME",
-      // 0.47.3: the activity collector run behind `POST /eve/v1/activity/:token`.
-      // Audited 2026-08-29: started only for parentless sessions whose channel
-      // declares activity renderers, as a ROOT run (no lineage, no explicit
-      // class) with an `expiresAt` bounded by sessionTimeoutMs (default 24h),
-      // so it terminates and the interactive-class deadlines clean it up like
-      // the session-timeout run; a batch arriving after cleanup gets the
-      // route's own 404, not a retention error. 0.69.0 removed the activity
-      // collector together with its route; the entry stays only because
-      // 0.68.x still runs it, so delete it when 0.68 retires.
-      "ACTIVITY_COLLECTOR_WORKFLOW_NAME",
       // 0.48.0 introduced this run (as TOOL_RUN_WORKFLOW_NAME; 0.51.0 renamed
       // it, and the old constant left the audit with 0.50.x on 2026-09-12):
       // the durable run behind a tool whose `execute` is a Workflow body.
@@ -188,7 +178,12 @@ describe("Eve compatibility repository contract", () => {
       // ordinary run of a name already audited here. 0.73.0 re-checked
       // 2026-10-08: stable-workflow-names.js byte-identical to 0.72.1, and the
       // bundler module differs only in import order. 0.74.0 re-checked
-      // 2026-10-08: both byte-identical to 0.73.0.
+      // 2026-10-08: both byte-identical to 0.73.0. 0.75.0 and 0.75.1
+      // re-checked 2026-10-09: both byte-identical to 0.74.0 (0.75's tool
+      // stubs and session-end sandbox cleanup run as steps inside the session
+      // run, not in a run of their own). The activity collector (0.47.3-0.68)
+      // and the subagent execute body (0.51-0.68) left this list with 0.68 on
+      // 2026-10-09.
       // 0.56.0 rebuilt the `workflow` tool around a
       // model-supplied JS program, but its steps run inside this same run
       // rather than opening one of their own. 0.57.0 moved turn execution
@@ -197,21 +192,6 @@ describe("Eve compatibility repository contract", () => {
       // it is started only to import a session from the former driver model
       // (a 0.45+ driver's next turn dispatch), never per message.
       "WORKFLOW_TOOL_RUN_WORKFLOW_NAME",
-      // 0.51.0: the shared execute body behind every subagent tool (local,
-      // remote, dynamic, and self-agent). Audited 2026-09-04: it opens NO run
-      // of its own. `runtime/tools/registry.js` now prepares the framework
-      // agent tool as a workflow tool, so a subagent call starts a
-      // WORKFLOW_TOOL_RUN_WORKFLOW_NAME run and `executeWorkflowBody` resolves
-      // this name out of the workflow registry and calls it inline inside that
-      // run -- no `start()`, no lineage of its own, nothing to retain beyond
-      // the tool run already audited above. It needs an unstamped id only so a
-      // version-stamped deployment can still resolve the body. The retention
-      // consequence worth knowing is upstream of this name: from 0.51 every
-      // subagent invocation costs one durable tool run, where 0.50 dispatched
-      // subagents without one. 0.69.0 replaced it with the serve body below;
-      // the entry stays only because 0.68.x still runs it, so delete it when
-      // 0.68 retires.
-      "SUBAGENT_TOOL_EXECUTE_WORKFLOW_NAME",
       // 0.69.0: the shared `serve` body behind every agent tool (local,
       // remote, dynamic, and self-agent), replacing the execute body above.
       // Audited 2026-10-02: it opens NO run of its own. `workflowIdForHandling`
@@ -230,10 +210,9 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.68.x exports five plus the subagent execute body and 0.74.x, like
-    // 0.69.x, four (no activity collector) plus the agent serve body; neither opens a
-    // per-turn run any more, but both keep the turn name for legacy-session
-    // import.
+    // 0.74.x and 0.75.x both export four (no activity collector) plus the
+    // agent serve body; neither opens a per-turn run any more, but both keep
+    // the turn name for legacy-session import.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
       for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
@@ -271,7 +250,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.68/0.74 compatibility window", () => {
+  test("describes the supported 0.74/0.75 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {

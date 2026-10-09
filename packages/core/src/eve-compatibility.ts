@@ -1,23 +1,24 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.68.x",
-      verifiedVersion: "0.68.0",
+      range: "0.74.x",
+      verifiedVersion: "0.74.0",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.74.x",
-      verifiedVersion: "0.74.0",
+      range: "0.75.x",
+      verifiedVersion: "0.75.1",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.74.0 (published 2026-10-08) entered the same
-  // day and 0.73 retired with it, hours after it had entered and before any
-  // Eveland release carried it. 0.68 stays because Eveland v0.60.0 ships it.
-  // 0.72 retired the same way earlier on 2026-10-08, 0.70 (and the skipped
-  // 0.71) on 2026-10-07,
-  // 0.69 on 2026-10-02, and 0.62 when 0.69 entered: their Releases answer 409
-  // on activation and their parked runs are settled.
+  // A contiguous two-line window: 0.75.1 (published 2026-10-08) entered on
+  // 2026-10-09 and 0.68 retired with it -- Eveland v0.61.0 carries 0.74, so a
+  // 0.68 Release has had a newer line to rebuild on since 2026-10-08. 0.74.0
+  // entered on 2026-10-08 and 0.73 retired with it, hours after it had
+  // entered and before any Eveland release carried it; 0.72 retired the same
+  // way earlier that day, 0.70 (and the skipped 0.71) on 2026-10-07, 0.69 on
+  // 2026-10-02, and 0.62 when 0.69 entered: their Releases answer 409 on
+  // activation and their parked runs are settled.
   //
   // 0.69 was the largest protocol move since 0.31: background tasks are gone,
   // every workflow tool and agent call blocks its turn until it settles, the
@@ -41,12 +42,22 @@ export const EVE_COMPATIBILITY_POLICY = {
   // spec range. 0.74 again leaves every surface Eveland reads byte-identical,
   // including the Workflow set, and adds experimental schedule collections
   // (`defineDynamicSchedules`), which Eveland's scheduler refuses at build
-  // because they declare no static cron. Between 0.68 and 0.74 the discovery
-  // manifest (v15), the
-  // route set Eveland forwards (0.69 dropped the activity route), and the
-  // sandbox provider API are unchanged. The range is the union of the two
-  // contiguous runs, never the hull, which would admit 0.69 through 0.73.
-  peerDependencyRange: ">=0.68.0 <0.69.0 || >=0.74.0 <0.75.0",
+  // because they declare no static cron. 0.75 renames the sandbox provider
+  // handle hooks (`onSessionStop`/`onSessionDelete` became
+  // `onSandboxStop`/`onSandboxDelete`, no fallback) and releases a durable
+  // session's sandbox once the session completes, expires, or fails;
+  // `@evelandhq/sandbox-bwrap` 0.5.0 answers both name pairs and implements
+  // that `onSessionEnd` directly, so one injected copy serves both lines. 0.75
+  // also adds session-scoped tool stubs (a new
+  // `/eve/v1/session/:sessionId/stubs` route that the Agent Gateway does not
+  // classify and so refuses, and a creation option Eveland's authenticators
+  // never grant), moves the session checkpoint to 13, and at 0.75.1 moves the
+  // bundled Workflow set to the stable 5.2 family (core 5.2.0, world 5.0.3,
+  // world-local 5.1.0) with the same World calls and spec range. Between
+  // 0.74 and 0.75 the discovery manifest (v15), the message stream (v26), the
+  // observer's instrumentation pin, and every route Eveland forwards are
+  // byte-identical. The range is one contiguous run.
+  peerDependencyRange: ">=0.74.0 <0.76.0",
 } as const;
 
 export type SupportedEveVersionRange =

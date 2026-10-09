@@ -208,7 +208,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     // again: the shared World's `@workflow/world` 5.0.1 can write spec 8
     // (the hook force-claim reader contract eve 0.66.3 brought in), while the
     // World declares the sealed log, 7, which every line in the window reads
-    // (0.68.0 and 0.74.0 accept 6 through 8). The legacy World
+    // (0.74.0 and 0.75.1 accept 6 through 8). The legacy World
     // stays on slot identity. Moving the declared number is an eve-window
     // decision, not a lockfile outcome — every line in the window must read
     // what new Releases stamp.

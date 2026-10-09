@@ -37,11 +37,11 @@
     "prepack": "pnpm build"
   },
   "devDependencies": {
-    "eve": "0.74.0",
+    "eve": "0.75.1",
     "vitest": "^5.0.3"
   },
   "peerDependencies": {
-    "eve": ">=0.68.0 <1.0.0"
+    "eve": ">=0.74.0 <1.0.0"
   },
   "engines": {
     "node": ">=24.0.0"

@@ -2,10 +2,10 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.74.0
+  eve: 0.75.1
 catalogs:
   eve-matrix:
-    eve-previous: npm:eve@0.68.0
+    eve-previous: npm:eve@0.74.0
   # The published SDK's contract is narrower than the platform's. It imports
   # four primitives from eve/channels/auth, stable across 0.27-0.40, while the
   # policy's peerDependencyRange tracks what Eveland can actually host and
@@ -18,7 +18,7 @@ catalogs:
   # deliberately wider peer range. The platform's hosting window survives as
   # EVE_COMPATIBILITY_POLICY.peerDependencyRange, which still pins this floor.
   eve-sdk-peer:
-    eve: ">=0.68.0 <1.0.0"
+    eve: ">=0.74.0 <1.0.0"
 allowBuilds:
   cbor-extract: true
   esbuild: true
@@ -49,13 +49,13 @@ peerDependencyRules:
     "@pierre/theming@1.0.0>@pierre/theme": "2"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.68.x and 0.74.x -- a gapped window:
-# 0.73 entered on 2026-10-08 and 0.74.0 replaced it the same day, before any
-# Eveland release carried it, as 0.73 had replaced 0.72, 0.72 had replaced 0.70
-# and 0.70 had replaced 0.69; 0.69 through 0.73 sit inside the hull and are
-# rejected; 0.62 retired when 0.69 entered, and every
-# earlier line is below the floor as well). eve-matrix names every line but the newest, which is the plain `eve`
-# catalog entry.
+# verified minor in the current window (0.74.x and 0.75.x -- a contiguous
+# window: 0.75.1 entered on 2026-10-09 and 0.68 retired with it, Eveland
+# v0.61.0 having carried 0.74 since 2026-10-08; 0.73 had entered on 2026-10-08
+# and 0.74.0 replaced it the same day, before any Eveland release carried it,
+# as 0.73 had replaced 0.72, 0.72 had replaced 0.70 and 0.70 had replaced
+# 0.69; 0.68 and every earlier line are below the floor). eve-matrix names
+# every line but the newest, which is the plain `eve` catalog entry.
 #
 # The release-age cooldown is waived only for explicitly reviewed packages.
 # `eve`, `@evelandhq/sandbox-bwrap`, and `@evelandhq/workflow-world` are
@@ -70,20 +70,19 @@ peerDependencyRules:
 # 5.0.1 line (world/world-local/errors 5.0.1, utils 5.0.0) is what
 # `@evelandhq/workflow-world` 0.24.0 pins -- the release of the family eve
 # moved to at 0.70.2 (spec constants untouched, the World interface only gains
-# optional members), which 0.72.1 carried; 0.73.0 and 0.74.0 carry core 5.1.0 and
-# world/world-local/errors 5.0.2 (same World calls and spec constants, only
-# optional members added); 0.68.0 carries the
-# beta.57/24/39/48 set 0.67.2 moved to. eve compares only the major and
-# prerelease tag of the World's declaration, and a stable version on either
-# side matches any prerelease of its major, so the same World serves the whole
-# window. The 5.0.1 `@workflow/world` reports
+# optional members), which 0.72.1 carried; 0.73.0 through 0.75.0 carry core
+# 5.1.0 and world/world-local/errors 5.0.2, and 0.75.1 the stable 5.2 family
+# (core 5.2.0, world/errors 5.0.3, world-local 5.1.0) -- the same World calls
+# and spec constants throughout, only optional members added. eve compares
+# only the major and prerelease tag of the World's declaration, so the same
+# World serves the whole window. The 5.0.1 `@workflow/world` reports
 # SPEC_VERSION_CURRENT 8 (the hook force-claim reader contract), but since
 # 0.23.0 the shared World DECLARES `Math.min(mintedSpecVersion(), 7)` -- the
 # sealed log, or 6 for a Deployment that opts out with WORKFLOW_SEALED_LOG=0
 # (0.18.0 through 0.22.0 declared `mintedSpecVersion()` outright, which was 7
 # on their @workflow/world; 0.5.0 through 0.17.0 always declared 6) -- because
 # 0.62.0's runtime read spec 6 through 7 only and would have refused a World
-# declaring 8 at startup (0.68.0 and 0.74.0 read 6 through 8). eve gates on the declared number, which the contract
+# declaring 8 at startup (0.74.0 and 0.75.1 read 6 through 8). eve gates on the declared number, which the contract
 # ratchet reads out of the World's dist and asserts per line; the platform
 # admits both 6 and 7 (SUPPORTED_WORKFLOW_STORAGE_SPECS).
 minimumReleaseAgeExclude:
