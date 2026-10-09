@@ -411,31 +411,21 @@ function findConcreteDefaultExport(sourceFile: ts.SourceFile):
 // Eve 0.33 changed the default send policy to `"steer"`, which cancels and
 // replaces a turn already running on the target session. A schedule is a
 // background actor, so every supported Eve line explicitly asks for `"queue"`.
-// Eve 0.64 added `taskDeliveryPolicy`: channel sessions default to `"auto"`,
-// which may report background results piecemeal, while Eve's own schedules
-// default to `"cohort"`, one report once the related work settles. A schedule
-// dispatched through this channel asks for `"cohort"` to behave like Eve's.
 // An authored handler still wins because its own options are spread last.
-// Eve 0.69 removed background tasks together with the option -- every
-// workflow tool and agent call blocks its turn until it settles -- and
-// silently ignores it, so the option is emitted only for a Release whose Eve
-// still reads it. What 0.69 keys a schedule's final-reply-only turn on is
-// Eve's own schedule dispatcher, which this channel is not: text the model
-// writes before it waits on a task completes as its own message here.
-const LAST_EVE_MINOR_WITH_TASK_DELIVERY_POLICY = 68;
-
-function fixedSessionDispatchBlock(eveMinor: number): string {
-  const readsTaskDeliveryPolicy = eveMinor <= LAST_EVE_MINOR_WITH_TASK_DELIVERY_POLICY;
-  const markdownTaskDelivery = readsTaskDeliveryPolicy
-    ? `            taskDeliveryPolicy: "cohort",\n`
-    : "";
-  const handlerTaskDelivery = readsTaskDeliveryPolicy ? ` taskDeliveryPolicy: "cohort",` : "";
+// (Eve 0.64 through 0.68 also read a `taskDeliveryPolicy`, which this channel
+// set to `"cohort"` so a schedule reported like Eve's own; 0.69 removed
+// background tasks together with the option, and the branch that emitted it
+// left with 0.68 on 2026-10-09.) What 0.69 keys a schedule's final-reply-only
+// turn on is Eve's own schedule dispatcher, which this channel is not: text
+// the model writes before it waits on a task completes as its own message
+// here.
+function fixedSessionDispatchBlock(): string {
   return `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
           const session = await withScheduledRunRetention(() => from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
             auth: scheduleAppAuth,
             turnPolicy: "queue",
-${markdownTaskDelivery}            title: \`Schedule · \${scheduleKey}\`,
+            title: \`Schedule · \${scheduleKey}\`,
           }));
           sessionIds.push(session.id);
         } else {
@@ -445,7 +435,7 @@ ${markdownTaskDelivery}            title: \`Schedule · \${scheduleKey}\`,
             const handle = to(channel, target);
             return {
               send(message, options) {
-                const task = withScheduledRunRetention(() => handle.send(message, { turnPolicy: "queue",${handlerTaskDelivery} ...options }));
+                const task = withScheduledRunRetention(() => handle.send(message, { turnPolicy: "queue", ...options }));
                 sendTasks.push(task);
                 return task;
               },
@@ -469,20 +459,7 @@ ${markdownTaskDelivery}            title: \`Schedule · \${scheduleKey}\`,
         }`;
 }
 
-/**
- * The minor of the Eve line a Release declares (`0.74.0`, `^0.68.0`, `0.68.x`
- * all name one), for the few generated lines that differ between lines. The
- * declaration was validated against the window before this runs.
- */
-function declaredEveMinor(eveVersion: string): number {
-  const minor = /^[~^]?0\.(\d+)/.exec(eveVersion.trim())?.[1];
-  if (minor === undefined) {
-    throw new Error(`Cannot read an Eve minor out of the declared dependency "${eveVersion}".`);
-  }
-  return Number(minor);
-}
-
-function generateSchedulerChannel(definitions: SchedulerDefinition[], eveVersion: string): string {
+function generateSchedulerChannel(definitions: SchedulerDefinition[]): string {
   const imports = definitions.map((definition, index) => {
     const exportName = definition.sourcePath.endsWith(".md")
       ? reservedOriginalMarkdown
@@ -500,7 +477,7 @@ function generateSchedulerChannel(definitions: SchedulerDefinition[], eveVersion
     return `  ${JSON.stringify(definition.key)}: ${value},`;
   });
   const routeArgs = "{ params, from, to }";
-  const dispatchBlock = fixedSessionDispatchBlock(declaredEveMinor(eveVersion));
+  const dispatchBlock = fixedSessionDispatchBlock();
 
   return `${imports.length > 0 ? `${imports.join("\n")}\n` : ""}import { AsyncLocalStorage } from "node:async_hooks";
 import { defineChannel, POST } from "eve/channels";
@@ -764,7 +741,7 @@ async function writeSchedulerArtifacts(
   const definitionsPath = path.join(releaseDir, SCHEDULER_DEFINITIONS_RELEASE_PATH);
   await mkdir(path.dirname(channelPath), { recursive: true });
   await mkdir(path.dirname(definitionsPath), { recursive: true });
-  await atomicWriteFile(channelPath, generateSchedulerChannel(definitions, eveVersion));
+  await atomicWriteFile(channelPath, generateSchedulerChannel(definitions));
   await atomicWriteFile(definitionsPath, `${JSON.stringify(definitions, null, 2)}\n`);
 }
 

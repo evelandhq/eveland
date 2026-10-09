@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 import type { FetchLike } from "./api-client.ts";
 import { projectSlugFrom, runDeploy } from "./deploy.ts";
 
-async function makeProject(eve = "0.68.0", name = "tour-guide"): Promise<string> {
+async function makeProject(eve = "0.74.0", name = "tour-guide"): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-deploy-src-"));
   await mkdir(path.join(root, "agent"), { recursive: true });
   await writeFile(path.join(root, "package.json"), JSON.stringify({ name, dependencies: { eve } }));
@@ -106,8 +106,8 @@ function fakePlatform(options: {
     if (pathname === "/api/instance") {
       return json(200, {
         eve: {
-          supportedRanges: ["0.68.x", "0.74.x"],
-          expected: "0.68.x or 0.74.x",
+          supportedRanges: ["0.74.x", "0.75.x"],
+          expected: "0.74.x or 0.75.x",
         },
       });
     }

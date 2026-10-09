@@ -460,7 +460,7 @@ describe("Agent observability ingestion repository", () => {
 
   test.each([
     {
-      eve: "0.68",
+      eve: "0.74",
       event: {
         type: "subagent.called",
         data: {
