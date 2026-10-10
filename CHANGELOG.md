@@ -4,6 +4,18 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.62.0](https://github.com/evelandhq/eveland/compare/v0.61.0...v0.62.0) (2026-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* adopt eve 0.75.1 with a contiguous {0.74.x, 0.75.x} window, retiring 0.68 ([#588](https://github.com/evelandhq/eveland/issues/588))
+
+### Features
+
+* adopt eve 0.75.1 with a contiguous {0.74.x, 0.75.x} window, retiring 0.68 ([#588](https://github.com/evelandhq/eveland/issues/588)) ([c79eff6](https://github.com/evelandhq/eveland/commit/c79eff6e625fd460afb961ab71e14473f79282e2))
+* adopt eve 0.76.0 with a gapped {0.74.x, 0.76.x} window ([#591](https://github.com/evelandhq/eveland/issues/591)) ([e9d421e](https://github.com/evelandhq/eveland/commit/e9d421e3204cb68c724ed0b43aa2992077e1fe86))
+
 ## [0.61.0](https://github.com/evelandhq/eveland/compare/v0.60.0...v0.61.0) (2026-10-08)
 
 
