@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/evelandhq/eveland/compare/eveland-v0.16.0...eveland-v0.17.0) (2026-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* adopt eve 0.75.1 with a contiguous {0.74.x, 0.75.x} window, retiring 0.68 ([#588](https://github.com/evelandhq/eveland/issues/588))
+
+### Features
+
+* adopt eve 0.75.1 with a contiguous {0.74.x, 0.75.x} window, retiring 0.68 ([#588](https://github.com/evelandhq/eveland/issues/588)) ([c79eff6](https://github.com/evelandhq/eveland/commit/c79eff6e625fd460afb961ab71e14473f79282e2))
+* adopt eve 0.76.0 with a gapped {0.74.x, 0.76.x} window ([#591](https://github.com/evelandhq/eveland/issues/591)) ([e9d421e](https://github.com/evelandhq/eveland/commit/e9d421e3204cb68c724ed0b43aa2992077e1fe86))
+
 ## [0.16.0](https://github.com/evelandhq/eveland/compare/eveland-v0.15.0...eveland-v0.16.0) (2026-10-08)
 
 
