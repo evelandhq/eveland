@@ -102,8 +102,8 @@ export function repository(routes: ResolvedAgentRoute[]): GatewayRepository & {
       return deployments.has(deploymentId)
         ? {
             version: "0.74.0",
-            expected: "0.74.x or 0.75.x",
-            supportedRanges: ["0.74.x", "0.75.x"],
+            expected: "0.74.x or 0.76.x",
+            supportedRanges: ["0.74.x", "0.76.x"],
             supported: true,
             sourceRevisionId: `src-${deploymentId}`,
           }

@@ -345,7 +345,8 @@ async function runHttpTurnOnce(input: {
               actions?: Array<{
                 kind?: unknown;
                 toolName?: unknown;
-                input?: { skill?: unknown };
+                name?: unknown;
+                input?: { skill?: unknown; name?: unknown };
               }>;
             };
           };
@@ -357,17 +358,19 @@ async function runHttpTurnOnce(input: {
           if (event.type === "turn.completed" || event.type === "session.completed")
             sawCompletion = true;
           if (event.type === "turn.failed") sawFailure = true;
-          // Eve 0.34 promoted framework skill loads to their own `load-skill`
-          // action kind, which names the skill in `input.skill` and carries no
-          // `toolName`; 0.32 and 0.33 model the same load as an ordinary
-          // `tool-call` named `load_skill`. Both generations are in the
-          // supported window, so accept either shape.
+          // A framework skill load is its own `load-skill` action kind with no
+          // `toolName`. Through eve 0.75 the model's `load_skill` call named
+          // the skill in `input.skill`; from 0.76 the call is `eve__skill` and
+          // the action carries the skill as `name` (and `input.name`). Both
+          // generations are in the supported window, so accept either shape.
           if (
             event.type === "actions.requested" &&
             event.data?.actions?.some(
               (action) =>
-                (action.kind === "load-skill" && action.input?.skill === SKILL_NAME) ||
-                (action.kind === "tool-call" && action.toolName === "load_skill"),
+                action.kind === "load-skill" &&
+                (action.name === SKILL_NAME ||
+                  action.input?.name === SKILL_NAME ||
+                  action.input?.skill === SKILL_NAME),
             )
           ) {
             sawSkillLoad = true;

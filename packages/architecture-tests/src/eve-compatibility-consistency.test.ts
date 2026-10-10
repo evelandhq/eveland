@@ -117,7 +117,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.75.1");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.76.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -181,7 +181,9 @@ describe("Eve compatibility repository contract", () => {
       // 2026-10-08: both byte-identical to 0.73.0. 0.75.0 and 0.75.1
       // re-checked 2026-10-09: both byte-identical to 0.74.0 (0.75's tool
       // stubs and session-end sandbox cleanup run as steps inside the session
-      // run, not in a run of their own). The activity collector (0.47.3-0.68)
+      // run, not in a run of their own). 0.76.0 re-checked 2026-10-10: both
+      // byte-identical to 0.75.1 (the `eve__` catalog tools run inside the
+      // turn step). The activity collector (0.47.3-0.68)
       // and the subagent execute body (0.51-0.68) left this list with 0.68 on
       // 2026-10-09.
       // 0.56.0 rebuilt the `workflow` tool around a
@@ -210,7 +212,7 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.74.x and 0.75.x both export four (no activity collector) plus the
+    // 0.74.x and 0.76.x both export four (no activity collector) plus the
     // agent serve body; neither opens a per-turn run any more, but both keep
     // the turn name for legacy-session import.
     const observedConstants = new Set<string>();
@@ -250,7 +252,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.74/0.75 compatibility window", () => {
+  test("describes the supported 0.74/0.76 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {

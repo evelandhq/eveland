@@ -286,7 +286,7 @@ async function verifyRootConnections(port: number, counts: ConnectionServerCount
   await runConnectionFlow({
     port,
     message:
-      'Use connection_search with connection "warehouse" and query "connection status", then call getConnectionStatus with connection_execute.',
+      'Search connection "warehouse" for "connection status", then call getConnectionStatus.',
   });
   assert.equal(
     counts.openapiCalls,
@@ -299,7 +299,7 @@ async function verifyRootConnections(port: number, counts: ConnectionServerCount
   await runConnectionFlow({
     port,
     message:
-      'Use connection_search with connection "knowledge" and query "connection record", then call lookupConnectionRecord with connection_execute.',
+      'Search connection "knowledge" for "connection record", then call lookupConnectionRecord.',
   });
   assert.ok(counts.mcpLists > beforeMcpLists, "root MCP tools were not discovered");
   assert.equal(counts.mcpCalls, beforeMcpCalls + 1, "root MCP tool was not called exactly once");
@@ -313,7 +313,7 @@ async function verifySubagentConnection(
   const beforeMcpCalls = counts.mcpCalls;
   const session = await startSession(
     port,
-    'delegate to a subagent: Use connection_search with connection "research" and query "connection record".',
+    'delegate to a subagent: Search connection "research" for "connection record".',
     // The read settles once the session is idle after the child was reported
     // (`agent.started` on eve 0.69, `subagent.called` before), by which time
     // the child's Connection calls this check counts have happened.

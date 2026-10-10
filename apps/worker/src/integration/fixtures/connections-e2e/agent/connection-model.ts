@@ -5,9 +5,14 @@ type GenerateResult = Awaited<ReturnType<MockLanguageModelV3["doGenerate"]>>;
 
 /**
  * The tool each test Connection exposes, by Connection name. Since eve 0.69
- * the model never sees a discovered tool in its tool list: it finds it with
- * `connection_search` and calls it through `connection_execute`, naming the
- * Connection and the tool's own (unqualified) name.
+ * the model never sees a discovered tool in its tool list: it finds it with a
+ * search tool and calls it through an execute tool. Through eve 0.75 those
+ * are `connection_search({ connection, query })` and
+ * `connection_execute({ connection, tool, input })`, naming the tool by its
+ * own (unqualified) name; from 0.76 they are eve's catalog tools
+ * `eve__search({ query })` and `eve__tool({ name, input })`, and every
+ * connection tool is named `<connection>__<tool>`. The model reads which
+ * generation it is on from the tool list it is offered.
  */
 const CONNECTION_TOOLS = {
   warehouse: "getConnectionStatus",
@@ -16,6 +21,21 @@ const CONNECTION_TOOLS = {
 } as const;
 
 type ConnectionName = keyof typeof CONNECTION_TOOLS;
+
+/** The search/execute pair a generation offers, or null when neither is listed. */
+function catalogTools(toolNames: readonly string[]): {
+  search: string;
+  execute: string;
+  qualified: boolean;
+} | null {
+  if (toolNames.includes("eve__search") && toolNames.includes("eve__tool")) {
+    return { search: "eve__search", execute: "eve__tool", qualified: true };
+  }
+  if (toolNames.includes("connection_search")) {
+    return { search: "connection_search", execute: "connection_execute", qualified: false };
+  }
+  return null;
+}
 
 export function connectionTestModel(): MockLanguageModelV3 {
   const generate = (options: GenerateOptions): GenerateResult => {
@@ -34,26 +54,30 @@ export function connectionTestModel(): MockLanguageModelV3 {
       : userPrompt.includes('connection \\"research\\"')
         ? "research"
         : "knowledge";
+    const catalog = catalogTools(toolNames);
+    const tool = CONNECTION_TOOLS[connection];
+    const qualifiedTool = `${connection}__${tool}`;
 
     // A Connection call or a delegation came back: the flow is done. On eve
     // 0.69 a delegation first answers with its task receipt; the turn then
     // holds for the child and calls the model again with its result, which
     // falls through to the same closing text below.
-    if (["connection_execute", "researcher", "agent"].some(lastToolResult)) {
+    if (
+      ["connection_execute", "eve__tool", qualifiedTool, "researcher", "agent"].some(lastToolResult)
+    ) {
       return textResult("managed Connection flow complete");
     }
 
-    if (lastToolResult("connection_search")) {
+    if (catalog !== null && lastToolResult(catalog.search)) {
       // A failed discovery must terminate instead of asking for the same tool
       // forever; the integration assertions will report the missing HTTP call.
-      if (!lastMessage.includes(CONNECTION_TOOLS[connection])) {
+      if (!lastMessage.includes(catalog.qualified ? qualifiedTool : tool)) {
         return textResult("managed Connection discovery failed");
       }
-      return toolCallResult("connection_execute", {
-        connection,
-        tool: CONNECTION_TOOLS[connection],
-        input: {},
-      });
+      return toolCallResult(
+        catalog.execute,
+        catalog.qualified ? { name: qualifiedTool, input: {} } : { connection, tool, input: {} },
+      );
     }
 
     if (
@@ -62,15 +86,17 @@ export function connectionTestModel(): MockLanguageModelV3 {
     ) {
       return toolCallResult(toolNames.includes("researcher") ? "researcher" : "agent", {
         message:
-          'Use connection_search with connection "research" and query "connection record", then call lookupConnectionRecord with connection_execute.',
+          'Search connection "research" for "connection record", then call lookupConnectionRecord.',
       });
     }
 
-    if (toolNames.includes("connection_search") && userPrompt.includes("connection_search")) {
-      return toolCallResult("connection_search", {
-        connection,
-        query: connection === "warehouse" ? "connection status" : "connection record",
-      });
+    if (catalog !== null && /Search connection/u.test(userPrompt)) {
+      const query = connection === "warehouse" ? "connection status" : "connection record";
+      return toolCallResult(
+        catalog.search,
+        // A `<connection>__` prefix searches only that connection's tools.
+        catalog.qualified ? { query: `${connection}__ ${query}` } : { connection, query },
+      );
     }
 
     return textResult("managed Connection flow complete");
