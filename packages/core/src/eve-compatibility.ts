@@ -6,19 +6,21 @@ export const EVE_COMPATIBILITY_POLICY = {
       dependencyName: "eve-previous",
     },
     {
-      range: "0.75.x",
-      verifiedVersion: "0.75.1",
+      range: "0.76.x",
+      verifiedVersion: "0.76.0",
       dependencyName: "eve",
     },
   ],
-  // A contiguous two-line window: 0.75.1 (published 2026-10-08) entered on
-  // 2026-10-09 and 0.68 retired with it -- Eveland v0.61.0 carries 0.74, so a
-  // 0.68 Release has had a newer line to rebuild on since 2026-10-08. 0.74.0
-  // entered on 2026-10-08 and 0.73 retired with it, hours after it had
-  // entered and before any Eveland release carried it; 0.72 retired the same
-  // way earlier that day, 0.70 (and the skipped 0.71) on 2026-10-07, 0.69 on
-  // 2026-10-02, and 0.62 when 0.69 entered: their Releases answer 409 on
-  // activation and their parked runs are settled.
+  // A gapped two-line window: 0.76.0 (published 2026-10-09) entered on
+  // 2026-10-10 and 0.75 retired with it, one day after it had entered and
+  // before any Eveland release carried it. 0.74 stays because Eveland v0.61.0
+  // ships it. 0.68 retired on 2026-10-09 when 0.75 entered (v0.61.0 had carried
+  // 0.74 since the day before). 0.74.0 entered on 2026-10-08 and 0.73 retired
+  // with it, hours after it had entered and before any Eveland release
+  // carried it; 0.72 retired the same way earlier that day, 0.70 (and the
+  // skipped 0.71) on 2026-10-07, 0.69 on 2026-10-02, and 0.62 when 0.69
+  // entered: their Releases answer 409 on activation and their parked runs
+  // are settled.
   //
   // 0.69 was the largest protocol move since 0.31: background tasks are gone,
   // every workflow tool and agent call blocks its turn until it settles, the
@@ -53,11 +55,20 @@ export const EVE_COMPATIBILITY_POLICY = {
   // classify and so refuses, and a creation option Eveland's authenticators
   // never grant), moves the session checkpoint to 13, and at 0.75.1 moves the
   // bundled Workflow set to the stable 5.2 family (core 5.2.0, world 5.0.3,
-  // world-local 5.1.0) with the same World calls and spec range. Between
-  // 0.74 and 0.75 the discovery manifest (v15), the message stream (v26), the
-  // observer's instrumentation pin, and every route Eveland forwards are
-  // byte-identical. The range is one contiguous run.
-  peerDependencyRange: ">=0.74.0 <0.76.0",
+  // world-local 5.1.0) with the same World calls and spec range. 0.76 moves
+  // eve's own tools into the `eve` namespace (`load_skill` became
+  // `eve__skill`, `task_wait`/`task_cancel` `eve__task_*`, `final_output`
+  // `eve__reply`, and `connection_search`/`connection_execute` became
+  // `eve__search`/`eve__tool`, with connection tools named
+  // `<connection>__<tool>`), drops `parentCallId` from tool-call actions
+  // (the `session.started` one Eveland's observer reads is unchanged), and
+  // reserves `eve__*` names; nothing Eveland injects uses them. Between 0.74
+  // and 0.76 the discovery manifest (v15), the message stream (v26), the
+  // session checkpoint (13 since 0.75), the observer's instrumentation pin,
+  // the sandbox provider API (since 0.75), and every route Eveland forwards
+  // are byte-identical. The range is the union of the two contiguous runs,
+  // never the hull, which would admit 0.75.
+  peerDependencyRange: ">=0.74.0 <0.75.0 || >=0.76.0 <0.77.0",
 } as const;
 
 export type SupportedEveVersionRange =

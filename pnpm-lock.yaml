@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     eve:
-      specifier: 0.75.1
-      version: 0.75.1
+      specifier: 0.76.0
+      version: 0.76.0
   eve-matrix:
     eve-previous:
       specifier: npm:eve@0.74.0
@@ -232,7 +232,7 @@ importers:
         version: 8.6.0(react@19.3.0)
       eve:
         specifier: 'catalog:'
-        version: 0.75.1(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
       lucide-react:
         specifier: ^1.49.0
         version: 1.49.0(@types/react@19.3.0)(react@19.3.0)
@@ -326,7 +326,7 @@ importers:
         version: link:../../packages/platform-observability
       '@evelandhq/sandbox-bwrap':
         specifier: ^0.5.0
-        version: 0.5.0(eve@0.75.1(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)))
+        version: 0.5.0(eve@0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)))
       '@evelandhq/workflow-world':
         specifier: ^0.24.0
         version: 0.24.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)
@@ -397,7 +397,7 @@ importers:
         version: link:../core
       eve:
         specifier: 'catalog:'
-        version: 0.75.1(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
       openid-client:
         specifier: ^6.8.8
         version: 6.8.8
@@ -450,7 +450,7 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 0.75.1(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
       eve-previous:
         specifier: catalog:eve-matrix
         version: eve@0.74.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
@@ -469,7 +469,7 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 0.75.1(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
       eve-previous:
         specifier: catalog:eve-matrix
         version: eve@0.74.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
@@ -546,8 +546,8 @@ importers:
   packages/eveland:
     devDependencies:
       eve:
-        specifier: 0.75.1
-        version: 0.75.1(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        specifier: 0.76.0
+        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
@@ -4726,8 +4726,8 @@ packages:
       microsandbox:
         optional: true
 
-  eve@0.75.1:
-    resolution: {integrity: sha512-z9A0ZvfQZVnmuYerwWyxKhIlyqDiwplH9E0skuoP+du/UIh9526W51CktuKDvzJaVUY1+2IPT59ILSIPjaAGJg==}
+  eve@0.76.0:
+    resolution: {integrity: sha512-nvM/eKQRr7kSdhZRbwz5EkoYsZqx6D9k+cXU04iCj30wIrldmMsdAPxvubj2RVK2DDaOXjL1XBs9K6Yjxd7l9A==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
@@ -7919,9 +7919,9 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@evelandhq/sandbox-bwrap@0.5.0(eve@0.75.1(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)))':
+  '@evelandhq/sandbox-bwrap@0.5.0(eve@0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)))':
     dependencies:
-      eve: 0.75.1(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+      eve: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
 
   '@evelandhq/workflow-world@0.24.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)':
     dependencies:
@@ -10758,7 +10758,7 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  eve@0.75.1(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)):
+  eve@0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)):
     dependencies:
       ai: 7.0.128(zod@4.6.5)
       nitro: 3.0.260903-beta
