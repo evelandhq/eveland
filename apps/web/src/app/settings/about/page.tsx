@@ -89,7 +89,7 @@ export default async function AboutSettingsPage() {
             <span>
               This instance runs v{updateCheck?.version ?? webBuild.version}.
               {update.breaking === null
-                ? ` Its changelog could not be read, so whether the upgrade crosses BREAKING CHANGES is unknown; check the release notes first.`
+                ? ` Its changelog could not be read, so whether the upgrade crosses BREAKING CHANGES is unknown. The update reads it again and asks before going on without it.`
                 : update.breaking.length > 0
                   ? ` The upgrade crosses BREAKING CHANGES in v${update.breaking.join(", v")}.`
                   : null}{" "}
