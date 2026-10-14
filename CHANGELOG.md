@@ -4,6 +4,17 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.63.0](https://github.com/evelandhq/eveland/compare/v0.62.0...v0.63.0) (2026-10-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* Agents on eve 0.74.x are no longer servable; rebuild them on 0.76.x or 0.79.x.
+
+### Features
+
+* adopt eve 0.79.0 with a gapped {0.76.x, 0.79.x} window, retiring 0.74 ([#593](https://github.com/evelandhq/eveland/issues/593)) ([d2028f3](https://github.com/evelandhq/eveland/commit/d2028f3a99a5d98890772cb3b53c9424196e1cc0))
+
 ## [0.62.0](https://github.com/evelandhq/eveland/compare/v0.61.0...v0.62.0) (2026-10-10)
 
 
