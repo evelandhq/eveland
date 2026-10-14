@@ -88,9 +88,11 @@ export default async function AboutSettingsPage() {
           <AlertDescription>
             <span>
               This instance runs v{updateCheck?.version ?? webBuild.version}.
-              {update.breaking.length > 0
-                ? ` The upgrade crosses BREAKING CHANGES in v${update.breaking.join(", v")}.`
-                : null}{" "}
+              {update.breaking === null
+                ? ` Its changelog could not be read, so whether the upgrade crosses BREAKING CHANGES is unknown; check the release notes first.`
+                : update.breaking.length > 0
+                  ? ` The upgrade crosses BREAKING CHANGES in v${update.breaking.join(", v")}.`
+                  : null}{" "}
               Run <code className="font-mono">eveland-ctl update</code> on the host to upgrade.
             </span>
           </AlertDescription>

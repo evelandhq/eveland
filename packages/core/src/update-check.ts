@@ -27,16 +27,22 @@ export type UpdateCheck = {
   tag: string | null;
   /** The newest stable tag the remote offered (`vX.Y.Z`); null when unknown. */
   latestTag: string | null;
-  /** Versions after `version` up to `latestTag` whose changelog carries BREAKING CHANGES. */
-  breaking: string[];
+  /**
+   * Versions after `version` up to `latestTag` whose changelog carries
+   * BREAKING CHANGES; empty when there is nothing to cross. Null when the
+   * target's changelog could not be read — on the installer's blobless clone
+   * that read is a network fetch of its own and can fail after the tags
+   * arrived. Unknown is never "none".
+   */
+  breaking: string[] | null;
 };
 
 export type AvailableUpdate = {
   /** `vX.Y.Z` — what `eveland-ctl update` would move to. */
   tag: string;
   version: string;
-  /** Breaking-change versions the move would cross, oldest first. */
-  breaking: string[];
+  /** Breaking-change versions the move would cross, oldest first; null when unknown. */
+  breaking: string[] | null;
 };
 
 /** `vX.Y.Z` (with or without the `v`) → [x, y, z]; anything else → null. */
@@ -76,9 +82,11 @@ export function parseUpdateCheck(raw: string): UpdateCheck | null {
     channel: candidate.channel as EvelandReleaseChannel,
     tag: typeof candidate.tag === "string" ? candidate.tag : null,
     latestTag: typeof candidate.latestTag === "string" ? candidate.latestTag : null,
+    // Anything but a list is unknown: an empty one would claim "nothing
+    // breaking", which this file has no grounds for.
     breaking: Array.isArray(candidate.breaking)
       ? candidate.breaking.filter((version): version is string => typeof version === "string")
-      : [],
+      : null,
   };
 }
 

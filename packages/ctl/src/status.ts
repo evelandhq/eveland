@@ -83,9 +83,11 @@ async function reportRelease(
   const update = availableUpdate(check ? { ...check, version } : null);
   if (update) {
     const breaking =
-      update.breaking.length > 0
-        ? ` (crosses BREAKING CHANGES in v${update.breaking.join(", v")})`
-        : "";
+      update.breaking === null
+        ? " (its changelog could not be read: breaking changes unknown)"
+        : update.breaking.length > 0
+          ? ` (crosses BREAKING CHANGES in v${update.breaking.join(", v")})`
+          : "";
     io.stdout(
       color.yellow(`  ! ${update.tag} is available${breaking} — run \`eveland-ctl update\``),
     );

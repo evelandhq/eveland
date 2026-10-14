@@ -258,6 +258,18 @@ describe("the release block", () => {
     expect(output).toContain("eveland-ctl update");
   });
 
+  test("an unreadable changelog is reported as unknown breaking changes, not as none", async () => {
+    const harness = await makeHarness({
+      supervisorAlive: true,
+      check: { ...STABLE_CHECK, latestTag: "v0.52.0", breaking: null },
+    });
+    expect(await runStatus([], harness.io)).toBe(0);
+    const output = harness.out.join("\n");
+    expect(output).toContain("v0.52.0 is available");
+    expect(output).toContain("breaking changes unknown");
+    expect(output).not.toContain("crosses BREAKING CHANGES");
+  });
+
   test("a release behind is still healthy: the exit code never moves", async () => {
     // Operators script `status`. Turning "there is a newer version" into a
     // non-zero exit would break every one of those scripts on release day.

@@ -26,6 +26,12 @@ Release: v0.51.2 (stable) 6c1e3b8f2a91
 - **它从不阻塞。** 答案是一个缓存文件（`run/update-check.json`），由 `start` 之后、以及每天至多一次的 `status` 之后派生出的独立进程刷新。`status` 本身只读文件——它正是你在出问题时才会跑的命令。
 - **它只做肯定判断。** 缓存可能是旧的，所以只在确实存在新版本时告诉你，其余情况一律沉默。`status` 永远不会声称"你已是最新"；这件事的权威是 `eveland-ctl update`，它会输出 `Already up to date`。
 
+破坏性变更列表取自新版本自己的 `CHANGELOG.md`。安装器的 checkout 是 blobless clone，读这个文件本身就是一次单独的网络获取，即使 tag 已经拉到也可能失败。失败时，提示会明确说破坏性变更未知，而不是暗示没有——升级前请先查阅 [release notes](https://github.com/evelandhq/eveland/releases)：
+
+```
+  ! v0.52.0 is available (its changelog could not be read: breaking changes unknown) — run `eveland-ctl update`
+```
+
 只有 `stable` 安装会参与比较。`edge` checkout 停在没有任何 release tag 指向的 commit 上，因此只显示 revision。
 
 当磁盘上的 checkout 已经与运行中的平台脱节时，`status` 也会给出警告：

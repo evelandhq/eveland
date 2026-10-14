@@ -8,7 +8,7 @@ const CHECK = {
   channel: "stable" as const,
   tag: "v0.51.2",
   latestTag: null as string | null,
-  breaking: [] as string[],
+  breaking: [] as string[] | null,
 };
 
 describe("availableUpdate", () => {
@@ -17,6 +17,17 @@ describe("availableUpdate", () => {
       tag: "v0.52.0",
       version: "0.52.0",
       breaking: ["0.52.0"],
+    });
+  });
+
+  test("carries an unreadable changelog through as unknown, never as 'nothing breaking'", () => {
+    // The ctl could not read the target's CHANGELOG.md (a blobless clone's
+    // lazy blob fetch failed). The update is still real; its breaks are not
+    // known, and an empty list would claim they were.
+    expect(availableUpdate({ ...CHECK, latestTag: "v0.52.0", breaking: null })).toEqual({
+      tag: "v0.52.0",
+      version: "0.52.0",
+      breaking: null,
     });
   });
 
@@ -59,6 +70,8 @@ describe("revisionDrift", () => {
 describe("parseUpdateCheck", () => {
   test("round-trips a published check", () => {
     expect(parseUpdateCheck(JSON.stringify(CHECK))).toEqual(CHECK);
+    const unknown = { ...CHECK, latestTag: "v0.52.0", breaking: null };
+    expect(parseUpdateCheck(JSON.stringify(unknown))).toEqual(unknown);
   });
 
   test("a shape it does not recognise is 'no check', never an exception", () => {
@@ -70,11 +83,15 @@ describe("parseUpdateCheck", () => {
     expect(parseUpdateCheck(JSON.stringify({ ...CHECK, version: 3 }))).toBeNull();
   });
 
+  test("a breaking list it cannot read is unknown, not empty", () => {
+    expect(parseUpdateCheck(JSON.stringify({ ...CHECK, breaking: "0.52.0" }))?.breaking).toBeNull();
+  });
+
   test("tolerates missing optional fields written by an older ctl", () => {
     expect(
       parseUpdateCheck(
         JSON.stringify({ version: "0.51.2", revision: "abc123abc123", channel: "stable" }),
       ),
-    ).toEqual({ ...CHECK, checkedAt: null, tag: null, latestTag: null, breaking: [] });
+    ).toEqual({ ...CHECK, checkedAt: null, tag: null, latestTag: null, breaking: null });
   });
 });

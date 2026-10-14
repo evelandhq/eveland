@@ -162,15 +162,17 @@ export async function refreshUpdateCheck(
   const target = check.latestTag;
   if (target && target !== `v${version}`) {
     // From the TARGET's changelog: the running checkout has never heard of
-    // the newer version, exactly as `update` reads it.
+    // the newer version, exactly as `update` reads it. On a blobless clone
+    // this lazily fetches the blob and can fail although the fetch above
+    // succeeded; an unreadable changelog is published as unknown, never as
+    // "nothing breaking".
     const changelog = await git(["show", `${target}:CHANGELOG.md`]);
-    if (changelog.code === 0) {
-      check.breaking = breakingChangesBetween(
-        changelog.output,
-        version,
-        target.replace(/^v/, ""),
-      ).map((entry) => entry.version);
-    }
+    check.breaking =
+      changelog.code === 0
+        ? breakingChangesBetween(changelog.output, version, target.replace(/^v/, "")).map(
+            (entry) => entry.version,
+          )
+        : null;
   }
   await writeUpdateCheck(layout, check);
   return check;
