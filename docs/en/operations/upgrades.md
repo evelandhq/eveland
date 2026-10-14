@@ -26,6 +26,12 @@ Three things are worth knowing about it:
 - **It never blocks.** The answer is a cached file (`run/update-check.json`) refreshed by a detached process after a `start` and, at most once a day, after a `status`. `status` itself only ever reads the file — it is the command you run when something is already broken.
 - **It only claims the positive.** A cached answer can be old, so you are told when a newer release exists and told nothing at all otherwise. `status` never reports that you are up to date; `eveland-ctl update` is the authority on that, and it says `Already up to date`.
 
+The breaking-change list comes from the newer release's own `CHANGELOG.md`. The installer's checkout is a blobless clone, so reading that file is a fetch of its own and can fail even after the tags arrived. When it does, the notice says the breaking changes are unknown rather than implying there are none. `eveland-ctl update` reads the changelog again itself, and if that read fails too it stops and asks before going on without the summary (see the standard upgrade workflow below):
+
+```
+  ! v0.52.0 is available (its changelog could not be read: breaking changes unknown) — run `eveland-ctl update`
+```
+
 Only `stable` installations are compared. An `edge` checkout sits on a commit no release tag names, so it is shown its revision and nothing more.
 
 `status` also warns when the checkout has moved out from under the running platform:

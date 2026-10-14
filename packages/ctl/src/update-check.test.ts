@@ -35,6 +35,7 @@ async function makeCheckout(options: {
   tags?: string;
   fetchCode?: number | null;
   changelog?: string;
+  showCode?: number;
 }) {
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-check-home-"));
   const repo = await mkdtemp(path.join(os.tmpdir(), "eveland-check-repo-"));
@@ -54,7 +55,11 @@ async function makeCheckout(options: {
     }
     if (argv[1] === "fetch") return { code: options.fetchCode ?? 0, output: "" };
     if (argv[1] === "tag") return { code: 0, output: options.tags ?? "v0.52.0\nv0.51.2\n" };
-    if (argv[1] === "show") return { code: 0, output: options.changelog ?? CHANGELOG };
+    if (argv[1] === "show") {
+      return options.showCode
+        ? { code: options.showCode, output: "fatal: could not fetch blob from promisor remote" }
+        : { code: 0, output: options.changelog ?? CHANGELOG };
+    }
     return { code: 1, output: "" };
   };
   return { layout: applianceLayout(home), repo, execCommand, calls };
@@ -149,6 +154,37 @@ describe("refreshUpdateCheck", () => {
       checkEnabled: true,
     });
     expect(check).toMatchObject({ latestTag: "v0.52.0", checkedAt: null });
+  });
+
+  test("an unreadable target changelog publishes the breaking changes as unknown, not none", async () => {
+    // The installer's checkout is a blobless clone: `git show <tag>:CHANGELOG.md`
+    // lazily fetches the blob and can fail even though `git fetch --tags`
+    // succeeded. That must not reach status and the About page as "no
+    // breaking changes".
+    const harness = await makeCheckout({ showCode: 128 });
+    const check = await refreshUpdateCheck({
+      layout: harness.layout,
+      repoRootDir: harness.repo,
+      execCommand: harness.execCommand,
+      checkEnabled: true,
+    });
+    expect(check).toMatchObject({ latestTag: "v0.52.0", breaking: null });
+    const onDisk = parseUpdateCheck(
+      await readFile(path.join(harness.layout.runDir, "update-check.json"), "utf8"),
+    );
+    expect(onDisk?.breaking).toBeNull();
+  });
+
+  test("a checkout already on the newest tag crosses nothing and reads no changelog", async () => {
+    const harness = await makeCheckout({ tags: "v0.51.2\n", showCode: 128 });
+    const check = await refreshUpdateCheck({
+      layout: harness.layout,
+      repoRootDir: harness.repo,
+      execCommand: harness.execCommand,
+      checkEnabled: true,
+    });
+    expect(check).toMatchObject({ latestTag: "v0.51.2", breaking: [] });
+    expect(harness.calls.some((argv) => argv[1] === "show")).toBe(false);
   });
 
   test("a checkout with no git revision publishes nothing at all", async () => {
