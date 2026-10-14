@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.0](https://github.com/evelandhq/eveland/compare/eveland-v0.17.0...eveland-v0.18.0) (2026-10-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* Agents on eve 0.74.x are no longer servable; rebuild them on 0.76.x or 0.79.x.
+
+### Features
+
+* adopt eve 0.79.0 with a gapped {0.76.x, 0.79.x} window, retiring 0.74 ([#593](https://github.com/evelandhq/eveland/issues/593)) ([d2028f3](https://github.com/evelandhq/eveland/commit/d2028f3a99a5d98890772cb3b53c9424196e1cc0))
+
 ## [0.17.0](https://github.com/evelandhq/eveland/compare/eveland-v0.16.0...eveland-v0.17.0) (2026-10-10)
 
 
