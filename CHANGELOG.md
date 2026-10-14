@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.63.1](https://github.com/evelandhq/eveland/compare/v0.63.0...v0.63.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **ctl:** fail closed when update cannot read the target changelog ([#597](https://github.com/evelandhq/eveland/issues/597)) ([d346446](https://github.com/evelandhq/eveland/commit/d3464467302f8b71e16ee8a8b9eae9a992af47a1))
+* **ctl:** report an unreadable changelog as unknown breaking changes in the update check ([#598](https://github.com/evelandhq/eveland/issues/598)) ([d4ac50c](https://github.com/evelandhq/eveland/commit/d4ac50c698a976373bf317abcfcc354738bb665c))
+
 ## [0.63.0](https://github.com/evelandhq/eveland/compare/v0.62.0...v0.63.0) (2026-10-14)
 
 
