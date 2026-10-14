@@ -66,6 +66,8 @@ eveland-ctl update
 
 用 `--version vX.Y.Z` 可以指定版本。在已安装的机器上重新执行 `curl -fsSL https://eveland.ai/install.sh | sudo bash` 效果相同——它会自动转交给 `eveland-ctl update`。
 
+`update` 在动任何东西之前，会读取目标版本的 `CHANGELOG.md`，列出当前版本到目标版本之间的所有 BREAKING CHANGE，并请你确认。如果读不到这份 changelog（安装脚本拉的是 blobless clone，这一读本身要访问 git 远端），它会打印 git 的报错，并询问是否在没有变更摘要的情况下继续。两种情况下，只要问题没人回答（没有终端，或带了 `--no-prompt`），都会在备份之前中止。重新执行即可重试读取；或者自己查过 Release Notes 后加 `--yes`。
+
 ### 手工安装的
 
 对于自行管理代码与 systemd 服务的环境，请按以下顺序执行。（想改由安装脚本接管，见[从旧版本迁移](/zh/docs/production/install#从旧版本迁移)。）
