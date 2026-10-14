@@ -7,12 +7,12 @@ settings:
 catalogs:
   default:
     eve:
-      specifier: 0.76.0
-      version: 0.76.0
+      specifier: 0.79.0
+      version: 0.79.0
   eve-matrix:
     eve-previous:
-      specifier: npm:eve@0.74.0
-      version: 0.74.0
+      specifier: npm:eve@0.76.0
+      version: 0.76.0
 
 overrides:
   react-jsx-parser>@types/react: 19.3.0
@@ -213,8 +213,8 @@ importers:
         specifier: ^12.12.0
         version: 12.12.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.18)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       ai:
-        specifier: ^7.0.128
-        version: 7.0.128(zod@4.6.5)
+        specifier: ^7.0.137
+        version: 7.0.138(zod@4.6.5)
       ansi-to-react:
         specifier: ^6.2.6
         version: 6.2.6(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -232,7 +232,7 @@ importers:
         version: 8.6.0(react@19.3.0)
       eve:
         specifier: 'catalog:'
-        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: 0.79.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))
       lucide-react:
         specifier: ^1.49.0
         version: 1.49.0(@types/react@19.3.0)(react@19.3.0)
@@ -326,10 +326,10 @@ importers:
         version: link:../../packages/platform-observability
       '@evelandhq/sandbox-bwrap':
         specifier: ^0.5.0
-        version: 0.5.0(eve@0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)))
+        version: 0.5.0(eve@0.79.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5)))
       '@evelandhq/workflow-world':
-        specifier: ^0.24.0
-        version: 0.24.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)
+        specifier: ^0.25.0
+        version: 0.25.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -383,8 +383,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/platform-observability
       '@evelandhq/workflow-world':
-        specifier: ^0.24.0
-        version: 0.24.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)
+        specifier: ^0.25.0
+        version: 0.25.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)
     devDependencies:
       vitest:
         specifier: ^5.0.3
@@ -397,7 +397,7 @@ importers:
         version: link:../core
       eve:
         specifier: 'catalog:'
-        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: 0.79.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))
       openid-client:
         specifier: ^6.8.8
         version: 6.8.8
@@ -450,10 +450,10 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: 0.79.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))
       eve-previous:
         specifier: catalog:eve-matrix
-        version: eve@0.74.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: eve@0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
@@ -469,10 +469,10 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: 0.79.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))
       eve-previous:
         specifier: catalog:eve-matrix
-        version: eve@0.74.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        version: eve@0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
@@ -546,8 +546,8 @@ importers:
   packages/eveland:
     devDependencies:
       eve:
-        specifier: 0.76.0
-        version: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+        specifier: 0.79.0
+        version: 0.79.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
@@ -644,20 +644,20 @@ importers:
 
 packages:
 
-  '@ai-sdk/gateway@4.0.104':
-    resolution: {integrity: sha512-4lTyt8a4BMfVz4QGo+VO5odakmYMX5kq+xiRgdQGGY7o/jP2WSasp6LvIvYvt/lHzz1MfE+xKTOJhz7mMwjynA==}
+  '@ai-sdk/gateway@4.0.111':
+    resolution: {integrity: sha512-+Uq8GgAsEkq3rv1AoYyqpCeHSOXG5ZP7KnsquM8yyIXkn1oBeZbFZvTtNE6gC9Eg1VK34KwImv8NrtB6tfm2wA==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/provider-utils@5.0.54':
-    resolution: {integrity: sha512-amqDxFnw9+dpVrDACRDGmExUUNOH9C1D2bhg/DqWJnamEOieDTXBBXLHujSby/0MqHdAFksnpE8Pzfqx6ABMBw==}
+  '@ai-sdk/provider-utils@5.0.59':
+    resolution: {integrity: sha512-eaXBTkguxBFzS+KvxGRsbdkX9A7+R1g/C4jWx9mup0oSs3Cx5Mb427/byGpD2XL8SnMYT9O8LmXBmrgo+N3TJw==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/provider@4.0.22':
-    resolution: {integrity: sha512-1Jtmn36VNMOBo9CMUQrPqsR744qtqRloEiXpWCYS8ffPlhS2CrSNmoho5lPjp3R7EnkzBsGI6p51TA7fQJQZdA==}
+  '@ai-sdk/provider@4.0.27':
+    resolution: {integrity: sha512-TtWwm6SxFiPomlMIbTQa+yhJte+w4/oCsW+wJrJzMC3MqHpAY9e5dJF1Y4HxyKt3W2Csac0KiI76Ckio11TFYw==}
     engines: {node: '>=22'}
 
   '@alloc/quick-lru@5.2.0':
@@ -1547,8 +1547,8 @@ packages:
     peerDependencies:
       eve: '>=0.62.0 <1.0.0'
 
-  '@evelandhq/workflow-world@0.24.0':
-    resolution: {integrity: sha512-wRJYESQUx7SD3jULUopz1tr0hmwFwKHrdfHIvUqKlkh5O549TDfe+azbdgxE2qAkjQuPDWCZ4j/hzTeF+QyGfA==}
+  '@evelandhq/workflow-world@0.25.0':
+    resolution: {integrity: sha512-f61oPDQpc0SqIjQfU/s9GdX5IFY2EMUY47yOmYdqJdVojAF7c1Ypk0lIDjxVf0ZuajnovPnnbSSudhYa0TEy9Q==}
     engines: {node: '>=24.0.0'}
     hasBin: true
 
@@ -3489,8 +3489,8 @@ packages:
       '@opentelemetry/api':
         optional: true
 
-  '@vercel/queue@0.5.1':
-    resolution: {integrity: sha512-7gO8hOtIh15UDzbjCg7oJDOwY1Hs3XC4xSK6HjMVo93Ge3oEhPZJ18ogamwZTXwcFRYwvgN1vp2w3+zgqfIpoA==}
+  '@vercel/queue@0.8.0':
+    resolution: {integrity: sha512-Rwaoq8DbSN2/qVPMdHzBdBXqpoD2h2s7+gOSaE3Gff9XI1NjNh281uMesP30k1kbsnjgeaibLTSiuYDlNPlw+g==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
@@ -3515,17 +3515,17 @@ packages:
   '@workflow/errors@5.0.0-beta.17':
     resolution: {integrity: sha512-orc86yllgOKpss/o5YD4kuhRbng+4aq8i4pPJR4uZCFeNpn4I4A+ek83lelQf31EJ5tyf12ikceOjabQxp317A==}
 
-  '@workflow/errors@5.0.1':
-    resolution: {integrity: sha512-6cLOImavSHEHqXKPYgL99ZKn0e3Cw1tjxXwgb+CP+DAWi2ikkzUBcK3xinkwzzaxUoylkZcsNv8hEu61xpJvhQ==}
+  '@workflow/errors@5.0.3':
+    resolution: {integrity: sha512-mzpphB/R1fiAlANz6+ZFOjtu9EHQyFp3zs5FLxEU+I6eNbdWsqMZbi37PI53bQ9QBOS6u8+aHajp6IVAcTqOSQ==}
 
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
 
-  '@workflow/utils@5.0.0':
-    resolution: {integrity: sha512-WEVTOy9mC43ZvWutFSGrtHxnIe1Nyhxqkbm3jY3ugUlp950lnQ6L6Ekp0S2y3jFd8d5ZOqRhOdpceJ69z3y3ag==}
-
   '@workflow/utils@5.0.0-beta.8':
     resolution: {integrity: sha512-dDiQ/LT05g9HyOicqWNNX/Gw/fmO7Ma2kZ+ddUXXpm/EFTMRS9eiI69suSe1+1NnhMzdV6ObI8wrO5lvQqPIbg==}
+
+  '@workflow/utils@5.0.1':
+    resolution: {integrity: sha512-s/32vojtP1qYDPINp9wfE5JZRkjdhXI8lyg4l+QNrKjMwiaXv6vNRpsuGQrcdj2Nfnnvz3L4DOxdNyPW3MG+Jg==}
 
   '@workflow/world-local@5.0.0-beta.36':
     resolution: {integrity: sha512-M0F2/6Ax0vstQoTTX0EwX0O+FxOyBrjLosSy+vwYth6XeRYt6hqzoWFLSMQoIdWsPDSY7B0SE9NtnEoBr3Ackg==}
@@ -3535,8 +3535,8 @@ packages:
       '@opentelemetry/api':
         optional: true
 
-  '@workflow/world-local@5.0.1':
-    resolution: {integrity: sha512-P/NGhwlRlJqGa8TBncD1fzw/bEPv6aWXMpTWcLUZ1A6MmvemnOQ2dGDopxdx8TYfKtS0hrQn1MMIA7jaaHdbNg==}
+  '@workflow/world-local@5.1.0':
+    resolution: {integrity: sha512-lNdroOV8eLLIu+gibNAtawqemjr5nxSkEKuixhm2EzDadMpoKjQscvQaFKmhkAtX1s1IRPXud1RGTQfCa2soKw==}
     peerDependencies:
       '@opentelemetry/api': '1'
     peerDependenciesMeta:
@@ -3550,8 +3550,8 @@ packages:
   '@workflow/world@5.0.0-beta.27':
     resolution: {integrity: sha512-6+cpxAKgKuIO7khpTZFs9WVTTt8CVXWL8+QTz8VQJFtjg9QF1Kfc3bHPpzj1j6jjQCW6X0pF7CsQGSpLKuL9gw==}
 
-  '@workflow/world@5.0.1':
-    resolution: {integrity: sha512-rO95deJNAId4DBS6/RylBthTYeKUR0SGUOJ7fg5ZCz4jMngI6xAbLTueXXFOS3dp8bDh+aYWgwSIKwuEKfjagQ==}
+  '@workflow/world@5.0.3':
+    resolution: {integrity: sha512-/V2rxExhLgTwrho3VOZSdz2VdB5b1TaaybZI4oNbFb1KIhwGlZIxEsW+eKA+UAmYxJdmnh28yxkGIVS5ry7n2w==}
 
   '@xyflow/react@12.12.0':
     resolution: {integrity: sha512-74oXI0Rgm1Eu33cHQAd74J6oVgCH9mbFyTVQbsGgp2kmWwh0HdtBr2VP04z8mbPD+M/xO69nqG5dDEt7/EN2rQ==}
@@ -3573,67 +3573,79 @@ packages:
     resolution: {integrity: sha512-xt4Vy3RTBw1NfszBlf4A0Rr6ZjA/th2Pj9XlWFLQHW9A1qOCtxNCoIWSzn/INtnZLMB4jO2gWdEtSaHUtK73wA==}
     cpu: [arm64]
     os: [android]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-darwin-arm64@0.10.2':
     resolution: {integrity: sha512-ftokSqvYXZxfmA/bfIbp8c1BJ8QxNax371kUOQNFyvR5hmtKqQyTqSKtMk+WaixHM3w4tKj/JdyY+ud1bGamXA==}
     cpu: [arm64]
     os: [darwin]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-darwin-x64@0.10.2':
     resolution: {integrity: sha512-yUrmmhmF5R4Xmbfo8gUxJKr3YbvbLcE2JvLhDLzFJkMN29/fGm6K3dZX6YpNecfgBDnQ+VywGp8K9xjRaBFZ3Q==}
     cpu: [x64]
     os: [darwin]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-freebsd-x64@0.10.2':
     resolution: {integrity: sha512-cy9+KvVoK5Xad3Vs5pLwAeZf3JC/1y0XJElgv1q6g7W7g/n52FRjedpYmQiJeMZdnhJiAshq7Vz/Xj3jC5Ns2Q==}
     cpu: [x64]
     os: [freebsd]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-linux-arm-gnu@0.10.2':
     resolution: {integrity: sha512-AgVZ6VCV2XP4yHCwyv78KLV76gcu2neiEF2+RBTPQN7sqYY+bLvMxphGPmfG+9qk5Uf1PJAhZYIUnMGVbbRCZw==}
     cpu: [arm]
     os: [linux]
     libc: [glibc]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-linux-arm-musl@0.10.2':
     resolution: {integrity: sha512-5qAj2GjoSN6+HuH75+g5r40CFhWmMvH0K8VKWmPfQyOgA/LonoDMr5H5O5feJwzdnfdCytPDAh1RAf7/SSg7dg==}
     cpu: [arm]
     os: [linux]
     libc: [musl]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-linux-arm64-gnu@0.10.2':
     resolution: {integrity: sha512-eJvQ4Ja5oPf/HOjmBkCLYyhOHUkL7U+iMAN8sX44x8exBBpPRyqnhEgTsuU73HzxPLrGPdRhybFnAE63Omib/Q==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-linux-arm64-musl@0.10.2':
     resolution: {integrity: sha512-TppF2j194mOQ/kBXvNr9u5TYO+eR9r8ieg4lTIEyJIVYHAR9GWeB0oFHLcJiLXVa3qUJGzE4bmzSntCW5ylA7A==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-linux-x64-gnu@0.10.2':
     resolution: {integrity: sha512-03xu6ocJuwhm1a/JKmrHiaJUO1Oj86rABsm4FAl8AvfewfW/9idIUmPiFxZfb6RfiIONegebsTGJhFx0NbBNpA==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-linux-x64-musl@0.10.2':
     resolution: {integrity: sha512-f7W2sAWWQN8x8YB0RRxIche7mLImH7lDgzUy9+B69cM2I6VFJ4a5+0pgAuMLROPOqimaxFPdXqLdDE/vpgGltg==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-win32-arm64@0.10.2':
     resolution: {integrity: sha512-f534qNc5YaJI29e1oryxEnxPkp7WCYJ1j7ChSec8pQNlYqTm8Tao7hij7NxRF+9BuxzeZCZ+WsbaAfLlklR0Eg==}
     cpu: [arm64]
     os: [win32]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-analyzer/binding-win32-x64@0.10.2':
     resolution: {integrity: sha512-sKHkmLK8BsindMfyIThoN0bWC5uqSJEVNaLRD/ifA99mtb0UDin1ZCg4WYSVQAmM4k2iOTl4UZx/p3zcBiBgYw==}
     cpu: [x64]
     os: [win32]
+    deprecated: yuku-analyzer runs on yuku-core since 0.14
 
   '@yuku-toolchain/types@0.10.2':
     resolution: {integrity: sha512-sSeo4SSSToiS+sSD+bwn/s94EEcaLJ7tG5LCp8gFYC1G5VzxzX7fqB6m9RU1yMD8KTpu6zdU/I1NlQf8hVBJ9Q==}
@@ -3656,8 +3668,8 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  ai@7.0.128:
-    resolution: {integrity: sha512-WMKN83DodYtH52ETPHq0jrSwj3wU0aHkhLHXMrwMRabC/aMpIqeWsXJgjkUwrOqkaKHWONdupk/2ttPRvAyFcg==}
+  ai@7.0.138:
+    resolution: {integrity: sha512-rB2grfrM9se2GY/au4e5Eq0xadPM4+a+ip3EZ0ofedIPU8/GETWGjXO6gbzQDA+7nMaZnaUVaX2f+ByAj/LF8w==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -4700,8 +4712,8 @@ packages:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
     engines: {node: '>= 0.6'}
 
-  eve@0.74.0:
-    resolution: {integrity: sha512-pXIvp8wGorrNXqO1/aQa1QJR85qI31ShrVGcRmdcfdugoEbhHN/vVWuvWQeGDPvEWkA1gqeAzCJ0ZO+Q0W7InA==}
+  eve@0.76.0:
+    resolution: {integrity: sha512-nvM/eKQRr7kSdhZRbwz5EkoYsZqx6D9k+cXU04iCj30wIrldmMsdAPxvubj2RVK2DDaOXjL1XBs9K6Yjxd7l9A==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
@@ -4726,13 +4738,13 @@ packages:
       microsandbox:
         optional: true
 
-  eve@0.76.0:
-    resolution: {integrity: sha512-nvM/eKQRr7kSdhZRbwz5EkoYsZqx6D9k+cXU04iCj30wIrldmMsdAPxvubj2RVK2DDaOXjL1XBs9K6Yjxd7l9A==}
+  eve@0.79.0:
+    resolution: {integrity: sha512-H+SERBdpVUh3w5r/KQxOMnN/fyXiE3UXyBL56yviVON5UHLbBZBbobCzdOUog5OsP3hw1iZzjcSuHC0XF2YJ4Q==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
-      ai: ^7.0.128
+      ai: ^7.0.137
       braintrust: ^3.0.0
       chat: ^4.41.0
       dd-trace: ^6.13.0
@@ -7241,23 +7253,23 @@ packages:
 
 snapshots:
 
-  '@ai-sdk/gateway@4.0.104(zod@4.6.5)':
+  '@ai-sdk/gateway@4.0.111(zod@4.6.5)':
     dependencies:
-      '@ai-sdk/provider': 4.0.22
-      '@ai-sdk/provider-utils': 5.0.54(zod@4.6.5)
+      '@ai-sdk/provider': 4.0.27
+      '@ai-sdk/provider-utils': 5.0.59(zod@4.6.5)
       '@vercel/oidc': 3.2.0
       zod: 4.6.5
 
-  '@ai-sdk/provider-utils@5.0.54(zod@4.6.5)':
+  '@ai-sdk/provider-utils@5.0.59(zod@4.6.5)':
     dependencies:
-      '@ai-sdk/provider': 4.0.22
+      '@ai-sdk/provider': 4.0.27
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.1
       undici: 7.30.0
       zod: 4.6.5
 
-  '@ai-sdk/provider@4.0.22':
+  '@ai-sdk/provider@4.0.27':
     dependencies:
       json-schema: 0.4.0
 
@@ -7919,16 +7931,16 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@evelandhq/sandbox-bwrap@0.5.0(eve@0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)))':
+  '@evelandhq/sandbox-bwrap@0.5.0(eve@0.79.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5)))':
     dependencies:
-      eve: 0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5))
+      eve: 0.79.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))
 
-  '@evelandhq/workflow-world@0.24.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)':
+  '@evelandhq/workflow-world@0.25.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)':
     dependencies:
-      '@workflow/errors': 5.0.1
-      '@workflow/utils': 5.0.0
-      '@workflow/world': 5.0.1
-      '@workflow/world-local': 5.0.1(@opentelemetry/api@1.9.1)
+      '@workflow/errors': 5.0.3
+      '@workflow/utils': 5.0.1
+      '@workflow/world': 5.0.3
+      '@workflow/world-local': 5.1.0(@opentelemetry/api@1.9.1)
       cbor-x: 1.6.0
       drizzle-orm: 0.45.2(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.20.0)(postgres@3.4.9)
       graphile-worker: 0.16.6(typescript@6.0.3)
@@ -9676,7 +9688,7 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  '@vercel/queue@0.5.1(@opentelemetry/api@1.9.1)':
+  '@vercel/queue@0.8.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@vercel/oidc': 3.8.9
       minimatch: 10.2.6
@@ -9701,19 +9713,19 @@ snapshots:
       '@workflow/utils': 5.0.0-beta.8
       ms: 2.1.3
 
-  '@workflow/errors@5.0.1':
+  '@workflow/errors@5.0.3':
     dependencies:
-      '@workflow/utils': 5.0.0
-      '@workflow/world': 5.0.1
+      '@workflow/utils': 5.0.1
+      '@workflow/world': 5.0.3
       ms: 2.1.3
 
   '@workflow/serde@4.1.0': {}
 
-  '@workflow/utils@5.0.0':
+  '@workflow/utils@5.0.0-beta.8':
     dependencies:
       ms: 2.1.3
 
-  '@workflow/utils@5.0.0-beta.8':
+  '@workflow/utils@5.0.1':
     dependencies:
       ms: 2.1.3
 
@@ -9731,12 +9743,12 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  '@workflow/world-local@5.0.1(@opentelemetry/api@1.9.1)':
+  '@workflow/world-local@5.1.0(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@vercel/queue': 0.5.1(@opentelemetry/api@1.9.1)
-      '@workflow/errors': 5.0.1
-      '@workflow/utils': 5.0.0
-      '@workflow/world': 5.0.1
+      '@vercel/queue': 0.8.0(@opentelemetry/api@1.9.1)
+      '@workflow/errors': 5.0.3
+      '@workflow/utils': 5.0.1
+      '@workflow/world': 5.0.3
       async-sema: 3.1.1
       proper-lockfile: 4.1.2
       ulid: 3.0.2
@@ -9797,7 +9809,7 @@ snapshots:
       ulid: 3.0.2
       zod: 4.3.6
 
-  '@workflow/world@5.0.1':
+  '@workflow/world@5.0.3':
     dependencies:
       ulid: 3.0.2
       zod: 4.5.4
@@ -9878,11 +9890,11 @@ snapshots:
 
   acorn@8.18.0: {}
 
-  ai@7.0.128(zod@4.6.5):
+  ai@7.0.138(zod@4.6.5):
     dependencies:
-      '@ai-sdk/gateway': 4.0.104(zod@4.6.5)
-      '@ai-sdk/provider': 4.0.22
-      '@ai-sdk/provider-utils': 5.0.54(zod@4.6.5)
+      '@ai-sdk/gateway': 4.0.111(zod@4.6.5)
+      '@ai-sdk/provider': 4.0.27
+      '@ai-sdk/provider-utils': 5.0.59(zod@4.6.5)
       zod: 4.6.5
 
   ajv-formats@2.1.1(ajv@8.20.0):
@@ -10750,17 +10762,17 @@ snapshots:
 
   etag@1.8.1: {}
 
-  eve@0.74.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)):
+  eve@0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5)):
     dependencies:
-      ai: 7.0.128(zod@4.6.5)
+      ai: 7.0.138(zod@4.6.5)
       nitro: 3.0.260903-beta
       undici: 8.10.2
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
 
-  eve@0.76.0(@opentelemetry/api@1.9.1)(ai@7.0.128(zod@4.6.5)):
+  eve@0.79.0(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5)):
     dependencies:
-      ai: 7.0.128(zod@4.6.5)
+      ai: 7.0.138(zod@4.6.5)
       nitro: 3.0.260903-beta
       undici: 8.10.2
     optionalDependencies:
