@@ -60,6 +60,8 @@ eveland-ctl update
 
 Pin a specific release with `--version vX.Y.Z`. Re-running `curl -fsSL https://eveland.ai/install.sh | sudo bash` on an installed machine does the same thing — it forwards to `eveland-ctl update`.
 
+Before it touches anything, `update` reads the target release's `CHANGELOG.md` and lists every BREAKING CHANGE between your version and the target, then asks you to confirm. If it cannot read that changelog (the installer's checkout is a blobless clone, so the read itself goes to your git remote), it prints the git error and asks whether to proceed without the summary. Either way, an unanswered question — no terminal, or `--no-prompt` — aborts before the backup. Re-run to retry the read, or check the release notes yourself and pass `--yes`.
+
 ### If you installed by hand
 
 For git checkouts and systemd units you manage yourself. (To stop doing this, see [migrating a hand-installed platform onto the installer](/docs/production/install#coming-from-an-older-hand-installed-platform).)
