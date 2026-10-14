@@ -2,10 +2,10 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.76.0
+  eve: 0.79.0
 catalogs:
   eve-matrix:
-    eve-previous: npm:eve@0.74.0
+    eve-previous: npm:eve@0.76.0
   # The published SDK's contract is narrower than the platform's. It imports
   # four primitives from eve/channels/auth, stable across 0.27-0.40, while the
   # policy's peerDependencyRange tracks what Eveland can actually host and
@@ -18,7 +18,7 @@ catalogs:
   # deliberately wider peer range. The platform's hosting window survives as
   # EVE_COMPATIBILITY_POLICY.peerDependencyRange, which still pins this floor.
   eve-sdk-peer:
-    eve: ">=0.74.0 <1.0.0"
+    eve: ">=0.76.0 <1.0.0"
 allowBuilds:
   cbor-extract: true
   esbuild: true
@@ -49,8 +49,10 @@ peerDependencyRules:
     "@pierre/theming@1.0.0>@pierre/theme": "2"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.74.x and 0.76.x -- a gapped window:
-# 0.76.0 entered on 2026-10-10 and 0.75 retired with it, one day after it had
+# verified minor in the current window (0.76.x and 0.79.x -- a gapped window:
+# 0.79.0 entered on 2026-10-14 and 0.74 retired with it, Eveland v0.62.0
+# having carried 0.76 since 2026-10-10; 0.77 and 0.78 sit inside the hull and
+# are rejected; 0.76.0 had entered on 2026-10-10 and 0.75 retired with it, one day after it had
 # entered and before any Eveland release carried it; 0.75.1 had entered on
 # 2026-10-09 and 0.68 retired with it, Eveland v0.61.0 having carried 0.74
 # since 2026-10-08; 0.75 sits inside the hull and is rejected; 0.73 had entered on 2026-10-08
@@ -68,23 +70,22 @@ peerDependencyRules:
 # The @workflow/* entries are TWO reviewed graphs that coexist on purpose.
 # `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
-# before the shared World and never selected for a new build. The stable
-# 5.0.1 line (world/world-local/errors 5.0.1, utils 5.0.0) is what
-# `@evelandhq/workflow-world` 0.24.0 pins -- the release of the family eve
-# moved to at 0.70.2 (spec constants untouched, the World interface only gains
-# optional members), which 0.72.1 carried; 0.73.0 through 0.75.0 carry core
-# 5.1.0 and world/world-local/errors 5.0.2, and 0.75.1 and 0.76.0 the stable
-# 5.2 family (core 5.2.0, world/errors 5.0.3, world-local 5.1.0) -- the same World calls
-# and spec constants throughout, only optional members added. eve compares
-# only the major and prerelease tag of the World's declaration, so the same
-# World serves the whole window. The 5.0.1 `@workflow/world` reports
+# before the shared World and never selected for a new build. The stable 5.2
+# family (world/errors 5.0.3, world-local 5.1.0, utils 5.0.1) is what
+# `@evelandhq/workflow-world` 0.25.0 pins -- the set eve moved to at 0.75.1
+# and 0.76.0 through 0.79.0 still bundle (core 5.2.0); before it, 0.70.2 moved
+# to the stable 5.0.1 release (which 0.24.0 pinned) and 0.73.0 to core 5.1.0
+# with world/world-local/errors 5.0.2 -- the same World calls and spec
+# constants throughout, only optional members added. eve compares only the
+# major and prerelease tag of the World's declaration, so the same World
+# serves the whole window. The 5.0.3 `@workflow/world` reports
 # SPEC_VERSION_CURRENT 8 (the hook force-claim reader contract), but since
 # 0.23.0 the shared World DECLARES `Math.min(mintedSpecVersion(), 7)` -- the
 # sealed log, or 6 for a Deployment that opts out with WORKFLOW_SEALED_LOG=0
 # (0.18.0 through 0.22.0 declared `mintedSpecVersion()` outright, which was 7
 # on their @workflow/world; 0.5.0 through 0.17.0 always declared 6) -- because
 # 0.62.0's runtime read spec 6 through 7 only and would have refused a World
-# declaring 8 at startup (0.74.0 and 0.76.0 read 6 through 8). eve gates on the declared number, which the contract
+# declaring 8 at startup (0.76.0 and 0.79.0 read 6 through 8). eve gates on the declared number, which the contract
 # ratchet reads out of the World's dist and asserts per line; the platform
 # admits both 6 and 7 (SUPPORTED_WORKFLOW_STORAGE_SPECS).
 minimumReleaseAgeExclude:
@@ -96,11 +97,11 @@ minimumReleaseAgeExclude:
   - "@ai-sdk/provider@4.0.17"
   - ai@7.0.105
   - "@workflow/errors@5.0.0-beta.17"
-  - "@workflow/errors@5.0.1"
+  - "@workflow/errors@5.0.3"
   - "@workflow/utils@5.0.0-beta.8"
-  - "@workflow/utils@5.0.0"
+  - "@workflow/utils@5.0.1"
   - "@workflow/world-local@5.0.0-beta.36"
-  - "@workflow/world-local@5.0.1"
+  - "@workflow/world-local@5.1.0"
   - "@workflow/world-postgres@5.0.0-beta.34"
   - "@workflow/world@5.0.0-beta.27"
-  - "@workflow/world@5.0.1"
+  - "@workflow/world@5.0.3"

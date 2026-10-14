@@ -144,7 +144,7 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
  * declared `mintedSpecVersion()` as upstream recommends: the sealed log (7) by
  * default, or 6 when `WORKFLOW_SEALED_LOG=0` opts a Deployment out. Since
  * 0.23.0 it caps that at `SPEC_VERSION_SUPPORTS_SEALED_LOG`: its
- * `@workflow/world` beta.38 (eve 0.66.3), like the stable 5.0.1 that 0.24.0
+ * `@workflow/world` beta.38 (eve 0.66.3), like the stable 5.0.3 that 0.25.0
  * pins, mints 8, the hook force-claim reader
  * contract, and a runtime refuses a World above its ceiling at startup, which
  * would shut out every eve before 0.66.3 -- 0.62.0 among them. eve gates on
@@ -189,14 +189,14 @@ function declaredWorldSpecVersion(): number {
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.24.0");
+    expect(worldManifest.version).toBe("0.25.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and
     // the one the shared World bundles. See the comment above the list.
     const workspace = readSource("pnpm-workspace.yaml");
     expect(workspace).toContain('  - "@workflow/utils@5.0.0-beta.8"');
-    expect(workspace).toContain('  - "@workflow/utils@5.0.0"');
+    expect(workspace).toContain('  - "@workflow/utils@5.0.1"');
 
     const { SPEC_VERSION_CURRENT: sharedSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [worldRoot] }),
@@ -205,10 +205,10 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       require.resolve("@workflow/world", { paths: [postgresWorldRoot] }),
     ) as { SPEC_VERSION_CURRENT: number };
     // Capability and declaration, asserted separately because they differ
-    // again: the shared World's `@workflow/world` 5.0.1 can write spec 8
+    // again: the shared World's `@workflow/world` 5.0.3 can write spec 8
     // (the hook force-claim reader contract eve 0.66.3 brought in), while the
     // World declares the sealed log, 7, which every line in the window reads
-    // (0.74.0 and 0.76.0 accept 6 through 8). The legacy World
+    // (0.76.0 and 0.79.0 accept 6 through 8). The legacy World
     // stays on slot identity. Moving the declared number is an eve-window
     // decision, not a lockfile outcome — every line in the window must read
     // what new Releases stamp.
@@ -220,6 +220,44 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
   // The controls moved out of .env.example when it slimmed down to the
   // decide-per-install set; the operator reference is where a tuning knob
   // must stay discoverable.
+  test("declares deployment affinity, which eve reads as per-Deployment routing", () => {
+    // From 0.76.1 eve treats a World that does not declare
+    // `capabilities.deploymentAffinity` as running one eve version at a time:
+    // it parks or cancels deliveries for runs another eve version created and
+    // ends a session such a run owns instead of resuming it. Eveland runs
+    // Deployments on different eve versions side by side and its dispatcher
+    // delivers every run to the Deployment recorded on it, so the injected
+    // World must declare the capability, and every line that has the guard
+    // must still key it on that capability.
+    const worldSource = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
+    expect([...worldSource.matchAll(/^\s*deploymentAffinity: true,$/gm)]).toHaveLength(1);
+
+    const guardedLines = EVE_LINES.flatMap((line) => {
+      const eveRoot = resolveInstalledPackageRoot(line, "eve");
+      const { version } = readJson(path.join(eveRoot, "package.json")) as { version: string };
+      const runtime = readFileSync(
+        path.join(eveRoot, "dist/src/compiled/@workflow/core/runtime.js"),
+        "utf8",
+      );
+      expect(runtime, `${line} (${version}) runtime affinity guard`).toContain(
+        "capabilities?.deploymentAffinity",
+      );
+      const [, minor, patch] = version.split(".").map(Number);
+      if (minor! < 76 || (minor === 76 && patch! < 1)) return [];
+      const runnableOwner = readFileSync(
+        path.join(eveRoot, "dist/src/execution/session-inbox/runnable-owner.js"),
+        "utf8",
+      );
+      expect(runnableOwner, `${line} (${version}) stranded-session guard`).toContain(
+        "capabilities?.deploymentAffinity===!0",
+      );
+      return [line];
+    });
+    // The newest line carries the guard; if it ever stops reading the
+    // capability, this suite must be revisited rather than pass vacuously.
+    expect(guardedLines).toContain("eve");
+  });
+
   test("exposes the bounded-storage controls in the operator reference", () => {
     const operatorReference = readSource("docs/en/reference/environment-variables.md");
     for (const name of [

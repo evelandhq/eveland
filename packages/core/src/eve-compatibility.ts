@@ -1,20 +1,21 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.74.x",
-      verifiedVersion: "0.74.0",
+      range: "0.76.x",
+      verifiedVersion: "0.76.0",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.76.x",
-      verifiedVersion: "0.76.0",
+      range: "0.79.x",
+      verifiedVersion: "0.79.0",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.76.0 (published 2026-10-09) entered on
+  // A gapped two-line window: 0.79.0 (published 2026-10-13) entered on
+  // 2026-10-14 and 0.74 retired with it (Eveland v0.62.0 had carried 0.76
+  // since 2026-10-10); 0.77 and 0.78 were skipped. 0.76.0 had entered on
   // 2026-10-10 and 0.75 retired with it, one day after it had entered and
-  // before any Eveland release carried it. 0.74 stays because Eveland v0.61.0
-  // ships it. 0.68 retired on 2026-10-09 when 0.75 entered (v0.61.0 had carried
+  // before any Eveland release carried it. 0.68 retired on 2026-10-09 when 0.75 entered (v0.61.0 had carried
   // 0.74 since the day before). 0.74.0 entered on 2026-10-08 and 0.73 retired
   // with it, hours after it had entered and before any Eveland release
   // carried it; 0.72 retired the same way earlier that day, 0.70 (and the
@@ -66,9 +67,28 @@ export const EVE_COMPATIBILITY_POLICY = {
   // and 0.76 the discovery manifest (v15), the message stream (v26), the
   // session checkpoint (13 since 0.75), the observer's instrumentation pin,
   // the sandbox provider API (since 0.75), and every route Eveland forwards
-  // are byte-identical. The range is the union of the two contiguous runs,
-  // never the hull, which would admit 0.75.
-  peerDependencyRange: ">=0.74.0 <0.75.0 || >=0.76.0 <0.77.0",
+  // are byte-identical.
+  //
+  // 0.79 leaves the message stream (v26), the discovery (v15) and compiled
+  // (54) manifests, the `eve/client` types, hooks, every route Eveland
+  // forwards, the sandbox provider API, and the bundled Workflow set (the
+  // stable 5.2 family since 0.75.1) byte-identical to 0.76.0; the extension
+  // contracts only gain versions, and the session checkpoint moves to 14 with
+  // an identity upgrade from 13. Events gain `session.started.predecessor`
+  // and `turn.failed.terminal`, and `message.received` file parts stop
+  // echoing `data:` URLs. Approved calls now run as the principal whose turn
+  // requested them, eve downloads attachment links itself, and eve requires
+  // `ai` 7.0.137. From 0.76.1 eve treats a World that does not declare
+  // `capabilities.deploymentAffinity` as running one eve version at a time:
+  // it parks or cancels deliveries for runs another eve version created and
+  // ends a session such a run owns (`session_stranded`) instead of resuming
+  // it. `@evelandhq/workflow-world` 0.25.0 declares the capability, so a
+  // session keeps its Deployment across an eve-version promote as it always
+  // has. The observer's instrumentation pin moved with 0.79's shared tracing
+  // library, but its pinned expression is unchanged. The range is the union
+  // of the two contiguous runs, never the hull, which would admit 0.77 and
+  // 0.78.
+  peerDependencyRange: ">=0.76.0 <0.77.0 || >=0.79.0 <0.80.0",
 } as const;
 
 export type SupportedEveVersionRange =
