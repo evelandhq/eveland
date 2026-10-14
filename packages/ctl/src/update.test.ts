@@ -52,6 +52,8 @@ async function makeHarness(
     supervision?: "ctl" | "systemd";
     dirty?: boolean;
     breaking?: boolean;
+    /** `git show <target>:CHANGELOG.md` fails, as a blobless clone's lazy blob fetch can. */
+    changelogUnreadable?: boolean;
     evePinAfter?: string;
     confirmAnswers?: boolean[];
     /** What `git describe --tags --exact-match` answers after the checkout. */
@@ -193,6 +195,14 @@ async function makeHarness(
         }
         if (sub === "stash" && argv[2] === "apply" && options.stashApplyFails)
           return { code: 1, output: "CONFLICT (content): Merge conflict in src/app.ts" };
+        if (sub === "show" && options.changelogUnreadable)
+          return {
+            code: 128,
+            output:
+              "fatal: unable to access 'https://github.com/evelandhq/eveland.git/': " +
+              "OpenSSL SSL_read: unexpected eof while reading\n" +
+              "fatal: could not fetch 3b0fc2b1 from promisor remote\n",
+          };
         if (sub === "show") {
           return options.breaking === false
             ? {
@@ -714,6 +724,31 @@ describe("runUpdate (phase 1, the old code)", () => {
   test("--yes accepts breaking changes without a prompt", async () => {
     const harness = await makeHarness({ confirmAnswers: [] });
     expect(await runUpdate(["--yes"], harness.io)).toBe(0);
+  });
+
+  test("an unreadable target changelog is not a clean path: unconfirmed, the update aborts before any backup or checkout", async () => {
+    const harness = await makeHarness({ changelogUnreadable: true, confirmAnswers: [] });
+    expect(await runUpdate([], harness.io)).toBe(1);
+    const err = harness.err.join("\n");
+    expect(err).toContain("v0.49.0's CHANGELOG.md");
+    // The read error is shown, not swallowed: it is the only clue to why.
+    expect(err).toContain("could not fetch 3b0fc2b1 from promisor remote");
+    expect(err).toContain("--yes");
+    expect(harness.pgDumps).toHaveLength(0);
+    expect(harness.timeline).not.toContain("stop-signal");
+    expect(gitSubcommands(harness)).not.toContain("checkout");
+  });
+
+  test("an operator can confirm an update whose changelog could not be read", async () => {
+    const harness = await makeHarness({ changelogUnreadable: true, confirmAnswers: [true] });
+    expect(await runUpdate([], harness.io)).toBe(0);
+    expect(gitSubcommands(harness)).toContain("checkout");
+  });
+
+  test("--yes proceeds past an unreadable changelog without a prompt", async () => {
+    const harness = await makeHarness({ changelogUnreadable: true, confirmAnswers: [] });
+    expect(await runUpdate(["--yes"], harness.io)).toBe(0);
+    expect(gitSubcommands(harness)).toContain("checkout");
   });
 
   test("a clean upgrade path needs no confirmation at all", async () => {

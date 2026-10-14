@@ -352,37 +352,12 @@ async function runUpdateLocked(
   }
   io.stdout(`Updating v${currentVersion} -> ${target}`);
 
-  // Breaking changes between here and there, from the TARGET's changelog —
-  // the running checkout has never heard of the new version.
-  const changelogAtTarget = await git(["show", `${target}:CHANGELOG.md`]);
-  if (changelogAtTarget.code === 0) {
-    const targetVersion = target.replace(/^v/, "");
-    const breaking = breakingChangesBetween(
-      changelogAtTarget.output,
-      currentVersion,
-      targetVersion,
-    );
-    if (breaking.length > 0) {
-      io.stdout("");
-      io.stdout("This update crosses BREAKING CHANGES:");
-      for (const entry of breaking) {
-        io.stdout(`  v${entry.version}:`);
-        for (const line of entry.changes.split("\n")) io.stdout(`    ${line}`);
-      }
-      io.stdout("");
-      if (!parsed.values.yes) {
-        const proceed = await prompter.confirm("Proceed with the update?", false);
-        if (!proceed) {
-          io.stderr("Update aborted (re-run with --yes to accept the breaking changes).");
-          return 1;
-        }
-      }
-    }
-  } else {
-    io.stdout(
-      "(Could not read the target's CHANGELOG.md; proceeding without the breaking-change summary.)",
-    );
-  }
+  const acknowledged = await acknowledgeBreakingChanges(context, {
+    currentVersion,
+    target,
+    yes: parsed.values.yes === true,
+  });
+  if (!acknowledged) return 1;
 
   const envFile = await loadPlatformEnvFile({
     env: io.env,
@@ -475,6 +450,56 @@ async function runUpdateLocked(
   };
   await writePendingUpdate(resolved.layout, pendingRecord);
   return completeUpdate(context, pendingRecord);
+}
+
+/**
+ * The update's only breaking-change gate: list what the move crosses and
+ * confirm it (`--yes` confirms up front). Read from the TARGET's changelog —
+ * the running checkout has never heard of the new version.
+ *
+ * It fails closed. On the installer's blobless clone that read is a network
+ * fetch of the changelog blob, which can fail although the tag itself
+ * arrived; an unreadable changelog means "unknown", never "nothing breaking".
+ */
+async function acknowledgeBreakingChanges(
+  context: Pick<UpdateContext, "io" | "git" | "prompter">,
+  options: { currentVersion: string; target: string; yes: boolean },
+): Promise<boolean> {
+  const { io, git, prompter } = context;
+  const { currentVersion, target, yes } = options;
+  const changelogAtTarget = await git(["show", `${target}:CHANGELOG.md`]);
+  if (changelogAtTarget.code !== 0) {
+    io.stderr(
+      `Could not read ${target}'s CHANGELOG.md, so the breaking changes this update crosses are unknown:`,
+    );
+    for (const line of changelogAtTarget.output.trim().split("\n")) io.stderr(`    ${line}`);
+    if (yes) return true;
+    const proceed = await prompter.confirm("Proceed without the breaking-change summary?", false);
+    if (!proceed) {
+      io.stderr(
+        "Update aborted. Re-run `eveland-ctl update` to retry the read, or read the release's " +
+          "notes yourself and re-run with --yes.",
+      );
+    }
+    return proceed;
+  }
+  const breaking = breakingChangesBetween(
+    changelogAtTarget.output,
+    currentVersion,
+    target.replace(/^v/, ""),
+  );
+  if (breaking.length === 0) return true;
+  io.stdout("");
+  io.stdout("This update crosses BREAKING CHANGES:");
+  for (const entry of breaking) {
+    io.stdout(`  v${entry.version}:`);
+    for (const line of entry.changes.split("\n")) io.stdout(`    ${line}`);
+  }
+  io.stdout("");
+  if (yes) return true;
+  const proceed = await prompter.confirm("Proceed with the update?", false);
+  if (!proceed) io.stderr("Update aborted (re-run with --yes to accept the breaking changes).");
+  return proceed;
 }
 
 /**
