@@ -26,7 +26,7 @@ export const PLATFORM_WORKFLOW_WORLD = {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "0.25.0",
+  packageVersion: "0.26.1",
 } as const;
 
 export type WorkflowWorldBuildConfig = {
@@ -45,7 +45,7 @@ export type WorkflowWorldBuildConfig = {
  * default, or slot identity (6) for a Deployment that opts out with
  * `WORKFLOW_SEALED_LOG=0`; since 0.23.0 it caps that at the sealed log, because
  * its `@workflow/world` beta.38 (eve 0.66.3) minted 8 -- as the stable 5.0.3
- * that 0.25.0 pins still does -- and a runtime refuses a World above its
+ * that 0.26.1 pins, as 0.25.0 did, still does -- and a runtime refuses a World above its
  * ceiling, which 0.62.0's was 7. 0.62 retired on 2026-10-02 and
  * 0.76 and 0.79 bundle runtimes that read 6 through 8 (0.76.0 and 0.79.0, like
  * 0.75.1, carry the stable @workflow 5.2 family -- core 5.2.0, world 5.0.3 --
