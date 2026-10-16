@@ -98,13 +98,14 @@ describe("reserved runtime environment names", () => {
     );
 
     expect(undeclared).toEqual([]);
-    // EVELAND_PROJECT_ID is derived per project; EVE_TELEMETRY_DISABLED is a
-    // platform constant. Neither has a worker-environment input.
+    // EVELAND_PROJECT_ID is derived per project; EVE_TELEMETRY_DISABLED and
+    // WORKFLOW_OPTIMISTIC_INLINE_START are platform constants. None has a
+    // worker-environment input.
     expect(
       RESERVED_RUNTIME_ENVIRONMENT_KEYS.filter(
         (key) => RESERVED_RUNTIME_ENVIRONMENT_SOURCES[key]?.length === 0,
       ),
-    ).toEqual(["EVELAND_PROJECT_ID", "EVE_TELEMETRY_DISABLED"]);
+    ).toEqual(["EVELAND_PROJECT_ID", "EVE_TELEMETRY_DISABLED", "WORKFLOW_OPTIMISTIC_INLINE_START"]);
   });
 
   test("a project entry never wins against a reserved name at runtime", async () => {
@@ -134,6 +135,9 @@ describe("reserved runtime environment names", () => {
     expect(env.SERVER_SHUTDOWN_TIMEOUT).toBe(String(resolveDeploymentShutdownTimeoutSeconds({})));
     expect(env.EVELAND_MEMORY_ROOT).toBe("/var/lib/eveland-memory");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
+    // A hook wake runs beside the delivery holding its run's queue; optimistic
+    // inline start would let it run a step body twice.
+    expect(env.WORKFLOW_OPTIMISTIC_INLINE_START).toBe("");
     // Provisioning a per-project database here would leave an empty one behind
     // for every project on the new world.
     expect(env.WORKFLOW_POSTGRES_URL).toBeUndefined();

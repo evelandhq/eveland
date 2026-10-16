@@ -318,6 +318,15 @@ export async function composeDeploymentEnv(
           EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
           EVELAND_WORKFLOW_RUNNER: resolveWorkflowRunnerMode(workerEnv),
           EVELAND_WORKFLOW_STREAM_COMPACTION: workerEnv.EVELAND_WORKFLOW_STREAM_COMPACTION ?? "on",
+          // Empty, which `@workflow/core` reads as unset. The shared World
+          // runs a hook wake beside a delivery holding its run's queue, so a
+          // cancel can abort a running step, and that is safe only while no
+          // step body starts before its claim resolves. A project that set
+          // this to 1 would let a wake's replay run a step body a second time
+          // (workflow-world 0.26.1, docs/design.md "Delivery and failure
+          // semantics"). Not "0": that would also turn off turbo's first-
+          // delivery fast path, which the World already keeps single-handler.
+          WORKFLOW_OPTIMISTIC_INLINE_START: "",
         }
       : {}),
     ...(identityIssuer ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") } : {}),

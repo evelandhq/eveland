@@ -523,7 +523,10 @@ try {
   );
 
   // Post-recovery enqueues stayed scoped: nothing for this tenant is claimable
-  // outside its run's exact queue.
+  // outside its run's exact queue. The one exception is a hook wake sent while
+  // a delivery held that queue (workflow-world 0.26.1): it runs beside the
+  // delivery so a cancel can abort a running step, and carries `wake:<tenant>`
+  // instead of the tenant flag.
   const { rows: unscoped } = await worldPool.query<{ id: string }>(
     `select jobs.id::text as id
        from graphile_worker._private_jobs as jobs
@@ -531,7 +534,8 @@ try {
        left join graphile_worker._private_job_queues as queues on queues.id = jobs.job_queue_id
       where tasks.identifier = 'eveland_wf_flows'
         and jobs.payload ->> 'tenantId' = $1
-        and (queues.queue_name is null or queues.queue_name not like 'wfrun:%')`,
+        and (queues.queue_name is null or queues.queue_name not like 'wfrun:%')
+        and coalesce(jobs.flags ? ('wake:' || $1), false) is false`,
     [project.id],
   );
   assert.deepEqual(unscoped, [], "post-recovery enqueues must stay on per-run queues");
