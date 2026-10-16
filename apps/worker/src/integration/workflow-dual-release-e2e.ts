@@ -20,7 +20,8 @@
  *   delivery is duplicated VERBATIM (same payload, queue, and due time), and
  *   a restarted dispatcher processes both concurrently. Every delivery must
  *   resolve to the one owner: both jobs sit on the run's exact `wfrun:`
- *   queue (per-run serialization — peak dispatch concurrency 1 by
+ *   queue, or are held off it as dispatcher timers that return to it when due
+ *   (per-run serialization — peak dispatch concurrency 1 by
  *   construction), the run completes on A with A's semantics, steps are not
  *   duplicated, and nothing dead-letters.
  *
@@ -428,17 +429,24 @@ try {
   const timerRunId = timerJob.run_id;
   await dispatcher.stop();
   log("dispatcher stopped before the continuation came due");
+  // A delivery due more than a minute out does not wait on the run's queue:
+  // from workflow-world 0.26 the dispatcher holds it as an `eveland_wf_timers`
+  // job with no queue, recording the queue it goes back to when it comes due
+  // (evelandhq/workflow-world#115). Whether the sweep reached this one before
+  // the stop is timing, so both shapes are accepted -- each must still name
+  // the run's exact queue.
   const { rows: firstDeliveries } = await worldPool.query<{
     id: string;
-    payload: unknown;
+    task: string;
     queue_name: string | null;
-    max_attempts: number;
+    run_queue: string | null;
   }>(
-    `select jobs.id::text as id, jobs.payload, queues.queue_name, jobs.max_attempts
+    `select jobs.id::text as id, tasks.identifier as task, queues.queue_name,
+            jobs.payload ->> 'runQueue' as run_queue
        from graphile_worker._private_jobs as jobs
        join graphile_worker._private_tasks as tasks on tasks.id = jobs.task_id
        left join graphile_worker._private_job_queues as queues on queues.id = jobs.job_queue_id
-      where tasks.identifier = 'eveland_wf_flows'
+      where tasks.identifier in ('eveland_wf_flows', 'eveland_wf_timers')
         and jobs.payload ->> 'tenantId' = $1
         and convert_from(decode(jobs.payload ->> 'data', 'base64'), 'utf8')::jsonb ->> 'runId' = $2`,
     [project.id, timerRunId],
@@ -446,24 +454,32 @@ try {
   assert.ok(firstDeliveries.length >= 1, "the raced run must have a pending delivery");
   const expectedQueue = runQueueName(project.id, timerRunId);
   for (const job of firstDeliveries) {
-    assert.equal(job.queue_name, expectedQueue, "every delivery sits on the exact per-run queue");
+    if (job.task === "eveland_wf_timers") {
+      assert.equal(job.queue_name, null, "a held timer occupies no queue");
+      assert.equal(job.run_queue, expectedQueue, "a held timer returns to the exact per-run queue");
+    } else {
+      assert.equal(job.queue_name, expectedQueue, "every delivery sits on the exact per-run queue");
+    }
   }
-  // Duplicate the pending delivery VERBATIM — same payload, same queue, same
+  // Duplicate the pending delivery VERBATIM — same task, payload, queue, and
   // due time. The delayed job IS the durable-sleep timer, so its run_at must
   // stay untouched; both copies then fire concurrently at the real deadline,
-  // with B online and promoted the whole time.
+  // with B online and promoted the whole time. Held as timers, both go back
+  // onto the run's queue as they fire, so the race is the same one.
+  const duplicated = firstDeliveries[0]!;
   await worldPool.query(
     `select graphile_worker.add_job(
-       'eveland_wf_flows', payload, queue_name => $2,
-       run_at => jobs.run_at, max_attempts => (max_attempts)::integer
+       $2, jobs.payload, queue_name => $3,
+       run_at => jobs.run_at, max_attempts => (jobs.max_attempts)::integer
      )
        from graphile_worker._private_jobs as jobs
       where jobs.id = $1::bigint`,
-    [firstDeliveries[0]!.id, expectedQueue],
+    [duplicated.id, duplicated.task, duplicated.queue_name],
   );
   log("duplicated the pending delivery at its original due time", {
     runId: racedRun.id,
     timerRunId,
+    task: duplicated.task,
     queue: expectedQueue,
   });
 
@@ -519,6 +535,16 @@ try {
     [project.id],
   );
   assert.deepEqual(unscoped, [], "post-recovery enqueues must stay on per-run queues");
+  const { rows: untargetedTimers } = await worldPool.query<{ id: string }>(
+    `select jobs.id::text as id
+       from graphile_worker._private_jobs as jobs
+       join graphile_worker._private_tasks as tasks on tasks.id = jobs.task_id
+      where tasks.identifier = 'eveland_wf_timers'
+        and jobs.payload ->> 'tenantId' = $1
+        and coalesce(jobs.payload ->> 'runQueue', '') not like 'wfrun:%'`,
+    [project.id],
+  );
+  assert.deepEqual(untargetedTimers, [], "held timers must return to a per-run queue");
 
   log("PART 2 OK: duplicated continuation delivery resolved to the one owner");
 
