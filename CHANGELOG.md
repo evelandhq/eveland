@@ -4,6 +4,22 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.64.0](https://github.com/evelandhq/eveland/compare/v0.63.1...v0.64.0) (2026-10-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* Agents on eve 0.76.x are no longer servable; rebuild them on 0.79.x or 0.81.x.
+
+### Features
+
+* adopt eve 0.81.1 with a gapped {0.79.x, 0.81.x} window, retiring 0.76 ([#602](https://github.com/evelandhq/eveland/issues/602)) ([d9bb5f2](https://github.com/evelandhq/eveland/commit/d9bb5f28c362b5f9283ecd296d3b912b5790ae77))
+
+
+### Bug Fixes
+
+* **workflow:** inject workflow-world 0.26.1 ([#600](https://github.com/evelandhq/eveland/issues/600)) ([5241860](https://github.com/evelandhq/eveland/commit/5241860ef36262b47d4949905fb53b6b3040ecf3))
+
 ## [0.63.1](https://github.com/evelandhq/eveland/compare/v0.63.0...v0.63.1) (2026-10-14)
 
 
