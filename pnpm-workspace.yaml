@@ -72,7 +72,7 @@ peerDependencyRules:
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
 # before the shared World and never selected for a new build. The stable 5.2
 # family (world/errors 5.0.3, world-local 5.1.0, utils 5.0.1) is what
-# `@evelandhq/workflow-world` 0.25.0 pins -- the set eve moved to at 0.75.1
+# `@evelandhq/workflow-world` 0.26.1 pins, as 0.25.0 did -- the set eve moved to at 0.75.1
 # and 0.76.0 through 0.79.0 still bundle (core 5.2.0); before it, 0.70.2 moved
 # to the stable 5.0.1 release (which 0.24.0 pinned) and 0.73.0 to core 5.1.0
 # with world/world-local/errors 5.0.2 -- the same World calls and spec

@@ -144,7 +144,7 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
  * declared `mintedSpecVersion()` as upstream recommends: the sealed log (7) by
  * default, or 6 when `WORKFLOW_SEALED_LOG=0` opts a Deployment out. Since
  * 0.23.0 it caps that at `SPEC_VERSION_SUPPORTS_SEALED_LOG`: its
- * `@workflow/world` beta.38 (eve 0.66.3), like the stable 5.0.3 that 0.25.0
+ * `@workflow/world` beta.38 (eve 0.66.3), like the stable 5.0.3 that 0.26.1
  * pins, mints 8, the hook force-claim reader
  * contract, and a runtime refuses a World above its ceiling at startup, which
  * would shut out every eve before 0.66.3 -- 0.62.0 among them. eve gates on
@@ -189,7 +189,7 @@ function declaredWorldSpecVersion(): number {
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.25.0");
+    expect(worldManifest.version).toBe("0.26.1");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and
@@ -263,6 +263,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     for (const name of [
       "EVELAND_WORKFLOW_STREAM_COMPACTION",
       "WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS",
+      "WORKFLOW_DISPATCHER_TIMER_SWEEP_INTERVAL_MS",
       "WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS",
       "WORKFLOW_DISPATCHER_MAINTENANCE_STREAM_BATCH_SIZE",
       "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_BATCHES",

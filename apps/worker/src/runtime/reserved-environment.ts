@@ -78,6 +78,9 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   // set it could make every restart an instant kill, or claim more grace than
   // `eve start` will ever wait for. See ./shutdown-budget.ts.
   SERVER_SHUTDOWN_TIMEOUT: ["EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS"],
+  // A platform constant on the shared world: the hook-wake bypass in
+  // workflow-world 0.26.1 is safe only while optimistic inline start stays off.
+  WORKFLOW_OPTIMISTIC_INLINE_START: [],
   WORKFLOW_POSTGRES_MAX_POOL_SIZE: ["WORKFLOW_POSTGRES_MAX_POOL_SIZE"],
   // The per-project legacy database name is derived from the platform base URL.
   WORKFLOW_POSTGRES_URL: ["WORKFLOW_POSTGRES_URL"],
