@@ -25,7 +25,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.76/0.79 compatibility window", async () => {
+  test("fails closed outside the 0.79/0.81 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -151,7 +151,9 @@ describe("injectSchedulerAdapter", () => {
       // entered (v0.61.0 had carried 0.74 since the day before), and 0.75
       // on 2026-10-10 when 0.76 replaced it, before any release carried it.
       // 0.74 retired on 2026-10-14 when 0.79 entered (v0.62.0 had carried
-      // 0.76 since 2026-10-10); 0.77 and 0.78 sit inside the hull.
+      // 0.76 since 2026-10-10); 0.77 and 0.78 sit inside the hull. 0.76
+      // retired on 2026-10-21 when 0.81 entered (v0.63.0 had carried 0.79
+      // since 2026-10-14); 0.80 sits inside the hull.
       "0.62.0",
       "~0.62.0",
       "^0.62.0",
@@ -199,6 +201,11 @@ describe("injectSchedulerAdapter", () => {
       "0.74.x",
       ">=0.76.0 <0.80.0",
       ">=0.76.0 <0.79.0",
+      ">=0.79.0 <0.82.0",
+      "0.76.0",
+      "~0.76.0",
+      "^0.76.0",
+      "0.76.x",
       "0.77.0",
       "^0.77.0",
       "0.77.x",
@@ -206,6 +213,9 @@ describe("injectSchedulerAdapter", () => {
       "~0.78.0",
       "0.78.x",
       "0.80.0",
+      "~0.80.1",
+      "0.80.x",
+      "0.82.0",
       "*",
       "latest",
     ]) {
@@ -221,18 +231,18 @@ describe("injectSchedulerAdapter", () => {
 
   test("accepts every dependency form that stays inside a verified Eve minor", async () => {
     for (const eveVersion of [
-      "0.76.0",
-      "~0.76.0",
-      "^0.76.0",
-      "0.76",
-      "0.76.x",
-      "0.76.*",
       "0.79.0",
       "~0.79.0",
       "^0.79.0",
       "0.79",
       "0.79.x",
       "0.79.*",
+      "0.81.1",
+      "~0.81.1",
+      "^0.81.1",
+      "0.81",
+      "0.81.x",
+      "0.81.*",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -374,7 +384,7 @@ Produce the daily report.
     // Eve 0.33 made "steer" the default send policy, which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every line in the
-    // current 0.76/0.79 window supports the explicit `turnPolicy` option.
+    // current 0.79/0.81 window supports the explicit `turnPolicy` option.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };

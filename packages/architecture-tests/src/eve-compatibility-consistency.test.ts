@@ -117,7 +117,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.79.0");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.81.1");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -185,7 +185,11 @@ describe("Eve compatibility repository contract", () => {
       // byte-identical to 0.75.1 (the `eve__` catalog tools run inside the
       // turn step). 0.79.0 re-checked 2026-10-14: both byte-identical to
       // 0.76.0 (0.77 and 0.78 skipped; the stranded-session guard 0.76.1
-      // added wraps the World's queue handler, not a run of its own). The activity collector (0.47.3-0.68)
+      // added wraps the World's queue handler, not a run of its own). 0.81.1
+      // re-checked 2026-10-21: the exported set gains only the two
+      // connection-event runs below (0.80 skipped), and the bundler default
+      // gains their references; its rebuilt handoff moves a session into a
+      // fresh WORKFLOW_ENTRY_NAME run, a name already audited here. The activity collector (0.47.3-0.68)
       // and the subagent execute body (0.51-0.68) left this list with 0.68 on
       // 2026-10-09.
       // 0.56.0 rebuilt the `workflow` tool around a
@@ -209,14 +213,39 @@ describe("Eve compatibility repository contract", () => {
       // Like the execute body, it needs an unstamped id only so a
       // version-stamped deployment can still resolve it.
       "AGENT_TOOL_SERVE_WORKFLOW_NAME",
+      // 0.80.0: the owner run behind an experimental Connect-managed event
+      // subscription (`experimental_events` on an MCP connection; requires
+      // `@vercel/connect` 2.5.2+). Audited 2026-10-21 against 0.81.1: the
+      // `events_subscribe_*` tool refuses outside an active root-agent session
+      // (`runtime/connections/events/actions.js`), and `startConnectionEventOwner`
+      // starts this run with `startWorkflowOnCurrentDeployment` from inside that
+      // session's step, so it carries `$parentRunId` lineage and inherits its
+      // ancestor's stored class. It owns the `connectionEventHookToken(binding)`
+      // hook and lives until the watch is retired or its subscription expires
+      // (`ttlMs` up to 365 days, or `null` for no expiry), so like an
+      // unanswered `ask()` it can outlive its session until the class deadline
+      // reaps it; a webhook delivery after that finds no owner. 0.81.1's
+      // handoff does not move it.
+      "CONNECTION_EVENT_WORKFLOW_NAME",
+      // 0.80.0: one run per delivered event, running one dispatch step that
+      // enters a session only through an explicit `attachSession(...).send(...)`,
+      // so it ends with that step. Audited 2026-10-21 against 0.81.1: the
+      // public receiver `POST /eve/v1/hooks/:connection`
+      // (`startConnectionEventDelivery`) starts it with
+      // `startWorkflowOnCurrentDeployment` straight from the route once the
+      // owner's subscription is known -- a root run with no lineage, under the
+      // World's default `interactive` class -- and otherwise resumes the owner's hook, whose
+      // `startConnectionEventDeliveryStep` starts it from inside the owner run
+      // (lineage to the owner, so its inherited class).
+      "CONNECTION_EVENT_DELIVERY_WORKFLOW_NAME",
     ];
 
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.76.x and 0.79.x both export four (no activity collector) plus the
-    // agent serve body; neither opens a per-turn run any more, but both keep
-    // the turn name for legacy-session import.
+    // 0.79.x exports four (no activity collector) plus the agent serve body,
+    // and 0.81.x adds the two connection-event runs; neither opens a per-turn
+    // run any more, but both keep the turn name for legacy-session import.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
       for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
@@ -254,7 +283,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.76/0.79 compatibility window", () => {
+  test("describes the supported 0.79/0.81 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {

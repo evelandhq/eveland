@@ -26,14 +26,17 @@ export const CANONICAL_REQUEST_ID_HEADER = "x-eveland-request-id";
  * The workflow storage generations this platform can recover and activate.
  * Storage spec and dispatch protocol are independent axes of the readiness
  * contract: an owner can speak the current protocol while its event log was
- * written under a storage generation nothing here can read. Spec 7 (the
- * sealed log) is what `@evelandhq/workflow-world` declares from 0.18.0; spec 6
- * (slot identity) is what shared builds 0.5.0 through 0.17.0 declared, and
- * what a 0.18.0+ Deployment still declares under `WORKFLOW_SEALED_LOG=0`.
- * Every Eve line in the window reads both, so both stay admitted. Spec 5 (the
- * pre-per-run-queue layout) is retired with its `unscoped` enqueue capability.
+ * written under a storage generation nothing here can read. Spec 8 (hook
+ * force-claim) is what `@evelandhq/workflow-world` declares from 0.27.0, the
+ * reader contract for another run taking a hook's token over, which eve 0.81.1
+ * needs to move a session to a fresh run; spec 7 (the sealed log) is what it
+ * declared from 0.18.0 through 0.26.x; spec 6 (slot identity) is what shared
+ * builds 0.5.0 through 0.17.0 declared, and what a 0.18.0+ Deployment still
+ * declares under `WORKFLOW_SEALED_LOG=0`. Every Eve line in the window reads
+ * all three, so all stay admitted. Spec 5 (the pre-per-run-queue layout) is
+ * retired with its `unscoped` enqueue capability.
  */
-export const SUPPORTED_WORKFLOW_STORAGE_SPECS: ReadonlySet<number> = new Set([6, 7]);
+export const SUPPORTED_WORKFLOW_STORAGE_SPECS: ReadonlySet<number> = new Set([6, 7, 8]);
 
 export function isSupportedWorkflowStorageSpec(storageSpec: number | null): boolean {
   return storageSpec !== null && SUPPORTED_WORKFLOW_STORAGE_SPECS.has(storageSpec);

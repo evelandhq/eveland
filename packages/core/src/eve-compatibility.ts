@@ -1,17 +1,20 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.76.x",
-      verifiedVersion: "0.76.0",
+      range: "0.79.x",
+      verifiedVersion: "0.79.0",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.79.x",
-      verifiedVersion: "0.79.0",
+      range: "0.81.x",
+      verifiedVersion: "0.81.1",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.79.0 (published 2026-10-13) entered on
+  // A gapped two-line window: 0.81.1 (published 2026-10-20) entered on
+  // 2026-10-21 and 0.76 retired with it (Eveland v0.63.0 had carried 0.79
+  // since 2026-10-14); 0.80 was skipped, superseded by 0.81.0 within four
+  // days, before any Eveland release carried it. 0.79.0 had entered on
   // 2026-10-14 and 0.74 retired with it (Eveland v0.62.0 had carried 0.76
   // since 2026-10-10); 0.77 and 0.78 were skipped. 0.76.0 had entered on
   // 2026-10-10 and 0.75 retired with it, one day after it had entered and
@@ -85,10 +88,34 @@ export const EVE_COMPATIBILITY_POLICY = {
   // it. `@evelandhq/workflow-world` 0.25.0 declares the capability, so a
   // session keeps its Deployment across an eve-version promote as it always
   // has. The observer's instrumentation pin moved with 0.79's shared tracing
-  // library, but its pinned expression is unchanged. The range is the union
-  // of the two contiguous runs, never the hull, which would admit 0.77 and
-  // 0.78.
-  peerDependencyRange: ">=0.76.0 <0.77.0 || >=0.79.0 <0.80.0",
+  // library, but its pinned expression is unchanged. 0.79.2 moves the session
+  // checkpoint to 15 (a real upgrade from 14, not an identity one) and adds an
+  // optional `error.name` to `action.result`; a session stays on its
+  // Deployment, so neither reaches Eveland.
+  //
+  // 0.80 and 0.81 again leave the message stream (v26), the discovery (v15)
+  // and compiled (54) manifests, hooks, `eve/channels/auth`, the sandbox
+  // provider API, and the bundled Workflow set byte-identical to 0.79.0; the
+  // extension contracts only gain versions, and the observer's pinned
+  // instrumentation expression survives 0.80.1's move of eve's tracing to the
+  // bundled `@vercel/agent-runs`. `authorization.required`/`completed` gain
+  // `grant` and the connection principal, a failed `completed` gains
+  // `retryable`, and `eve/client` gains `closeStream()` and `followIdle`; all
+  // optional. 0.80 asks the World to delete a run's data when it ends if its
+  // trace was not recorded in full (`$retention: "0"` on the run); the shared
+  // World does not read that attribute and keeps its own retention classes.
+  // A connection with `experimental_events` gets a public
+  // `POST /eve/v1/hooks/:connection` receiver, which the Agent Gateway
+  // forwards like any other unpinned public request. 0.81.1 rebuilds session
+  // handoff on hook force-claim: a session moves to a fresh run -- after a
+  // compaction, or onto another Deployment -- only when the World declares
+  // `capabilities.hookForceClaim` (with active `hookRetention`). Without it a
+  // session stays in its first run for life, so its event log grows until
+  // the World's per-run event cap fails it. `@evelandhq/workflow-world`
+  // 0.27.0 declares the capability and stamps spec 8, its reader contract,
+  // which both lines read. The range is the union of the two contiguous
+  // runs, never the hull, which would admit 0.80.
+  peerDependencyRange: ">=0.79.0 <0.80.0 || >=0.81.0 <0.82.0",
 } as const;
 
 export type SupportedEveVersionRange =

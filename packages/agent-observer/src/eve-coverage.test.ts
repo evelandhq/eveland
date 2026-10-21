@@ -67,7 +67,9 @@ describe("Eve observer hook compatibility matrix", () => {
       // runtime.js byte-identical to 0.72.1; 0.79.0, re-verified 2026-10-14,
       // moved eve's spans onto the shared @eve/tracing library -- import
       // paths, and `withErrorContent` became `withCapture` -- and left this
-      // expression alone). If the pinned expression changes
+      // expression alone; 0.81.1, re-verified 2026-10-21, imports the same
+      // library as the bundled `@vercel/agent-runs` since 0.80.1 and leaves it
+      // alone too). If the pinned expression changes
       // shape in a new Eve line, re-verify model-capture.ts against it before
       // bumping the matrix. The minifier is free to rename the locals (0.44.0
       // emitted `r`, 0.44.3 `i`), so the pin captures identifiers instead of
