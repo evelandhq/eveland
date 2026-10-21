@@ -34,12 +34,14 @@ describe("deriveWorkflowWorldAttestation", () => {
     });
   });
 
-  test("the storage spec follows the World version: sealed log from 0.18.0, slot identity before", () => {
+  test("the storage spec follows the World version: force-claim from 0.27.0, sealed log from 0.18.0, slot identity before", () => {
     const attest = (packageVersion: string) =>
       deriveWorkflowWorldAttestation({ packageName: "@evelandhq/workflow-world", packageVersion })
         .storageSpec;
+    expect(attest("0.27.0")).toBe(8);
+    expect(attest("1.0.0")).toBe(8);
+    expect(attest("0.26.1")).toBe(7);
     expect(attest("0.18.0")).toBe(7);
-    expect(attest("1.0.0")).toBe(7);
     expect(attest("0.17.0")).toBe(6);
     expect(attest("0.5.0")).toBe(6);
     expect(attest("0.4.0")).toBe(5);

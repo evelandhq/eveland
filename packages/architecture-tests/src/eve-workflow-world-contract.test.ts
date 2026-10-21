@@ -142,54 +142,47 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
  * World named `SPEC_VERSION_SUPPORTS_SLOT_IDENTITY` (6) while its bundled
  * `@workflow/world` already reported `SPEC_VERSION_CURRENT` 7. From 0.18.0 it
  * declared `mintedSpecVersion()` as upstream recommends: the sealed log (7) by
- * default, or 6 when `WORKFLOW_SEALED_LOG=0` opts a Deployment out. Since
- * 0.23.0 it caps that at `SPEC_VERSION_SUPPORTS_SEALED_LOG`: its
- * `@workflow/world` beta.38 (eve 0.66.3), like the stable 5.0.3 that 0.26.1
- * pins, mints 8, the hook force-claim reader
- * contract, and a runtime refuses a World above its ceiling at startup, which
- * would shut out every eve before 0.66.3 -- 0.62.0 among them. eve gates on
+ * default, or 6 when `WORKFLOW_SEALED_LOG=0` opts a Deployment out. 0.23.0
+ * through 0.26.x capped that at `SPEC_VERSION_SUPPORTS_SEALED_LOG`, because
+ * their `@workflow/world` beta.38 (eve 0.66.3) and later mint 8, the hook
+ * force-claim reader contract, and eve 0.62.0's runtime refused a World above
+ * 7 at startup. 0.27.0 implements force-claim (`capabilities.hookForceClaim`,
+ * which eve 0.81.1's session handoff needs) and declares `mintedSpecVersion()`
+ * outright again -- 8 -- which every line in the window reads. eve gates on
  * the declared number, so every range check below has to use this one.
  *
- * The wiring is verified in the dist — one capped `mintedSpecVersion()` call
- * bound to the `specVersion` the World object carries, and nothing else naming
- * it — and the value comes from the `@workflow/world` the World itself
- * resolves, called with an empty environment so the host running these tests
- * cannot opt out on the World's behalf.
+ * The wiring is verified in the dist — one `mintedSpecVersion()` call bound to
+ * the `specVersion` the World object carries, and nothing else naming it — and
+ * the value comes from the `@workflow/world` the World itself resolves, called
+ * with an empty environment so the host running these tests cannot opt out on
+ * the World's behalf.
  */
 function declaredWorldSpecVersion(): number {
   const source = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
-  const bound = [
-    ...source.matchAll(
-      /const specVersion = Math\.min\(mintedSpecVersion\(\), SPEC_VERSION_SUPPORTS_SEALED_LOG\);/g,
-    ),
-  ];
+  const bound = [...source.matchAll(/const specVersion = mintedSpecVersion\(\);/g)];
   const carried = [...source.matchAll(/^\s*specVersion,$/gm)];
   // Exactly one of each, or this is reading the wrong site: a second binding
   // or carrier would make "the first match" an arbitrary choice, and silently
   // answering for the wrong one is worse than failing here.
   if (bound.length !== 1 || carried.length !== 1) {
     throw new Error(
-      `expected the World's dist to bind specVersion to the capped mintedSpecVersion() once and carry it once, found ${String(bound.length)} binding(s) and ${String(carried.length)} carrier(s)`,
+      `expected the World's dist to bind specVersion to mintedSpecVersion() once and carry it once, found ${String(bound.length)} binding(s) and ${String(carried.length)} carrier(s)`,
     );
   }
-  const { mintedSpecVersion, SPEC_VERSION_SUPPORTS_SEALED_LOG } = require(
+  const { mintedSpecVersion } = require(
     require.resolve("@workflow/world", { paths: [worldRoot] }),
   ) as {
     mintedSpecVersion?: (env?: Record<string, string | undefined>) => number;
-    SPEC_VERSION_SUPPORTS_SEALED_LOG?: number;
   };
   if (typeof mintedSpecVersion !== "function") {
     throw new Error("@workflow/world does not export mintedSpecVersion()");
   }
-  if (typeof SPEC_VERSION_SUPPORTS_SEALED_LOG !== "number") {
-    throw new Error("@workflow/world does not export SPEC_VERSION_SUPPORTS_SEALED_LOG");
-  }
-  return Math.min(mintedSpecVersion({}), SPEC_VERSION_SUPPORTS_SEALED_LOG);
+  return mintedSpecVersion({});
 }
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.26.1");
+    expect(worldManifest.version).toBe("0.27.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and
@@ -204,16 +197,16 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     const { SPEC_VERSION_CURRENT: postgresSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [postgresWorldRoot] }),
     ) as { SPEC_VERSION_CURRENT: number };
-    // Capability and declaration, asserted separately because they differ
-    // again: the shared World's `@workflow/world` 5.0.3 can write spec 8
-    // (the hook force-claim reader contract eve 0.66.3 brought in), while the
-    // World declares the sealed log, 7, which every line in the window reads
-    // (0.76.0 and 0.79.0 accept 6 through 8). The legacy World
-    // stays on slot identity. Moving the declared number is an eve-window
-    // decision, not a lockfile outcome — every line in the window must read
-    // what new Releases stamp.
+    // Capability and declaration, asserted separately because they have
+    // differed before: the shared World's `@workflow/world` 5.0.3 can write
+    // spec 8 (the hook force-claim reader contract eve 0.66.3 brought in), and
+    // from 0.27.0 the World declares it too, which every line in the window
+    // reads (0.79.0 and 0.81.1 accept 6 through 8); 0.23.0 through 0.26.x
+    // declared 7. The legacy World stays on slot identity. Moving the declared
+    // number is an eve-window decision, not a lockfile outcome — every line in
+    // the window must read what new Releases stamp.
     expect(sharedSpecVersion).toBe(8);
-    expect(declaredWorldSpecVersion()).toBe(7);
+    expect(declaredWorldSpecVersion()).toBe(8);
     expect(postgresSpecVersion).toBe(6);
   });
 
@@ -256,6 +249,45 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     // The newest line carries the guard; if it ever stops reading the
     // capability, this suite must be revisited rather than pass vacuously.
     expect(guardedLines).toContain("eve");
+  });
+
+  test("declares hook force-claim, which eve's session handoff keys on", () => {
+    // From 0.81.1 eve moves a session to a fresh run -- after a compaction, or
+    // onto another Deployment -- by force-claiming the session's inbox hooks,
+    // and only when the World declares `capabilities.hookForceClaim` together
+    // with active `hookRetention`. Without them it logs "session handoff
+    // unavailable" and leaves the session in its first run for life, where the
+    // event log grows until the World's per-run event cap fails it. The
+    // injected World must declare both, and every line whose handoff has the
+    // gate must still key it on them.
+    const worldSource = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
+    expect([...worldSource.matchAll(/^\s*hookForceClaim: true,$/gm)]).toHaveLength(1);
+    expect([...worldSource.matchAll(/^\s*hookRetention: \{ active: true \},$/gm)]).toHaveLength(1);
+
+    const gatedLines = EVE_LINES.flatMap((line) => {
+      const eveRoot = resolveInstalledPackageRoot(line, "eve");
+      const { version } = readJson(path.join(eveRoot, "package.json")) as { version: string };
+      const handoffSteps = readFileSync(
+        path.join(eveRoot, "dist/src/execution/session/handoff-steps.js"),
+        "utf8",
+      );
+      const [, minor, patch] = version.split(".").map(Number);
+      if (minor! < 81 || (minor === 81 && patch! < 1)) {
+        // Before 0.81.1 handoff never force-claimed, so it had no gate to key.
+        expect(handoffSteps, `${line} (${version})`).not.toContain("hookForceClaim");
+        return [];
+      }
+      expect(handoffSteps, `${line} (${version}) handoff force-claim gate`).toContain(
+        "hookForceClaim!==!0",
+      );
+      expect(handoffSteps, `${line} (${version}) handoff hook-retention gate`).toContain(
+        "hookRetention?.active!==!0",
+      );
+      return [line];
+    });
+    // The newest line carries the gate; if it ever stops reading the
+    // capability, this suite must be revisited rather than pass vacuously.
+    expect(gatedLines).toContain("eve");
   });
 
   test("exposes the bounded-storage controls in the operator reference", () => {
