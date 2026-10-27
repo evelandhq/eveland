@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.65.1](https://github.com/evelandhq/eveland/compare/v0.65.0...v0.65.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **worker:** name the app group explicitly when chowning deployment trees ([#607](https://github.com/evelandhq/eveland/issues/607)) ([666b75b](https://github.com/evelandhq/eveland/commit/666b75babc8ec7f61063b07b209598098d910f80))
+
 ## [0.65.0](https://github.com/evelandhq/eveland/compare/v0.64.0...v0.65.0) (2026-10-27)
 
 
