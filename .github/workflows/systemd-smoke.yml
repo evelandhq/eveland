@@ -143,3 +143,10 @@ jobs:
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
             EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
             pnpm exec tsx infra/integration/gateway-e2e.mts
+
+      # Deployment units are transient (`systemd-run --collect`), so a failed
+      # one is gone before anyone can `systemctl status` it; the job log only
+      # carries systemd-run's "see journalctl" pointer. Their journal survives.
+      - name: Dump deployment unit journals
+        if: failure()
+        run: sudo journalctl --no-pager -o short-precise -u 'eveland-*' -n 400 || true
