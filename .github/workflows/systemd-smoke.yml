@@ -64,6 +64,16 @@ jobs:
           # restriction mirrors the Lima guest instead of weakening a durable
           # host.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          # Ubuntu 26.04 also ships bwrap-userns-restrict enabled: it confines
+          # everything bwrap starts to unpriv_bwrap, which denies capabilities,
+          # so eve's sandbox bwrap nested inside the build bwrap cannot set up
+          # its namespace. Load the profile eveland-ctl installs on real hosts
+          # (BWRAP_APPARMOR_PROFILE, packages/ctl/src/linux-host.ts); it has
+          # the same name and replaces the shipped one.
+          printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+            'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' \
+            | sudo tee /etc/apparmor.d/bwrap >/dev/null
+          sudo apparmor_parser -r -W /etc/apparmor.d/bwrap
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
