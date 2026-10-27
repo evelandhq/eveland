@@ -150,23 +150,3 @@ jobs:
       - name: Dump deployment unit journals
         if: failure()
         run: sudo journalctl --no-pager -o short-precise -u 'eveland-*' -n 400 || true
-
-      # TEMPORARY probe for the Ubuntu 26.04 CHDIR failure; drop before merge.
-      - name: Probe release dir access (temporary)
-        if: always()
-        run: |
-          set -x
-          rel=/var/lib/eveland-data/builds/probe/rel
-          sudo mkdir -p "$rel"
-          sudo chown -R eveland-app: "$rel"
-          sudo chmod 770 "$rel"
-          sudo namei -l "$rel"
-          run() { echo "== $1"; shift; sudo systemd-run --wait --pipe -q -p DynamicUser=yes -p Group=eveland-app "$@" sh -c "id; for p in /var/lib/eveland-data /var/lib/eveland-data/builds /var/lib/eveland-data/builds/probe $rel; do stat -c '%a %U:%G %n' \$p; done; cat /proc/self/mountinfo | grep eveland-data; cd $rel && echo CHDIR-OK" || true; }
-          run "no mounts"
-          run "bind only" -p BindPaths="$rel"
-          run "tmpfs ro + bind" -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel"
-          run "tmpfs rw + bind" -p TemporaryFileSystem=/var/lib/eveland-data -p BindPaths="$rel"
-          run "tmpfs ro mode=0755 + bind" -p TemporaryFileSystem=/var/lib/eveland-data:ro,mode=0755 -p BindPaths="$rel"
-          run "strict + tmpfs ro + bind + rw" -p ProtectSystem=strict -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" -p ReadWritePaths="$rel"
-          echo "== root, tmpfs ro + bind"
-          sudo systemd-run --wait --pipe -q -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" sh -c "stat -c '%a %U:%G %n' /var/lib/eveland-data /var/lib/eveland-data/builds /var/lib/eveland-data/builds/probe $rel" || true

@@ -606,6 +606,10 @@ describe("createSystemdAdapter startProcess", () => {
       ["chmod", ["2750", "/var/lib/eveland-data/observability/proj_123/dep_456"]],
       ["chmod", ["0640", "/var/lib/eveland-data/observability/proj_123/dep_456/agent-policy.json"]],
     ]);
+    expect(vi.mocked(execa).mock.calls).toContainEqual([
+      "chown",
+      ["-R", "eveland-app:eveland-app", "/var/lib/eveland-data/memory/proj_123"],
+    ]);
     expect(vi.mocked(execa).mock.calls).not.toContainEqual([
       "chmod",
       expect.arrayContaining(["-R", "/data/builds/proj_123/rel_platform"]),
@@ -1029,10 +1033,10 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
     const chownCalls = execaCalls.filter(([cmd]) => cmd === "chown").map(([, args]) => args);
     expect(chownCalls).toContainEqual([
       "-R",
-      "eveland-app:",
+      "eveland-app:eveland-app",
       path.resolve("/data/builds/proj_123/rel_789"),
     ]);
-    expect(chownCalls).toContainEqual(["-R", "eveland-app:", cacheDir]);
+    expect(chownCalls).toContainEqual(["-R", "eveland-app:eveland-app", cacheDir]);
     expect(execaCalls).toContainEqual([
       "chmod",
       ["-R", "g+rwX,g-s", path.resolve("/data/builds/proj_123/rel_789")],
@@ -1151,14 +1155,14 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
       ([cmd, args]) =>
         cmd === "chown" &&
         Array.isArray(args) &&
-        args[1] === "eveland-app:" &&
+        args[1] === "eveland-app:eveland-app" &&
         args[2] === releaseDir,
     );
     const appUserChownCacheIndex = calls.findIndex(
       ([cmd, args]) =>
         cmd === "chown" &&
         Array.isArray(args) &&
-        args[1] === "eveland-app:" &&
+        args[1] === "eveland-app:eveland-app" &&
         args[2] === cacheDir,
     );
 
