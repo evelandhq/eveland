@@ -153,19 +153,20 @@ jobs:
 
       # TEMPORARY probe for the Ubuntu 26.04 CHDIR failure; drop before merge.
       - name: Probe release dir access (temporary)
-        if: failure()
+        if: always()
         run: |
           set -x
-          systemctl --version | head -1
-          rel="$(sudo find /var/lib/eveland-data/builds -mindepth 2 -maxdepth 2 -type d | head -1)"
-          sudo namei -l "$rel" || true
-          sudo ls -la "$rel" | head -5 || true
-          probe="for p in /var/lib/eveland-data /var/lib/eveland-data/builds \$(dirname '$rel') '$rel'; do stat -c '%a %U:%G %n' \"\$p\"; done; findmnt -R -o TARGET,FSTYPE,OPTIONS /var/lib/eveland-data; cd '$rel' && echo CHDIR-OK"
-          echo "== root, same mounts"
-          sudo systemd-run --wait --pipe -q -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" sh -c "id; $probe" || true
-          echo "== dynamic user, same mounts"
-          sudo systemd-run --wait --pipe -q -p DynamicUser=yes -p Group=eveland-app -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" sh -c "id; $probe" || true
-          echo "== dynamic user, no tmpfs"
-          sudo systemd-run --wait --pipe -q -p DynamicUser=yes -p Group=eveland-app sh -c "id; $probe" || true
-          echo "== dynamic user, ProtectSystem=strict + tmpfs"
-          sudo systemd-run --wait --pipe -q -p DynamicUser=yes -p Group=eveland-app -p ProtectSystem=strict -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" -p WorkingDirectory="$rel" sh -c "id; pwd" || true
+          rel=/var/lib/eveland-data/builds/probe/rel
+          sudo mkdir -p "$rel"
+          sudo chown -R eveland-app: "$rel"
+          sudo chmod 770 "$rel"
+          sudo namei -l "$rel"
+          run() { echo "== $1"; shift; sudo systemd-run --wait --pipe -q -p DynamicUser=yes -p Group=eveland-app "$@" sh -c "id; for p in /var/lib/eveland-data /var/lib/eveland-data/builds /var/lib/eveland-data/builds/probe $rel; do stat -c '%a %U:%G %n' \$p; done; cat /proc/self/mountinfo | grep eveland-data; cd $rel && echo CHDIR-OK" || true; }
+          run "no mounts"
+          run "bind only" -p BindPaths="$rel"
+          run "tmpfs ro + bind" -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel"
+          run "tmpfs rw + bind" -p TemporaryFileSystem=/var/lib/eveland-data -p BindPaths="$rel"
+          run "tmpfs ro mode=0755 + bind" -p TemporaryFileSystem=/var/lib/eveland-data:ro,mode=0755 -p BindPaths="$rel"
+          run "strict + tmpfs ro + bind + rw" -p ProtectSystem=strict -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" -p ReadWritePaths="$rel"
+          echo "== root, tmpfs ro + bind"
+          sudo systemd-run --wait --pipe -q -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" sh -c "stat -c '%a %U:%G %n' /var/lib/eveland-data /var/lib/eveland-data/builds /var/lib/eveland-data/builds/probe $rel" || true
