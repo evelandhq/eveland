@@ -30,8 +30,12 @@ jobs:
       # Every Release is a shared-World build: deployments crash at boot
       # without an injected WORKFLOW_WORLD_URL. Same
       # throwaway single-host database the Lima guest provisions
-      # (infra/integration/run.sh); `sudo -E` carries it into every worker
-      # step below.
+      # (infra/integration/run.sh); every worker step below forwards it into
+      # sudo explicitly. ubuntu-latest is Ubuntu 26.04, whose sudo-rs ignores
+      # `sudo -E`, so the root steps get only what they are handed: PATH and
+      # PNPM_HOME keep pnpm on the store this job installed into (otherwise
+      # pnpm's deps check resolves root's store, sees node_modules as stale
+      # and tries to purge it), CI keeps pnpm non-interactive.
       EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow
     steps:
       - uses: actions/checkout@v7
@@ -60,6 +64,16 @@ jobs:
           # restriction mirrors the Lima guest instead of weakening a durable
           # host.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          # Ubuntu 26.04 also ships bwrap-userns-restrict enabled: it confines
+          # everything bwrap starts to unpriv_bwrap, which denies capabilities,
+          # so eve's sandbox bwrap nested inside the build bwrap cannot set up
+          # its namespace. Load the profile eveland-ctl installs on real hosts
+          # (BWRAP_APPARMOR_PROFILE, packages/ctl/src/linux-host.ts); it has
+          # the same name and replaces the shipped one.
+          printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+            'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' \
+            | sudo tee /etc/apparmor.d/bwrap >/dev/null
+          sudo apparmor_parser -r -W /etc/apparmor.d/bwrap
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -100,13 +114,13 @@ jobs:
 
       - name: Worker preflight
         run: |
-          sudo -E env "PATH=$PATH" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 
       - name: Worker systemd smoke
         run: |
-          sudo -E env "PATH=$PATH" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts
 
@@ -119,7 +133,7 @@ jobs:
 
       - name: Agent sandbox end-to-end
         run: |
-          sudo -E env "PATH=$PATH" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/agent-sandbox-e2e.ts
 
@@ -129,13 +143,20 @@ jobs:
       # this proves the declaration builds and boots for real.
       - name: Starter template build e2e
         run: |
-          sudo -E env "PATH=$PATH" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/template-build-e2e.ts
 
       - name: Gateway e2e against the systemd runtime
         run: |
-          sudo -E env "PATH=$PATH" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
             EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
             pnpm exec tsx infra/integration/gateway-e2e.mts
+
+      # Deployment units are transient (`systemd-run --collect`), so a failed
+      # one is gone before anyone can `systemctl status` it; the job log only
+      # carries systemd-run's "see journalctl" pointer. Their journal survives.
+      - name: Dump deployment unit journals
+        if: failure()
+        run: sudo journalctl --no-pager -o short-precise -u 'eveland-*' -n 400 || true

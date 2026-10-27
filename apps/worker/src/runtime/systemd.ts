@@ -450,6 +450,8 @@ export function createSystemdAdapter(
   // Inside the npm cache on purpose: see resolvePnpmSharedStore.
   const pnpmStore = resolvePnpmSharedStore(npmCacheDir);
   const envDir = path.resolve(dataDir, "deployment-env");
+  // Same group the units run under (`Group=${user}`).
+  const appOwnership = `${config.user}:${config.user}`;
   const projectCacheDir = (projectId: string) =>
     resolveProjectSandboxCacheDir(config.sandboxCacheDir, projectId);
 
@@ -538,8 +540,11 @@ export function createSystemdAdapter(
       // default local workflow world writes .eve/.workflow-data/ (pre-0.24.4:
       // .workflow-data/) into the working directory, and each dynamic runtime
       // user receives this group only inside its own masked mount namespace.
-      await execa("chown", ["-R", `${config.user}:`, releaseDir]);
-      await execa("chown", ["-R", `${config.user}:`, cacheDir]);
+      // The group is named rather than left to `user:`'s login-group
+      // shorthand: uutils chown (Ubuntu 26.04's default) ignores the empty
+      // group and leaves the tree root-group, locking the dynamic user out.
+      await execa("chown", ["-R", appOwnership, releaseDir]);
+      await execa("chown", ["-R", appOwnership, cacheDir]);
 
       // Eve prepares every sandbox template during `eve build` and
       // records which provider prepared it; the deployed runtime refuses a
@@ -645,7 +650,7 @@ export function createSystemdAdapter(
       // write through the g+rwX grant; the dir is small, so the recursive pass
       // is cheap and keeps documents writable across dynamic-uid changes.
       await mkdir(input.memoryRootDir, { recursive: true });
-      await execa("chown", ["-R", `${config.user}:`, input.memoryRootDir]);
+      await execa("chown", ["-R", appOwnership, input.memoryRootDir]);
       await execa("chmod", ["-R", "g+rwX,g-s", input.memoryRootDir]);
 
       let result;
