@@ -182,14 +182,18 @@ function declaredWorldSpecVersion(): number {
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.27.0");
+    expect(worldManifest.version).toBe("0.28.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and
-    // the one the shared World bundles. See the comment above the list.
+    // the one the shared World bundles. See the comment above the list. pnpm
+    // honors only the first exclusion naming a package, so each package's
+    // versions share one union entry.
     const workspace = readSource("pnpm-workspace.yaml");
-    expect(workspace).toContain('  - "@workflow/utils@5.0.0-beta.8"');
-    expect(workspace).toContain('  - "@workflow/utils@5.0.1"');
+    const utilsExclusion = /^ {2}- "@workflow\/utils@([^"]+)"$/m.exec(workspace)?.[1];
+    expect(utilsExclusion?.split(" || ")).toEqual(
+      expect.arrayContaining(["5.0.0-beta.8", worldManifest.dependencies["@workflow/utils"]]),
+    );
 
     const { SPEC_VERSION_CURRENT: sharedSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [worldRoot] }),
@@ -201,7 +205,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     // differed before: the shared World's `@workflow/world` 5.0.3 can write
     // spec 8 (the hook force-claim reader contract eve 0.66.3 brought in), and
     // from 0.27.0 the World declares it too, which every line in the window
-    // reads (0.79.0 and 0.81.1 accept 6 through 8); 0.23.0 through 0.26.x
+    // reads (0.81.1 and 0.83.3 accept 6 through 8); 0.23.0 through 0.26.x
     // declared 7. The legacy World stays on slot identity. Moving the declared
     // number is an eve-window decision, not a lockfile outcome — every line in
     // the window must read what new Releases stamp.

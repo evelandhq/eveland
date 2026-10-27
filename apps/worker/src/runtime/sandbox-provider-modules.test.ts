@@ -36,11 +36,12 @@ describe("buildSandboxShimModule", () => {
   test.each(Object.keys(SHIMMED_SANDBOX_ENTRY_POINTS) as ShimmedSandboxEntryPoint[])(
     "re-exports %s and shadows its provider with the platform environment",
     (entryPoint) => {
-      const { specifier, provider, factories } = SHIMMED_SANDBOX_ENTRY_POINTS[entryPoint];
+      const { specifier, provider, factories, reexports } =
+        SHIMMED_SANDBOX_ENTRY_POINTS[entryPoint];
       const source = buildSandboxShimModule(entryPoint, MARKER);
 
       expect(source.startsWith(MARKER)).toBe(true);
-      expect(source).toContain(`export * from "${specifier}";`);
+      if (reexports) expect(source).toContain(`export * from "${specifier}";`);
       expect(source).toContain(`export const ${provider} = {`);
       for (const factory of factories) {
         expect(source).toContain(`${factory}: (`);
@@ -50,6 +51,16 @@ describe("buildSandboxShimModule", () => {
       );
     },
   );
+
+  test("stands the microsandbox shim alone, since eve 0.83 removed that entry point", () => {
+    // eve 0.81's eve/sandbox/microsandbox exports only MicrosandboxSandbox,
+    // which the shim shadows; on 0.83 a re-export would not resolve at all.
+    const source = buildSandboxShimModule("microsandbox", MARKER);
+
+    expect(source).not.toContain('eve/sandbox/microsandbox";');
+    expect(source).not.toContain("export * from");
+    expect(source).toContain("export const MicrosandboxSandbox = {");
+  });
 
   test("keeps an image factory's options argument in second position", () => {
     expect(buildSandboxShimModule("docker", MARKER)).toContain(

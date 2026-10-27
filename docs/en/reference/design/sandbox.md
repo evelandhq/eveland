@@ -9,6 +9,8 @@ The Eve framework resolves execution sandboxes via an ordered discovery chain: V
 
 In Eveland's host-native architecture, production hosts run neither a Docker daemon nor KVM virtualization by design. Left to the default chain, execution silently degrades to `just-bash` — a pure JavaScript interpreter with a virtualized filesystem unable to execute real binaries like `python`, `git`, or native toolchains. An agent that advertises sandboxed execution but fails to run standard binaries breaks immediately on basic tasks.
 
+Eve 0.83 narrowed the chain: microsandbox is gone, `DefaultSandbox` picks its provider once at `eve build` (Vercel Sandbox on Vercel, then Docker when a daemon is reachable, then `just-bash` only under `eve dev` and `eve eval`), and a production build with neither Vercel nor Docker no longer falls back to `just-bash` — opening the sandbox fails instead. Silent degradation became a loud failure, but a host-native deployment still has no working default, so the reasoning below is unchanged.
+
 ## Evaluation of Alternatives
 
 | Option                               | Assessment                                                                                           |

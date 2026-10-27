@@ -15,7 +15,8 @@ import { SHIMMED_SANDBOX_ENTRY_POINTS } from "./sandbox-provider-modules.js";
 async function makeRelease({
   agent = true,
   providerEntry = true,
-}: { agent?: boolean; providerEntry?: boolean } = {}): Promise<{
+  connectionEntry = true,
+}: { agent?: boolean; providerEntry?: boolean; connectionEntry?: boolean } = {}): Promise<{
   releaseDir: string;
   backendDistDir: string;
 }> {
@@ -27,6 +28,9 @@ async function makeRelease({
   await writeFile(path.join(backendDistDir, "index.js"), "export const marker = 1;\n");
   if (providerEntry) {
     await writeFile(path.join(backendDistDir, "provider.js"), "export const BwrapSandbox = {};\n");
+  }
+  if (connectionEntry) {
+    await writeFile(path.join(backendDistDir, "connection.js"), "export const marker = 1;\n");
   }
   return { releaseDir, backendDistDir };
 }
@@ -295,6 +299,14 @@ export default defineSandbox(async () => {
 
     await expect(injectSandboxModules({ releaseDir, backendDistDir })).rejects.toThrow(
       /sandbox-bwrap .*provider\.js/,
+    );
+  });
+
+  test("refuses a vendored sandbox-bwrap that predates eve 0.83's connection contract", async () => {
+    const { releaseDir, backendDistDir } = await makeRelease({ connectionEntry: false });
+
+    await expect(injectSandboxModules({ releaseDir, backendDistDir })).rejects.toThrow(
+      /sandbox-bwrap .*connection\.js.*0\.6\.0/,
     );
   });
 

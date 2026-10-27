@@ -18,30 +18,43 @@ export const SANDBOX_PLATFORM_DIR = ".eveland/sandbox-platform";
 /**
  * eve's sandbox entry points whose providers Eveland replaces, with the
  * provider export each one carries and the factory methods it offers.
+ * `reexports` says whether the shim passes the rest of eve's entry point
+ * through: eve 0.83 removed `eve/sandbox/microsandbox`, whose only value
+ * export on earlier lines was the provider the shim shadows, so that shim
+ * stands alone and an authored import of it still lands on bwrap.
  * `eve/sandbox/provider` is deliberately absent: a custom provider is not
  * rewritten, and the post-build artifact check refuses the Release instead.
  */
 export const SHIMMED_SANDBOX_ENTRY_POINTS = {
-  sandbox: { specifier: "eve/sandbox", provider: "DefaultSandbox", factories: ["environment"] },
+  sandbox: {
+    specifier: "eve/sandbox",
+    provider: "DefaultSandbox",
+    factories: ["environment"],
+    reexports: true,
+  },
   docker: {
     specifier: "eve/sandbox/docker",
     provider: "DockerSandbox",
     factories: ["environment", "dockerfile", "image"],
+    reexports: true,
   },
   vercel: {
     specifier: "eve/sandbox/vercel",
     provider: "VercelSandbox",
     factories: ["environment"],
+    reexports: true,
   },
   microsandbox: {
     specifier: "eve/sandbox/microsandbox",
     provider: "MicrosandboxSandbox",
     factories: ["environment", "dockerfile", "image"],
+    reexports: false,
   },
   "just-bash": {
     specifier: "eve/sandbox/just-bash",
     provider: "JustBashSandbox",
     factories: ["environment"],
+    reexports: true,
   },
 } as const;
 
@@ -87,7 +100,7 @@ export function buildSandboxShimModule(
   entryPoint: ShimmedSandboxEntryPoint,
   generatedMarker: string,
 ): string {
-  const { specifier, provider, factories } = SHIMMED_SANDBOX_ENTRY_POINTS[entryPoint];
+  const { specifier, provider, factories, reexports } = SHIMMED_SANDBOX_ENTRY_POINTS[entryPoint];
   const methods = factories
     .map((factory) =>
       factory === "image"
@@ -97,8 +110,7 @@ export function buildSandboxShimModule(
     .join("\n");
   return `${generatedMarker} Do not edit.
 // Stands in for "${specifier}" so the authored sandbox runs on the platform provider.
-export * from "${specifier}";
-import { platformEnvironment } from "./platform.js";
+${reexports ? `export * from "${specifier}";\n` : ""}import { platformEnvironment } from "./platform.js";
 
 export const ${provider} = {
   name: "bwrap",
