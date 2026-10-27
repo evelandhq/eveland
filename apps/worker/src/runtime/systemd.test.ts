@@ -38,7 +38,7 @@ vi.mock("execa", () => ({
 
 vi.mock("@evelandhq/agent-scheduler", () => ({
   injectSchedulerAdapter: vi.fn().mockResolvedValue({
-    eveVersion: "0.79.0",
+    eveVersion: "0.81.1",
     channelPath: "agent/channels/eveland-scheduler.ts",
     definitions: [],
   }),

@@ -176,11 +176,11 @@ test("keeps the Extension integrator compatible with the oldest supported Eve li
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-oldest-"));
   roots.push(releaseDir);
   const extensionPackageRoot = path.join(releaseDir, "packages/crm");
-  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.79.0", false);
+  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.81.1", false);
   await execFileAsync(process.execPath, [oldestEveBin, "extension", "build"], {
     cwd: extensionPackageRoot,
   });
-  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.79.0");
+  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.81.1");
 
   await injectObserverHooks({ releaseDir });
   await injectSchedulerAdapter({ releaseDir });

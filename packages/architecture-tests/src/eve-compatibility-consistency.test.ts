@@ -117,7 +117,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.81.1");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.83.3");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -189,7 +189,11 @@ describe("Eve compatibility repository contract", () => {
       // re-checked 2026-10-21: the exported set gains only the two
       // connection-event runs below (0.80 skipped), and the bundler default
       // gains their references; its rebuilt handoff moves a session into a
-      // fresh WORKFLOW_ENTRY_NAME run, a name already audited here. The activity collector (0.47.3-0.68)
+      // fresh WORKFLOW_ENTRY_NAME run, a name already audited here. 0.83.3
+      // re-checked 2026-10-27: stable-workflow-names.js byte-identical to
+      // 0.81.1 (0.82 skipped); 0.83's `prewarm()` and workflow-tool
+      // `ctx.getSandbox()` steps run inside the session and tool runs already
+      // audited here. The activity collector (0.47.3-0.68)
       // and the subagent execute body (0.51-0.68) left this list with 0.68 on
       // 2026-10-09.
       // 0.56.0 rebuilt the `workflow` tool around a
@@ -243,9 +247,10 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.79.x exports four (no activity collector) plus the agent serve body,
-    // and 0.81.x adds the two connection-event runs; neither opens a per-turn
-    // run any more, but both keep the turn name for legacy-session import.
+    // 0.81.x and 0.83.x export the same set: four (no activity collector),
+    // the agent serve body, and the two connection-event runs; neither opens
+    // a per-turn run any more, but both keep the turn name for legacy-session
+    // import.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
       for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
@@ -283,7 +288,7 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.79/0.81 compatibility window", () => {
+  test("describes the supported 0.81/0.83 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-previous", "eve"];
     const minorNumbers = supportedLines.map((line, index) => {

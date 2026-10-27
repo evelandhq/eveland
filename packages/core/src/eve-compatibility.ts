@@ -1,17 +1,20 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.79.x",
-      verifiedVersion: "0.79.0",
+      range: "0.81.x",
+      verifiedVersion: "0.81.1",
       dependencyName: "eve-previous",
     },
     {
-      range: "0.81.x",
-      verifiedVersion: "0.81.1",
+      range: "0.83.x",
+      verifiedVersion: "0.83.3",
       dependencyName: "eve",
     },
   ],
-  // A gapped two-line window: 0.81.1 (published 2026-10-20) entered on
+  // A gapped two-line window: 0.83.3 (published 2026-10-26) entered on
+  // 2026-10-27 and 0.79 retired with it (Eveland v0.64.0 had carried 0.81
+  // since 2026-10-21); 0.82 was skipped, superseded by 0.83.0 within two
+  // days, before any Eveland release carried it. 0.81.1 had entered on
   // 2026-10-21 and 0.76 retired with it (Eveland v0.63.0 had carried 0.79
   // since 2026-10-14); 0.80 was skipped, superseded by 0.81.0 within four
   // days, before any Eveland release carried it. 0.79.0 had entered on
@@ -113,9 +116,41 @@ export const EVE_COMPATIBILITY_POLICY = {
   // session stays in its first run for life, so its event log grows until
   // the World's per-run event cap fails it. `@evelandhq/workflow-world`
   // 0.27.0 declares the capability and stamps spec 8, its reader contract,
-  // which both lines read. The range is the union of the two contiguous
-  // runs, never the hull, which would admit 0.80.
-  peerDependencyRange: ">=0.79.0 <0.80.0 || >=0.81.0 <0.82.0",
+  // which both lines read.
+  //
+  // 0.82 and 0.83 leave the message stream (v26, so one Dashboard client
+  // still serves both lines), the discovery (v15) and compiled (54)
+  // manifests, the routes the Agent Gateway forwards, the hook entry point,
+  // the observer's pinned instrumentation expression, and the handoff's
+  // force-claim and deployment-affinity gates byte-identical to 0.81.1; World
+  // spec 6 through 8 is still what every line reads. Events gain only
+  // `history.imported` (0.82: prior messages a channel adds as real turns),
+  // which no projection reads, and the session checkpoint moves to 16 (0.82)
+  // and 17 (0.83); a session stays on its Deployment, so neither reaches
+  // Eveland. 0.82 replaces the per-session token limits with one
+  // `limits.sessionUsage` function and makes `sessionTimeoutMs` an idle
+  // timeout; Eveland sets neither. 0.83 bundles the Workflow 5.2 patch set
+  // (core 5.2.3, world 5.0.5, world-local 5.1.2), whose World interface only
+  // gains optional members; `@evelandhq/workflow-world` 0.28.0 pins it, and eve
+  // compares only the World's major line, so that one World serves 0.81 too.
+  // 0.83's rejection of unauthenticated `/.well-known/workflow/v1/flow`
+  // deliveries is wired only into eve's own local World, never a custom one,
+  // so the dispatcher's deliveries are unaffected. The sandbox provider API
+  // is the one surface that broke: 0.83 replaced the provider's session
+  // handle with a byte-level connection eve derives the session from, removed
+  // the microsandbox provider and `eve/sandbox/microsandbox`, and stopped
+  // falling back to just-bash in production builds. `@evelandhq/sandbox-bwrap`
+  // 0.6.0 answers both contracts from one definition and records the same
+  // session state under both, so one injected copy serves the window and a
+  // rollback across 0.83 still opens its sessions; Eveland's `DefaultSandbox`
+  // shim selects it on every line, so sessions record `bwrap`, never 0.83's
+  // `default`. 0.83 also lets `prewarm()` prepare an idle owner on the
+  // Deployment that accepts `POST /eve/v1/session/:id` with no body; the
+  // Agent Gateway classifies that as a continuation and forwards it to the
+  // session's bound Deployment, so prewarming never moves a session. The range
+  // is the union of the two contiguous runs, never the hull, which would admit
+  // 0.82.
+  peerDependencyRange: ">=0.81.0 <0.82.0 || >=0.83.0 <0.84.0",
 } as const;
 
 export type SupportedEveVersionRange =

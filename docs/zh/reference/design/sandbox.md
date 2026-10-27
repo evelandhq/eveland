@@ -9,6 +9,8 @@ Eve 框架通过一条默认的后端探测链来解析代码执行沙箱（Exec
 
 在 Eveland 推荐的宿主机原生架构中，宿主机按设计既没有常驻的 Docker 守护进程，也不提供 KVM 虚拟化环境。如果直接采用框架默认链，沙箱将静默退化为 `just-bash`——一个基于纯 JavaScript 的虚拟解释器，无法执行真实的 `python`、`git` 等二进制命令。一个“具备沙箱能力”却无法运行真实脚本的 Agent，会直接破坏核心使用体验。
 
+Eve 0.83 收窄了这条链：microsandbox 被移除，`DefaultSandbox` 在 `eve build` 时一次性选定 Provider（在 Vercel 上用 Vercel Sandbox，其次是可连接到守护进程时的 Docker，`just-bash` 只用于 `eve dev` 与 `eve eval`），既没有 Vercel 也没有 Docker 的生产构建不再回退到 `just-bash`，而是在打开沙箱时直接失败。静默退化变成了明确的失败，但宿主机原生部署依旧没有可用的默认方案，因此下面的取舍不变。
+
 ## 备选方案权衡
 
 | 备选方案                       | 评估结论                                                              |
