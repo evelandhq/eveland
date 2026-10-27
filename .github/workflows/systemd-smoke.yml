@@ -150,3 +150,22 @@ jobs:
       - name: Dump deployment unit journals
         if: failure()
         run: sudo journalctl --no-pager -o short-precise -u 'eveland-*' -n 400 || true
+
+      # TEMPORARY probe for the Ubuntu 26.04 CHDIR failure; drop before merge.
+      - name: Probe release dir access (temporary)
+        if: failure()
+        run: |
+          set -x
+          systemctl --version | head -1
+          rel="$(sudo find /var/lib/eveland-data/builds -mindepth 2 -maxdepth 2 -type d | head -1)"
+          sudo namei -l "$rel" || true
+          sudo ls -la "$rel" | head -5 || true
+          probe="for p in /var/lib/eveland-data /var/lib/eveland-data/builds \$(dirname '$rel') '$rel'; do stat -c '%a %U:%G %n' \"\$p\"; done; findmnt -R -o TARGET,FSTYPE,OPTIONS /var/lib/eveland-data; cd '$rel' && echo CHDIR-OK"
+          echo "== root, same mounts"
+          sudo systemd-run --wait --pipe -q -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" sh -c "id; $probe" || true
+          echo "== dynamic user, same mounts"
+          sudo systemd-run --wait --pipe -q -p DynamicUser=yes -p Group=eveland-app -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" sh -c "id; $probe" || true
+          echo "== dynamic user, no tmpfs"
+          sudo systemd-run --wait --pipe -q -p DynamicUser=yes -p Group=eveland-app sh -c "id; $probe" || true
+          echo "== dynamic user, ProtectSystem=strict + tmpfs"
+          sudo systemd-run --wait --pipe -q -p DynamicUser=yes -p Group=eveland-app -p ProtectSystem=strict -p TemporaryFileSystem=/var/lib/eveland-data:ro -p BindPaths="$rel" -p WorkingDirectory="$rel" sh -c "id; pwd" || true
