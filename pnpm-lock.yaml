@@ -328,8 +328,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/platform-observability
       '@evelandhq/sandbox-bwrap':
-        specifier: ^0.6.0
-        version: 0.6.0(eve@1.0.0-rc.1(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))(next@16.3.8(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)))
+        specifier: ^0.7.0
+        version: 0.7.0(eve@1.0.0-rc.1(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))(next@16.3.8(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)))
       '@evelandhq/workflow-world':
         specifier: ^0.28.0
         version: 0.28.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)
@@ -1544,11 +1544,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@evelandhq/sandbox-bwrap@0.6.0':
-    resolution: {integrity: sha512-SsgFdKJxTskLDAjv9EnO6oG6GgCR15LoqNx7yveMKa4PfqKaSrzKv6rUXlx1CEEvsId8mww/37Rx3aeD0uIBXA==}
+  '@evelandhq/sandbox-bwrap@0.7.0':
+    resolution: {integrity: sha512-dIZXLdrmncaHXZzs1Jer4pvKk8n2sDy5p9BtiFHe6VrldUinHnfm4NtngBG9eqIQYgJlGVWzbEivfCqy70/SIQ==}
     engines: {node: '>=24.0.0'}
     peerDependencies:
-      eve: '>=0.62.0 <1.0.0'
+      eve: '>=0.62.0 <1.0.0 || >=1.0.0-0 <2.0.0-0'
 
   '@evelandhq/workflow-world@0.28.0':
     resolution: {integrity: sha512-Ok4FNZsRXgW8OBzlnKtegxzfXGQqQglcthsqoEFDts6mFz95kbLmaNj4Uyp02SJlt3z6+nbHMOAwNckgBN3Cpw==}
@@ -7965,7 +7965,7 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@evelandhq/sandbox-bwrap@0.6.0(eve@1.0.0-rc.1(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))(next@16.3.8(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)))':
+  '@evelandhq/sandbox-bwrap@0.7.0(eve@1.0.0-rc.1(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))(next@16.3.8(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)))':
     dependencies:
       eve: 1.0.0-rc.1(@opentelemetry/api@1.9.1)(ai@7.0.138(zod@4.6.5))(next@16.3.8(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.6(@types/node@26.6.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
 
