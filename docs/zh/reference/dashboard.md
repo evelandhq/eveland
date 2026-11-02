@@ -20,6 +20,8 @@ description: 登录、Projects、Settings、项目页与 Logs 等 Dashboard 各�
 
 展示用户全部项目：项目名称；当前部署状态；最近一次更新时间；当前 Eve 版本（落后于最新支持版本或不受支持时以红色显示，信息提示说明升级目标）；最近 Session 状态；下一次 Schedule 时间（如有，按个人 Display timezone 显示，当天只显示 24 小时制的 `HH:mm`，其他日期显示 `MM-DD HH:mm`）。支持新建项目、删除项目、进入项目。
 
+Session 的 `waiting` 表示对话已空闲、可接收下一条消息，并不代表有待处理的人工交互。项目应显示为 `Idle` 或 `Scheduled`（仍服从部署状态与未审阅定时任务失败的优先级），活动说明为 `Ready for next message`。只有 `waiting_approval` 才显示橘色的人工处理提示。30 天历史条采用相同区分：失败 Session 优先于待处理人工交互，普通空闲对话既不将当天染成橘色，也不计入 awaiting 数量。成功率和 p95 耗时仍只统计终态 Session；可以继续对话不等于整个 Session 已完成。
+
 Project 删除是永久、异步操作。用户必须输入完整 Project 名称确认；API 原子地将 Project 标记为 `deleting` 并创建唯一的 `delete_project` job。Projects 列表在 job 完成前保留该 Project 并显示 `Deleting…`，详情页保持可读但禁用变更操作；删除中的 Project 拒绝新的部署、同步、Secret、Playground 等变更请求。删除失败时 Project 记录保留，展示 `Delete failed` 和失败原因，并允许重试。
 
 删除 job 必须等待同一 Project 已运行的 job 结束，再停止所有 `running` 或 `draining` Deployment。随后按各 Deployment 记录的 `runtimeKind` 删除 Release，清理平台管理的 source、build、Agent observability policy 与 durable sandbox workspace，最后级联删除 routes、SessionBindings、OperationBindings、Sessions、usage、Schedules、Secrets、日志和 Project 数据。平台不得删除 `EVELAND_DATA_DIR` 之外的外部源码路径。外部资源清理无法与 Postgres 组成同一事务；失败时部分进程或 artifact 可能已经停止或移除，但 Project 记录和错误状态必须保留以支持幂等重试。
