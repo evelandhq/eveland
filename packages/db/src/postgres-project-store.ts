@@ -68,7 +68,9 @@ const DAY_SEVERITY: Record<ProjectActivityDay, number> = {
 
 function sessionStatusToDay(status: string): ProjectActivityDay {
   if (status === "failed") return "failed";
-  if (status === "waiting" || status === "waiting_approval") return "attention";
+  // Plain waiting is an idle conversation ready for another message; only a
+  // pending human interaction needs attention.
+  if (status === "waiting_approval") return "attention";
   return "ok";
 }
 
@@ -205,7 +207,7 @@ export function createPostgresProjectStore(
         entry.sessions += 1;
         if (row.status === "completed") entry.succeeded += 1;
         if (row.status === "failed") entry.failed += 1;
-        if (row.status === "waiting" || row.status === "waiting_approval") entry.awaiting += 1;
+        if (row.status === "waiting_approval") entry.awaiting += 1;
 
         const completedAt = row.completedAt?.getTime();
         if (row.status === "completed" && completedAt !== undefined && completedAt >= startedAt)

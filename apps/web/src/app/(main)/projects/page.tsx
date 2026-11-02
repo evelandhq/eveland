@@ -94,8 +94,6 @@ function describeProjectState(project: ProjectListItem): ProjectState {
     };
   if (project.latestSessionStatus === "waiting_approval")
     return { tone: "attention", label: "Needs review", activity: "Paused for your approval" };
-  if (project.latestSessionStatus === "waiting")
-    return { tone: "attention", label: "Needs input", activity: "Waiting on input" };
   if (project.latestSessionStatus === "running")
     return { tone: "running", label: "Running", activity: "Session in progress" };
   if (project.deploymentStatus === "building" || project.deploymentStatus === "starting")
@@ -114,7 +112,9 @@ function describeProjectState(project: ProjectListItem): ProjectState {
       ? "Last session failed"
       : project.latestSessionStatus === "completed"
         ? "Last session completed"
-        : "No sessions yet";
+        : project.latestSessionStatus === "waiting"
+          ? "Ready for next message"
+          : "No sessions yet";
   return project.nextScheduleAt
     ? { tone: "scheduled", label: "Scheduled", activity: lastRun }
     : { tone: "idle", label: "Idle", activity: lastRun };

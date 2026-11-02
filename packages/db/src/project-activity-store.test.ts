@@ -15,7 +15,7 @@ import { createTestStore } from "./vitest-store.js";
 async function projectWithSessions(
   store: ReturnType<typeof createTestStore>,
   name: string,
-  statuses: ReadonlyArray<"completed" | "failed" | "waiting_approval">,
+  statuses: ReadonlyArray<"completed" | "failed" | "waiting" | "waiting_approval">,
 ) {
   const project = await store.createProject({ name, importKind: "git", gitUrl: null });
   for (const status of statuses) {
@@ -52,6 +52,32 @@ describe("listProjectActivity", () => {
   test("ranks awaiting below failed but above ok", async () => {
     const store = createTestStore();
     await projectWithSessions(store, "awaiting", ["completed", "waiting_approval"]);
+
+    const [activity] = await store.listProjectActivity({ days: 30 });
+
+    expect(activity?.days.at(-1)).toBe("attention");
+    expect(activity?.awaiting).toBe(1);
+  });
+
+  test("an idle conversation does not need attention or count as a completed session", async () => {
+    const store = createTestStore();
+    await projectWithSessions(store, "ready-for-next-message", ["waiting"]);
+
+    const [activity] = await store.listProjectActivity({ days: 30 });
+
+    expect(activity?.days.at(-1)).toBe("ok");
+    expect(activity).toMatchObject({
+      sessions: 1,
+      awaiting: 0,
+      succeeded: 0,
+      successRate: null,
+      p95DurationMs: null,
+    });
+  });
+
+  test("only pending human interactions count as awaiting", async () => {
+    const store = createTestStore();
+    await projectWithSessions(store, "human-interaction", ["waiting", "waiting_approval"]);
 
     const [activity] = await store.listProjectActivity({ days: 30 });
 

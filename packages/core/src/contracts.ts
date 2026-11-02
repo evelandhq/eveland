@@ -91,6 +91,7 @@ export type ProjectActivity = {
   sessions: number;
   succeeded: number;
   failed: number;
+  /** Pending human interactions (waiting_approval), excluding idle conversations (waiting). */
   awaiting: number;
   /** Null until the window holds a settled session. */
   successRate: number | null;
