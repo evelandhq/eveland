@@ -297,7 +297,7 @@ async function main(): Promise<void> {
       assert.equal(production.statusCode, 202, `production Host did not route: ${production.body}`);
 
       console.log(
-        `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 cancel=${cancelledBody.status} promoted=1 rolledBack=1 preview=200 create=202 production=202 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
+        `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 cancel=${cancelledBody.status ?? (cancelledBody.ok ? "delivered" : "unknown")} promoted=1 rolledBack=1 preview=200 create=202 production=202 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
       );
     } finally {
       if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
