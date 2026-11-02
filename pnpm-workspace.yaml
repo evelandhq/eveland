@@ -2,23 +2,27 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 0.83.3
+  eve: 1.0.0-rc.1
 catalogs:
   eve-matrix:
-    eve-previous: npm:eve@0.81.1
+    eve-previous: npm:eve@0.83.3
   # The published SDK's contract is narrower than the platform's. It imports
   # four primitives from eve/channels/auth, stable across 0.27-0.40, while the
   # policy's peerDependencyRange tracks what Eveland can actually host and
   # slides every minor. Tying the SDK to that forced a republish per slide and
   # left consumers on a newer eve with a spurious peer warning in between. The
-  # floor still follows the window; only the ceiling is independent.
+  # floor still follows the window; only the ceiling is independent. eve 1.0
+  # puts eve/channels/auth under semver, so the ceiling is the next major; the
+  # `>=1.0.0-0` comparator is what admits 1.0 release candidates, which a
+  # plain `<2.0.0` hull would not (npm matches a prerelease only against a
+  # comparator on the same release).
   #
   # There is no eve-peer catalog: the only package that consumed it was
   # sandbox-bwrap, which now lives in its own repository and declares its own,
   # deliberately wider peer range. The platform's hosting window survives as
   # EVE_COMPATIBILITY_POLICY.peerDependencyRange, which still pins this floor.
   eve-sdk-peer:
-    eve: ">=0.81.0 <1.0.0"
+    eve: ">=0.83.0 <1.0.0 || >=1.0.0-0 <2.0.0"
 allowBuilds:
   cbor-extract: true
   esbuild: true

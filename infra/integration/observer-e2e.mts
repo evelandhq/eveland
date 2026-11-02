@@ -15,7 +15,10 @@ import { projectAgentEventsFromOtlpLogs } from "../../packages/session-collector
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
 import { startOtlpTestReceiver } from "./otlp-test-receiver.mts";
-import { watchDelegatedTurn } from "../../apps/worker/src/integration/delegated-turn.js";
+import {
+  sessionStreamLineEvents,
+  watchDelegatedTurn,
+} from "../../apps/worker/src/integration/delegated-turn.js";
 import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
 
 /**
@@ -192,7 +195,11 @@ async function waitForAgentObservations(
       );
     }
     if (
-      observations.some((observation) => eventType(observation.event) === "step.completed") &&
+      // Provider usage: v26 reports it on `step.completed`, v27 (eve 0.84+) as
+      // `usage.recorded`.
+      observations.some((observation) =>
+        ["step.completed", "usage.recorded"].includes(eventType(observation.event) ?? ""),
+      ) &&
       observations.some((observation) => observation.parentEveSessionId !== null)
     ) {
       return observations;
@@ -252,9 +259,10 @@ async function runDirectTurn(hostPort: number): Promise<string> {
       const line = buffer.slice(0, newline).trim();
       buffer = buffer.slice(newline + 1);
       if (!line) continue;
-      const event = JSON.parse(line) as { type?: string };
-      if (event.type) seen.push(event.type);
-      watch.observe(event);
+      for (const event of sessionStreamLineEvents(JSON.parse(line))) {
+        if (event.type) seen.push(event.type);
+        watch.observe(event);
+      }
     }
   }
   await reader.cancel().catch(() => undefined);

@@ -25,7 +25,7 @@ const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
   }),
 );
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 0.81/0.83 compatibility window", async () => {
+  test("fails closed outside the 0.83/1.0 compatibility window", async () => {
     for (const eveVersion of [
       "0.30.8",
       "0.31.3",
@@ -155,7 +155,17 @@ describe("injectSchedulerAdapter", () => {
       // retired on 2026-10-21 when 0.81 entered (v0.63.0 had carried 0.79
       // since 2026-10-14); 0.80 sits inside the hull. 0.79 retired on
       // 2026-10-27 when 0.83 entered (v0.64.0 had carried 0.81 since
-      // 2026-10-21); 0.82 sits inside the hull.
+      // 2026-10-21); 0.82 sits inside the hull. 0.81 retired on 2026-11-02
+      // when 1.0 entered (v0.65.0 had carried 0.83 since 2026-10-27), and
+      // 0.84 through 0.91 were skipped; a 1.x caret spans later minors.
+      "0.81.1",
+      "~0.81.1",
+      "0.81.x",
+      "0.84.0",
+      "0.91.0",
+      "~0.91.0",
+      "1.1.0",
+      "^1.0.0",
       "0.62.0",
       "~0.62.0",
       "^0.62.0",
@@ -241,18 +251,18 @@ describe("injectSchedulerAdapter", () => {
 
   test("accepts every dependency form that stays inside a verified Eve minor", async () => {
     for (const eveVersion of [
-      "0.81.1",
-      "~0.81.1",
-      "^0.81.1",
-      "0.81",
-      "0.81.x",
-      "0.81.*",
       "0.83.3",
       "~0.83.3",
       "^0.83.3",
       "0.83",
       "0.83.x",
       "0.83.*",
+      "1.0.0-rc.1",
+      "~1.0.0-rc.1",
+      "1.0.0",
+      "~1.0.0",
+      "1.0",
+      "1.0.x",
     ]) {
       const releaseDir = await fixture({ eveVersion, files: {} });
 
@@ -264,7 +274,7 @@ describe("injectSchedulerAdapter", () => {
 
   test("rewrites module and Markdown schedules to native no-ops while preserving originals", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/schedules/billing/sweep.ts": `import { defineSchedule } from "eve/schedules";
 import { helper } from "../../lib/helper";
@@ -323,12 +333,12 @@ Produce the daily report.
       path.join(releaseDir, "agent/channels/eveland-scheduler.ts"),
       "utf8",
     );
-    expect(channel).toContain("markdown: schedule2.markdown");
+    expect(channel).toContain("markdown: scheduledPrompt(schedule2)");
   });
 
   test("generates a closed authenticated dispatch Channel without embedding secrets", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
       },
@@ -361,7 +371,7 @@ Produce the daily report.
 
   test("generates the fixed-session dispatch Channel", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/schedules/report.md": `---
 cron: "30 5 * * *"
@@ -394,7 +404,7 @@ Produce the daily report.
     // Eve 0.33 made "steer" the default send policy, which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every line in the
-    // current 0.81/0.83 window supports the explicit `turnPolicy` option.
+    // current 0.83/1.0 window supports the explicit `turnPolicy` option.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };
@@ -420,7 +430,7 @@ Produce the daily report.
 
   test("marks every scheduler-created root in async context without changing existing sessions", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/schedules/report.md": `---\ncron: "30 5 * * *"\n---\nProduce the daily report.\n`,
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
@@ -448,7 +458,7 @@ Produce the daily report.
     async (extension) => {
       const sourcePath = `agent/schedules/nested/direct.${extension}`;
       const releaseDir = await fixture({
-        eveVersion: "0.81.1",
+        eveVersion: "0.83.3",
         files: { [sourcePath]: `export default { cron: "0 6 * * *", async run() {} };` },
       });
 
@@ -465,7 +475,7 @@ Produce the daily report.
 
   test("rejects reserved authored identifiers and the reserved Channel path", async () => {
     const identifierCollision = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/schedules/collision.ts": `const __evelandOriginalSchedule = {}; export default __evelandOriginalSchedule;`,
       },
@@ -475,7 +485,7 @@ Produce the daily report.
     );
 
     const channelCollision = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/schedules/ok.ts": `export default { cron: "* * * * *", async run() {} };`,
         "agent/channels/eveland-scheduler.ts": `export default {};`,
@@ -486,7 +496,7 @@ Produce the daily report.
     );
 
     const defaultReExport = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/lib/shared.ts": `export default { cron: "0 7 * * *", async run() {} };`,
         "agent/schedules/re-export.ts": `export { default } from "../lib/shared";`,
@@ -499,7 +509,7 @@ Produce the daily report.
     // Eve 0.74's experimental schedule collections live in agent/schedules/
     // too, but declare no static cron; Eveland hosts only static schedules.
     const dynamicCollection = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/schedules/reminders.ts": [
           `import { defineDynamicSchedules } from "eve/experimental/schedules";`,
@@ -610,6 +620,7 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
             EVELAND_SCHEDULER_REDEEM_URL: `http://127.0.0.1:${redeemAddress.port}/internal/scheduler/dispatch`,
           },
           stdio: "ignore",
+          detached: true,
         },
       );
 
@@ -746,7 +757,7 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
           }),
         ]);
       } finally {
-        child.kill("SIGTERM");
+        await stopEveStart(child);
         await new Promise<void>((resolve) => redeemServer.close(() => resolve()));
       }
     },
@@ -757,7 +768,7 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
 describe("injectExtensionSchedules", () => {
   test("namespaces Extension schedules, honors consumer overrides, and regenerates the dispatch Channel", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/schedules/root.ts": 'export default { cron: "0 1 * * *", async run() {} };',
         "node_modules/@acme/crm/package.json": JSON.stringify({
@@ -806,7 +817,7 @@ describe("injectExtensionSchedules", () => {
   });
 
   test("rejects Extension source paths outside the disposable Release", async () => {
-    const releaseDir = await fixture({ eveVersion: "0.81.1", files: {} });
+    const releaseDir = await fixture({ eveVersion: "0.83.3", files: {} });
     await injectSchedulerAdapter({ releaseDir });
     const outsideRoot = path.join(path.dirname(releaseDir), "outside-extension");
 
@@ -824,7 +835,7 @@ describe("injectExtensionSchedules", () => {
 
   test("fails closed when an Extension schedule key collides with an existing root key", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "agent/schedules/crm__sync.ts": 'export default { cron: "0 1 * * *", async run() {} };',
         "node_modules/@acme/crm/dist/extension/schedules/sync.mjs":
@@ -851,7 +862,7 @@ describe("injectExtensionSchedules", () => {
 
   test("fails closed when separate namespace and local-key pairs produce the same key", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "node_modules/@acme/one/dist/extension/schedules/b__c.mjs":
           'export default { cron: "0 2 * * *", async run() {} };',
@@ -887,7 +898,7 @@ describe("injectExtensionSchedules", () => {
   });
 
   test("rejects symlinked Extension schedule sources that escape the Release", async () => {
-    const releaseDir = await fixture({ eveVersion: "0.81.1", files: {} });
+    const releaseDir = await fixture({ eveVersion: "0.83.3", files: {} });
     await injectSchedulerAdapter({ releaseDir });
     const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-scheduler-outside-"));
     await mkdir(path.join(outsideRoot, "schedules"), { recursive: true });
@@ -913,7 +924,7 @@ describe("injectExtensionSchedules", () => {
 
   test("reports the generated module path for transformed Markdown schedules", async () => {
     const releaseDir = await fixture({
-      eveVersion: "0.81.1",
+      eveVersion: "0.83.3",
       files: {
         "node_modules/@acme/crm/dist/extension/schedules/report.md":
           '---\ncron: "0 3 * * *"\n---\nProduce the extension report.\n',
@@ -1065,7 +1076,8 @@ async function fixture(input: {
   await writeFile(path.join(releaseDir, "agent/instructions.md"), "Fixture.");
   await writeFile(
     path.join(releaseDir, "agent/agent.ts"),
-    'export default { model: "zai/glm-5.2", modelContextWindowTokens: 131072 };\n',
+    // eve 0.87+ rejects an agent that is not built by `defineAgent`.
+    'import { defineAgent } from "eve";\nexport default defineAgent({ model: "zai/glm-5.2", modelContextWindowTokens: 131072 });\n',
   );
   for (const [relativePath, content] of Object.entries(input.files)) {
     const target = path.join(releaseDir, relativePath);
@@ -1073,4 +1085,31 @@ async function fixture(input: {
     await writeFile(target, content);
   }
   return releaseDir;
+}
+
+/**
+ * Stops an `eve start` spawned with `detached: true` the way systemd stops a
+ * unit: SIGTERM to the whole process group, so the server it spawned is
+ * signalled too, then waits for `eve start` to exit (SIGKILL to the group
+ * after 30s). Signalling only `eve start` can orphan its server: eve installs
+ * that process's signal handler only after the server already answers, and a
+ * SIGTERM in between kills `eve start` alone.
+ */
+async function stopEveStart(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  const signalGroup = (signal: NodeJS.Signals) => {
+    try {
+      process.kill(-child.pid!, signal);
+    } catch {
+      // The group is already gone.
+    }
+  };
+  signalGroup("SIGTERM");
+  const timedOut = await Promise.race([
+    exited.then(() => false),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 30_000).unref()),
+  ]);
+  signalGroup("SIGKILL");
+  if (timedOut) await exited;
 }

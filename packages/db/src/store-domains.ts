@@ -687,7 +687,10 @@ export interface SessionStore {
   appendSessionEvent(sessionId: string, type: string, payload: unknown): Promise<SessionEvent>;
   recordModelUsage(
     sessionId: string,
-    usage: ModelStepUsage & {
+    usage: Omit<ModelStepUsage, "runKey" | "stepIndex"> & {
+      /** v26 rows carry a step index; v27 rows a run key instead. */
+      stepIndex: number | null;
+      runKey?: string | null;
       eveSessionId?: string;
       agentId?: string | null;
       agentName?: string | null;

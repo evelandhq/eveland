@@ -65,7 +65,7 @@ describe("starter-agent template", () => {
       await readFile(path.join(defaultTemplateDir(), "package.json"), "utf8"),
     ) as { private?: boolean; dependencies?: Record<string, string> };
     expect(manifest.private).toBe(true);
-    expect(manifest.dependencies?.eve).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(manifest.dependencies?.eve).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/);
     expect(manifest.dependencies?.eveland).toMatch(/^\^\d+\.\d+\.\d+$/);
   });
 

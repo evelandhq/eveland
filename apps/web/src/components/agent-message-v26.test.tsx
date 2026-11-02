@@ -5,11 +5,11 @@ import type {
   EveDynamicToolPart,
   EveMessage,
   EveMessageInputRequest,
-} from "eve/react";
+} from "eve-previous/react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
-import { AgentMessage } from "./agent-message";
+import { AgentMessage } from "./agent-message-v26";
 
 const inputRequest: EveMessageInputRequest = {
   kind: "tool-approval",

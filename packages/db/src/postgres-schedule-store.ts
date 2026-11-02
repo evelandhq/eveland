@@ -642,6 +642,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
                 executionStatus = scheduleExecutionStatusFromEveEvent(
                   boundary?.type,
                   existing.status,
+                  boundary?.payload,
                 );
                 executionError =
                   executionStatus === "failed"

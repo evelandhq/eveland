@@ -1,5 +1,6 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { createId } from "@evelandhq/core/ids";
+import { eveSessionProtocolOfVersion } from "@evelandhq/core/eve-compatibility";
 import {
   parseStepUsageEvent,
   scheduleExecutionErrorFromEveEvent,
@@ -30,6 +31,7 @@ import {
   deployments,
   modelUsageEvents,
   projects,
+  releases,
   runtimeInstances,
   scheduleRunSessions,
   scheduleRuns,
@@ -100,7 +102,7 @@ async function ingestPostgresAgentEventOnce(
         );
       }
     }
-    const [binding] = await tx
+    let [binding] = await tx
       .select()
       .from(sessionBindings)
       .where(
@@ -110,6 +112,10 @@ async function ingestPostgresAgentEventOnce(
         ),
       )
       .limit(1);
+    if (binding && binding.deploymentId !== observation.deploymentId) {
+      binding =
+        (await followCrossProtocolHandoff(tx, binding, observation.deploymentId)) ?? binding;
+    }
 
     let [node] = await tx
       .select()
@@ -347,7 +353,17 @@ async function ingestPostgresAgentEventOnce(
 
     const eventRecord = recordValue(observation.event);
     const type = typeof eventRecord?.type === "string" ? eventRecord.type : "event";
-    const payload = recordValue(eventRecord?.data) ?? eventRecord ?? observation.event;
+    // v27 (eve 0.84+) names the owners of a fact -- its turn, run, task, or
+    // context change -- on the envelope rather than in its payload. The stored
+    // payload is the fact's data, so the owning turn is copied into it when
+    // the data does not already name one: transcripts and replays group by it.
+    const scope = recordValue(eventRecord?.scope);
+    const data = recordValue(eventRecord?.data);
+    const scopedTurnId = stringValue(scope?.turnId);
+    const payload =
+      data && scopedTurnId && data.turnId === undefined
+        ? { ...data, turnId: scopedTurnId }
+        : (data ?? eventRecord ?? observation.event);
     const eventRow = await appendSessionEventRow(tx, {
       id: createId("evt"),
       sessionId: sessionRow.id,
@@ -367,11 +383,14 @@ async function ingestPostgresAgentEventOnce(
       : null;
     const runtime = type === "session.started" ? recordValue(recordValue(payload)?.runtime) : null;
     // Eve <=0.32 put the configured model in the session's runtime identity;
-    // 0.33 moved it to `step.started`, where a concrete model is selected.
-    // Read both so `modelId` is populated across the supported window.
+    // 0.33 moved it to `step.started`, where a concrete model is selected, and
+    // v27 (0.84) renamed that event `model.started`. Read every source so
+    // `modelId` is populated across the supported window.
     const configuredModelId =
       stringValue(runtime?.modelId) ??
-      (type === "step.started" ? stringValue(recordValue(payload)?.modelId) : null);
+      (type === "step.started" || type === "model.started"
+        ? stringValue(recordValue(payload)?.modelId)
+        : null);
     const [updatedNode] = await tx
       .update(sessionNodes)
       .set({
@@ -415,7 +434,9 @@ async function ingestPostgresAgentEventOnce(
       const now = new Date();
       const executionStatus =
         node.parentNodeId === null
-          ? nonRunning(scheduleExecutionStatusFromEveEvent(type, projectedStatus ?? node.status))
+          ? nonRunning(
+              scheduleExecutionStatusFromEveEvent(type, projectedStatus ?? node.status, payload),
+            )
           : null;
       await tx
         .update(scheduleRunSessions)
@@ -482,11 +503,14 @@ async function ingestPostgresAgentEventOnce(
 
     // Eve <= 0.68 announces a delegated child with `subagent.called`
     // (`childSessionId`); 0.69 replaced it with `agent.started`, whose
-    // `sessionId` names the child. Both carry `name` and `remote.url`.
-    if (type === "subagent.called" || type === "agent.started") {
+    // `sessionId` names the child; v27 (0.84) renamed that `child.opened`.
+    // `subagent.called` and `agent.started` carry `name` and `remote.url`;
+    // `child.opened` carries `name` only, so a v27 remote child stays an
+    // unresolved node without a URL rather than one Eveland follows.
+    if (type === "subagent.called" || type === "agent.started" || type === "child.opened") {
       const subagentPayload = recordValue(payload);
       const childEveSessionId = stringValue(
-        type === "agent.started" ? subagentPayload?.sessionId : subagentPayload?.childSessionId,
+        type === "subagent.called" ? subagentPayload?.childSessionId : subagentPayload?.sessionId,
       );
       const remoteUrl = stringValue(recordValue(subagentPayload?.remote)?.url);
       if (childEveSessionId) {
@@ -556,7 +580,7 @@ async function ingestPostgresAgentEventOnce(
       }
     }
 
-    const usage = parseStepUsageEvent(type, payload);
+    const usage = parseStepUsageEvent(type, payload, scope);
     if (usage) {
       const [insertedUsage] = await tx
         .insert(modelUsageEvents)
@@ -569,6 +593,7 @@ async function ingestPostgresAgentEventOnce(
           agentName: node!.agentName,
           turnId: usage.turnId,
           stepIndex: usage.stepIndex,
+          runKey: usage.runKey,
           modelId: observation.observedModel?.modelId ?? null,
           finishReason: usage.finishReason,
           inputTokens: usage.inputTokens,
@@ -612,8 +637,87 @@ async function ingestPostgresAgentEventOnce(
   });
 }
 
+/**
+ * Re-points a SessionBinding at the Deployment a session now runs on, when
+ * eve moved it across the session-protocol boundary.
+ *
+ * A session stays on the Deployment that created it, and the Agent Gateway
+ * pins its continuations and streams there -- with one exception eve 0.85
+ * introduced: a v26 (eve 0.69-0.83) owner run that receives a delivery a v27
+ * Deployment accepted, while idle, moves the session onto that Deployment
+ * through the shared World (`execution/session/handoff.js`). The Gateway never
+ * causes that itself -- the bound Deployment accepts every pinned request --
+ * but unpinned channel ingress, `ctx.to()`, and schedules can. The move is
+ * one-way (a v26 runtime cannot read a v27 checkpoint, so nothing moves it
+ * back), and afterwards only the v27 Deployment reports the session: the old
+ * runtime can no longer serve its stream, and the v26 Dashboard client cannot
+ * read the v27 lines eve now writes. So the first observation of a bound
+ * session from a v27 Deployment, while its binding still names a v26 one, is
+ * proof of the move, and the binding (and the Session's Deployment) follows
+ * it. Any other mismatch -- the same protocol on both sides, or a stale event
+ * from the old Deployment -- leaves the binding alone.
+ */
+async function followCrossProtocolHandoff(
+  tx: StoreDatabase["db"],
+  binding: typeof sessionBindings.$inferSelect,
+  observedDeploymentId: string,
+): Promise<typeof sessionBindings.$inferSelect | null> {
+  const [boundVersion, observedVersion] = await Promise.all([
+    resolvedDeploymentEveVersion(tx, binding.deploymentId),
+    resolvedDeploymentEveVersion(tx, observedDeploymentId),
+  ]);
+  if (
+    eveSessionProtocolOfVersion(boundVersion) !== "v26" ||
+    eveSessionProtocolOfVersion(observedVersion) !== "v27"
+  ) {
+    return null;
+  }
+  const now = new Date();
+  const [moved] = await tx
+    .update(sessionBindings)
+    .set({ deploymentId: observedDeploymentId, updatedAt: now })
+    .where(
+      and(
+        eq(sessionBindings.id, binding.id),
+        eq(sessionBindings.deploymentId, binding.deploymentId),
+      ),
+    )
+    .returning();
+  if (!moved) return null;
+  await tx
+    .update(sessions)
+    .set({ deploymentId: observedDeploymentId })
+    .where(
+      and(
+        eq(sessions.projectId, binding.projectId),
+        eq(sessions.eveSessionId, binding.eveSessionId),
+      ),
+    );
+  return moved;
+}
+
+/** The eve version the Deployment's Release build installed, if it recorded one. */
+async function resolvedDeploymentEveVersion(
+  tx: StoreDatabase["db"],
+  deploymentId: string,
+): Promise<string | null> {
+  const [row] = await tx
+    .select({ summary: releases.summary })
+    .from(deployments)
+    .innerJoin(releases, eq(releases.id, deployments.releaseId))
+    .where(eq(deployments.id, deploymentId))
+    .limit(1);
+  const summary = recordValue(row?.summary);
+  return stringValue(summary?.eveVersionResolved);
+}
+
 function triggerFromAgentChannel(channelKind: string | null): SessionTrigger {
   if (channelKind === "schedule") return "cron";
+  // v27 (eve 0.84+) no longer reads `kindHint`; every channel's kind is
+  // `channel:<name>`, so the HTTP channel and Eveland's own scheduler channel
+  // are told apart by name.
+  if (channelKind === "channel:eveland-scheduler") return "cron";
+  if (channelKind === "channel:eve") return "direct_http";
   if (channelKind?.startsWith("channel:")) return "channel";
   if (channelKind && channelKind !== "http" && channelKind !== "eve") return "webhook";
   return "direct_http";

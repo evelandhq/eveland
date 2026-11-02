@@ -9,7 +9,7 @@
  * byte-identical), again for 0.53.1 and 0.54.3 on 2026-09-12, for 0.54.5 and
  * 0.55.0 on 2026-09-15, for 0.56.0 on 2026-09-16, and again for 0.57.0 and
  * 0.58.0 and 0.58.1 on 2026-09-17, for 0.62.0 on 2026-09-19, and for 0.64.1
- * and 0.65.0 on 2026-09-23, for 0.66.0 and 0.66.1 on 2026-09-24, for 0.67.0 on 2026-09-26, for 0.68.0 on 2026-09-29, for 0.69.0 on 2026-10-02, for 0.70.0 the same day, for 0.72.1 on 2026-10-07, for 0.73.0 and 0.74.0 on 2026-10-08, for 0.75.0 and 0.75.1 on 2026-10-09, for 0.76.0 on 2026-10-10, for 0.79.0 on 2026-10-14, for 0.81.1 on 2026-10-21, and for 0.83.3 on 2026-10-27 (the nitro and srvx pins did not move, and `eve start` still
+ * and 0.65.0 on 2026-09-23, for 0.66.0 and 0.66.1 on 2026-09-24, for 0.67.0 on 2026-09-26, for 0.68.0 on 2026-09-29, for 0.69.0 on 2026-10-02, for 0.70.0 the same day, for 0.72.1 on 2026-10-07, for 0.73.0 and 0.74.0 on 2026-10-08, for 0.75.0 and 0.75.1 on 2026-10-09, for 0.76.0 on 2026-10-10, for 0.79.0 on 2026-10-14, for 0.81.1 on 2026-10-21, for 0.83.3 on 2026-10-27, and for 1.0.0-rc.1 on 2026-11-02 (the nitro and srvx pins did not move, and `eve start` still
  * SIGKILLs its child after 20 seconds), so every number below still holds:
  *
  * 1. The systemd unit. SIGTERM reaches the whole cgroup, so the
@@ -29,7 +29,9 @@
  *    drains: it stops accepting, waits `SERVER_SHUTDOWN_TIMEOUT` **seconds**
  *    (default 5), then calls `closeAllConnections()` and cuts whatever is
  *    still running. It also declines to install itself when `CI` or `TEST` is
- *    present in the deployment's environment.
+ *    present in the deployment's environment; `eve start` deletes `TEST` from
+ *    the server's environment, and from eve 1.0 `CI` (and
+ *    `NITRO_UNIX_SOCKET`) too, so on that line the plugin always installs.
  *
  * So the platform sets SERVER_SHUTDOWN_TIMEOUT deliberately instead of
  * inheriting srvx's 5s. No budget makes a mid-turn restart invisible -- an

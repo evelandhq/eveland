@@ -8,15 +8,12 @@
 // Plain tsx script (no vitest), run by the systemd-smoke workflow exactly
 // like agent-sandbox-e2e.ts.
 import assert from "node:assert/strict";
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
-import {
-  LATEST_VERIFIED_EVE_VERSION,
-  unsupportedReleaseEveVersionMessage,
-} from "@evelandhq/core/eve-compatibility";
+import { unsupportedReleaseEveVersionMessage } from "@evelandhq/core/eve-compatibility";
 import type { DeploymentRecord } from "@evelandhq/core/contracts";
 import { createPgliteTestStore } from "@evelandhq/db/test";
 import { processNextJob } from "../jobs/process.js";
@@ -79,10 +76,18 @@ try {
     null,
     "the built release must resolve an in-window eve version",
   );
+  // The template pins an exact verified version (the compatibility ratchet
+  // decides which line); the build must resolve exactly that pin.
+  const templatePin = (
+    JSON.parse(await readFile(path.join(TEMPLATE_PATH, "package.json"), "utf8")) as {
+      dependencies?: { eve?: string };
+    }
+  ).dependencies?.eve;
+  assert.ok(templatePin, "the template must pin eve");
   assert.equal(
     (release.summary as { eveVersionResolved?: string } | null)?.eveVersionResolved,
-    LATEST_VERIFIED_EVE_VERSION,
-    "the template's exact pin must resolve to the latest verified eve",
+    templatePin,
+    "the template's exact pin must resolve to that verified eve",
   );
 
   console.log("TEMPLATE BUILD E2E OK");

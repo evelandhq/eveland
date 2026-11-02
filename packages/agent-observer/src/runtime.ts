@@ -6,7 +6,13 @@ import {
   type RuntimeAgentPolicy,
 } from "./runtime/contracts.js";
 import { mapAgentTelemetryLifecycle } from "./runtime/lifecycle.js";
-import { emitAgentTelemetryEventLog, shouldCollectAgentTelemetryEvent } from "./runtime/logs.js";
+import { mapAgentTelemetryLifecycleV27 } from "./runtime/lifecycle-v27.js";
+import {
+  emitAgentTelemetryEventLog,
+  shouldCollectAgentTelemetryEvent,
+  shouldCollectAgentTelemetryEventV27,
+  v27Position,
+} from "./runtime/logs.js";
 import { createAgentTelemetryMetrics } from "./runtime/metrics.js";
 import {
   modelCallCapture,
@@ -52,10 +58,14 @@ export function createPrivateAgentTelemetryRuntime(input: {
     if (stopped || !policy.capture.enabled) return;
     try {
       const eventType = asString(event.type);
-      if (
-        !eventType ||
-        !shouldCollectAgentTelemetryEvent(eventType, policy.capture.recordOutputs)
-      ) {
+      if (!eventType) return;
+      // The window spans two session protocols. A v27 hook (eve 0.84+) is
+      // told where its event sits on the stream; a v26 hook never is.
+      if (v27Position(context)) {
+        captureV27(eventType, event, context);
+        return;
+      }
+      if (!shouldCollectAgentTelemetryEvent(eventType, policy.capture.recordOutputs)) {
         return;
       }
       const sessionId = asString(context.session?.id);
@@ -88,6 +98,41 @@ export function createPrivateAgentTelemetryRuntime(input: {
     } catch (error) {
       input.warn?.(error);
     }
+  }
+
+  function captureV27(
+    eventType: string,
+    event: AgentTelemetryEvent,
+    context: AgentTelemetryHookContext,
+  ): void {
+    const data = asRecord(event.data) ?? {};
+    if (!shouldCollectAgentTelemetryEventV27(eventType, data, policy.capture.recordOutputs)) {
+      return;
+    }
+    const sessionId = asString(context.session?.id);
+    if (!sessionId) return;
+    const correlatedSpan = mapAgentTelemetryLifecycleV27({
+      eventType,
+      data,
+      scope: asRecord(event.scope),
+      sessionId,
+      context,
+      state,
+      tracer: providers.tracer,
+      metrics,
+      now,
+      capture: policy.capture,
+      modelCapture,
+    });
+    emitAgentTelemetryEventLog({
+      eventType,
+      event,
+      context,
+      sessionId,
+      correlatedSpan,
+      logger: providers.logger,
+      policy,
+    });
   }
 
   async function forceFlush(): Promise<void> {

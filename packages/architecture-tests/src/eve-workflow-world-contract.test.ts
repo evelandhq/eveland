@@ -39,6 +39,20 @@ const RESOLUTION_ANCHORS: Record<string, string> = {
 /** The supported eve lines, newest first; alias names are pnpm catalog entries. */
 const EVE_LINES = ["eve", "eve-previous"] as const;
 
+/**
+ * Whether an installed eve release is at or past `floor`. A prerelease counts
+ * as its release here: these gates ask which code a line ships, and a 1.0
+ * release candidate ships the 1.0 code.
+ */
+function eveVersionAtLeast(version: string, floor: readonly [number, number, number]): boolean {
+  const parts = /^(\d+)\.(\d+)\.(\d+)/.exec(version)?.slice(1).map(Number);
+  if (!parts) throw new Error(`unreadable eve version ${version}`);
+  for (let index = 0; index < 3; index += 1) {
+    if (parts[index]! !== floor[index]) return parts[index]! > floor[index]!;
+  }
+  return true;
+}
+
 function resolveInstalled(specifier: string): string {
   const packageName = specifier.startsWith("@")
     ? specifier.split("/").slice(0, 2).join("/")
@@ -239,8 +253,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       expect(runtime, `${line} (${version}) runtime affinity guard`).toContain(
         "capabilities?.deploymentAffinity",
       );
-      const [, minor, patch] = version.split(".").map(Number);
-      if (minor! < 76 || (minor === 76 && patch! < 1)) return [];
+      if (!eveVersionAtLeast(version, [0, 76, 1])) return [];
       const runnableOwner = readFileSync(
         path.join(eveRoot, "dist/src/execution/session-inbox/runnable-owner.js"),
         "utf8",
@@ -275,8 +288,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
         path.join(eveRoot, "dist/src/execution/session/handoff-steps.js"),
         "utf8",
       );
-      const [, minor, patch] = version.split(".").map(Number);
-      if (minor! < 81 || (minor === 81 && patch! < 1)) {
+      if (!eveVersionAtLeast(version, [0, 81, 1])) {
         // Before 0.81.1 handoff never force-claimed, so it had no gate to key.
         expect(handoffSteps, `${line} (${version})`).not.toContain("hookForceClaim");
         return [];

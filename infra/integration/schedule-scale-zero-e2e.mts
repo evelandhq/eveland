@@ -23,6 +23,10 @@ import { processNextJob, type ProcessJobOptions } from "../../apps/worker/src/jo
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
 import { reapIdleDeployments } from "../../apps/worker/src/runtime/idle-reaper.js";
 import { planDueSchedules } from "../../apps/worker/src/scheduler/planner.js";
+import {
+  isCompletedTurnEvent,
+  sessionStreamLineEvents,
+} from "../../apps/worker/src/integration/delegated-turn.js";
 import { startOtlpTestReceiver } from "./otlp-test-receiver.mts";
 
 const APP_SECRET_KEY = "eveland-dev-secret-key-000000000";
@@ -336,19 +340,24 @@ async function consumeTurn(
         const line = raw.slice(consumed, newline).trim();
         consumed = newline + 1;
         if (!line) continue;
+        let events: ReturnType<typeof sessionStreamLineEvents>;
         try {
-          const event = JSON.parse(line) as { type?: unknown };
-          if (event.type === "turn.completed" || event.type === "session.waiting") return;
-          if (event.type === "turn.failed") throw new Error(`turn.failed observed:\n${raw}`);
-        } catch (error) {
-          if (error instanceof Error && error.message.startsWith("turn.failed")) throw error;
+          // A v26 event, or a v27 (eve 0.84+) commit line's facts.
+          events = sessionStreamLineEvents(JSON.parse(line));
+        } catch {
+          continue;
+        }
+        for (const event of events) {
+          if (isCompletedTurnEvent(event) || event.type === "session.waiting") return;
+          if (event.type === "turn.failed" || event.type === "turn.settled")
+            throw new Error(`turn failed (${event.type}):\n${raw}`);
         }
       }
     }
   } finally {
     await reader.cancel().catch(() => undefined);
   }
-  throw new Error(`Session stream ended before turn.completed:\n${raw}`);
+  throw new Error(`Session stream ended before the turn completed:\n${raw}`);
 }
 
 async function waitForObservedUsage(

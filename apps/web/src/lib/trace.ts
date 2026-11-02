@@ -232,8 +232,113 @@ export function buildSessionTrace(
         });
         break;
       }
+      // v27 (eve 0.84+): the same rows from the v27 vocabulary. The stored
+      // payload is the fact's data, with its owning turn copied in.
+      case "delivery.consumed": {
+        push(event, {
+          ...base,
+          id: event.id,
+          role: "user",
+          type: event.type,
+          turn: turnOf(payload),
+          status: null,
+          payload: messageText(payload) || event.payload,
+        });
+        break;
+      }
+      case "content.completed": {
+        const kind = asString(payload?.kind);
+        if (kind !== "text" && kind !== "result" && kind !== "reasoning") break;
+        const text = contentText(payload);
+        if (!text) break;
+        push(event, {
+          ...base,
+          id: event.id,
+          role: kind === "reasoning" ? "reasoning" : "assistant",
+          type: event.type,
+          turn: turnOf(payload),
+          status: null,
+          payload: text,
+        });
+        break;
+      }
+      case "call.requested": {
+        const capability = asRecord(payload?.capability);
+        if (asString(capability?.kind) === "control") break;
+        const callId = asString(payload?.callId);
+        const row = push(event, {
+          ...base,
+          id: event.id,
+          role: "tool",
+          type: event.type,
+          turn: turnOf(payload),
+          name: asString(capability?.name) ?? asString(capability?.kind) ?? "tool",
+          status: "pending",
+          payload: payload && "input" in payload ? payload.input : null,
+        });
+        if (callId) callRows.set(callId, row);
+        break;
+      }
+      case "call.settled": {
+        const callId = asString(payload?.callId);
+        const open = callId ? callRows.get(callId) : undefined;
+        if (!open || !callId) break;
+        const outcome = asString(payload?.outcome);
+        open.result = payload && "output" in payload ? payload.output : null;
+        open.status =
+          outcome === "completed"
+            ? "completed"
+            : outcome === "interrupted" || outcome === "abandoned"
+              ? "cancelled"
+              : "failed";
+        open.errorText =
+          open.status === "completed"
+            ? null
+            : (errorMessage(payload) ?? asString(payload?.reason) ?? outcome);
+        open.endAt = event.eventAt;
+        open.durationMs = durationBetween(open.eventAt, event.eventAt);
+        callRows.delete(callId);
+        break;
+      }
+      case "usage.recorded": {
+        push(event, {
+          ...base,
+          id: event.id,
+          role: "lifecycle",
+          type: event.type,
+          turn: turnOf(payload),
+          status: null,
+          payload: event.payload,
+          usage: usageFrom(payload?.usage),
+        });
+        break;
+      }
+      case "turn.settled": {
+        const turn = turnOf(payload);
+        const outcome = asString(payload?.outcome);
+        if (outcome === "cancelled") {
+          for (const open of callRows.values()) {
+            if (open.turn === turn && open.status === "pending") {
+              open.status = "cancelled";
+              open.errorText = "Turn cancelled";
+            }
+          }
+        }
+        push(event, {
+          ...base,
+          id: event.id,
+          role: "lifecycle",
+          type: event.type,
+          turn,
+          status: outcome === "failed" ? "failed" : outcome === "cancelled" ? "cancelled" : null,
+          payload: event.payload,
+          errorText: outcome === "failed" ? errorMessage(payload) : null,
+        });
+        break;
+      }
       default: {
-        const failedType = event.type.endsWith(".failed");
+        // v26 names a failure in the event type; v27 in a settled outcome.
+        const failedType = event.type.endsWith(".failed") || payload?.outcome === "failed";
         push(event, {
           ...base,
           id: event.id,
@@ -377,4 +482,11 @@ function asString(value: unknown): string | null {
 
 function asNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function contentText(payload: Record<string, unknown> | null): string | null {
+  if (!payload) return null;
+  if (typeof payload.value === "string") return payload.value || null;
+  if (payload.value !== undefined && payload.value !== null) return stringify(payload.value);
+  return asString(payload.fallbackText);
 }

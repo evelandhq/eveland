@@ -13,7 +13,11 @@ import { createPgliteTestStore } from "@evelandhq/db/test";
 import { execa } from "execa";
 import { processNextJob } from "../jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
-import { watchDelegatedTurn } from "./delegated-turn.js";
+import {
+  isCompletedTurnEvent,
+  sessionStreamLineEvents,
+  watchDelegatedTurn,
+} from "./delegated-turn.js";
 
 /**
  * One budget for a whole session read. It has to cover the delegated child
@@ -315,7 +319,8 @@ async function verifySubagentConnection(
     port,
     'delegate to a subagent: Search connection "research" for "connection record".',
     // The read settles once the session is idle after the child was reported
-    // (`agent.started` on eve 0.69, `subagent.called` before), by which time
+    // (`child.opened` on v27, `agent.started` on eve 0.69, `subagent.called`
+    // before), by which time
     // the child's Connection calls this check counts have happened.
     { subagentName: "researcher" },
   );
@@ -338,18 +343,16 @@ async function verifySubagentConnection(
 
 async function runConnectionFlow(input: { port: number; message: string }): Promise<void> {
   const session = await startSession(input.port, input.message);
+  // A tool result: v26 `action.result`, v27 (eve 0.84+) `call.settled`.
   assert.ok(
-    session.events.some((event) => event.type === "action.result"),
-    `Connection tool produced no action.result: ${input.message}; events=${JSON.stringify(session.events)}`,
+    session.events.some((event) => event.type === "action.result" || event.type === "call.settled"),
+    `Connection tool produced no tool result: ${input.message}; events=${JSON.stringify(session.events)}`,
   );
 }
 
 async function runWarmupTurn(port: number): Promise<void> {
   const session = await startSession(port, "Return ready without using tools.");
-  assert.ok(
-    session.events.some((event) => event.type === "turn.completed"),
-    "new Release warm-up turn did not complete",
-  );
+  assert.ok(session.events.some(isCompletedTurnEvent), "new Release warm-up turn did not complete");
 }
 
 async function startSession(
@@ -384,7 +387,9 @@ async function startSession(
  * past it when needed: eve 0.51 through 0.68 handed the root turn a
  * background-task handle, so the child run only started after the root
  * session was already waiting. eve 0.69 holds the turn for the agent task, so
- * the first `session.waiting` after `agent.started` already settles it.
+ * the first `session.waiting` after `agent.started` already settles it. v27
+ * (eve 0.84+) runs the child inside the root turn, so its `turn.settled` after
+ * `child.opened` does.
  */
 async function readUntilWaiting(
   port: number,
@@ -405,6 +410,7 @@ async function readUntilWaiting(
   );
   const deadline = Date.now() + SESSION_STREAM_BUDGET_MS;
   let buffer = "";
+  let lines = 0;
   let waiting = false;
   // A delegating session is read until the delegation settles, which on eve
   // 0.51 through 0.68 is past its first `session.waiting`.
@@ -419,13 +425,23 @@ async function readUntilWaiting(
         const line = buffer.slice(0, newline).trim();
         buffer = buffer.slice(newline + 1);
         if (!line) continue;
-        const event = JSON.parse(line) as SessionEvent;
-        events.push(event);
-        watch.observe(event);
-        if (event.type === "turn.failed" || event.type === "session.failed") {
-          throw new Error(`managed Connection turn failed: ${line}`);
+        const parsed = JSON.parse(line) as { $eve?: unknown };
+        // `startIndex` counts every stream line except v27 transport
+        // heartbeats (`$eve`); v27 progress lines hold an index too.
+        if (parsed.$eve === undefined) lines += 1;
+        for (const event of sessionStreamLineEvents(parsed) as SessionEvent[]) {
+          events.push(event);
+          watch.observe(event);
+          if (
+            event.type === "turn.failed" ||
+            event.type === "session.failed" ||
+            (event.type === "turn.settled" && !isCompletedTurnEvent(event))
+          ) {
+            throw new Error(`managed Connection turn failed: ${line}`);
+          }
+          // v26 idles with `session.waiting`; v27 settles the turn.
+          if (event.type === "session.waiting" || event.type === "turn.settled") waiting = true;
         }
-        if (event.type === "session.waiting") waiting = true;
       }
     }
   } catch (error) {
@@ -438,11 +454,8 @@ async function readUntilWaiting(
     waiting,
     `session ${sessionId} never reached session.waiting: ${JSON.stringify(events)}`,
   );
-  assert.ok(
-    events.some((event) => event.type === "turn.completed"),
-    `session ${sessionId} never completed its turn`,
-  );
-  return { nextIndex: startIndex + events.length, events, subagentCalled: watch.subagentCalled };
+  assert.ok(events.some(isCompletedTurnEvent), `session ${sessionId} never completed its turn`);
+  return { nextIndex: startIndex + lines, events, subagentCalled: watch.subagentCalled };
 }
 
 async function startConnectionServer(

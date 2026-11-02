@@ -13,7 +13,7 @@ import type {
   EveMessage,
   EveMessageInputRequest,
   EveMessagePart,
-} from "eve/react";
+} from "eve-previous/react";
 import { useEffect, useState } from "react";
 import {
   ArrowRightIcon,

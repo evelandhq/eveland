@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 import {
+  EVE_COMPATIBILITY_POLICY,
   LATEST_VERIFIED_EVE_VERSION,
+  eveLineOfSpecifier,
+  eveSessionProtocolOfVersion,
   displayedDeploymentEveRefusal,
   permanentDeploymentActivationRefusal,
   unsupportedEveVersionMessage,
@@ -100,5 +103,37 @@ describe("displayedDeploymentEveRefusal", () => {
       displayedDeploymentEveRefusal("running", { eveVersionResolved: LATEST_VERIFIED_EVE_VERSION }),
     ).toBeNull();
     expect(displayedDeploymentEveRefusal("running", null)).toBeNull();
+  });
+});
+
+describe("eveLineOfSpecifier and eveSessionProtocolOfVersion", () => {
+  test("reads the minor line from every accepted specifier shape", () => {
+    expect(eveLineOfSpecifier("0.83.3")).toBe("0.83");
+    expect(eveLineOfSpecifier("^0.83.3")).toBe("0.83");
+    expect(eveLineOfSpecifier("1.0.0-rc.1")).toBe("1.0");
+    expect(eveLineOfSpecifier("~1.0.2")).toBe("1.0");
+    expect(eveLineOfSpecifier("1.0.x")).toBe("1.0");
+    expect(eveLineOfSpecifier("^1.0.0")).toBeNull();
+    expect(eveLineOfSpecifier("latest")).toBeNull();
+    expect(eveLineOfSpecifier(null)).toBeNull();
+  });
+
+  test("splits the window at the 0.84 session-protocol boundary", () => {
+    expect(eveSessionProtocolOfVersion("0.83.3")).toBe("v26");
+    expect(eveSessionProtocolOfVersion("0.69.0")).toBe("v26");
+    expect(eveSessionProtocolOfVersion("0.84.0")).toBe("v27");
+    expect(eveSessionProtocolOfVersion("0.91.0")).toBe("v27");
+    expect(eveSessionProtocolOfVersion("1.0.0-rc.1")).toBe("v27");
+    expect(eveSessionProtocolOfVersion("1.2.3")).toBe("v27");
+    expect(eveSessionProtocolOfVersion(null)).toBeNull();
+    expect(eveSessionProtocolOfVersion("nonsense")).toBeNull();
+  });
+
+  test("names the protocol of every supported line", () => {
+    for (const line of EVE_COMPATIBILITY_POLICY.supportedLines) {
+      expect(eveSessionProtocolOfVersion(line.verifiedVersion), line.range).toBe(
+        line.sessionProtocol,
+      );
+    }
   });
 });

@@ -278,10 +278,16 @@ function transformModuleSchedule(
   }
   const definition = resolveDefinitionExpression(sourceFile, defaultExport.expression);
   const cron = readStringProperty(definition, "cron", sourcePath);
-  const hasMarkdown = findProperty(definition, "markdown") !== undefined;
+  // Eve 0.91 renamed the fire-and-forget prompt from `markdown` to
+  // `content`; each line validates its own spelling at build, so the adapter
+  // accepts either and the generated channel reads whichever is present.
+  const promptProperties = ["content", "markdown"].filter(
+    (name) => findProperty(definition, name) !== undefined,
+  );
+  const hasMarkdown = promptProperties.length > 0;
   const hasRun = findProperty(definition, "run") !== undefined;
-  if (hasMarkdown === hasRun) {
-    throw new Error(`Schedule ${sourcePath} must define exactly one of markdown or run.`);
+  if (promptProperties.length > 1 || hasMarkdown === hasRun) {
+    throw new Error(`Schedule ${sourcePath} must define exactly one of content or run.`);
   }
 
   const factory = ts.factory;
@@ -422,15 +428,16 @@ function findConcreteDefaultExport(sourceFile: ts.SourceFile):
 function fixedSessionDispatchBlock(): string {
   return `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
-          const session = await withScheduledRunRetention(() => from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
+          const started = await withScheduledRunRetention(() => from(\`eveland-schedule:\${params.scheduleRunId}\`).send(entry.markdown, {
             auth: scheduleAppAuth,
             turnPolicy: "queue",
             title: \`Schedule · \${scheduleKey}\`,
           }));
-          sessionIds.push(session.id);
+          const startedSessionId = sessionIdOf(started);
+          if (startedSessionId !== undefined) sessionIds.push(startedSessionId);
         } else {
           const waitUntilTasks: Promise<unknown>[] = [];
-          const sendTasks: Promise<{ id: string }>[] = [];
+          const sendTasks: Promise<unknown>[] = [];
           const wrappedTo: typeof to = (channel, target) => {
             const handle = to(channel, target);
             return {
@@ -448,8 +455,9 @@ function fixedSessionDispatchBlock(): string {
           })]);
           const settled = await Promise.allSettled([...waitUntilTasks, ...sendTasks]);
           for (const result of settled) {
-            if (result.status === "fulfilled" && isSession(result.value) && !sessionIds.includes(result.value.id)) {
-              sessionIds.push(result.value.id);
+            const sessionId = result.status === "fulfilled" ? sessionIdOf(result.value) : undefined;
+            if (sessionId !== undefined && !sessionIds.includes(sessionId)) {
+              sessionIds.push(sessionId);
             }
           }
           const rejected = [runResult, ...settled].find(
@@ -469,7 +477,7 @@ function generateSchedulerChannel(definitions: SchedulerDefinition[]): string {
   const entries = definitions.map((definition, index) => {
     const markdown = definition.sourcePath.endsWith(".md")
       ? `schedule${index}`
-      : `schedule${index}.markdown`;
+      : `scheduledPrompt(schedule${index})`;
     const value =
       definition.kind === "markdown"
         ? `{ kind: "markdown", markdown: ${markdown} }`
@@ -494,6 +502,8 @@ ${entries.join("\n")}
 } as const;
 
 export default defineChannel({
+  // Read by eve 0.83 only; eve 0.84+ derives the kind from the file
+  // (channel:eveland-scheduler), which the session projection maps the same way.
   kindHint: "schedule",
   routes: [
     POST("/eveland/scheduler/:scheduleRunId", async (request, ${routeArgs}) => {
@@ -592,8 +602,20 @@ function describeScheduleFailure(error: unknown): string {
   return message.length > 2000 ? message.slice(0, 2000) : message;
 }
 
-function isSession(value: unknown): value is { id: string } {
-  return typeof value === "object" && value !== null && typeof (value as { id?: unknown }).id === "string";
+// A send resolves the Session it reached on eve 0.83 (\`id\`) and a Delivery
+// receipt naming it on eve 0.84+ (\`sessionId\`).
+function sessionIdOf(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const { sessionId, id } = value as { sessionId?: unknown; id?: unknown };
+  if (typeof sessionId === "string" && sessionId.length > 0) return sessionId;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
+// Eve 0.91 renamed a schedule's prompt from \`markdown\` to \`content\`.
+function scheduledPrompt(definition: { content?: unknown; markdown?: unknown }): string {
+  const prompt = definition.content ?? definition.markdown;
+  if (typeof prompt !== "string") throw new Error("Schedule definition lost its prompt.");
+  return prompt;
 }
 
 async function safeEqual(expected: string, actual: string): Promise<boolean> {

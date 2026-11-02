@@ -1,16 +1,72 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.81.x",
-      verifiedVersion: "0.81.1",
-      dependencyName: "eve-previous",
-    },
-    {
       range: "0.83.x",
       verifiedVersion: "0.83.3",
+      dependencyName: "eve-previous",
+      sessionProtocol: "v26",
+    },
+    {
+      range: "1.0.x",
+      verifiedVersion: "1.0.0-rc.1",
       dependencyName: "eve",
+      sessionProtocol: "v27",
     },
   ],
+  // A window that spans the session-protocol boundary: 1.0.0-rc.1 (published
+  // 2026-10-31, the npm `latest` tag; byte-identical to 0.91.0 on every
+  // surface Eveland reads) entered on 2026-11-02 and 0.81 retired with it
+  // (Eveland v0.65.0 had carried 0.83 since 2026-10-27). 0.84 through 0.91
+  // were skipped: each was superseded within days, and 0.84 through 0.91 and
+  // 1.0 all speak the same v27 protocol, so 1.0 -- the first line eve puts
+  // under semver -- is the one v27 line worth carrying.
+  //
+  // 0.84 is the largest protocol move since 0.69, so the two lines in this
+  // window speak different session protocols (`sessionProtocol`), and every
+  // Eveland consumer of the session stream reads both:
+  // - Session events are v27 facts: `{ type, scope?, data }` envelopes,
+  //   positioned by `(line, index)` instead of an event id, with one settled
+  //   event per item (`turn.settled`, `session.ended`, `call.settled`,
+  //   `task.ended`, `interaction.settled`, `delivery.settled`) whose `outcome`
+  //   says how it ended. Provider usage is its own `usage.recorded` fact,
+  //   owned by a model run (`owner.runId`); `step.*` became `model.*`, and the
+  //   step index is gone. The observer, the Session/usage projection, and the
+  //   schedule outcome read both vocabularies (see `eve.ts`).
+  // - Hook handlers get `ctx.position` and `ctx.view`, and an unhandled hook
+  //   error now fails the running turn; the observer's handler never throws.
+  // - The stream is version 27. The 1.0 `eve/client` reads only 27 and the
+  //   0.83 client only 21-26, so the Dashboard bundles both and picks one by
+  //   the target Deployment's resolved eve version.
+  // - Session routes: `POST /session/:id/end` (0.87; `/reset` stays as an
+  //   alias) and `GET /session/:id/descendants/stream` (followed child
+  //   sessions) are new, both pinned by the root session id like `reset` and
+  //   `stream`; `POST /task-input/:token` is gone (0.84). The HTTP channel
+  //   rejects unknown top-level body fields with 400, and answers replace
+  //   `inputResponses`.
+  // - `defineSchedule`'s `markdown` became `content`, and `send()` resolves a
+  //   `Delivery` (`sessionId`) instead of a Session (`id`); the scheduler
+  //   channel reads both. `defineChannel` no longer reads `kindHint`, so a
+  //   channel's kind is `channel:<name>` (the HTTP channel is `channel:eve`).
+  // - The sandbox provider contract renamed `abortSignal` to `signal` (0.84)
+  //   and added optional spawn `stdin` (0.84.1); `@evelandhq/sandbox-bwrap`
+  //   already reads both signal names.
+  // - The bundled Workflow set is byte-identical to 0.83.3 (core 5.2.3, world
+  //   5.0.5, spec 6-8), so `@evelandhq/workflow-world` 0.28.0 serves both
+  //   lines unchanged.
+  // - 0.85 lets a v27 Deployment import a 0.69-0.83 session checkpoint, so a
+  //   v26 session whose idle owner run receives a delivery another Deployment
+  //   accepted now moves onto that Deployment through the shared World, and
+  //   is compacted on the way (remembered approvals and usage limits start
+  //   over). The Agent Gateway's pinned traffic never triggers that (the
+  //   owner accepts it), but unpinned channel ingress, `ctx.to()`, and
+  //   schedules can once a v27 Release is promoted. The move is one-way --
+  //   a v26 runtime cannot read checkpoint 18 -- so "a session stays on its
+  //   Deployment" holds until such a move and from then on for the new one:
+  //   the Session projection re-points the SessionBinding at the v27
+  //   Deployment the first time that Deployment reports the session, so
+  //   continuations, streams, the Dashboard client, and retention follow it.
+  //
+  // 0.81 history follows (kept while the 0.83 line it describes is carried):
   // A gapped two-line window: 0.83.3 (published 2026-10-26) entered on
   // 2026-10-27 and 0.79 retired with it (Eveland v0.64.0 had carried 0.81
   // since 2026-10-21); 0.82 was skipped, superseded by 0.83.0 within two
@@ -150,7 +206,7 @@ export const EVE_COMPATIBILITY_POLICY = {
   // session's bound Deployment, so prewarming never moves a session. The range
   // is the union of the two contiguous runs, never the hull, which would admit
   // 0.82.
-  peerDependencyRange: ">=0.81.0 <0.82.0 || >=0.83.0 <0.84.0",
+  peerDependencyRange: ">=0.83.0 <0.84.0 || >=1.0.0-0 <1.1.0",
 } as const;
 
 export type SupportedEveVersionRange =
@@ -181,15 +237,50 @@ export type EveVersionInfo = {
   sourceRevisionId: string | null;
 };
 
+/**
+ * The minor line (`0.83`, `1.0`) an Eve dependency specifier pins, or null
+ * when the specifier does not pin exactly one line. The grammar is the one the
+ * platform has always accepted -- an exact version, a `~` range, a `0.x` caret
+ * range (which npm reads like `~`), or an `x`/`*` patch wildcard -- widened to
+ * majors above zero and to prerelease tags on an exact patch (`1.0.0-rc.1`).
+ * A caret on a major above zero spans every later minor, so it is refused, as
+ * is any range that does not name its patch.
+ */
+export function eveLineOfSpecifier(specifier: string | null): string | null {
+  if (specifier === null) return null;
+  const match = specifier
+    .trim()
+    .match(/^([~^]?)(\d+)\.(\d+)(?:\.(\d+|[x*])(?:-([0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?)?$/);
+  if (!match) return null;
+  const [, operator, major, minor, patch, prerelease] = match;
+  if (prerelease !== undefined && !/^\d+$/.test(patch ?? "")) return null;
+  if (operator && (patch === undefined || patch === "x" || patch === "*")) return null;
+  if (operator === "^" && major !== "0") return null;
+  return `${Number(major)}.${Number(minor)}`;
+}
+
 export function isSupportedEveDependency(specifier: string | null): boolean {
-  if (specifier === null) return false;
-  const match = specifier.trim().match(/^([~^]?)(0\.\d+)(?:\.(\d+|[x*]))?$/);
-  if (!match) return false;
-  const [, operator, minor, patch] = match;
-  if (operator && (patch === undefined || patch === "x" || patch === "*")) {
-    return false;
-  }
-  return SUPPORTED_EVE_VERSION_RANGES.includes(`${minor}.x` as SupportedEveVersionRange);
+  const line = eveLineOfSpecifier(specifier);
+  return (
+    line !== null && SUPPORTED_EVE_VERSION_RANGES.includes(`${line}.x` as SupportedEveVersionRange)
+  );
+}
+
+/**
+ * The session protocol an installed Eve version speaks: v26 through 0.83, v27
+ * from 0.84 (every 1.x included). Null when the version cannot be read. The
+ * protocol, not the line, is what decides which Dashboard client, stream
+ * vocabulary, and session routes a Deployment needs.
+ */
+export type EveSessionProtocol = "v26" | "v27";
+
+export function eveSessionProtocolOfVersion(
+  version: string | null | undefined,
+): EveSessionProtocol | null {
+  const line = eveLineOfSpecifier(version ?? null);
+  if (line === null) return null;
+  const [major, minor] = line.split(".").map(Number) as [number, number];
+  return major > 0 || minor >= 84 ? "v27" : "v26";
 }
 
 export function unsupportedEveVersionMessage(specifier: string | null): string {

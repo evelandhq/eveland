@@ -264,8 +264,11 @@ Delivery is at-least-once and may arrive out of order, so projection must advanc
 event order, not arrival order: late events with older sequence numbers are still
 stored in full, but must neither regress the SessionNode/Session state projection nor
 rewrite the last-observed Deployment/RuntimeInstance provenance. The criterion is
-Eve's own per-session `data.sequence`; when an event lacks that sequence there is
-nothing to order by and projection degrades to last-writer-wins. Terminal states are
+Eve's own per-session order: `data.sequence` on Eve 0.83 (v26), and on Eve 1.0 (v27)
+the fact's stream position — its line and its index within the line, which the
+observer forwards and the projection orders as `line * 1000 + index`. A v27 position
+never changes, so it is also the event's dedupe fingerprint. When an event carries
+neither there is nothing to order by and projection degrades to last-writer-wins. Terminal states are
 not "sticky" — completed → running is a legal transition when a continuation wakes a
 session, judged by sequence, never by the state itself. Worker heartbeats and host
 metrics follow the same rule: a replayed old batch must not move `observedAt`
@@ -393,7 +396,16 @@ also builds no local view of the Collector's delivery volume or queue pressure.
 - A missing Collector only degrades telemetry; it does not block Agent start, restart,
   or cold activation.
 - Observability is not a billing ledger; usage records only what Eve/providers
-  actually report, and missing values stay missing.
+  actually report, and missing values stay missing. On Eve 0.83 a usage row is one
+  `step.completed` (keyed by turn and step); on Eve 1.0 it is one `usage.recorded`
+  owned by a model run or a context change (keyed by `run_key`). A v27 record owned
+  by a call re-reports spend its child session already recorded, so only the child
+  counts it; v27 fills a missing token count with zero, so missing usage on 1.0 is a
+  model run with no record at all.
+- The window spans two session protocols, so the observer, the projection, session
+  replay, and traces read both the v26 and the v27 vocabularies. On Eve 1.0 an
+  unhandled hook error fails the running turn; the injected hook catches every
+  telemetry failure, so this changes nothing for Eveland.
 
 ## Troubleshooting
 

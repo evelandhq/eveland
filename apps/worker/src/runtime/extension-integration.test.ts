@@ -134,6 +134,7 @@ test("builds Extension schedules and observed Extension subagents with the real 
         EVELAND_SCHEDULER_REDEEM_URL: `http://127.0.0.1:${redeemAddress.port}/internal/scheduler/dispatch`,
       },
       stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
     },
   );
   let childOutput = "";
@@ -167,20 +168,47 @@ test("builds Extension schedules and observed Extension subagents with the real 
     });
     expect(reports.map((report) => report.phase)).toEqual(["claim", "complete"]);
   } finally {
-    child.kill("SIGTERM");
+    await stopEveStart(child);
     await new Promise<void>((resolve) => redeemServer.close(() => resolve()));
   }
 }, 120_000);
+
+/**
+ * Stops an `eve start` spawned with `detached: true` the way systemd stops a
+ * unit: SIGTERM to the whole process group, so the server it spawned is
+ * signalled too, then waits for `eve start` to exit (SIGKILL to the group
+ * after 30s). Signalling only `eve start` can orphan its server: eve installs
+ * that process's signal handler only after the server already answers, and a
+ * SIGTERM in between kills `eve start` alone.
+ */
+async function stopEveStart(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  const signalGroup = (signal: NodeJS.Signals) => {
+    try {
+      process.kill(-child.pid!, signal);
+    } catch {
+      // The group is already gone.
+    }
+  };
+  signalGroup("SIGTERM");
+  const timedOut = await Promise.race([
+    exited.then(() => false),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 30_000).unref()),
+  ]);
+  signalGroup("SIGKILL");
+  if (timedOut) await exited;
+}
 
 test("keeps the Extension integrator compatible with the oldest supported Eve line", async () => {
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-oldest-"));
   roots.push(releaseDir);
   const extensionPackageRoot = path.join(releaseDir, "packages/crm");
-  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.81.1", false);
+  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.83.3", false);
   await execFileAsync(process.execPath, [oldestEveBin, "extension", "build"], {
     cwd: extensionPackageRoot,
   });
-  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.81.1");
+  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.83.3");
 
   await injectObserverHooks({ releaseDir });
   await injectSchedulerAdapter({ releaseDir });
@@ -204,7 +232,7 @@ test("keeps the Extension integrator compatible with the oldest supported Eve li
 async function writeFixtureExtension(
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.81.1",
+  eveVersion = "0.83.3",
   includeScheduleSubagents = true,
 ): Promise<void> {
   await write(
@@ -258,7 +286,7 @@ async function writeConsumer(
   releaseDir: string,
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.81.1",
+  eveVersion = "0.83.3",
 ): Promise<void> {
   await write(
     releaseDir,

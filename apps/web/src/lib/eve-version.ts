@@ -1,3 +1,4 @@
+import { eveLineOfSpecifier } from "@evelandhq/core/eve-compatibility";
 import type { EveVersionInfo } from "@/lib/api";
 
 /**
@@ -13,7 +14,7 @@ export function getEveVersionStatus(eveVersion: EveVersionInfo): EveVersionStatu
   if (!eveVersion.supported) return "unsupported";
   const latestRange = eveVersion.supportedRanges.at(-1);
   const latestMinor = latestRange?.replace(/\.x$/, "");
-  const declaredMinor = eveVersion.version?.trim().match(/^[~^]?(0\.\d+)/)?.[1];
+  const declaredMinor = eveLineOfSpecifier(eveVersion.version);
   return latestMinor && declaredMinor === latestMinor ? "current" : "upgrade";
 }
 

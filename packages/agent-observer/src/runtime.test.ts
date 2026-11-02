@@ -2,7 +2,8 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/sdk-metrics";
 import { InMemoryLogRecordExporter } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
-import type { InputRequestedStreamEvent } from "eve/client";
+// The v26 (eve 0.83) event types; the v27 lines are covered separately.
+import type { InputRequestedStreamEvent } from "eve-previous/client";
 import { afterEach, describe, expect, test } from "vitest";
 import { createModelCallCapture } from "./runtime/model-capture.js";
 import {

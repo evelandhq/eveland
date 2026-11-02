@@ -87,7 +87,7 @@ This guide is organized by observed symptom. Before troubleshooting, inspect ove
 ### Common causes
 
 - Managed OTel Collector container is offline or unreachable;
-- Model provider omitted `step.completed.data.usage` in the response stream.
+- Model provider omitted usage in the response stream (`step.completed.data.usage` on Eve 0.83; a model run with no `usage.recorded` on Eve 1.0).
 
 ### Remediation steps
 

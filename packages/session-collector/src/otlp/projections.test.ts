@@ -122,6 +122,60 @@ describe("OTLP Agent event projection", () => {
     ]);
   });
 
+  test("orders v27 observations by their stream position and keeps the record time", () => {
+    const record = (position: unknown) => ({
+      resourceLogs: [
+        {
+          resource: {
+            attributes: [
+              attribute("eveland.telemetry.domain", "agent"),
+              attribute("eveland.deployment.credential", "credential_dep_1"),
+            ],
+          },
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  timeUnixNano: "1784808000000000000",
+                  attributes: [
+                    attribute("eveland.event.id", "event_v27"),
+                    attribute("eveland.event.fingerprint", "fingerprint_v27"),
+                    attribute("eveland.eve.session.id", "eve_session_1"),
+                    attribute("eveland.eve.channel.kind", "channel:eve"),
+                  ],
+                  body: anyValue({
+                    type: "usage.recorded",
+                    scope: { turnId: "turn_1", runId: "run_1" },
+                    data: { kind: "model", owner: { runId: "run_1" } },
+                    meta: { at: "2026-11-02T00:00:06.000Z", position },
+                  }),
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const [observation] = projectAgentEventsFromOtlpLogs(
+      record({ line: 12, index: 3 }),
+      projection,
+    );
+    expect(observation).toMatchObject({
+      sourceSequence: 12_003,
+      channelKind: "channel:eve",
+      eventAt: "2026-11-02T00:00:06.000Z",
+      event: { type: "usage.recorded", scope: { turnId: "turn_1", runId: "run_1" } },
+    });
+    expect(
+      projectAgentEventsFromOtlpLogs(record({ line: "x" }), projection)[0]?.sourceSequence,
+    ).toBeNull();
+    expect(
+      projectAgentEventsFromOtlpLogs(record({ line: 3_000_000, index: 0 }), projection)[0]
+        ?.sourceSequence,
+    ).toBeNull();
+  });
+
   test("carries the observed model from log attributes into the observation", () => {
     const observations = projectAgentEventsFromOtlpLogs(
       {
