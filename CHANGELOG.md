@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.66.1](https://github.com/evelandhq/eveland/compare/v0.66.0...v0.66.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* close four v27 regressions in the Playground, observer, and usage projection ([0291ef1](https://github.com/evelandhq/eveland/commit/0291ef1e23be95e5a2cf2ad420db507dcb2b62ef))
+
 ## [0.66.0](https://github.com/evelandhq/eveland/compare/v0.65.0...v0.66.0) (2026-11-02)
 
 
