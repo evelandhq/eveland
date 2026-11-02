@@ -74,6 +74,10 @@ import { materializeEveFixtureDirectory } from "../../packages/core/src/server/e
 import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
 import { parseEvelandAuthenticationChallenge } from "../../packages/eveland/src/auth.js";
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
+import {
+  isCompletedTurnEvent,
+  sessionStreamLineEvents,
+} from "../../apps/worker/src/integration/delegated-turn.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
 
 const execFileAsync = promisify(execFile);
@@ -1010,6 +1014,18 @@ function request(
   });
 }
 
+// v26 ends a turn with `turn.completed`; v27 (eve 0.84+) with a `turn.settled`
+// fact inside a commit line, whose outcome must be `completed`.
+function sawCompletedTurn(raw: string): boolean {
+  return raw.split("\n").some((line) => {
+    try {
+      return sessionStreamLineEvents(JSON.parse(line)).some(isCompletedTurnEvent);
+    } catch {
+      return false;
+    }
+  });
+}
+
 function streamUntilTurnCompleted(
   port: number,
   host: string,
@@ -1035,14 +1051,14 @@ function streamUntilTurnCompleted(
         response.setEncoding("utf8");
         response.on("data", (chunk) => {
           raw += chunk;
-          if (raw.includes('"type":"turn.completed"')) {
+          if (sawCompletedTurn(raw)) {
             response.destroy();
             resolve({ completedMs: Date.now() - startedAt });
           }
         });
         response.on("end", () => {
-          if (!raw.includes('"type":"turn.completed"')) {
-            reject(new Error(`stream ended before turn.completed: ${raw.slice(0, 2_000)}`));
+          if (!sawCompletedTurn(raw)) {
+            reject(new Error(`stream ended before a completed turn: ${raw.slice(0, 2_000)}`));
           }
         });
       },

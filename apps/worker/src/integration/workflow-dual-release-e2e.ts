@@ -41,6 +41,7 @@ import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { runMigrations, runQueueName } from "@evelandhq/workflow-world";
 import { Pool } from "pg";
 import { spawnDispatcherApp, waitForDispatcherRegistration } from "./dispatcher-process.js";
+import { sessionStreamLineEvents } from "./delegated-turn.js";
 
 const IDLE_TTL_MS = Number(process.env.EVELAND_ACTIVATION_IDLE_TTL_MS ?? 60_000);
 const WAKE_DELAY_MS = IDLE_TTL_MS * 2;
@@ -183,7 +184,10 @@ async function assertRunSemantics(
   );
 }
 
-/** The `message.completed` replies streamed on a session run, in chunk order. */
+/**
+ * The replies streamed on a session run, in chunk order: v26 `message.completed`
+ * messages, or the text of v27 (eve 0.84+) reply `content.completed` facts.
+ */
 async function sessionReplies(sessionRunId: string): Promise<string[]> {
   const { rows: chunks } = await worldPool.query<{ data: Buffer }>(
     `select data from workflow.workflow_stream_chunks where run_id = $1`,
@@ -194,12 +198,22 @@ async function sessionReplies(sessionRunId: string): Promise<string[]> {
     // Frames embed base64-encoded JSON event payloads.
     for (const match of chunk.data.toString("latin1").matchAll(/"([A-Za-z0-9+/]{40,}={0,2})"/gu)) {
       try {
-        const event = JSON.parse(Buffer.from(match[1]!, "base64").toString("utf8")) as {
-          type?: string;
-          data?: { message?: unknown };
-        };
-        if (event.type === "message.completed" && typeof event.data?.message === "string") {
-          replies.push(event.data.message);
+        const frame: unknown = JSON.parse(Buffer.from(match[1]!, "base64").toString("utf8"));
+        for (const event of sessionStreamLineEvents(frame)) {
+          const data = event.data as
+            | { message?: unknown; kind?: unknown; phase?: unknown; value?: unknown }
+            | undefined;
+          if (event.type === "message.completed" && typeof data?.message === "string") {
+            replies.push(data.message);
+          }
+          if (
+            event.type === "content.completed" &&
+            data?.kind === "text" &&
+            data.phase === "reply" &&
+            typeof data.value === "string"
+          ) {
+            replies.push(data.value);
+          }
         }
       } catch {
         // Not every base64-looking segment is an event frame.

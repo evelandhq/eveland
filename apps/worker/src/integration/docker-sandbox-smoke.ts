@@ -17,6 +17,7 @@ import { waitForHttpHealth } from "../runtime/health.js";
 import { writeAgentRuntimePolicy } from "../runtime/observability/policy.js";
 import { resolveBackendDistDir } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
+import { isCompletedTurnEvent, sessionStreamLineEvents } from "./delegated-turn.js";
 
 const projectId = "proj_localts";
 const releaseId = "rel_" + Date.now().toString(36);
@@ -165,12 +166,14 @@ async function runTypeScriptTurn(hostPort: number): Promise<void> {
     buffered = lines.pop() ?? "";
     for (const line of lines) {
       if (!line.trim()) continue;
-      const event = JSON.parse(line) as { type?: unknown };
-      assert.notEqual(event.type, "turn.failed", "the live sandbox turn failed");
-      if (event.type === "turn.completed" || event.type === "session.completed") {
-        completed = true;
-        break;
+      // A v26 event, or a v27 (eve 0.84+) commit line's facts.
+      for (const event of sessionStreamLineEvents(JSON.parse(line))) {
+        assert.notEqual(event.type, "turn.failed", "the live sandbox turn failed");
+        if (event.type === "turn.settled")
+          assert.ok(isCompletedTurnEvent(event), "the live sandbox turn failed");
+        if (isCompletedTurnEvent(event) || event.type === "session.completed") completed = true;
       }
+      if (completed) break;
     }
   }
   await reader.cancel();
