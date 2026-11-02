@@ -209,9 +209,20 @@ async function main(): Promise<void> {
         body: "{}",
       });
       assert.equal(cancelled.statusCode, 202, `bound cancel failed: ${cancelled.body}`);
-      const cancelledBody = JSON.parse(cancelled.body) as { sessionId?: string; status?: string };
+      const cancelledBody = JSON.parse(cancelled.body) as {
+        sessionId?: string;
+        status?: string;
+        ok?: boolean;
+        deliveryId?: string;
+      };
       assert.equal(cancelledBody.sessionId, cancellableSessionId);
-      assert.ok(["accepted", "no_active_turn"].includes(cancelledBody.status ?? ""));
+      // v26 answers with a status; v27 (eve 0.84+) admits the cancel as a
+      // delivery and answers `{ ok: true, sessionId, deliveryId }`.
+      assert.ok(
+        ["accepted", "no_active_turn"].includes(cancelledBody.status ?? "") ||
+          (cancelledBody.ok === true && typeof cancelledBody.deliveryId === "string"),
+        `unexpected cancel answer: ${cancelled.body}`,
+      );
       await expectBinding(
         store,
         project.id,
@@ -404,6 +415,10 @@ function gatewayWaitForEvent(
   });
 }
 
+// v26 ends a turn with `turn.completed`; v27 (eve 0.84+) with one
+// `turn.settled` fact inside a commit line.
+const turnSettled = /"type":"turn\.(?:completed|settled)"/;
+
 function gatewayStream(
   port: number,
   host: string,
@@ -425,15 +440,15 @@ function gatewayStream(
         response.on("data", (chunk) => {
           firstChunkMs ??= Date.now() - startedAt;
           raw += chunk;
-          if (raw.includes('"type":"turn.completed"')) {
+          if (turnSettled.test(raw)) {
             const completedMs = Date.now() - startedAt;
             response.destroy();
             resolve({ firstChunkMs, completedMs });
           }
         });
         response.on("end", () => {
-          if (!raw.includes('"type":"turn.completed"'))
-            reject(new Error(`Gateway stream ended before turn.completed: ${raw}`));
+          if (!turnSettled.test(raw))
+            reject(new Error(`Gateway stream ended before the turn settled: ${raw}`));
         });
       },
     );
