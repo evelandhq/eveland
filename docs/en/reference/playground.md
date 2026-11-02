@@ -10,6 +10,7 @@ The Playground provides an interactive in-dashboard debugging environment direct
 ## 1. Transport and session lifecycle
 
 - **Streaming transport**: The frontend communicates via internal, service-authenticated gateway paths, consuming NDJSON streams incrementally (text chunks, reasoning blocks, tool executions, and human-in-the-loop HITL prompts).
+- **Two Eve clients**: the supported window spans Eve's v26 (0.83) and v27 (1.0) session protocols, and neither Eve client reads the other's stream (0.83's reads stream versions 21–26, 1.0's only 27). The Playground bundles both and renders the one that matches the Eve the project's current Deployment runs. On a 1.0 Deployment approvals, questions, and sign-ins are interactions answered with `{ interactionId, optionId?, text? }`, a message sent while a turn runs steers it, and an interaction's buttons stay live until Eve settles it.
 - **Session mapping**: Opening or refreshing the Playground creates a new clean Eve Session. Subsequent turns, approvals, and tool outputs within that page remain attached to this session.
 - **Approval visibility**: When a streamed tool call enters an approval-required state, the Playground opens its tool card automatically so the Approve and Cancel controls are visible. Users can still collapse the card afterward.
 - **Cooperative turn cancellation**: Clicking cancel during streaming issues a canonical `cancel()` command to the server and keeps the stream attached until confirmation boundaries arrive, maintaining server-side state integrity.

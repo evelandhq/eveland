@@ -7,6 +7,8 @@ export type RuntimeAgentPolicy = AgentRuntimePolicy;
 
 export type AgentTelemetryEvent = {
   type?: unknown;
+  /** v27: the owners the fact belongs to (`turnId`, `runId`, `taskId`, `changeId`). */
+  scope?: unknown;
   data?: unknown;
   meta?: {
     at?: unknown;
@@ -29,6 +31,13 @@ export type AgentTelemetryHookContext = {
   channel?: {
     kind?: unknown;
   };
+  /** v27 (eve 0.84+): where the event sits on the session stream. */
+  position?: {
+    line?: unknown;
+    index?: unknown;
+  };
+  /** v27 (eve 0.84+): when eve recorded the event. */
+  now?: unknown;
 };
 
 export type PrivateAgentTelemetryExporters = {

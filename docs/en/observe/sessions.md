@@ -19,7 +19,7 @@ Eveland models agent interactions as a structured conversation tree:
 
 ## 2. Accurate model usage tracking
 
-Eveland captures token usage directly from model provider responses during `step.completed`:
+Eveland captures token usage directly from model provider responses: from `step.completed` on Eve 0.83, and from the `usage.recorded` fact each model run owns on Eve 1.0:
 
 - **Input and Output Tokens**: Exact prompts and completion token counts.
 - **Cache Hit Tracking**: Tracks Cache Read and Cache Write tokens, allowing precise cost evaluation of context caching.

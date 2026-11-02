@@ -1,4 +1,6 @@
 import type { UserContent } from "ai";
+// The session cursor both Playground clients persist: eve 0.83's
+// `{ sessionId, streamIndex }` and 1.0's, which adds an opaque `inbox`.
 import type { ClientSessionState } from "eve/client";
 
 export type PendingPlaygroundMessage = string | UserContent;

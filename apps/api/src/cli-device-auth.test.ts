@@ -132,9 +132,9 @@ describe("eveland CLI device authorization", () => {
     expect(instance.status).toBe(200);
     await expect(instance.json()).resolves.toEqual({
       eve: {
-        supportedRanges: expect.arrayContaining([expect.stringMatching(/^0\.\d+\.x$/)]),
-        expected: expect.stringContaining("0."),
-        latestVerified: expect.stringMatching(/^0\.\d+\.\d+$/),
+        supportedRanges: expect.arrayContaining([expect.stringMatching(/^\d+\.\d+\.x$/)]),
+        expected: expect.stringMatching(/\d+\.\d+\.x/),
+        latestVerified: expect.stringMatching(/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/),
       },
     });
 

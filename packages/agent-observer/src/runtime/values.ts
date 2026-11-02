@@ -27,6 +27,7 @@ export function serializeAttribute(value: unknown): string {
 }
 
 export function asDate(value: unknown): Date | undefined {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : undefined;
   if (typeof value !== "string") return undefined;
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? new Date(timestamp) : undefined;

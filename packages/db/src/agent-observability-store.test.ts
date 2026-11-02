@@ -849,6 +849,291 @@ describe("Agent observability ingestion repository", () => {
   });
 });
 
+describe("v27 (eve 0.84+) observations", () => {
+  function v27(
+    deploymentId: string,
+    line: number,
+    index: number,
+    event: Record<string, unknown>,
+    overrides: Partial<AgentEventObservation> = {},
+  ): AgentEventObservation {
+    return envelope(deploymentId, {
+      telemetryEventId: `v27_${line}_${index}`,
+      eventFingerprint: `position:${line}:${index}`,
+      sourceSequence: line * 1000 + index,
+      channelKind: "channel:eve",
+      event: { ...event, meta: { position: { line, index } } },
+      ...overrides,
+    });
+  }
+
+  test("projects status, usage, children, and the terminal outcome from v27 facts", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    const usage = (runId: string, inputTokens: number) => ({
+      type: "usage.recorded",
+      scope: { turnId: "turn_1", runId },
+      data: {
+        kind: "model",
+        owner: { runId },
+        usage: {
+          inputTokens,
+          outputTokens: 5,
+          cacheReadTokens: 1,
+          cacheWriteTokens: 0,
+          costUsd: 0.5,
+        },
+      },
+    });
+    const events: Array<[number, number, Record<string, unknown>]> = [
+      [
+        0,
+        0,
+        {
+          type: "session.started",
+          data: { runtime: { agentId: "a", agentName: "root", eveVersion: "1.0.0-rc.1" } },
+        },
+      ],
+      [1, 0, { type: "turn.started", scope: { turnId: "turn_1" }, data: { turnId: "turn_1" } }],
+      [
+        2,
+        0,
+        {
+          type: "model.started",
+          scope: { turnId: "turn_1", runId: "run_1" },
+          data: { runId: "run_1", modelId: "anthropic/claude-sonnet-5", attempt: 1 },
+        },
+      ],
+      [
+        3,
+        0,
+        {
+          type: "model.settled",
+          scope: { turnId: "turn_1", runId: "run_1" },
+          data: { runId: "run_1", outcome: "completed" },
+        },
+      ],
+      [3, 1, usage("run_1", 100)],
+      [
+        4,
+        0,
+        {
+          type: "interaction.opened",
+          scope: { turnId: "turn_1" },
+          data: { interactionId: "int_1", request: { kind: "approval", prompt: "ok?" } },
+        },
+      ],
+    ];
+    for (const [line, index, event] of events) {
+      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
+    }
+    let [session] = await store.listSessions(projectId);
+    expect(session).toMatchObject({ trigger: "direct_http", status: "waiting_approval" });
+
+    // A redelivered record is a duplicate; a call-owned record re-reports a
+    // child's spend and is left to the child.
+    expect(
+      (await store.ingestAgentEvent(v27(deploymentId, 3, 1, usage("run_1", 100)))).duplicate,
+    ).toBe(true);
+    await store.ingestAgentEvent(
+      v27(deploymentId, 5, 0, {
+        type: "usage.recorded",
+        scope: { turnId: "turn_1" },
+        data: {
+          kind: "model",
+          owner: { callId: "call_1" },
+          usage: { inputTokens: 999, outputTokens: 999, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        },
+      }),
+    );
+    for (const [line, index, event] of [
+      [
+        6,
+        0,
+        {
+          type: "interaction.settled",
+          scope: { turnId: "turn_1" },
+          data: { interactionId: "int_1", outcome: "accepted" },
+        },
+      ],
+      [
+        7,
+        0,
+        {
+          type: "child.opened",
+          scope: { turnId: "turn_1" },
+          data: {
+            sessionId: "eve_child",
+            owner: { callId: "call_1" },
+            name: "researcher",
+            stream: "s",
+          },
+        },
+      ],
+      [8, 0, usage("run_2", 50)],
+      [
+        9,
+        0,
+        {
+          type: "turn.settled",
+          scope: { turnId: "turn_1" },
+          data: { turnId: "turn_1", outcome: "completed" },
+        },
+      ],
+    ] as const) {
+      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
+    }
+    [session] = await store.listSessions(projectId);
+    expect(session).toMatchObject({
+      status: "waiting",
+      usage: {
+        inputTokens: 150,
+        outputTokens: 10,
+        cacheReadTokens: 2,
+        reportedSteps: 2,
+        costUsd: 1,
+      },
+    });
+    const usageRows = await store.listModelUsageEvents(session!.id);
+    expect(usageRows.map((row) => [row.turnId, row.stepIndex, row.runKey])).toEqual(
+      expect.arrayContaining([
+        ["turn_1", null, "run:run_1"],
+        ["turn_1", null, "run:run_2"],
+      ]),
+    );
+    expect(usageRows).toHaveLength(2);
+    const nodes = await store.listSessionNodes(session!.id);
+    expect(nodes.find((node) => node.eveSessionId === "eve_root")).toMatchObject({
+      modelId: "anthropic/claude-sonnet-5",
+      eveVersion: "1.0.0-rc.1",
+    });
+    expect(nodes.find((node) => node.eveSessionId === "eve_child")).toMatchObject({
+      agentName: "researcher",
+      resolutionStatus: "unresolved",
+      remoteUrl: null,
+    });
+
+    await store.ingestAgentEvent(
+      v27(deploymentId, 10, 0, {
+        type: "session.ended",
+        data: { outcome: "failed", error: { code: "X", message: "agent gave up" } },
+      }),
+    );
+    [session] = await store.listSessions(projectId);
+    expect(session).toMatchObject({ status: "failed", error: "agent gave up" });
+  });
+
+  test("classifies the v27 scheduler channel as a scheduled trigger", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    await store.ingestAgentEvent(
+      v27(
+        deploymentId,
+        0,
+        0,
+        { type: "session.started", data: {} },
+        { channelKind: "channel:eveland-scheduler", eveSessionId: "eve_sched" },
+      ),
+    );
+    await store.ingestAgentEvent(
+      v27(
+        deploymentId,
+        0,
+        0,
+        { type: "session.started", data: {} },
+        { channelKind: "channel:slack", eveSessionId: "eve_slack" },
+      ),
+    );
+    const sessions = await store.listSessions(projectId);
+    expect(
+      Object.fromEntries(sessions.map((session) => [session.eveSessionId, session.trigger])),
+    ).toMatchObject({
+      eve_sched: "cron",
+      eve_slack: "channel",
+    });
+  });
+});
+
+describe("cross-protocol session handoff (eve 0.85+)", () => {
+  async function boundSession(input: { bound: string; observed: string }) {
+    const { store, projectId, revisionId } = await createStore();
+    const deploy = (eveVersionResolved: string, hostPort: number) =>
+      store.recordDeployment({
+        projectId,
+        sourceRevisionId: revisionId,
+        imageTag: `fixture-${hostPort}`,
+        containerName: `fixture-${hostPort}`,
+        internalPort: 3000,
+        hostPort,
+        runtimeKind: "docker",
+        summary: { eveVersionResolved },
+      });
+    const bound = await deploy(input.bound, 41001);
+    const observed = await deploy(input.observed, 41002);
+    const [route] = await store.ensureDeploymentRoutes(projectId, bound.id, "agent.localhost");
+    await store.ingestAgentEvent(
+      envelope(bound.id, { telemetryEventId: "start", eveSessionId: "eve_moved" }),
+    );
+    await store.bindSession({
+      projectId,
+      eveSessionId: "eve_moved",
+      routeId: route!.id,
+      deploymentId: bound.id,
+      trigger: "playground",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_moved",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+    });
+    return { store, projectId, bound, observed };
+  }
+
+  test("re-points a v26 session's binding at the v27 Deployment eve moved it to", async () => {
+    const { store, projectId, observed } = await boundSession({
+      bound: "0.83.3",
+      observed: "1.0.0-rc.1",
+    });
+
+    await store.ingestAgentEvent(
+      envelope(observed.id, {
+        telemetryEventId: "after-move",
+        eventFingerprint: "position:40:0",
+        eveSessionId: "eve_moved",
+        sourceSequence: 40_000,
+        event: { type: "turn.started", scope: { turnId: "turn_9" }, data: { turnId: "turn_9" } },
+      }),
+    );
+
+    await expect(store.findSessionBinding(projectId, "eve_moved")).resolves.toMatchObject({
+      deploymentId: observed.id,
+    });
+    const [session] = await store.listSessions(projectId);
+    expect(session).toMatchObject({ eveSessionId: "eve_moved", deploymentId: observed.id });
+  });
+
+  test("leaves a binding alone when no protocol boundary was crossed", async () => {
+    for (const versions of [
+      { bound: "0.83.3", observed: "0.83.3" },
+      { bound: "1.0.0-rc.1", observed: "1.0.0-rc.1" },
+      // Nothing moves a v27 session back onto a v26 runtime; a late event
+      // from the old Deployment must not undo a move.
+      { bound: "1.0.0-rc.1", observed: "0.83.3" },
+    ]) {
+      const { store, projectId, bound, observed } = await boundSession(versions);
+      await store.ingestAgentEvent(
+        envelope(observed.id, {
+          telemetryEventId: "other",
+          eveSessionId: "eve_moved",
+          event: { type: "turn.started", data: { turnId: "turn_2" } },
+        }),
+      );
+      await expect(store.findSessionBinding(projectId, "eve_moved")).resolves.toMatchObject({
+        deploymentId: bound.id,
+      });
+    }
+  });
+});
+
 describe("out-of-order delivery", () => {
   test("a late lower-sequence event does not reopen a terminal Session", async () => {
     const { store, projectId, deploymentId } = await createStore();

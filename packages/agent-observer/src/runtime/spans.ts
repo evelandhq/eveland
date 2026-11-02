@@ -30,6 +30,15 @@ export type AgentSpanState = {
   taskCurrentCalls: Map<string, string>;
   /** The task behind the call that opened an agent session, keyed by that call. */
   agentTasks: Map<string, string>;
+  /** v27: the turn a model run belongs to, keyed by session and run id. */
+  runTurns: Map<string, string>;
+  /** v27: the model a run started with (or was observed calling), keyed by run span key. */
+  runModels: Map<string, string>;
+  /**
+   * v27: runs whose `model.settled` arrived, held open for the `usage.recorded`
+   * that follows it in the same commit; keyed by run span key.
+   */
+  settledRuns: Map<string, { endedAt: number; finishReason: string | undefined }>;
 };
 
 export type AgentTelemetryRuntimeState = AgentSpanState & TranscriptState;
@@ -47,6 +56,9 @@ export function createAgentTelemetryRuntimeState(): AgentTelemetryRuntimeState {
     taskCalls: new Set(),
     taskCurrentCalls: new Map(),
     agentTasks: new Map(),
+    runTurns: new Map(),
+    runModels: new Map(),
+    settledRuns: new Map(),
     ...createTranscriptState(),
   };
 }
@@ -108,6 +120,9 @@ export function endAllAgentTelemetrySpans(state: AgentTelemetryRuntimeState): vo
   state.taskCalls.clear();
   state.taskCurrentCalls.clear();
   state.agentTasks.clear();
+  state.runTurns.clear();
+  state.runModels.clear();
+  state.settledRuns.clear();
   clearTranscriptState(state);
 }
 
@@ -167,6 +182,9 @@ export function endSessionSpans(
     state.taskCalls,
     state.taskCurrentCalls,
     state.agentTasks,
+    state.runTurns,
+    state.runModels,
+    state.settledRuns,
   ]) {
     deleteKeysWithPrefix(keys, prefix);
   }

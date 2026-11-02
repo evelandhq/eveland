@@ -56,6 +56,76 @@ describe("Gateway", () => {
     await expect(response.text()).resolves.toContain("session.waiting");
   });
 
+  test("pins eve 1.0's end and descendants-stream routes to the session's Deployment", async () => {
+    const upstreamRequests: string[] = [];
+    const upstream = await startUpstream((request, response) => {
+      upstreamRequests.push(`${request.method} ${request.url}`);
+      if (request.url?.endsWith("/end")) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ ok: true, sessionId: "eve_root", deliveryId: "dlv_1" }));
+        return;
+      }
+      response.writeHead(200, {
+        "content-type": "application/x-ndjson",
+        "x-eve-stream-version": "27",
+      });
+      response.end(
+        '{"at":"2026-11-02T00:00:00.000Z","facts":[{"type":"session.started","data":{}}]}\n',
+      );
+    });
+    const repo = repository([route({ hostPort: upstream.port })]);
+    repo.bindings.push({
+      id: "bind_playground_root",
+      projectId: "proj_1",
+      eveSessionId: "eve_root",
+      routeId: "route_project",
+      deploymentId: "dep_1",
+      trigger: "playground",
+      variantName: null,
+      experimentId: null,
+      requestId: "request_playground_root",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+      createdAt: "2026-08-14T00:00:00.000Z",
+      updatedAt: "2026-08-14T00:00:00.000Z",
+    });
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      internalServiceToken: "service-secret",
+      now: () => new Date("2026-08-14T00:00:01.000Z"),
+    });
+
+    const ended = await app.request(
+      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_root/end",
+      {
+        method: "POST",
+        headers: { authorization: "Bearer service-secret", "content-type": "application/json" },
+        body: "{}",
+      },
+    );
+    const descendants = await app.request(
+      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_root/descendants/stream?startIndex=0",
+      { headers: { authorization: "Bearer service-secret" } },
+    );
+    const wrongMethod = await app.request(
+      "http://gateway/internal/projects/proj_1/playground/eve/v1/session/eve_root/descendants/stream",
+      { method: "POST", headers: { authorization: "Bearer service-secret" }, body: "{}" },
+    );
+
+    expect(ended.status).toBe(200);
+    await expect(ended.json()).resolves.toMatchObject({ ok: true, sessionId: "eve_root" });
+    expect(descendants.status).toBe(200);
+    expect(descendants.headers.get("x-eve-stream-version")).toBe("27");
+    await expect(descendants.text()).resolves.toContain("session.started");
+    expect(wrongMethod.status).toBe(404);
+    expect(upstreamRequests).toEqual([
+      "POST /eve/v1/session/eve_root/end",
+      "GET /eve/v1/session/eve_root/descendants/stream?startIndex=0",
+    ]);
+  });
+
   test("returns 410 instead of waking an expired Playground SessionBinding", async () => {
     const repo = repository([route({ deploymentStatus: "stopped" })]);
     repo.bindings.push({

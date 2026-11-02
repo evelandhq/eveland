@@ -8,6 +8,7 @@ import type {
 } from "@evelandhq/core/contracts";
 import {
   getEveString,
+  isEveRecord,
   parseEveJsonObject,
   sessionErrorFromEveEvent,
   sessionStatusFromEveEvent,
@@ -270,22 +271,47 @@ export async function projectPlaygroundStreamLine(
   platformSessionId: string,
   eveSessionId: string,
 ): Promise<SessionStatus> {
-  const event = parseEveJsonObject(line);
-  const type = getEveString(event, "type");
-  // The same projection the observed Session uses, so the Playground's eager
-  // write never disagrees with what the Observer records for the same event.
-  const nextStatus = type ? sessionStatusFromEveEvent(type, currentStatus, event?.data) : null;
-  if (!nextStatus) return currentStatus;
+  const record = parseEveJsonObject(line);
+  // A v26 line is one event. A v27 (eve 0.84+) line is either a commit --
+  // every fact one transition recorded, in order -- or a progress or
+  // transport record, which carries no `facts` and never moves the status.
+  const events = Array.isArray(record?.facts)
+    ? record.facts.filter(isEveRecord)
+    : record
+      ? [record]
+      : [];
+  let status = currentStatus;
+  let projected = false;
+  let failure: { type: string; event: Record<string, unknown> } | null = null;
+  for (const event of events) {
+    const type = getEveString(event, "type");
+    // The same projection the observed Session uses, so the Playground's eager
+    // write never disagrees with what the Observer records for the same event.
+    const nextStatus = type ? sessionStatusFromEveEvent(type, status, event.data) : null;
+    if (!nextStatus) continue;
+    projected = true;
+    status = nextStatus;
+    if (nextStatus === "failed" && type) failure = { type, event };
+  }
+  if (!projected) return currentStatus;
   await store
     .completeSession(platformSessionId, {
-      status: nextStatus,
+      status,
       eveSessionId,
-      ...(nextStatus === "failed"
-        ? { error: sessionErrorFromEveEvent(type ?? undefined, event) }
+      ...(status === "failed" && failure
+        ? {
+            error: sessionErrorFromEveEvent(
+              failure.type,
+              // v26 put the message on the event; v27 nests it under data.error.
+              isEveRecord(failure.event.data) && failure.event.data.error !== undefined
+                ? failure.event.data
+                : failure.event,
+            ),
+          }
         : {}),
     })
     .catch(() => null);
-  return nextStatus;
+  return status;
 }
 
 export function isMultipartRequest(c: Context): boolean {

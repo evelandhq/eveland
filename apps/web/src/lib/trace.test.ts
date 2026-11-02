@@ -207,6 +207,87 @@ describe("buildSessionTrace", () => {
   });
 });
 
+describe("buildSessionTrace on v27 (eve 0.84+) facts", () => {
+  test("builds user, reasoning, tool, usage, and assistant rows and pairs settled calls", () => {
+    const trace = buildSessionTrace(
+      [
+        event("turn.started", { turnId: "turn_1" }),
+        event("delivery.consumed", { turnId: "turn_1", parts: [{ kind: "text", text: "Hi" }] }),
+        event("content.completed", {
+          turnId: "turn_1",
+          kind: "reasoning",
+          phase: "narration",
+          value: "hmm",
+        }),
+        event(
+          "call.requested",
+          {
+            turnId: "turn_1",
+            callId: "call_1",
+            capability: { kind: "tool", name: "search" },
+            input: { q: "x" },
+          },
+          { atMs: 10 },
+        ),
+        event("call.requested", {
+          turnId: "turn_1",
+          callId: "call_c",
+          capability: { kind: "control", name: "eve__task_wait" },
+        }),
+        event(
+          "call.settled",
+          {
+            turnId: "turn_1",
+            callId: "call_1",
+            outcome: "failed",
+            error: { code: "E", message: "no hits" },
+          },
+          { atMs: 250 },
+        ),
+        event("usage.recorded", {
+          turnId: "turn_1",
+          owner: { runId: "run_1" },
+          usage: { inputTokens: 5, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        }),
+        event("content.completed", {
+          turnId: "turn_1",
+          kind: "text",
+          phase: "reply",
+          value: "Hello",
+        }),
+        event("turn.settled", {
+          turnId: "turn_1",
+          outcome: "failed",
+          error: { code: "X", message: "boom" },
+        }),
+      ],
+      [],
+    );
+
+    expect(trace.turnCount).toBe(1);
+    expect(trace.rows.map((row) => [row.role, row.type])).toEqual([
+      ["lifecycle", "turn.started"],
+      ["user", "delivery.consumed"],
+      ["reasoning", "content.completed"],
+      ["tool", "call.requested"],
+      ["lifecycle", "usage.recorded"],
+      ["assistant", "content.completed"],
+      ["lifecycle", "turn.settled"],
+    ]);
+    const tool = trace.rows.find((row) => row.role === "tool")!;
+    expect(tool).toMatchObject({
+      name: "search",
+      status: "failed",
+      errorText: "no hits",
+      durationMs: 240,
+    });
+    expect(trace.rows.find((row) => row.type === "usage.recorded")?.usage).toMatchObject({
+      inputTokens: 5,
+    });
+    expect(trace.rows.at(-1)).toMatchObject({ status: "failed", errorText: "boom" });
+  });
+});
+
 describe("traceRowPreview", () => {
   test("flattens whitespace and truncates", () => {
     expect(traceRowPreview("a\n  b\tc")).toBe("a b c");

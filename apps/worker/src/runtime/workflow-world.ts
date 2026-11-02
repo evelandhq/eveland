@@ -48,8 +48,8 @@ export type WorkflowWorldBuildConfig = {
  * World implements from 0.27.0 (`capabilities.hookForceClaim`) and eve 0.81.1
  * and later need before they move a session to a fresh run. 0.18.0 through 0.26.x
  * declared the same value capped at the sealed log (7), because the runtime of
- * eve 0.62.0 refused a World above 7; every line in the window ({0.81.x on
- * core 5.2.0, 0.83.x on core 5.2.3}) reads 6 through 8. Every shared build from 0.5.0
+ * eve 0.62.0 refused a World above 7; every line in the window ({0.83.x and
+ * 1.0.x, both on core 5.2.3}) reads 6 through 8. Every shared build from 0.5.0
  * through 0.17.0 declared 6 unconditionally. A run stays pinned to the
  * Deployment that created it, so every generation is in
  * `SUPPORTED_WORKFLOW_STORAGE_SPECS`; the attestation records the default the

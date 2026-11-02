@@ -154,6 +154,8 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
   // Eve 0.69 runs every agent call as a task: its `action.result` is only a
   // receipt, and `task.settled` carries how the call really ended.
   const taskCallIds = new Set<string>();
+  // v27 (eve 0.84+) settles an interaction without repeating its kind.
+  const interactionKinds = new Map<string, string>();
 
   const turnFor = (payload: Record<string, unknown> | null, eventAt: string): TranscriptTurn => {
     const turnId = asString(payload?.turnId);
@@ -398,12 +400,195 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
         });
         break;
       }
+      // v27 (eve 0.84+). The stored payload is the fact's `data`; the
+      // projection copies the owning turn from the envelope's scope into it
+      // when the data does not name one.
+      case "delivery.consumed": {
+        const text = messageText(payload);
+        const turn = turnFor(payload, event.eventAt);
+        turn.items.push({ kind: "user", text, eventAt: event.eventAt });
+        turn.userMessage ??= text;
+        break;
+      }
+      case "content.completed": {
+        const kind = asString(payload?.kind);
+        const text = contentText(payload);
+        if (!text) break;
+        const turn = turnFor(payload, event.eventAt);
+        if (kind === "reasoning") {
+          turn.items.push({ kind: "reasoning", text, eventAt: event.eventAt });
+        } else if (kind === "text" || kind === "result") {
+          turn.items.push({ kind: "assistant", text, eventAt: event.eventAt });
+          turn.assistantMessage = text;
+        }
+        break;
+      }
+      case "call.requested": {
+        const capability = asRecord(payload?.capability);
+        const capabilityKind = asString(capability?.kind);
+        // Task controls (`eve__task_wait` and friends) are plumbing.
+        if (capabilityKind === "control") break;
+        const call: TranscriptToolCall = {
+          callId: asString(payload?.callId),
+          name: asString(capability?.name) ?? capabilityKind ?? "tool",
+          isSubagent: capabilityKind === "agent",
+          input: payload && "input" in payload ? payload.input : null,
+          output: null,
+          status: "pending",
+          errorText: null,
+          usage: null,
+          targetNodeId: null,
+          childEveSessionId: null,
+          eventAt: event.eventAt,
+          child: null,
+        };
+        if (call.callId) callsById.set(call.callId, call);
+        turnFor(payload, event.eventAt).items.push({ kind: "tool", call });
+        break;
+      }
+      case "call.settled": {
+        const callId = asString(payload?.callId);
+        const call = callId ? callsById.get(callId) : undefined;
+        if (!call) break;
+        const outcome = asString(payload?.outcome);
+        call.status =
+          outcome === "completed"
+            ? "completed"
+            : outcome === "interrupted" || outcome === "abandoned"
+              ? "cancelled"
+              : "failed";
+        call.output = payload && "output" in payload ? payload.output : null;
+        call.errorText =
+          call.status === "completed"
+            ? null
+            : (errorMessage(payload) ?? asString(payload?.reason) ?? outcome);
+        break;
+      }
+      case "child.opened": {
+        const owner = asRecord(payload?.owner);
+        const callId = asString(owner?.callId);
+        const call = callId ? callsById.get(callId) : undefined;
+        if (call) {
+          call.isSubagent = true;
+          call.childEveSessionId = asString(payload?.sessionId);
+        }
+        break;
+      }
+      case "usage.recorded": {
+        // A call-owned record re-reports a child's own spend, which that
+        // child's node already shows.
+        const owner = asRecord(payload?.owner);
+        if (!asString(owner?.runId) && !asString(owner?.changeId)) break;
+        const usage = usageFrom(payload?.usage);
+        if (usage) {
+          const turn = turnFor(payload, event.eventAt);
+          turn.usage = addUsage(turn.usage, usage);
+        }
+        break;
+      }
+      case "model.settled": {
+        if (asString(payload?.outcome) !== "failed") break;
+        turnFor(payload, event.eventAt).items.push({
+          kind: "system",
+          label: "Step failed",
+          text: errorMessage(payload),
+          eventAt: event.eventAt,
+        });
+        break;
+      }
+      case "turn.settled": {
+        const turn = turnFor(payload, event.eventAt);
+        const outcome = asString(payload?.outcome);
+        if (outcome === "completed") {
+          turn.status = "completed";
+        } else if (outcome === "failed") {
+          turn.status = "failed";
+          turn.items.push({
+            kind: "system",
+            label: "Turn failed",
+            text: errorMessage(payload),
+            eventAt: event.eventAt,
+          });
+        } else if (outcome === "cancelled") {
+          turn.status = "cancelled";
+          for (const call of turnToolCalls(turn)) {
+            if (call.status === "pending") {
+              call.status = "cancelled";
+              call.errorText = "Turn cancelled";
+            }
+          }
+          turn.items.push({
+            kind: "system",
+            label: "Turn cancelled",
+            text: null,
+            eventAt: event.eventAt,
+          });
+        }
+        break;
+      }
+      case "session.ended": {
+        if (asString(payload?.outcome) !== "failed") break;
+        const turn = turnFor(payload, event.eventAt);
+        turn.items.push({
+          kind: "system",
+          label: "Session failed",
+          text: errorMessage(payload),
+          eventAt: event.eventAt,
+        });
+        if (turn.status === "incomplete") turn.status = "failed";
+        break;
+      }
+      case "interaction.opened": {
+        const request = asRecord(payload?.request);
+        const kind = asString(request?.kind) ?? "question";
+        const interactionId = asString(payload?.interactionId);
+        if (interactionId) interactionKinds.set(interactionId, kind);
+        const signIn = asRecord(request?.signIn);
+        turnFor(payload, event.eventAt).items.push(
+          kind === "sign-in"
+            ? {
+                kind: "system",
+                label: "Authorization required",
+                text:
+                  asString(signIn?.displayName) ??
+                  asString(signIn?.name) ??
+                  asString(request?.prompt),
+                eventAt: event.eventAt,
+              }
+            : {
+                kind: "system",
+                label: "Input requested",
+                text: asString(request?.prompt),
+                eventAt: event.eventAt,
+              },
+        );
+        break;
+      }
+      case "interaction.settled": {
+        const interactionId = asString(payload?.interactionId);
+        if (!interactionId || interactionKinds.get(interactionId) !== "sign-in") break;
+        turnFor(payload, event.eventAt).items.push({
+          kind: "system",
+          label: "Authorization completed",
+          text: asString(payload?.outcome),
+          eventAt: event.eventAt,
+        });
+        break;
+      }
       default:
         break;
     }
   }
 
   return turns;
+}
+
+/** The text of a v27 `content.completed`: its value, or the fallback a file carries. */
+function contentText(payload: Record<string, unknown> | null): string | null {
+  if (!payload) return null;
+  if (typeof payload.value === "string") return payload.value || null;
+  if (payload.value !== undefined && payload.value !== null) return JSON.stringify(payload.value);
+  return asString(payload.fallbackText);
 }
 
 export function groupTranscriptItems(turn: TranscriptTurn): TranscriptDisplayItem[] {

@@ -126,13 +126,23 @@ export function eveSpecifierProblem(
 ): string | null {
   const supported = `Eveland requires eve ${supportedRanges.join(" or ")}.`;
   if (!specifier) return `Missing "eve" dependency. ${supported}`;
-  const match = /^([~^]?)(0\.\d+)(?:\.(\d+|[x*]))?$/.exec(specifier.trim());
+  // Mirrors the platform's grammar (core's eveLineOfSpecifier), which this
+  // package may not import: an exact version, `~`, a `0.x` caret, or an
+  // `x`/`*` patch, with a prerelease tag allowed only on an exact patch.
+  const match =
+    /^([~^]?)(\d+)\.(\d+)(?:\.(\d+|[x*])(?:-([0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?)?$/.exec(
+      specifier.trim(),
+    );
   if (!match) return `Unsupported eve dependency "${specifier}". ${supported}`;
-  const [, operator, minor, patch] = match;
-  if (operator && !/^\d+$/.test(patch ?? "")) {
+  const [, operator, major, minor, patch, prerelease] = match;
+  if (
+    (operator && !/^\d+$/.test(patch ?? "")) ||
+    (prerelease !== undefined && !/^\d+$/.test(patch ?? "")) ||
+    (operator === "^" && major !== "0")
+  ) {
     return `Unsupported eve dependency "${specifier}". ${supported}`;
   }
-  const line = `${minor}.x`;
+  const line = `${Number(major)}.${Number(minor)}.x`;
   if (!supportedRanges.includes(line)) {
     return `eve ${specifier} is outside this instance's supported window. ${supported}`;
   }

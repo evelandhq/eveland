@@ -35,7 +35,8 @@ Eve 0.83 收窄了这条链：microsandbox 被移除，`DefaultSandbox` 在 `eve
 
 1. **发布阶段动态注入**：Eveland 在发布打包（Release）阶段自动将 bubblewrap Sandbox 注入部署产物，绝不侵入修改用户原始代码库，项目无需手动声明对平台的依赖。窗口内的每条 Eve 线都编译 Provider Environment，因此 Eveland 保留项目自己的 Sandbox 模块、只重定向其 `eve/sandbox` 导入，让 Agent 编写的准备逻辑与 Selector 原样运行在 bwrap 之上。（保留生命周期回调的 Backend 模块服务于 Provider 之前的 Eve 线，已随 0.62 一起退役。）
 2. **Provider 检查**：采用 Provider Environment 后，`eve build` 会准备每个 Sandbox Template 并记录准备它的 Provider，运行时会拒绝打开由其他 Provider 准备的 Sandbox。Eveland 在构建后读取这份记录，只要有 Sandbox 逃出了重定向——在辅助文件里构建的 Environment、自定义 Provider，或由 Extension 提供的 Sandbox——就拒绝该 Release，而不是等到用户的第一个 Turn 才失败。
-3. **构建期即时自检 (Sandbox Self-check)**：Eve 框架采用惰性加载机制，沙箱损坏并不会导致启动探针失败。为了避免把错误带到线上对话中，Eveland 在每次构建完成后，立即在与生产完全一致的加固权限下执行真实脚本探针。任何沙箱配置缺陷（如缺少 AppArmor 规则或缺失系统工具）均会在构建阶段立即暴露并阻断部署。
+3. **一份 Vendored 副本服务整个窗口**：Eve 0.83 引入的 Provider 连接契约仍是 1.0 调用的契约，只是一个选项改了名（0.84 起 `abortSignal` 变为 `signal`），并新增了可选的 `spawn({ stdin: true })`（0.84.1）。注入的 `@evelandhq/sandbox-bwrap` 同时读取两种选项名，因此一份副本同时服务 0.83 与 1.0；带 stdin 的 spawn 需要实现了它的 sandbox-bwrap 版本，在 Worker 带上该版本之前，请求 stdin 的工具会被拒绝。
+4. **构建期即时自检 (Sandbox Self-check)**：Eve 框架采用惰性加载机制，沙箱损坏并不会导致启动探针失败。为了避免把错误带到线上对话中，Eveland 在每次构建完成后，立即在与生产完全一致的加固权限下执行真实脚本探针。任何沙箱配置缺陷（如缺少 AppArmor 规则或缺失系统工具）均会在构建阶段立即暴露并阻断部署。
 
 ## 相关参考
 

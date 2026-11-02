@@ -12,7 +12,7 @@ import {
 import { createZipArchive } from "./zip.ts";
 
 const execFileAsync = promisify(execFile);
-const WINDOW = ["0.81.x", "0.83.x"];
+const WINDOW = ["0.83.x", "1.0.x"];
 
 async function makeProject(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-"));
@@ -20,7 +20,7 @@ async function makeProject(): Promise<string> {
   await mkdir(path.join(root, "node_modules", "junk"), { recursive: true });
   await writeFile(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "probe", dependencies: { eve: "0.81.1" } }),
+    JSON.stringify({ name: "probe", dependencies: { eve: "0.83.3" } }),
   );
   await writeFile(path.join(root, "agent", "instructions.md"), "Be helpful.");
   await writeFile(path.join(root, "node_modules", "junk", "big.js"), "excluded");
@@ -52,7 +52,7 @@ describe("deploy preflight", () => {
     expect(result.problems).toEqual([]);
     // Projection-only effects warn instead of refusing.
     expect(result.warnings.join("\n")).toContain("logo.png is binary");
-    expect(result.eveSpecifier).toBe("0.81.1");
+    expect(result.eveSpecifier).toBe("0.83.3");
     expect(result.projectName).toBe("probe");
   });
 
@@ -101,11 +101,11 @@ describe("deploy preflight", () => {
     await mkdir(path.join(root, "agent"), { recursive: true });
     await writeFile(
       path.join(root, "package.json"),
-      JSON.stringify({ name: "dev-probe", devDependencies: { eve: "0.81.1" } }),
+      JSON.stringify({ name: "dev-probe", devDependencies: { eve: "0.83.3" } }),
     );
     await writeFile(path.join(root, "agent", "instructions.md"), "Hi.");
     const result = await collectProjectFiles(root);
-    expect(result.eveSpecifier).toBe("0.81.1");
+    expect(result.eveSpecifier).toBe("0.83.3");
     expect(result.problems).toEqual([]);
   });
 
@@ -125,9 +125,19 @@ describe("deploy preflight", () => {
   });
 
   test("judges eve specifiers against the instance window", () => {
-    expect(eveSpecifierProblem("0.81.1", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("^0.81.1", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("0.81.x", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("0.83.3", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("^0.83.3", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("0.83.x", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("1.0.0-rc.1", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("~1.0.0", WINDOW)).toBeNull();
+    expect(eveSpecifierProblem("1.0.x", WINDOW)).toBeNull();
+    // A 1.x caret spans later minors; a prerelease only qualifies an exact patch.
+    expect(eveSpecifierProblem("^1.0.0", WINDOW)).toContain("Unsupported");
+    expect(eveSpecifierProblem("1.0.x-rc.1", WINDOW)).toContain("Unsupported");
+    // Retired on 2026-11-02 (0.81), and 0.84-0.91 skipped the same day.
+    expect(eveSpecifierProblem("0.81.1", WINDOW)).toContain("outside this instance's supported");
+    expect(eveSpecifierProblem("0.91.0", WINDOW)).toContain("outside this instance's supported");
+    expect(eveSpecifierProblem("1.1.0", WINDOW)).toContain("outside this instance's supported");
     expect(eveSpecifierProblem("0.46.0", WINDOW)).toContain("outside this instance's supported");
     // Skipped on 2026-09-17 (0.56, 0.57), 2026-09-19 (0.59, 0.60, 0.61),
     // 2026-09-23 (0.63 and 0.64), and 2026-09-24 (0.65), and 0.66 and 0.67

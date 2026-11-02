@@ -1411,7 +1411,14 @@ export const modelUsageEvents = pgTable(
     agentId: text("agent_id"),
     agentName: text("agent_name"),
     turnId: text("turn_id").notNull(),
-    stepIndex: integer("step_index").notNull(),
+    /** The v26 step index; null for a v27 row, which {@link runKey} identifies. */
+    stepIndex: integer("step_index"),
+    /**
+     * The v27 owner of the usage record (`run:<runId>` or `change:<changeId>`);
+     * null for a v26 row. Eve 0.84 dropped the step index, so a v27 row is
+     * deduplicated by its owning run instead.
+     */
+    runKey: text("run_key"),
     modelId: text("model_id"),
     finishReason: text("finish_reason"),
     inputTokens: bigint("input_tokens", { mode: "number" }),
@@ -1434,6 +1441,12 @@ export const modelUsageEvents = pgTable(
       table.turnId,
       table.stepIndex,
     ),
+    uniqueIndex("model_usage_session_eve_run_idx").on(
+      table.sessionId,
+      table.eveSessionId,
+      table.runKey,
+    ),
+    uniqueIndex("model_usage_node_run_idx").on(table.sessionNodeId, table.runKey),
     index("model_usage_created_idx").on(table.createdAt),
   ],
 );

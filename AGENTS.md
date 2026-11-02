@@ -263,7 +263,11 @@ corresponding tests and docs are updated.
 - Route policies have at most two targets and use basis-point weights totaling
   10,000. A root Eve session is pinned to a Deployment; continuation and stream
   requests must keep using that binding after promote, rollback, or weight
-  changes.
+  changes. The one exception is Eve's own one-way cross-protocol handoff (an
+  idle v26 session that eve 0.85+ moves onto a v27 Deployment): the Session
+  projection re-points the binding at the Deployment that now owns the
+  session, and nothing else may move a binding. See
+  `docs/{en,zh}/reference/routing.md`.
 
 ### Releases, deployments, and runtimes
 

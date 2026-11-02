@@ -87,7 +87,7 @@ description: 常见生产部署、构建、网络路由、冷启动、定时任�
 ### 常见原因
 
 - 托管 OTel Collector 未启动或网络连接异常；
-- 模型提供商未在响应流中返回 `step.completed.data.usage`。
+- 模型提供商未在响应流中返回用量（Eve 0.83 上是 `step.completed.data.usage`；Eve 1.0 上是某个 Model Run 没有对应的 `usage.recorded`）。
 
 ### 排查与解决步骤
 

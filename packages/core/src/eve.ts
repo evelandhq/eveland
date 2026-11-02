@@ -1,6 +1,12 @@
 export type ModelStepUsage = {
   turnId: string;
-  stepIndex: number;
+  /** The v26 step index; null for a v27 record, which a model run owns. */
+  stepIndex: number | null;
+  /**
+   * The v27 owner of the record (`run:<runId>` or `change:<changeId>`), the
+   * idempotency key a v27 usage row is stored under; null for a v26 step.
+   */
+  runKey: string | null;
   finishReason: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
@@ -66,6 +72,7 @@ export type EveSessionRequest = {
     | "continuation"
     | "cancel"
     | "reset"
+    | "end"
     | "stream"
     | "clear"
     | "compact"
@@ -93,10 +100,18 @@ export function validatePlaygroundTurn(
   if (!isEveRecord(value)) throw new Error("Playground turn must be a JSON object.");
 
   const hasMessage = value.message !== undefined;
+  // v26 answers a pending request with `inputResponses` (`requestId`); v27
+  // (eve 0.84+) folds approvals, questions, and sign-ins into interactions and
+  // answers them with `answers` (`interactionId`). A turn speaks one protocol.
   const responses = value.inputResponses;
+  const answers = value.answers;
+  if (responses !== undefined && answers !== undefined)
+    throw new Error("Playground turn must not mix input responses and answers.");
   const hasInputResponses = Array.isArray(responses) && responses.length > 0;
-  if (!hasMessage && !hasInputResponses)
+  const hasAnswers = Array.isArray(answers) && answers.length > 0;
+  if (!hasMessage && !hasInputResponses && !hasAnswers)
     throw new Error("Playground turn requires a message or input response.");
+  if (answers !== undefined) validateAnswers(answers);
 
   if (
     value.continuationToken !== undefined &&
@@ -196,12 +211,33 @@ export function classifyEveSessionRequest(
     }
   }
 
-  const match = /^\/eve\/v1\/session\/([^/]+)(?:\/(cancel|stream|clear|compact|reset))?$/.exec(
+  // Eve 0.84 (v27) serves a session's followed descendants -- every child
+  // session its calls opened, recursively -- as one stream under the root.
+  // It is a read of the root session's stream family, so it is pinned by the
+  // root session id and keeps the canonical stream's transport semantics.
+  const descendantsStream = /^\/eve\/v1\/session\/([^/]+)\/descendants\/stream$/.exec(pathname);
+  if (descendantsStream) {
+    if (method !== "GET") return null;
+    try {
+      return { kind: "stream", sessionId: decodeURIComponent(descendantsStream[1]!) };
+    } catch {
+      return null;
+    }
+  }
+
+  const match = /^\/eve\/v1\/session\/([^/]+)(?:\/(cancel|stream|clear|compact|reset|end))?$/.exec(
     pathname,
   );
   if (!match?.[1]) return null;
   // The alternation above is the source of truth for this cast.
-  const suffix = (match[2] ?? null) as "cancel" | "stream" | "clear" | "compact" | "reset" | null;
+  const suffix = (match[2] ?? null) as
+    | "cancel"
+    | "stream"
+    | "clear"
+    | "compact"
+    | "reset"
+    | "end"
+    | null;
   if ((suffix === "stream" && method !== "GET") || (suffix !== "stream" && method !== "POST")) {
     return null;
   }
@@ -213,7 +249,12 @@ export function classifyEveSessionRequest(
     return null;
   }
 
-  return { kind: suffix === null ? "continuation" : suffix, sessionId };
+  // Eve 0.87 renamed the retirement route `reset` to `end` and kept `reset`
+  // as an alias; both retire the session, so they share one request kind.
+  return {
+    kind: suffix === null ? "continuation" : suffix === "end" ? "reset" : suffix,
+    sessionId,
+  };
 }
 
 export function isEveSessionNamespace(pathname: string): boolean {
@@ -270,7 +311,25 @@ export function isWorkflowWebhookRoute(pathname: string): boolean {
   return /^\/\.well-known\/workflow\/v1\/webhook\/[^/]+$/.test(pathname);
 }
 
-export function parseStepUsageEvent(type: string, payload: unknown): ModelStepUsage | null {
+/**
+ * Provider-reported usage for one model call, from either session protocol:
+ * a v26 `step.completed` (keyed by turn and step index) or a v27
+ * `usage.recorded` (keyed by the model run or context change that owns it).
+ *
+ * A v27 record owned by a call (`owner.callId`) re-reports spend a child
+ * session already recorded on its own stream, and an ownerless one
+ * (`kind: "delegated-late"`) is a child's spend that arrived after its call
+ * settled; both are left to the child's node, so a session's totals never
+ * count the same model call twice. v27 records every usage field (eve fills a
+ * missing token count with zero), so missing usage is a model run with no
+ * record at all rather than a record with gaps.
+ */
+export function parseStepUsageEvent(
+  type: string,
+  payload: unknown,
+  scope?: unknown,
+): ModelStepUsage | null {
+  if (type === "usage.recorded") return parseUsageRecorded(payload, scope);
   if (type !== "step.completed" || !isEveRecord(payload)) {
     return null;
   }
@@ -281,17 +340,58 @@ export function parseStepUsageEvent(type: string, payload: unknown): ModelStepUs
     return null;
   }
 
-  const usage = isEveRecord(payload.usage) ? payload.usage : null;
+  return {
+    turnId,
+    stepIndex,
+    runKey: null,
+    finishReason: typeof payload.finishReason === "string" ? payload.finishReason : null,
+    ...usageFields(isEveRecord(payload.usage) ? payload.usage : null),
+  };
+}
+
+function parseUsageRecorded(payload: unknown, scope: unknown): ModelStepUsage | null {
+  if (!isEveRecord(payload)) return null;
+  const owner = isEveRecord(payload.owner) ? payload.owner : null;
+  const runKey =
+    typeof owner?.runId === "string" && owner.runId.length > 0
+      ? `run:${owner.runId}`
+      : typeof owner?.changeId === "string" && owner.changeId.length > 0
+        ? `change:${owner.changeId}`
+        : null;
+  if (runKey === null) return null;
+  const scopeRecord = isEveRecord(scope) ? scope : null;
+  const turnId =
+    typeof scopeRecord?.turnId === "string" && scopeRecord.turnId.length > 0
+      ? scopeRecord.turnId
+      : typeof scopeRecord?.changeId === "string" && scopeRecord.changeId.length > 0
+        ? scopeRecord.changeId
+        : runKey;
+  return {
+    turnId,
+    stepIndex: null,
+    runKey,
+    finishReason: null,
+    ...usageFields(isEveRecord(payload.usage) ? payload.usage : null),
+  };
+}
+
+function usageFields(
+  usage: Record<string, unknown> | null,
+): Pick<
+  ModelStepUsage,
+  | "inputTokens"
+  | "outputTokens"
+  | "cacheReadTokens"
+  | "cacheWriteTokens"
+  | "costUsd"
+  | "usageReported"
+> {
   const inputTokens = readNonNegativeInteger(usage?.inputTokens);
   const outputTokens = readNonNegativeInteger(usage?.outputTokens);
   const cacheReadTokens = readNonNegativeInteger(usage?.cacheReadTokens);
   const cacheWriteTokens = readNonNegativeInteger(usage?.cacheWriteTokens);
   const costUsd = readNonNegativeNumber(usage?.costUsd);
-
   return {
-    turnId,
-    stepIndex,
-    finishReason: typeof payload.finishReason === "string" ? payload.finishReason : null,
     inputTokens,
     outputTokens,
     cacheReadTokens,
@@ -326,6 +426,25 @@ function validateInputResponses(value: unknown): void {
     const hasText = typeof response.text === "string" && response.text.trim().length > 0;
     if (!hasOption && !hasText) {
       throw new Error("Each Playground input response requires an option or text value.");
+    }
+  }
+}
+
+function validateAnswers(value: unknown): void {
+  if (!Array.isArray(value) || value.length === 0)
+    throw new Error("Playground answers must be a non-empty array.");
+  for (const answer of value) {
+    if (
+      !isEveRecord(answer) ||
+      typeof answer.interactionId !== "string" ||
+      answer.interactionId.length === 0
+    ) {
+      throw new Error("Each Playground answer requires an interaction ID.");
+    }
+    const hasOption = typeof answer.optionId === "string" && answer.optionId.trim().length > 0;
+    const hasText = typeof answer.text === "string" && answer.text.trim().length > 0;
+    if (!hasOption && !hasText) {
+      throw new Error("Each Playground answer requires an option or text value.");
     }
   }
 }
@@ -374,6 +493,14 @@ function isSupportedPlaygroundFile(mediaType: string, filename: string): boolean
  * "did this event end a scheduled run / change a session's state" imports the
  * list and the mappings below from here instead of re-spelling them. The
  * mapping tables are pinned by eve.test.ts.
+ *
+ * The window spans two session protocols, so the list holds both
+ * vocabularies. v27 (eve 0.84+) ends every item with one settled event whose
+ * `outcome` says how it ended -- `turn.settled` replaces turn.completed,
+ * turn.failed, and turn.cancelled; `session.ended` replaces session.completed
+ * and session.failed -- and a turn pauses (`turn.paused`) only for a person:
+ * an approval, a question, a sign-in, or a budget prompt. Mappings that need
+ * the outcome read it from the event's `data`.
  */
 export const EVE_SESSION_BOUNDARY_EVENT_TYPES = [
   "turn.completed",
@@ -386,7 +513,15 @@ export const EVE_SESSION_BOUNDARY_EVENT_TYPES = [
   "session.waiting",
   "session.completed",
   "session.failed",
+  // Eve 0.84 (v27).
+  "turn.settled",
+  "turn.paused",
+  "session.ended",
 ] as const;
+
+function eventOutcome(data: unknown): string | null {
+  return isEveRecord(data) && typeof data.outcome === "string" ? data.outcome : null;
+}
 
 /**
  * Projects an eve event onto the platform Session status vocabulary, or null
@@ -400,6 +535,13 @@ export const EVE_SESSION_BOUNDARY_EVENT_TYPES = [
  * Answering one of several pending requests resolves only that one, and eve
  * parks the turn again with `turn.waiting { on: "input" }`, so that event --
  * read from the event's `data` -- puts the session back in waiting_approval.
+ *
+ * v27 folds approvals, questions, sign-ins, and budget prompts into one
+ * interaction: `interaction.opened` parks the session, `interaction.settled`
+ * resumes it, and `turn.paused` (which names every interaction the turn still
+ * awaits) parks it again. A settled turn of any outcome leaves the session
+ * idle, which v27 no longer announces separately, and `session.ended` carries
+ * the terminal outcome.
  */
 export function sessionStatusFromEveEvent(
   type: string,
@@ -407,15 +549,30 @@ export function sessionStatusFromEveEvent(
   data?: unknown,
 ): "running" | "waiting_approval" | "waiting" | "completed" | "failed" | null {
   if (type === "session.started" || type === "turn.started") return "running";
-  if (type === "input.requested" || type === "authorization.required") return "waiting_approval";
-  if (type === "input.resolved" || type === "authorization.completed")
+  if (
+    type === "input.requested" ||
+    type === "authorization.required" ||
+    type === "interaction.opened" ||
+    type === "turn.paused"
+  )
+    return "waiting_approval";
+  if (
+    type === "input.resolved" ||
+    type === "authorization.completed" ||
+    type === "interaction.settled"
+  )
     return currentStatus === "waiting_approval" ? "running" : null;
   if (type === "turn.waiting")
     return isEveRecord(data) && data.on === "input" ? "waiting_approval" : null;
   if (type === "session.waiting")
     return currentStatus === "waiting_approval" ? "waiting_approval" : "waiting";
+  if (type === "turn.settled") return "waiting";
   if (type === "session.completed") return "completed";
   if (type === "session.failed") return "failed";
+  if (type === "session.ended") {
+    const outcome = eventOutcome(data);
+    return outcome === "completed" ? "completed" : outcome === "failed" ? "failed" : null;
+  }
   return null;
 }
 
@@ -425,11 +582,22 @@ export function sessionStatusFromEveEvent(
  * or, from Eve 0.69, a `turn.waiting` -- under an approval request parks the
  * run; otherwise `session.waiting` means the turn finished and the run
  * succeeded, while `turn.waiting` means the turn still runs (its tasks work).
+ * v27: `turn.paused` always waits on a person, so it parks the run, and the
+ * outcome of `turn.settled` / `session.ended` (read from `data`) decides the
+ * rest.
  */
 export function scheduleExecutionStatusFromEveEvent(
   type: string | undefined,
   sessionStatus: string,
+  data?: unknown,
 ): "running" | "succeeded" | "failed" | "parked" {
+  if (type === "turn.settled" || type === "session.ended") {
+    const outcome = eventOutcome(data);
+    if (outcome === "completed") return "succeeded";
+    if (outcome === "failed" || outcome === "cancelled") return "failed";
+    return "running";
+  }
+  if (type === "turn.paused") return "parked";
   if (type === "turn.failed" || type === "turn.cancelled" || type === "session.failed")
     return "failed";
   if (
@@ -443,10 +611,20 @@ export function scheduleExecutionStatusFromEveEvent(
   return "running";
 }
 
+/**
+ * The failure text a boundary event carries: v26 put `message` on the event
+ * itself, v27 nests one error shape (`error: { code, message }`) everywhere.
+ */
+function eventErrorMessage(payload: unknown): string | null {
+  if (!isEveRecord(payload)) return null;
+  if (typeof payload.message === "string") return payload.message;
+  const error = isEveRecord(payload.error) ? payload.error : null;
+  return typeof error?.message === "string" ? error.message : null;
+}
+
 /** Operator-facing failure line for a Session's own failure boundary event. */
 export function sessionErrorFromEveEvent(type: string | undefined, payload: unknown): string {
-  const message =
-    isEveRecord(payload) && typeof payload.message === "string" ? payload.message : null;
+  const message = eventErrorMessage(payload);
   return message ?? `The agent reported ${type ?? "session.failed"} without a message.`;
 }
 
@@ -455,9 +633,12 @@ export function scheduleExecutionErrorFromEveEvent(
   type: string | undefined,
   payload: unknown,
 ): string {
-  const message =
-    isEveRecord(payload) && typeof payload.message === "string" ? payload.message : null;
+  const message = eventErrorMessage(payload);
+  const label =
+    (type === "turn.settled" || type === "session.ended") && eventOutcome(payload)
+      ? `${type} (${eventOutcome(payload)})`
+      : type;
   return message
-    ? `Scheduled Session ${type ?? "failed"}: ${message}`
-    : `Scheduled Session ended with ${type ?? "failure"}.`;
+    ? `Scheduled Session ${label ?? "failed"}: ${message}`
+    : `Scheduled Session ended with ${label ?? "failure"}.`;
 }

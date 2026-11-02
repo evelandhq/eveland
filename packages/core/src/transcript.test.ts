@@ -205,6 +205,138 @@ describe("buildTranscriptTurns", () => {
   });
 });
 
+describe("buildTranscriptTurns on v27 (eve 0.84+) facts", () => {
+  const at = "2026-11-02T00:00:00.000Z";
+  const fact = (type: string, payload: Record<string, unknown>) => ({ type, payload, eventAt: at });
+
+  test("builds the same turn from delivery, content, calls, usage, and the settled outcome", () => {
+    const [turn] = buildTranscriptTurns([
+      fact("turn.started", { turnId: "turn_1" }),
+      fact("delivery.consumed", { turnId: "turn_1", parts: [{ kind: "text", text: "Weather?" }] }),
+      fact("content.completed", {
+        turnId: "turn_1",
+        kind: "reasoning",
+        phase: "narration",
+        value: "Look it up.",
+      }),
+      fact("call.requested", {
+        turnId: "turn_1",
+        callId: "call_1",
+        owner: { runId: "run_1" },
+        capability: { kind: "tool", name: "get_weather" },
+        input: { city: "Paris" },
+      }),
+      fact("call.requested", {
+        turnId: "turn_1",
+        callId: "call_wait",
+        capability: { kind: "control", name: "eve__task_wait" },
+      }),
+      fact("usage.recorded", {
+        turnId: "turn_1",
+        kind: "model",
+        owner: { runId: "run_1" },
+        usage: { inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      }),
+      fact("usage.recorded", {
+        turnId: "turn_1",
+        kind: "model",
+        owner: { callId: "call_1" },
+        usage: { inputTokens: 99, outputTokens: 99, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      }),
+      fact("call.settled", {
+        turnId: "turn_1",
+        callId: "call_1",
+        outcome: "completed",
+        output: { temp: 21 },
+      }),
+      fact("content.completed", { turnId: "turn_1", kind: "text", phase: "reply", value: "21C." }),
+      fact("turn.settled", { turnId: "turn_1", outcome: "completed" }),
+    ]);
+
+    expect(turn).toMatchObject({
+      turnId: "turn_1",
+      userMessage: "Weather?",
+      assistantMessage: "21C.",
+      status: "completed",
+      usage: { inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    });
+    expect(turn!.items.map((item) => item.kind)).toEqual([
+      "user",
+      "reasoning",
+      "tool",
+      "assistant",
+    ]);
+    expect(turnToolCalls(turn!)).toEqual([
+      expect.objectContaining({
+        callId: "call_1",
+        name: "get_weather",
+        status: "completed",
+        input: { city: "Paris" },
+        output: { temp: 21 },
+      }),
+    ]);
+  });
+
+  test("records v27 failures, cancellations, sign-ins, and the child a call opened", () => {
+    const turns = buildTranscriptTurns([
+      fact("call.requested", {
+        turnId: "turn_1",
+        callId: "call_agent",
+        capability: { kind: "agent", name: "researcher" },
+      }),
+      fact("child.opened", {
+        turnId: "turn_1",
+        sessionId: "eve_child",
+        owner: { callId: "call_agent" },
+        name: "researcher",
+      }),
+      fact("interaction.opened", {
+        turnId: "turn_1",
+        interactionId: "int_1",
+        request: {
+          kind: "sign-in",
+          prompt: "Sign in",
+          signIn: { name: "gh", displayName: "GitHub" },
+        },
+      }),
+      fact("interaction.settled", {
+        turnId: "turn_1",
+        interactionId: "int_1",
+        outcome: "accepted",
+      }),
+      fact("turn.settled", { turnId: "turn_1", outcome: "cancelled" }),
+      fact("model.settled", {
+        turnId: "turn_2",
+        runId: "run_9",
+        outcome: "failed",
+        error: { code: "X", message: "model down" },
+      }),
+      fact("turn.settled", {
+        turnId: "turn_2",
+        outcome: "failed",
+        error: { code: "X", message: "turn down" },
+      }),
+    ]);
+
+    expect(turns[0]).toMatchObject({ status: "cancelled" });
+    expect(turnToolCalls(turns[0]!)[0]).toMatchObject({
+      isSubagent: true,
+      childEveSessionId: "eve_child",
+      status: "cancelled",
+    });
+    expect(turns[0]!.items.filter((item) => item.kind === "system")).toEqual([
+      expect.objectContaining({ label: "Authorization required", text: "GitHub" }),
+      expect.objectContaining({ label: "Authorization completed", text: "accepted" }),
+      expect.objectContaining({ label: "Turn cancelled" }),
+    ]);
+    expect(turns[1]).toMatchObject({ status: "failed" });
+    expect(turns[1]!.items).toEqual([
+      expect.objectContaining({ label: "Step failed", text: "model down" }),
+      expect.objectContaining({ label: "Turn failed", text: "turn down" }),
+    ]);
+  });
+});
+
 describe("groupTranscriptItems", () => {
   test("collapses consecutive reasoning and tool items into one activity group", () => {
     const [turn] = buildTranscriptTurns([

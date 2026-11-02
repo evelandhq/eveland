@@ -56,3 +56,66 @@ describe("projectPlaygroundStreamLine", () => {
     });
   });
 });
+
+describe("projectPlaygroundStreamLine on a v27 stream", () => {
+  test("folds every fact of a commit line in order", async () => {
+    const { store, completeSession } = recordingStore();
+    const line = JSON.stringify({
+      at: "2026-11-02T00:00:00.000Z",
+      facts: [
+        { type: "delivery.consumed", scope: { turnId: "t1" }, data: { turnId: "t1" } },
+        { type: "turn.started", scope: { turnId: "t1" }, data: { turnId: "t1" } },
+        {
+          type: "interaction.opened",
+          scope: { turnId: "t1" },
+          data: { interactionId: "i1", request: { kind: "approval", prompt: "ok?" } },
+        },
+      ],
+    });
+
+    await expect(
+      projectPlaygroundStreamLine(line, "waiting", store, "sess_1", "eve_1"),
+    ).resolves.toBe("waiting_approval");
+    expect(completeSession).toHaveBeenCalledTimes(1);
+    expect(completeSession).toHaveBeenCalledWith("sess_1", {
+      status: "waiting_approval",
+      eveSessionId: "eve_1",
+    });
+  });
+
+  test("records the nested v27 error when the session ends failed", async () => {
+    const { store, completeSession } = recordingStore();
+    const line = JSON.stringify({
+      at: "2026-11-02T00:00:00.000Z",
+      facts: [
+        {
+          type: "session.ended",
+          data: { outcome: "failed", error: { code: "X", message: "model exploded" } },
+        },
+      ],
+    });
+
+    await expect(
+      projectPlaygroundStreamLine(line, "running", store, "sess_1", "eve_1"),
+    ).resolves.toBe("failed");
+    expect(completeSession).toHaveBeenCalledWith("sess_1", {
+      status: "failed",
+      eveSessionId: "eve_1",
+      error: "model exploded",
+    });
+  });
+
+  test("ignores progress and transport records", async () => {
+    const { store, completeSession } = recordingStore();
+    for (const line of [
+      JSON.stringify({ progress: { type: "content.delta", data: { partId: "p", delta: "x" } } }),
+      JSON.stringify({ $eve: "heartbeat" }),
+      JSON.stringify({ $eve: "position", next: 4 }),
+    ]) {
+      await expect(
+        projectPlaygroundStreamLine(line, "running", store, "sess_1", "eve_1"),
+      ).resolves.toBe("running");
+    }
+    expect(completeSession).not.toHaveBeenCalled();
+  });
+});

@@ -1,16 +1,18 @@
 import { describe, expect, test, vi } from "vitest";
 import * as ClientApi from "../lib/client-api.js";
-import type { ConversationInput } from "eve/react";
+import type { ConversationInput } from "eve-previous/react";
 import {
   canAnswerInputRequest,
   canAnswerInputRequests,
+  questionsForCall,
+} from "../lib/playground-session-v26.js";
+import {
   cancelPlaygroundTurn,
   clearPendingSessionCreate,
   createPlaygroundTurnCanceller,
   createPlaygroundMessage,
   isDefiniteCreateRejection,
   peekPendingSessionCreate,
-  questionsForCall,
   resumePendingPlaygroundTurn,
   stashPendingSessionCreate,
 } from "../lib/playground-session.js";

@@ -117,7 +117,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("0.83.3");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("1.0.0-rc.1");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -193,6 +193,10 @@ describe("Eve compatibility repository contract", () => {
       // re-checked 2026-10-27: stable-workflow-names.js byte-identical to
       // 0.81.1 (0.82 skipped); 0.83's `prewarm()` and workflow-tool
       // `ctx.getSandbox()` steps run inside the session and tool runs already
+      // audited here. 1.0.0-rc.1 re-checked 2026-11-02 (0.84 through 0.91
+      // skipped): stable-workflow-names.js and the bundler default are
+      // byte-identical to 0.83.3, and 0.85's cross-version handoff moves a
+      // pre-v27 session into a fresh WORKFLOW_ENTRY_NAME run, a name already
       // audited here. The activity collector (0.47.3-0.68)
       // and the subagent execute body (0.51-0.68) left this list with 0.68 on
       // 2026-10-09.
@@ -247,7 +251,7 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.81.x and 0.83.x export the same set: four (no activity collector),
+    // 0.83.x and 1.0.x export the same set: four (no activity collector),
     // the agent serve body, and the two connection-event runs; neither opens
     // a per-turn run any more, but both keep the turn name for legacy-session
     // import.
@@ -288,44 +292,64 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.81/0.83 compatibility window", () => {
+  test("describes the supported 0.83/1.0 compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
     const stableDependencyNames = ["eve-previous", "eve"];
-    const minorNumbers = supportedLines.map((line, index) => {
-      const rangeMatch = /^0\.(\d+)\.x$/.exec(line.range);
-      const verifiedMatch = /^0\.(\d+)\.(\d+)$/.exec(line.verifiedVersion);
+    const lineNumbers = supportedLines.map((line, index) => {
+      const rangeMatch = /^(\d+)\.(\d+)\.x$/.exec(line.range);
+      const verifiedMatch = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.]+)?$/.exec(line.verifiedVersion);
       if (!rangeMatch || !verifiedMatch) {
         throw new Error(`Invalid Eve compatibility line: ${line.range} / ${line.verifiedVersion}`);
       }
 
-      const minor = Number(rangeMatch[1]);
-      expect(Number(verifiedMatch[1]), line.range).toBe(minor);
+      const major = Number(rangeMatch[1]);
+      const minor = Number(rangeMatch[2]);
+      expect(Number(verifiedMatch[1]), line.range).toBe(major);
+      expect(Number(verifiedMatch[2]), line.range).toBe(minor);
       expect(line.dependencyName, line.range).toBe(stableDependencyNames[index]);
-      return minor;
+      return { major, minor, prerelease: verifiedMatch[4] !== undefined };
     });
 
     expect(supportedLines).toHaveLength(2);
     // Lines are strictly ascending but need not be contiguous: a minor that
     // was superseded before it could host a real deployment may be skipped
     // (0.40/0.41 were replaced by 0.42 within 48 hours of release, 0.43 by
-    // 0.44 within four hours). Each skip
-    // must be re-justified: it is only safe when every wire format is
-    // byte-identical across the whole span, so mixed-window pairs stay
-    // trivially compatible.
-    expect(minorNumbers).toEqual([...minorNumbers].sort((a, b) => a - b));
-    expect(new Set(minorNumbers).size).toBe(minorNumbers.length);
+    // 0.44 within four hours, 0.84 through 0.91 by 1.0 within a week). Each
+    // skip must be re-justified: it is only safe when every wire format is
+    // byte-identical across the whole span, or -- as across the 0.84
+    // session-protocol boundary -- every consumer reads both protocols.
+    const order = lineNumbers.map(({ major, minor }) => major * 10_000 + minor);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(new Set(order).size).toBe(order.length);
 
     // The peer range is the union of maximal contiguous runs of supported
-    // minors -- never their hull, which would admit skipped lines.
-    const contiguousRuns: number[][] = [];
-    for (const minor of minorNumbers) {
+    // minors within one major -- never their hull, which would admit skipped
+    // lines. A run whose first line is verified at a release candidate starts
+    // at `-0`, the only comparator npm lets a prerelease satisfy.
+    const contiguousRuns: Array<typeof lineNumbers> = [];
+    for (const line of lineNumbers) {
       const run = contiguousRuns.at(-1);
-      if (run && minor === run.at(-1)! + 1) run.push(minor);
-      else contiguousRuns.push([minor]);
+      const last = run?.at(-1);
+      if (run && last && last.major === line.major && line.minor === last.minor + 1) run.push(line);
+      else contiguousRuns.push([line]);
     }
     expect(peerDependencyRange).toBe(
-      contiguousRuns.map((run) => `>=0.${run[0]}.0 <0.${run.at(-1)! + 1}.0`).join(" || "),
+      contiguousRuns
+        .map((run) => {
+          const first = run[0]!;
+          const last = run.at(-1)!;
+          return `>=${first.major}.${first.minor}.0${first.prerelease ? "-0" : ""} <${last.major}.${last.minor + 1}.0`;
+        })
+        .join(" || "),
     );
+
+    // Each line names the session protocol it speaks: v26 through 0.83, v27
+    // from 0.84.
+    for (const line of supportedLines) {
+      expect(line.sessionProtocol, line.range).toBe(
+        line.range.startsWith("0.") && Number(line.range.split(".")[1]) < 84 ? "v26" : "v27",
+      );
+    }
   });
 
   test("derives public compatibility values from the policy", async () => {
@@ -459,7 +483,11 @@ describe("Eve compatibility repository contract", () => {
       "packages/agent-scheduler/package.json",
       "packages/eveland/package.json",
     ]);
+    // The Dashboard bundles the previous line's client too: the window spans
+    // the v26/v27 session-protocol boundary and neither client reads the
+    // other's stream.
     expect([...legacyMatrixConsumers].sort()).toEqual([
+      "apps/web/package.json",
       "packages/agent-observer/package.json",
       "packages/agent-scheduler/package.json",
     ]);

@@ -98,17 +98,23 @@ export function createPostgresSessionStore({
     },
 
     async recordModelUsage(sessionId, usage) {
+      const eveSessionId = usage.eveSessionId ?? sessionId;
+      const runKey = usage.runKey ?? null;
+      if (runKey === null && usage.stepIndex === null) {
+        throw new Error("Model usage needs a v26 step index or a v27 run key.");
+      }
       return db.transaction(async (tx) => {
         const [inserted] = await tx
           .insert(modelUsageEvents)
           .values({
             id: createId("usage"),
             sessionId,
-            eveSessionId: usage.eveSessionId ?? sessionId,
+            eveSessionId,
             agentId: usage.agentId ?? null,
             agentName: usage.agentName ?? null,
             turnId: usage.turnId,
             stepIndex: usage.stepIndex,
+            runKey,
             finishReason: usage.finishReason,
             inputTokens: usage.inputTokens,
             outputTokens: usage.outputTokens,
@@ -118,12 +124,19 @@ export function createPostgresSessionStore({
             usageReported: usage.usageReported,
           })
           .onConflictDoNothing({
-            target: [
-              modelUsageEvents.sessionId,
-              modelUsageEvents.eveSessionId,
-              modelUsageEvents.turnId,
-              modelUsageEvents.stepIndex,
-            ],
+            target:
+              runKey === null
+                ? [
+                    modelUsageEvents.sessionId,
+                    modelUsageEvents.eveSessionId,
+                    modelUsageEvents.turnId,
+                    modelUsageEvents.stepIndex,
+                  ]
+                : [
+                    modelUsageEvents.sessionId,
+                    modelUsageEvents.eveSessionId,
+                    modelUsageEvents.runKey,
+                  ],
           })
           .returning();
 
@@ -134,9 +147,13 @@ export function createPostgresSessionStore({
             .where(
               and(
                 eq(modelUsageEvents.sessionId, sessionId),
-                eq(modelUsageEvents.eveSessionId, usage.eveSessionId ?? sessionId),
-                eq(modelUsageEvents.turnId, usage.turnId),
-                eq(modelUsageEvents.stepIndex, usage.stepIndex),
+                eq(modelUsageEvents.eveSessionId, eveSessionId),
+                ...(runKey === null
+                  ? [
+                      eq(modelUsageEvents.turnId, usage.turnId),
+                      eq(modelUsageEvents.stepIndex, usage.stepIndex!),
+                    ]
+                  : [eq(modelUsageEvents.runKey, runKey)]),
               ),
             )
             .limit(1);
