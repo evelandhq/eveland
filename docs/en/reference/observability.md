@@ -401,7 +401,10 @@ also builds no local view of the Collector's delivery volume or queue pressure.
   owned by a model run or a context change (keyed by `run_key`). A v27 record owned
   by a call re-reports spend its child session already recorded, so only the child
   counts it; v27 fills a missing token count with zero, so missing usage on 1.0 is a
-  model run with no record at all.
+  model run with no record at all. A completed model run counts as missing from its
+  `model.settled` until its record arrives; the record then fills that same `run_key`
+  row, whichever of the two is delivered first, so a run is never counted twice. A
+  failed or cancelled run is not counted.
 - The window spans two session protocols, so the observer, the projection, session
   replay, and traces read both the v26 and the v27 vocabularies. On Eve 1.0 an
   unhandled hook error fails the running turn; the injected hook catches every

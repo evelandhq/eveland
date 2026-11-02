@@ -30,7 +30,7 @@ import {
   transcriptFor,
 } from "./messages.js";
 import { recordUsage, type AgentTelemetryMetrics } from "./metrics.js";
-import type { ModelCallCapture } from "./model-capture.js";
+import type { ModelCallCapture, ObservedModelCall } from "./model-capture.js";
 import {
   endSessionSpans,
   endTurnChildren,
@@ -67,6 +67,12 @@ export function mapAgentTelemetryLifecycleV27(input: {
   now: () => number;
   capture: RuntimeAgentPolicy["capture"];
   modelCapture: ModelCallCapture;
+  /**
+   * Hands the caller the per-call model taken for a `usage.recorded`, so the
+   * usage log carries it too. `take` consumes the capture, so it happens here
+   * once, where the owning run and its finish reason are known.
+   */
+  onObservedModel?: (observed: ObservedModelCall) => void;
 }): Span | undefined {
   const { eventType, data, scope, sessionId, context, state, tracer, metrics, now, capture } =
     input;
@@ -216,6 +222,7 @@ export function mapAgentTelemetryLifecycleV27(input: {
         finishReason: settled?.finishReason,
       });
       if (observedModel) {
+        input.onObservedModel?.(observedModel);
         state.runModels.set(ownerRunKey, observedModel.modelId);
         span.updateName(`chat ${observedModel.modelId}`);
         span.setAttribute(ATTR_GEN_AI_REQUEST_MODEL, observedModel.modelId);

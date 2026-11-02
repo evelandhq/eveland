@@ -3,7 +3,7 @@ import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/s
 import { InMemoryLogRecordExporter } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
 import { afterEach, describe, expect, test } from "vitest";
-import { createModelCallCapture } from "./runtime/model-capture.js";
+import { createModelCallCapture, type ModelCallCapture } from "./runtime/model-capture.js";
 import {
   createPrivateAgentTelemetryRuntime,
   type AgentTelemetryEvent,
@@ -23,14 +23,17 @@ afterEach(async () => {
  */
 type Fact = { type: string; scope?: Record<string, string>; data: Record<string, unknown> };
 
-function harness(capture: Partial<RuntimeAgentPolicy["capture"]> = {}) {
+function harness(
+  capture: Partial<RuntimeAgentPolicy["capture"]> = {},
+  modelCapture: ModelCallCapture = createModelCallCapture({}),
+) {
   const traces = new InMemorySpanExporter();
   const logs = new InMemoryLogRecordExporter();
   const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
   const runtime = createPrivateAgentTelemetryRuntime({
     policy: policy(capture),
     exporters: { traces, logs, metrics },
-    modelCapture: createModelCallCapture({}),
+    modelCapture,
   });
   activeRuntimes.push(runtime);
   let line = 0;
@@ -309,6 +312,51 @@ describe("private Agent telemetry runtime on the v27 protocol", () => {
         logs.getFinishedLogRecords().map((record) => record.attributes["eveland.eve.event.type"]),
       ).toEqual(recordOutputs ? ["content.completed"] : []);
     }
+  });
+
+  test("carries the observed per-call model into the v27 usage log, not only the span", async () => {
+    // The configured model and the model the provider actually ran differ, so
+    // the Built-in projection must learn the real one from the usage log.
+    const taken: unknown[] = [];
+    const { runtime, traces, logs, commit } = harness(
+      {},
+      {
+        install() {},
+        take(step) {
+          taken.push(step);
+          return { modelId: "actual/model", responseModelId: "actual/model-2026-11-01" };
+        },
+      },
+    );
+    const scope = { turnId: "t", runId: "r" };
+    await commit({ type: "turn.started", scope: { turnId: "t" }, data: { turnId: "t" } });
+    await commit({
+      type: "model.started",
+      scope,
+      data: { runId: "r", modelId: "manifest/model" },
+    });
+    await commit({
+      type: "model.settled",
+      scope,
+      data: { runId: "r", outcome: "completed", finishReason: "stop" },
+    });
+    await commit({
+      type: "usage.recorded",
+      scope,
+      data: { kind: "model", owner: { runId: "r" }, usage: { inputTokens: 10, outputTokens: 5 } },
+    });
+    await runtime.forceFlush();
+
+    expect(taken).toHaveLength(1);
+    expect(traces.getFinishedSpans().map((span) => span.name)).toContain("chat actual/model");
+    const usage = logs
+      .getFinishedLogRecords()
+      .find((record) => record.attributes["eveland.eve.event.type"] === "usage.recorded");
+    expect(usage, "the usage.recorded log was emitted").toBeDefined();
+    expect(usage?.attributes["eveland.gen_ai.observed.model"]).toBe("actual/model");
+    expect(usage?.attributes["eveland.gen_ai.observed.response_model"]).toBe(
+      "actual/model-2026-11-01",
+    );
   });
 
   test("never lets a malformed v27 event escape the capture", async () => {

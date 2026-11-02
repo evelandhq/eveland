@@ -2,6 +2,8 @@
 
 import type { EveMessage, EveMessagePart, EveToolPart, Interaction } from "eve/react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { SessionStore } from "eve/client";
+import { interactions as viewInteractions } from "eve/events";
 import type { EveVersionInfo } from "@/lib/api";
 import { describe, expect, test, vi } from "vitest";
 
@@ -152,6 +154,111 @@ describe("AgentMessageV27", () => {
     ]);
     expect(screen.queryByRole("button", { name: /eve__task_wait/ })).toBeNull();
     expect(container.textContent).toContain("Done.");
+  });
+});
+
+describe("AgentMessageV27 with several questions from one call", () => {
+  // A real eve 1.0 client snapshot: one tool call opens two questions. Its
+  // message part keeps only the newest; the session view holds both.
+  function twoQuestionsFromOneCall() {
+    let line = 0;
+    const fact = (type: string, data: Record<string, unknown>, scope?: Record<string, string>) => ({
+      type,
+      data,
+      scope,
+      meta: {
+        at: "2026-11-02T00:00:00.000Z",
+        position: { line: line++, index: 0 },
+        endOfLine: true,
+      },
+    });
+    const store = new SessionStore({
+      initialEvents: [
+        fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } }),
+        fact(
+          "turn.started",
+          { turnId: "t", cause: { deliveryId: "d" }, follows: null },
+          { turnId: "t" },
+        ),
+        fact("model.requested", { runId: "r", owner: { turnId: "t" } }, { turnId: "t" }),
+        fact(
+          "call.requested",
+          {
+            callId: "c",
+            owner: { runId: "r" },
+            capability: { kind: "tool", name: "questions" },
+            input: {},
+          },
+          { turnId: "t", runId: "r" },
+        ),
+        ...["first", "second"].map((id) =>
+          fact(
+            "interaction.opened",
+            {
+              interactionId: id,
+              subject: { callId: "c" },
+              request: { kind: "question", prompt: `${id} question`, allowFreeform: true },
+            },
+            { turnId: "t" },
+          ),
+        ),
+      ] as never,
+    });
+    const { messages, view } = store.snapshot;
+    return { message: messages[0]!, interactions: viewInteractions(view) };
+  }
+
+  test("renders every open question of the call and answers each by its own id", async () => {
+    const { message, interactions } = twoQuestionsFromOneCall();
+    const onAnswers = vi.fn();
+    render(
+      <AgentMessageV27
+        canRespond={(interaction) => interaction.status === "open"}
+        interactions={interactions}
+        isStreaming
+        message={message}
+        onAnswers={onAnswers}
+      />,
+    );
+
+    expect(screen.getByText("first question")).toBeTruthy();
+    expect(screen.getByText("second question")).toBeTruthy();
+    const [firstInput, secondInput] = screen.getAllByRole("textbox", { name: "Answer" });
+    fireEvent.change(firstInput!, { target: { value: "one" } });
+    // Each question keeps its own form state.
+    expect((secondInput as HTMLTextAreaElement).value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Answer" }));
+    await waitFor(() =>
+      expect(onAnswers).toHaveBeenCalledWith([{ interactionId: "first", text: "one" }]),
+    );
+  });
+
+  test("keeps an earlier open question answerable after the newest was answered", () => {
+    const { message, interactions } = twoQuestionsFromOneCall();
+    const settle = (interaction: Interaction): Interaction =>
+      interaction.interactionId === "second"
+        ? {
+            ...interaction,
+            status: "settled",
+            outcome: "accepted",
+            answer: { interactionId: "second", text: "two" },
+          }
+        : interaction;
+    const part = message.parts[0] as EveToolPart;
+    render(
+      <AgentMessageV27
+        canRespond={(interaction) => interaction.status === "open"}
+        interactions={interactions.map(settle)}
+        isStreaming
+        message={{ ...message, parts: [{ ...part, interaction: settle(part.interaction!) }] }}
+        onAnswers={vi.fn()}
+      />,
+    );
+
+    const inputs = screen.getAllByRole("textbox", { name: "Answer" }) as HTMLTextAreaElement[];
+    expect(screen.getByText("first question")).toBeTruthy();
+    expect(inputs).toHaveLength(2);
+    expect(inputs.map((input) => input.disabled)).toEqual([false, true]);
   });
 });
 

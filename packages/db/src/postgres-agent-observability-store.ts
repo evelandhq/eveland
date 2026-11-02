@@ -3,6 +3,7 @@ import { createId } from "@evelandhq/core/ids";
 import { eveSessionProtocolOfVersion } from "@evelandhq/core/eve-compatibility";
 import {
   parseStepUsageEvent,
+  parseUnreportedModelRun,
   scheduleExecutionErrorFromEveEvent,
   scheduleExecutionStatusFromEveEvent,
   sessionErrorFromEveEvent,
@@ -580,7 +581,13 @@ async function ingestPostgresAgentEventOnce(
       }
     }
 
-    const usage = parseStepUsageEvent(type, payload, scope);
+    // Provider usage: v26 `step.completed`, v27 `usage.recorded`, and, for
+    // v27, a completed model run that is owed a record. That run is projected
+    // as missing usage under its run key, so a run that never reports counts
+    // as missing, and its record reconciles the same row whichever arrives
+    // first; nothing is estimated.
+    const usage =
+      parseStepUsageEvent(type, payload, scope) ?? parseUnreportedModelRun(type, payload, scope);
     if (usage) {
       const [insertedUsage] = await tx
         .insert(modelUsageEvents)
@@ -609,20 +616,45 @@ async function ingestPostgresAgentEventOnce(
         await tx
           .update(sessions)
           .set({
-            inputTokens: sql`${sessions.inputTokens} + ${usage.inputTokens ?? 0}`,
-            outputTokens: sql`${sessions.outputTokens} + ${usage.outputTokens ?? 0}`,
-            cacheReadTokens: sql`${sessions.cacheReadTokens} + ${usage.cacheReadTokens ?? 0}`,
-            cacheWriteTokens: sql`${sessions.cacheWriteTokens} + ${usage.cacheWriteTokens ?? 0}`,
-            ...(usage.costUsd === null
-              ? {}
-              : {
-                  costUsd: sql`coalesce(${sessions.costUsd}, 0) + ${usage.costUsd}`,
-                }),
+            ...sessionUsageIncrement(usage),
             ...(usage.usageReported
               ? { usageReportedSteps: sql`${sessions.usageReportedSteps} + 1` }
               : { usageMissingSteps: sql`${sessions.usageMissingSteps} + 1` }),
           })
           .where(eq(sessions.id, sessionRow!.id));
+      } else if (usage.usageReported && usage.runKey !== null) {
+        // The run was first projected as missing: its record now fills that
+        // row in place and moves the run from missing to reported, once.
+        const [reconciled] = await tx
+          .update(modelUsageEvents)
+          .set({
+            usageReported: true,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            cacheWriteTokens: usage.cacheWriteTokens,
+            costUsd: usage.costUsd,
+            ...(observation.observedModel ? { modelId: observation.observedModel.modelId } : {}),
+            ...(usage.finishReason === null ? {} : { finishReason: usage.finishReason }),
+          })
+          .where(
+            and(
+              eq(modelUsageEvents.sessionNodeId, node!.id),
+              eq(modelUsageEvents.runKey, usage.runKey),
+              eq(modelUsageEvents.usageReported, false),
+            ),
+          )
+          .returning({ id: modelUsageEvents.id });
+        if (reconciled) {
+          await tx
+            .update(sessions)
+            .set({
+              ...sessionUsageIncrement(usage),
+              usageReportedSteps: sql`${sessions.usageReportedSteps} + 1`,
+              usageMissingSteps: sql`greatest(${sessions.usageMissingSteps} - 1, 0)`,
+            })
+            .where(eq(sessions.id, sessionRow!.id));
+        }
       }
     }
 
@@ -750,4 +782,22 @@ async function isNewestNodeObservation(
     .where(eq(sessionEvents.sessionNodeId, sessionNodeId));
   const highest = row?.value ?? null;
   return highest === null || sourceSequence >= highest;
+}
+
+function sessionUsageIncrement(usage: {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  costUsd: number | null;
+}) {
+  return {
+    inputTokens: sql`${sessions.inputTokens} + ${usage.inputTokens ?? 0}`,
+    outputTokens: sql`${sessions.outputTokens} + ${usage.outputTokens ?? 0}`,
+    cacheReadTokens: sql`${sessions.cacheReadTokens} + ${usage.cacheReadTokens ?? 0}`,
+    cacheWriteTokens: sql`${sessions.cacheWriteTokens} + ${usage.cacheWriteTokens ?? 0}`,
+    ...(usage.costUsd === null
+      ? {}
+      : { costUsd: sql`coalesce(${sessions.costUsd}, 0) + ${usage.costUsd}` }),
+  };
 }

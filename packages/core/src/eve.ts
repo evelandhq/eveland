@@ -349,6 +349,42 @@ export function parseStepUsageEvent(
   };
 }
 
+/**
+ * A v27 model run that completed is owed a `usage.recorded`. Projecting it as a
+ * missing-usage row keyed by its run lets a run that never reports usage count
+ * as missing, while a record that arrives later (or earlier) for the same run
+ * key reconciles that row instead of counting the run twice. Runs that failed
+ * or were cancelled are not counted, as v26 never reported a step for them.
+ */
+export function parseUnreportedModelRun(
+  type: string,
+  payload: unknown,
+  scope?: unknown,
+): ModelStepUsage | null {
+  if (type !== "model.settled" || !isEveRecord(payload) || payload.outcome !== "completed") {
+    return null;
+  }
+  const scopeRecord = isEveRecord(scope) ? scope : null;
+  const runId =
+    typeof payload.runId === "string" && payload.runId.length > 0
+      ? payload.runId
+      : typeof scopeRecord?.runId === "string" && scopeRecord.runId.length > 0
+        ? scopeRecord.runId
+        : null;
+  if (runId === null) return null;
+  const runKey = `run:${runId}`;
+  return {
+    turnId:
+      typeof scopeRecord?.turnId === "string" && scopeRecord.turnId.length > 0
+        ? scopeRecord.turnId
+        : runKey,
+    stepIndex: null,
+    runKey,
+    finishReason: typeof payload.finishReason === "string" ? payload.finishReason : null,
+    ...usageFields(null),
+  };
+}
+
 function parseUsageRecorded(payload: unknown, scope: unknown): ModelStepUsage | null {
   if (!isEveRecord(payload)) return null;
   const owner = isEveRecord(payload.owner) ? payload.owner : null;
