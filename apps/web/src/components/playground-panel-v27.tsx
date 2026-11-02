@@ -11,7 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { SessionNotActiveError } from "eve/client";
-import { activeTurn, interactions } from "eve/events";
+import { activeTurn } from "eve/events";
 import { useEveAgent, type Interaction } from "eve/react";
 import { BotIcon, ShieldIcon } from "lucide-react";
 import {
@@ -130,7 +130,6 @@ export function PlaygroundPanelV27({ projectId, eveVersion }: PlaygroundPanelPro
   const isBusy = agent.status === "busy";
   const isResuming = agent.status === "resuming";
   const turnIsOpen = activeTurn(agent.view) !== undefined;
-  const viewInteractions = interactions(agent.view);
   const versionError = eveVersion.supported
     ? null
     : `Detected Eve ${eveVersion.version ?? "Unknown"}; Eveland requires ${eveVersion.expected}. Upgrade the project's eve dependency before deploying.`;
@@ -288,7 +287,7 @@ export function PlaygroundPanelV27({ projectId, eveVersion }: PlaygroundPanelPro
             agent.messages.map((message, index) => (
               <AgentMessageV27
                 canRespond={(interaction) => canAnswerInteraction(agent.status, interaction)}
-                interactions={viewInteractions}
+                view={agent.view}
                 isStreaming={turnIsOpen && index === agent.messages.length - 1}
                 key={message.id}
                 message={message}

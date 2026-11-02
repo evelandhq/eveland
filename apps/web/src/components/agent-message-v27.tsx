@@ -8,6 +8,7 @@
 // renderer (`agent-message-v26.tsx`) so the two Playgrounds look alike.
 
 import type { EveMessage, EveMessagePart, EveToolPart, Interaction } from "eve/react";
+import { interactions, openInteractions } from "eve/events";
 import { useEffect, useState } from "react";
 import {
   ArrowRightIcon,
@@ -52,41 +53,58 @@ export type AgentAnswer = {
 type AnswerHandler = (answers: readonly AgentAnswer[]) => void | Promise<void>;
 type EveFilePart = Extract<EveMessagePart, { type: "file" }>;
 
+type SessionView = Parameters<typeof openInteractions>[0];
+
 /**
- * Every question one tool call asks. A call can ask several at once (parallel
- * `ctx.ask`), and eve 1.0 keeps only the newest call-owned request on the
- * message part, so the session view's interactions are the source of truth
- * (as the v26 Playground did with `questionsForCall`). The part's own request
- * is kept should the view not carry it yet.
+ * Every question one tool call asks, oldest first. A call can ask several at
+ * once (parallel `ctx.ask`), directly or relayed from a child session, and eve
+ * 1.0 keeps only the newest on the message part, so the session view is the
+ * source of truth (as the v26 Playground did with `questionsForCall`).
+ *
+ * Open questions are selected by ownership, `openInteractions(view, { about })`:
+ * a relayed question's display `call` is the child's call that asked it
+ * (`origin.call`), not this part's call. A settled question carries no owner
+ * in the view, so it is matched by this part's call (asked directly) or by the
+ * call that asked the part's own request (relayed through the same child call).
+ * The part's own request is kept should the view not carry it yet.
  */
 export function questionsForCall(
-  interactions: readonly Interaction[],
+  view: SessionView | undefined,
   part: Pick<EveToolPart, "callId" | "interaction">,
 ): readonly Interaction[] {
-  const asked = interactions.filter(
-    (interaction) =>
-      interaction.request.kind === "question" && interaction.call?.callId === part.callId,
+  const own = part.interaction?.request.kind === "question" ? part.interaction : undefined;
+  if (view === undefined) return own ? [own] : [];
+  const open = new Set(
+    openInteractions(view, { kind: "question", about: { callId: part.callId } }).map(
+      (interaction) => interaction.interactionId,
+    ),
   );
-  const own = part.interaction;
-  return own?.request.kind === "question" &&
-    !asked.some((interaction) => interaction.interactionId === own.interactionId)
+  const askingCalls = new Set([part.callId, ...(own?.call ? [own.call.callId] : [])]);
+  const asked = interactions(view).filter(
+    (interaction) =>
+      interaction.request.kind === "question" &&
+      (open.has(interaction.interactionId) ||
+        interaction.interactionId === own?.interactionId ||
+        (interaction.call !== undefined && askingCalls.has(interaction.call.callId))),
+  );
+  return own && !asked.some((interaction) => interaction.interactionId === own.interactionId)
     ? [...asked, own]
     : asked;
 }
 
 export function AgentMessageV27({
   canRespond,
-  interactions = [],
   isStreaming,
   message,
   onAnswers,
+  view,
 }: {
   readonly canRespond: (interaction: Interaction) => boolean;
-  /** The session view's interactions, from `interactions(view)`. */
-  readonly interactions?: readonly Interaction[];
   readonly isStreaming: boolean;
   readonly message: EveMessage;
   readonly onAnswers: AnswerHandler;
+  /** The session view, the source of truth for every question a call asks. */
+  readonly view?: SessionView;
 }) {
   const lastTextIndex = message.parts.reduce(
     (last, part, index) => (part.type === "text" ? index : last),
@@ -106,11 +124,11 @@ export function AgentMessageV27({
           hasAssistantText && part.type === "reasoning" ? null : (
             <AgentMessagePart
               canRespond={canRespond}
-              interactions={interactions}
               key={partKey(part, index)}
               onAnswers={onAnswers}
               part={part}
               showCaret={isStreaming && message.role === "assistant" && index === lastTextIndex}
+              view={view}
             />
           ),
         )}
@@ -121,16 +139,16 @@ export function AgentMessageV27({
 
 function AgentMessagePart({
   canRespond,
-  interactions,
   onAnswers,
   part,
   showCaret,
+  view,
 }: {
   readonly canRespond: (interaction: Interaction) => boolean;
-  readonly interactions: readonly Interaction[];
   readonly onAnswers: AnswerHandler;
   readonly part: EveMessagePart;
   readonly showCaret: boolean;
+  readonly view: SessionView | undefined;
 }) {
   switch (part.type) {
     case "text":
@@ -151,7 +169,7 @@ function AgentMessagePart({
     case "tool":
       // A task control (`eve__task_wait` and friends) is plumbing, not activity.
       if (part.kind === "control") return null;
-      const questions = questionsForCall(interactions, part);
+      const questions = questionsForCall(view, part);
       if (questions.length === 0) {
         return <ToolCallPart canRespond={canRespond} onAnswers={onAnswers} part={part} />;
       }
