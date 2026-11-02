@@ -9,7 +9,7 @@
 
 import type { EveMessage, EveMessagePart, EveToolPart, Interaction } from "eve/react";
 import { interactions, openInteractions } from "eve/events";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRightIcon,
   CheckCircleIcon,
@@ -56,36 +56,44 @@ type EveFilePart = Extract<EveMessagePart, { type: "file" }>;
 type SessionView = Parameters<typeof openInteractions>[0];
 
 /**
+ * The open questions a call owns: eve's ownership selector, which follows a
+ * relayed question to the parent call it belongs to (`subject.callId`) rather
+ * than the child's asking call it displays (`origin.call`).
+ */
+export function ownedOpenQuestionIds(view: SessionView, callId: string): readonly string[] {
+  return openInteractions(view, { kind: "question", about: { callId } }).map(
+    (interaction) => interaction.interactionId,
+  );
+}
+
+/**
  * Every question one tool call asks, oldest first. A call can ask several at
  * once (parallel `ctx.ask`), directly or relayed from a child session, and eve
  * 1.0 keeps only the newest on the message part, so the session view is the
  * source of truth (as the v26 Playground did with `questionsForCall`).
  *
- * Open questions are selected by ownership, `openInteractions(view, { about })`:
- * a relayed question's display `call` is the child's call that asked it
- * (`origin.call`), not this part's call. A settled question carries no owner
- * in the view, so it is matched by this part's call (asked directly) or by the
- * call that asked the part's own request (relayed through the same child call).
- * The part's own request is kept should the view not carry it yet.
+ * Every attribution comes from ownership, never from a display call id: a
+ * relayed question displays its child's call, whose id is unique only inside
+ * that child session, so two children can share one. The view names no owner
+ * for a settled question, so one stays listed only when it is the part's own
+ * request or `owned` holds it, the questions this call was seen owning while
+ * they were open. A question that settled before it was ever seen open, other
+ * than the part's own, is left out rather than risk the wrong call.
  */
 export function questionsForCall(
   view: SessionView | undefined,
   part: Pick<EveToolPart, "callId" | "interaction">,
+  owned: ReadonlySet<string> = new Set(),
 ): readonly Interaction[] {
   const own = part.interaction?.request.kind === "question" ? part.interaction : undefined;
   if (view === undefined) return own ? [own] : [];
-  const open = new Set(
-    openInteractions(view, { kind: "question", about: { callId: part.callId } }).map(
-      (interaction) => interaction.interactionId,
-    ),
-  );
-  const askingCalls = new Set([part.callId, ...(own?.call ? [own.call.callId] : [])]);
+  const ids = new Set([
+    ...ownedOpenQuestionIds(view, part.callId),
+    ...owned,
+    ...(own ? [own.interactionId] : []),
+  ]);
   const asked = interactions(view).filter(
-    (interaction) =>
-      interaction.request.kind === "question" &&
-      (open.has(interaction.interactionId) ||
-        interaction.interactionId === own?.interactionId ||
-        (interaction.call !== undefined && askingCalls.has(interaction.call.callId))),
+    (interaction) => interaction.request.kind === "question" && ids.has(interaction.interactionId),
   );
   return own && !asked.some((interaction) => interaction.interactionId === own.interactionId)
     ? [...asked, own]
@@ -169,26 +177,13 @@ function AgentMessagePart({
     case "tool":
       // A task control (`eve__task_wait` and friends) is plumbing, not activity.
       if (part.kind === "control") return null;
-      const questions = questionsForCall(view, part);
-      if (questions.length === 0) {
-        return <ToolCallPart canRespond={canRespond} onAnswers={onAnswers} part={part} />;
-      }
-      // Keyed by interaction so a newer question never inherits another's
-      // local form state.
       return (
-        <>
-          {part.interaction?.request.kind === "approval" ? (
-            <ToolCallPart canRespond={canRespond} onAnswers={onAnswers} part={part} />
-          ) : null}
-          {questions.map((question) => (
-            <QuestionRequest
-              canRespond={canRespond(question)}
-              interaction={question}
-              key={question.interactionId}
-              onAnswers={onAnswers}
-            />
-          ))}
-        </>
+        <ToolPartWithQuestions
+          canRespond={canRespond}
+          onAnswers={onAnswers}
+          part={part}
+          view={view}
+        />
       );
     case "interaction":
       if (part.request.kind === "sign-in") return <SignInPrompt interaction={part} />;
@@ -333,6 +328,46 @@ export function outcomeLabel(interaction: Interaction): string {
     default:
       return `Not decided (${interaction.outcome})`;
   }
+}
+
+function ToolPartWithQuestions({
+  canRespond,
+  onAnswers,
+  part,
+  view,
+}: {
+  readonly canRespond: (interaction: Interaction) => boolean;
+  readonly onAnswers: AnswerHandler;
+  readonly part: EveToolPart;
+  readonly view: SessionView | undefined;
+}) {
+  // The questions this call was seen owning while open, so one that settles
+  // keeps its place under the call (the view stops naming its owner).
+  const owned = useRef(new Set<string>());
+  if (view !== undefined) {
+    for (const id of ownedOpenQuestionIds(view, part.callId)) owned.current.add(id);
+  }
+  const questions = questionsForCall(view, part, owned.current);
+  if (questions.length === 0) {
+    return <ToolCallPart canRespond={canRespond} onAnswers={onAnswers} part={part} />;
+  }
+  // Keyed by interaction so a newer question never inherits another's local
+  // form state.
+  return (
+    <>
+      {part.interaction?.request.kind === "approval" ? (
+        <ToolCallPart canRespond={canRespond} onAnswers={onAnswers} part={part} />
+      ) : null}
+      {questions.map((question) => (
+        <QuestionRequest
+          canRespond={canRespond(question)}
+          interaction={question}
+          key={question.interactionId}
+          onAnswers={onAnswers}
+        />
+      ))}
+    </>
+  );
 }
 
 function QuestionRequest({

@@ -7,7 +7,12 @@ import { openInteractions } from "eve/events";
 import type { EveVersionInfo } from "@/lib/api";
 import { describe, expect, test, vi } from "vitest";
 
-import { AgentMessageV27, outcomeLabel, toolHeaderState } from "./agent-message-v27";
+import {
+  AgentMessageV27,
+  outcomeLabel,
+  questionsForCall,
+  toolHeaderState,
+} from "./agent-message-v27";
 import { playgroundProtocolFor } from "./playground-panel";
 import { canAnswerInteraction } from "./playground-panel-v27";
 
@@ -280,6 +285,168 @@ describe("AgentMessageV27 with several questions from one call", () => {
       expect(inputs.map((input) => input.disabled)).toEqual([false, true]);
     });
   }
+});
+
+describe("questions relayed from separate child sessions", () => {
+  // Two agent calls in one parent session, each relaying a question from its
+  // own child session, and both child sessions name their asking call
+  // `call_0`: a child-local id, unique only inside its own session.
+  function twoChildrenSharingACallId(settled: readonly string[] = []) {
+    let line = 0;
+    const fact = (type: string, data: unknown, scope?: unknown) => ({
+      type,
+      data,
+      scope,
+      meta: {
+        at: "2026-11-02T00:00:00.000Z",
+        position: { line: line++, index: 0 },
+        endOfLine: true,
+      },
+    });
+    const store = new SessionStore({
+      initialEvents: [
+        fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } }),
+        fact(
+          "turn.started",
+          { turnId: "t", cause: { deliveryId: "d" }, follows: null },
+          { turnId: "t" },
+        ),
+        fact("model.requested", { runId: "r", owner: { turnId: "t" } }, { turnId: "t" }),
+        ...["A", "B"].flatMap((child) => [
+          fact(
+            "call.requested",
+            {
+              callId: `parent-${child}`,
+              owner: { runId: "r" },
+              capability: { kind: "agent", name: `child-${child}` },
+              input: {},
+            },
+            { turnId: "t", runId: "r" },
+          ),
+          fact(
+            "interaction.opened",
+            {
+              interactionId: `question-${child}`,
+              subject: { callId: `parent-${child}` },
+              origin: {
+                sessionId: `session-${child}`,
+                interactionId: "q",
+                call: { callId: "call_0", name: "questions", input: {} },
+              },
+              request: { kind: "question", prompt: `Question for ${child}`, allowFreeform: true },
+            },
+            { turnId: "t" },
+          ),
+        ]),
+        ...settled.map((interactionId) =>
+          fact(
+            "interaction.settled",
+            { interactionId, outcome: "accepted", answer: { interactionId, text: "done" } },
+            { turnId: "t" },
+          ),
+        ),
+      ] as never,
+    });
+    const part = (callId: string) =>
+      store.snapshot.messages[0]!.parts.find(
+        (candidate): candidate is EveToolPart =>
+          candidate.type === "tool" && candidate.callId === callId,
+      )!;
+    return { view: store.snapshot.view, part };
+  }
+
+  for (const settled of [[], ["question-A", "question-B"]]) {
+    test(`each parent call keeps only its own questions (${settled.length ? "settled" : "open"})`, () => {
+      const { view, part } = twoChildrenSharingACallId(settled);
+      if (settled.length === 0) {
+        // eve's ownership selector isolates the parents; the helper must too.
+        expect(
+          openInteractions(view, { kind: "question", about: { callId: "parent-A" } }).map(
+            (interaction) => interaction.interactionId,
+          ),
+        ).toEqual(["question-A"]);
+      }
+      expect(questionsForCall(view, part("parent-A")).map((q) => q.interactionId)).toEqual([
+        "question-A",
+      ]);
+      expect(questionsForCall(view, part("parent-B")).map((q) => q.interactionId)).toEqual([
+        "question-B",
+      ]);
+    });
+  }
+});
+
+describe("a question that settles while the page watches", () => {
+  test("stays under the call that owned it while it was open", () => {
+    // One call asks two questions; the first is answered while the second is
+    // still open. The part now carries only the second, and the view no
+    // longer says who owns the settled first: the page remembers it.
+    let line = 0;
+    const fact = (type: string, data: unknown, scope?: unknown) => ({
+      type,
+      data,
+      scope,
+      meta: {
+        at: "2026-11-02T00:00:00.000Z",
+        position: { line: line++, index: 0 },
+        endOfLine: true,
+      },
+    });
+    const opened = [
+      fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } }),
+      fact(
+        "turn.started",
+        { turnId: "t", cause: { deliveryId: "d" }, follows: null },
+        { turnId: "t" },
+      ),
+      fact("model.requested", { runId: "r", owner: { turnId: "t" } }, { turnId: "t" }),
+      fact(
+        "call.requested",
+        { callId: "c", owner: { runId: "r" }, capability: { kind: "tool", name: "q" }, input: {} },
+        { turnId: "t", runId: "r" },
+      ),
+      ...["first", "second"].map((id) =>
+        fact(
+          "interaction.opened",
+          {
+            interactionId: id,
+            subject: { callId: "c" },
+            request: { kind: "question", prompt: `${id} question`, allowFreeform: true },
+          },
+          { turnId: "t" },
+        ),
+      ),
+    ];
+    const before = new SessionStore({ initialEvents: opened as never }).snapshot;
+    const after = new SessionStore({
+      initialEvents: [
+        ...opened,
+        fact(
+          "interaction.settled",
+          {
+            interactionId: "first",
+            outcome: "accepted",
+            answer: { interactionId: "first", text: "1" },
+          },
+          { turnId: "t" },
+        ),
+      ] as never,
+    }).snapshot;
+    const props = {
+      canRespond: (i: Interaction) => i.status === "open",
+      isStreaming: true,
+      onAnswers: vi.fn(),
+    };
+    const { rerender } = render(
+      <AgentMessageV27 {...props} message={before.messages[0]!} view={before.view} />,
+    );
+    rerender(<AgentMessageV27 {...props} message={after.messages[0]!} view={after.view} />);
+
+    expect(screen.getByText("first question")).toBeTruthy();
+    expect(screen.getByText("second question")).toBeTruthy();
+    const inputs = screen.getAllByRole("textbox", { name: "Answer" }) as HTMLTextAreaElement[];
+    expect(inputs.map((input) => input.disabled)).toEqual([true, false]);
+  });
 });
 
 describe("v27 Playground helpers", () => {
