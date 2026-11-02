@@ -10,6 +10,7 @@
 // turn (or the submission still pending when it was called).
 
 import { useEffect, useRef, useState } from "react";
+import { SessionNotActiveError } from "eve/client";
 import { activeTurn } from "eve/events";
 import { useEveAgent, type Interaction } from "eve/react";
 import { BotIcon, ShieldIcon } from "lucide-react";
@@ -88,7 +89,6 @@ export function PlaygroundPanelV27({ projectId, eveVersion }: PlaygroundPanelPro
   const [composerError, setComposerError] = useState<string | null>(null);
   const [hasInputText, setHasInputText] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const activeTurnAbortController = useRef<AbortController | null>(null);
   const resumedPendingTurn = useRef(false);
   // The peek is a render-safe read of the turn stashed before a route-auth
   // redirect; the destructive claim happens in the ref-guarded effect below.
@@ -152,8 +152,6 @@ export function PlaygroundPanelV27({ projectId, eveVersion }: PlaygroundPanelPro
     message: PendingPlaygroundMessage,
     operationIdOverride?: string,
   ) {
-    const abortController = new AbortController();
-    activeTurnAbortController.current = abortController;
     pendingRouteAuthTurn.current = message;
     const create = sessionStateRef.current
       ? null
@@ -166,10 +164,10 @@ export function PlaygroundPanelV27({ projectId, eveVersion }: PlaygroundPanelPro
       // A message sent while a turn runs steers it, eve 1.0's default.
       // The Playground composes only text and data-URL file parts, which eve
       // 1.0's MessageContent accepts as they are.
-      await agent.send(message as Parameters<typeof agent.send>[0], {
-        signal: abortController.signal,
-        ...(create ? { headers: { [PLAYGROUND_OPERATION_ID_HEADER]: create.operationId } } : {}),
-      });
+      await agent.send(
+        message as Parameters<typeof agent.send>[0],
+        create ? { headers: { [PLAYGROUND_OPERATION_ID_HEADER]: create.operationId } } : undefined,
+      );
       if (create) resolvePendingCreate();
     } catch (sendError) {
       if (create) {
@@ -181,9 +179,6 @@ export function PlaygroundPanelV27({ projectId, eveVersion }: PlaygroundPanelPro
       }
       throw sendError;
     } finally {
-      if (activeTurnAbortController.current === abortController) {
-        activeTurnAbortController.current = null;
-      }
       pendingRouteAuthTurn.current = null;
     }
   }
@@ -248,14 +243,17 @@ export function PlaygroundPanelV27({ projectId, eveVersion }: PlaygroundPanelPro
     if (isCancelling) return;
     setComposerError(null);
     setIsCancelling(true);
-    // Before the session exists there is no turn to cancel durably, so stop
-    // the local request; afterwards, eve cancels the observed turn (or the
-    // submission that was pending when Stop was pressed).
-    const cancellation = sessionStateRef.current
-      ? agent.cancel().then(() => undefined)
-      : Promise.resolve(activeTurnAbortController.current?.abort());
-    void cancellation
+    // Always cancel through eve, never by aborting the request: a pending
+    // create may already have been accepted, and eve's cancel waits for that
+    // submission's turn before sending the canonical cancellation, keeping
+    // the stream attached until the turn settles. A first create that never
+    // produced a session leaves nothing to cancel; its own failure is what
+    // the composer reports.
+    void agent
+      .cancel()
+      .then(() => undefined)
       .catch((cancelError) => {
+        if (cancelError instanceof SessionNotActiveError) return;
         setComposerError(toErrorMessage(cancelError));
       })
       .finally(() => {
@@ -289,6 +287,7 @@ export function PlaygroundPanelV27({ projectId, eveVersion }: PlaygroundPanelPro
             agent.messages.map((message, index) => (
               <AgentMessageV27
                 canRespond={(interaction) => canAnswerInteraction(agent.status, interaction)}
+                view={agent.view}
                 isStreaming={turnIsOpen && index === agent.messages.length - 1}
                 key={message.id}
                 message={message}

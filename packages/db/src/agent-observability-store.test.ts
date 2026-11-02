@@ -1022,6 +1022,144 @@ describe("v27 (eve 0.84+) observations", () => {
     expect(session).toMatchObject({ status: "failed", error: "agent gave up" });
   });
 
+  test("attributes each v27 run's usage to its observed model, not the configured one", async () => {
+    // Two runs on one node, each answered by a different real model, neither
+    // of which is the configured one: the configured-model fallback must not
+    // be what makes the usage rows look right.
+    const { store, projectId, deploymentId } = await createStore();
+    const scope = (runId: string) => ({ turnId: "turn_1", runId });
+    await store.ingestAgentEvent(
+      v27(deploymentId, 0, 0, {
+        type: "session.started",
+        data: { runtime: { agentId: "a", agentName: "root", eveVersion: "1.0.0-rc.1" } },
+      }),
+    );
+    let line = 1;
+    for (const [runId, observed] of [
+      ["run_1", "actual/first"],
+      ["run_2", "actual/second"],
+    ] as const) {
+      await store.ingestAgentEvent(
+        v27(deploymentId, line++, 0, {
+          type: "model.started",
+          scope: scope(runId),
+          data: { runId, modelId: "manifest/model" },
+        }),
+      );
+      await store.ingestAgentEvent(
+        v27(
+          deploymentId,
+          line++,
+          0,
+          {
+            type: "usage.recorded",
+            scope: scope(runId),
+            data: {
+              kind: "model",
+              owner: { runId },
+              usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+            },
+          },
+          { observedModel: { modelId: observed, responseModelId: `${observed}-2026` } },
+        ),
+      );
+    }
+
+    const [session] = await store.listSessions(projectId);
+    const usage = await store.listModelUsageEvents(session!.id);
+    expect(usage.map((row) => row.modelId).sort()).toEqual(["actual/first", "actual/second"]);
+    const [node] = await store.listSessionNodes(session!.id);
+    expect(node?.observedModelId).toBe("actual/second");
+  });
+
+  test("counts a v27 model run with no usage record as missing", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    const scope = (runId: string) => ({ turnId: "t", runId });
+    const events = [
+      { type: "model.started", scope: scope("r1"), data: { runId: "r1", modelId: "openai/test" } },
+      { type: "model.settled", scope: scope("r1"), data: { runId: "r1", outcome: "completed" } },
+      {
+        type: "usage.recorded",
+        scope: scope("r1"),
+        data: {
+          kind: "model",
+          owner: { runId: "r1" },
+          usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        },
+      },
+      { type: "model.started", scope: scope("r2"), data: { runId: "r2", modelId: "openai/test" } },
+      { type: "model.settled", scope: scope("r2"), data: { runId: "r2", outcome: "completed" } },
+      { type: "turn.settled", scope: { turnId: "t" }, data: { turnId: "t", outcome: "completed" } },
+    ];
+    for (const [line, event] of events.entries()) {
+      await store.ingestAgentEvent(v27(deploymentId, line, 0, event));
+    }
+    const [session] = await store.listSessions(projectId);
+    expect(session?.usage).toMatchObject({ status: "partial", reportedSteps: 1, missingSteps: 1 });
+  });
+
+  test("reconciles v27 missing usage with late, early, and replayed records without double counting", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    const scope = (runId: string) => ({ turnId: "t", runId });
+    const settled = (runId: string) => ({
+      type: "model.settled",
+      scope: scope(runId),
+      data: { runId, outcome: "completed", finishReason: "stop" },
+    });
+    const recorded = (runId: string, inputTokens: number) => ({
+      type: "usage.recorded",
+      scope: scope(runId),
+      data: {
+        kind: "model",
+        owner: { runId },
+        usage: { inputTokens, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      },
+    });
+    const usageOf = async () => (await store.listSessions(projectId))[0]?.usage;
+
+    // r1 settles and is counted missing until its record arrives late.
+    await store.ingestAgentEvent(v27(deploymentId, 1, 0, settled("r1")));
+    expect(await usageOf()).toMatchObject({ status: "missing", reportedSteps: 0, missingSteps: 1 });
+    await store.ingestAgentEvent(
+      v27(deploymentId, 9, 0, recorded("r1", 10), {
+        observedModel: { modelId: "actual/model", responseModelId: null },
+      }),
+    );
+    expect(await usageOf()).toMatchObject({
+      status: "reported",
+      reportedSteps: 1,
+      missingSteps: 0,
+      inputTokens: 10,
+    });
+
+    // r2's record arrives before its settlement: the settlement adds nothing.
+    await store.ingestAgentEvent(v27(deploymentId, 10, 0, recorded("r2", 20)));
+    await store.ingestAgentEvent(v27(deploymentId, 11, 0, settled("r2")));
+    expect(await usageOf()).toMatchObject({ reportedSteps: 2, missingSteps: 0, inputTokens: 30 });
+
+    // Replays (new delivery ids for the same facts) change nothing.
+    for (const [line, event] of [
+      [1, settled("r1")],
+      [9, recorded("r1", 10)],
+      [11, settled("r2")],
+    ] as const) {
+      await store.ingestAgentEvent(
+        v27(deploymentId, line, 0, event, { telemetryEventId: `replay_${line}` }),
+      );
+    }
+    expect(await usageOf()).toMatchObject({ reportedSteps: 2, missingSteps: 0, inputTokens: 30 });
+
+    const [session] = await store.listSessions(projectId);
+    const rows = await store.listModelUsageEvents(session!.id);
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.runKey === "run:r1")).toMatchObject({
+      usageReported: true,
+      modelId: "actual/model",
+      finishReason: "stop",
+      inputTokens: 10,
+    });
+  });
+
   test("classifies the v27 scheduler channel as a scheduled trigger", async () => {
     const { store, projectId, deploymentId } = await createStore();
     await store.ingestAgentEvent(

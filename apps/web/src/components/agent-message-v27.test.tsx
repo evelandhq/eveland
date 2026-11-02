@@ -2,10 +2,17 @@
 
 import type { EveMessage, EveMessagePart, EveToolPart, Interaction } from "eve/react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { SessionStore } from "eve/client";
+import { openInteractions } from "eve/events";
 import type { EveVersionInfo } from "@/lib/api";
 import { describe, expect, test, vi } from "vitest";
 
-import { AgentMessageV27, outcomeLabel, toolHeaderState } from "./agent-message-v27";
+import {
+  AgentMessageV27,
+  outcomeLabel,
+  questionsForCall,
+  toolHeaderState,
+} from "./agent-message-v27";
 import { playgroundProtocolFor } from "./playground-panel";
 import { canAnswerInteraction } from "./playground-panel-v27";
 
@@ -152,6 +159,293 @@ describe("AgentMessageV27", () => {
     ]);
     expect(screen.queryByRole("button", { name: /eve__task_wait/ })).toBeNull();
     expect(container.textContent).toContain("Done.");
+  });
+});
+
+describe("AgentMessageV27 with several questions from one call", () => {
+  // Real eve 1.0 client snapshots: one call opens two questions, asked by the
+  // call itself or relayed from a child session's call. The message part keeps
+  // only the newest; the session view holds both. A relayed question's display
+  // call is the child's (`origin.call`), while it belongs to the parent call
+  // (`subject.callId`).
+  function twoQuestionsFromOneCall(options: { relayed?: boolean; newestAnswered?: boolean } = {}) {
+    let line = 0;
+    const fact = (type: string, data: Record<string, unknown>, scope?: Record<string, string>) => ({
+      type,
+      data,
+      scope,
+      meta: {
+        at: "2026-11-02T00:00:00.000Z",
+        position: { line: line++, index: 0 },
+        endOfLine: true,
+      },
+    });
+    const store = new SessionStore({
+      initialEvents: [
+        fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } }),
+        fact(
+          "turn.started",
+          { turnId: "t", cause: { deliveryId: "d" }, follows: null },
+          { turnId: "t" },
+        ),
+        fact("model.requested", { runId: "r", owner: { turnId: "t" } }, { turnId: "t" }),
+        fact(
+          "call.requested",
+          {
+            callId: "c",
+            owner: { runId: "r" },
+            capability: { kind: options.relayed ? "agent" : "tool", name: "questions" },
+            input: {},
+          },
+          { turnId: "t", runId: "r" },
+        ),
+        ...["first", "second"].map((id) =>
+          fact(
+            "interaction.opened",
+            {
+              interactionId: id,
+              subject: { callId: "c" },
+              ...(options.relayed
+                ? {
+                    origin: {
+                      sessionId: "child-session",
+                      interactionId: `child-${id}`,
+                      call: { callId: "child-call", name: "questions", input: {} },
+                    },
+                  }
+                : {}),
+              request: { kind: "question", prompt: `${id} question`, allowFreeform: true },
+            },
+            { turnId: "t" },
+          ),
+        ),
+        ...(options.newestAnswered
+          ? [
+              fact(
+                "interaction.settled",
+                {
+                  interactionId: "second",
+                  outcome: "accepted",
+                  answer: { interactionId: "second", text: "two" },
+                },
+                { turnId: "t" },
+              ),
+            ]
+          : []),
+      ] as never,
+    });
+    const { messages, view } = store.snapshot;
+    return { message: messages[0]!, view };
+  }
+
+  for (const relayed of [false, true]) {
+    const asked = relayed ? "relayed from a child call" : "asked by the call";
+    test(`renders every open question ${asked} and answers each by its own id`, async () => {
+      const { message, view } = twoQuestionsFromOneCall({ relayed });
+      expect(openInteractions(view)).toHaveLength(2);
+      const onAnswers = vi.fn();
+      render(
+        <AgentMessageV27
+          canRespond={(interaction) => interaction.status === "open"}
+          isStreaming
+          message={message}
+          onAnswers={onAnswers}
+          view={view}
+        />,
+      );
+
+      expect(screen.getByText("first question")).toBeTruthy();
+      expect(screen.getByText("second question")).toBeTruthy();
+      const [firstInput, secondInput] = screen.getAllByRole("textbox", { name: "Answer" });
+      fireEvent.change(firstInput!, { target: { value: "one" } });
+      // Each question keeps its own form state.
+      expect((secondInput as HTMLTextAreaElement).value).toBe("");
+      fireEvent.click(screen.getByRole("button", { name: "Answer" }));
+      // Answered with the parent session's interaction id, not the child's.
+      await waitFor(() =>
+        expect(onAnswers).toHaveBeenCalledWith([{ interactionId: "first", text: "one" }]),
+      );
+    });
+
+    test(`keeps an earlier open question ${asked} answerable after the newest was answered`, () => {
+      const { message, view } = twoQuestionsFromOneCall({ relayed, newestAnswered: true });
+      render(
+        <AgentMessageV27
+          canRespond={(interaction) => interaction.status === "open"}
+          isStreaming
+          message={message}
+          onAnswers={vi.fn()}
+          view={view}
+        />,
+      );
+
+      const inputs = screen.getAllByRole("textbox", { name: "Answer" }) as HTMLTextAreaElement[];
+      expect(screen.getByText("first question")).toBeTruthy();
+      expect(screen.getByText("second question")).toBeTruthy();
+      expect(inputs.map((input) => input.disabled)).toEqual([false, true]);
+    });
+  }
+});
+
+describe("questions relayed from separate child sessions", () => {
+  // Two agent calls in one parent session, each relaying a question from its
+  // own child session, and both child sessions name their asking call
+  // `call_0`: a child-local id, unique only inside its own session.
+  function twoChildrenSharingACallId(settled: readonly string[] = []) {
+    let line = 0;
+    const fact = (type: string, data: unknown, scope?: unknown) => ({
+      type,
+      data,
+      scope,
+      meta: {
+        at: "2026-11-02T00:00:00.000Z",
+        position: { line: line++, index: 0 },
+        endOfLine: true,
+      },
+    });
+    const store = new SessionStore({
+      initialEvents: [
+        fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } }),
+        fact(
+          "turn.started",
+          { turnId: "t", cause: { deliveryId: "d" }, follows: null },
+          { turnId: "t" },
+        ),
+        fact("model.requested", { runId: "r", owner: { turnId: "t" } }, { turnId: "t" }),
+        ...["A", "B"].flatMap((child) => [
+          fact(
+            "call.requested",
+            {
+              callId: `parent-${child}`,
+              owner: { runId: "r" },
+              capability: { kind: "agent", name: `child-${child}` },
+              input: {},
+            },
+            { turnId: "t", runId: "r" },
+          ),
+          fact(
+            "interaction.opened",
+            {
+              interactionId: `question-${child}`,
+              subject: { callId: `parent-${child}` },
+              origin: {
+                sessionId: `session-${child}`,
+                interactionId: "q",
+                call: { callId: "call_0", name: "questions", input: {} },
+              },
+              request: { kind: "question", prompt: `Question for ${child}`, allowFreeform: true },
+            },
+            { turnId: "t" },
+          ),
+        ]),
+        ...settled.map((interactionId) =>
+          fact(
+            "interaction.settled",
+            { interactionId, outcome: "accepted", answer: { interactionId, text: "done" } },
+            { turnId: "t" },
+          ),
+        ),
+      ] as never,
+    });
+    const part = (callId: string) =>
+      store.snapshot.messages[0]!.parts.find(
+        (candidate): candidate is EveToolPart =>
+          candidate.type === "tool" && candidate.callId === callId,
+      )!;
+    return { view: store.snapshot.view, part };
+  }
+
+  for (const settled of [[], ["question-A", "question-B"]]) {
+    test(`each parent call keeps only its own questions (${settled.length ? "settled" : "open"})`, () => {
+      const { view, part } = twoChildrenSharingACallId(settled);
+      if (settled.length === 0) {
+        // eve's ownership selector isolates the parents; the helper must too.
+        expect(
+          openInteractions(view, { kind: "question", about: { callId: "parent-A" } }).map(
+            (interaction) => interaction.interactionId,
+          ),
+        ).toEqual(["question-A"]);
+      }
+      expect(questionsForCall(view, part("parent-A")).map((q) => q.interactionId)).toEqual([
+        "question-A",
+      ]);
+      expect(questionsForCall(view, part("parent-B")).map((q) => q.interactionId)).toEqual([
+        "question-B",
+      ]);
+    });
+  }
+});
+
+describe("a question that settles while the page watches", () => {
+  test("stays under the call that owned it while it was open", () => {
+    // One call asks two questions; the first is answered while the second is
+    // still open. The part now carries only the second, and the view no
+    // longer says who owns the settled first: the page remembers it.
+    let line = 0;
+    const fact = (type: string, data: unknown, scope?: unknown) => ({
+      type,
+      data,
+      scope,
+      meta: {
+        at: "2026-11-02T00:00:00.000Z",
+        position: { line: line++, index: 0 },
+        endOfLine: true,
+      },
+    });
+    const opened = [
+      fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } }),
+      fact(
+        "turn.started",
+        { turnId: "t", cause: { deliveryId: "d" }, follows: null },
+        { turnId: "t" },
+      ),
+      fact("model.requested", { runId: "r", owner: { turnId: "t" } }, { turnId: "t" }),
+      fact(
+        "call.requested",
+        { callId: "c", owner: { runId: "r" }, capability: { kind: "tool", name: "q" }, input: {} },
+        { turnId: "t", runId: "r" },
+      ),
+      ...["first", "second"].map((id) =>
+        fact(
+          "interaction.opened",
+          {
+            interactionId: id,
+            subject: { callId: "c" },
+            request: { kind: "question", prompt: `${id} question`, allowFreeform: true },
+          },
+          { turnId: "t" },
+        ),
+      ),
+    ];
+    const before = new SessionStore({ initialEvents: opened as never }).snapshot;
+    const after = new SessionStore({
+      initialEvents: [
+        ...opened,
+        fact(
+          "interaction.settled",
+          {
+            interactionId: "first",
+            outcome: "accepted",
+            answer: { interactionId: "first", text: "1" },
+          },
+          { turnId: "t" },
+        ),
+      ] as never,
+    }).snapshot;
+    const props = {
+      canRespond: (i: Interaction) => i.status === "open",
+      isStreaming: true,
+      onAnswers: vi.fn(),
+    };
+    const { rerender } = render(
+      <AgentMessageV27 {...props} message={before.messages[0]!} view={before.view} />,
+    );
+    rerender(<AgentMessageV27 {...props} message={after.messages[0]!} view={after.view} />);
+
+    expect(screen.getByText("first question")).toBeTruthy();
+    expect(screen.getByText("second question")).toBeTruthy();
+    const inputs = screen.getAllByRole("textbox", { name: "Answer" }) as HTMLTextAreaElement[];
+    expect(inputs.map((input) => input.disabled)).toEqual([true, false]);
   });
 });
 

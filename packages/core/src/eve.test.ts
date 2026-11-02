@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 import * as Eve from "./eve.js";
-import { getEveString, isEveRecord, parseEveJsonObject, parseStepUsageEvent } from "./eve.js";
+import {
+  getEveString,
+  isEveRecord,
+  parseEveJsonObject,
+  parseStepUsageEvent,
+  parseUnreportedModelRun,
+} from "./eve.js";
 
 test("Eve wire helpers parse object payloads", () => {
   const parsed = parseEveJsonObject('{"sessionId":"eve_123","response":"hello"}');
@@ -9,6 +15,49 @@ test("Eve wire helpers parse object payloads", () => {
   expect(getEveString(parsed, "sessionId")).toBe("eve_123");
   expect(parseEveJsonObject("[]")).toBeNull();
   expect(parseEveJsonObject("not-json")).toBeNull();
+});
+
+describe("parseUnreportedModelRun", () => {
+  test("a completed v27 model run is a missing-usage candidate keyed by its run", () => {
+    expect(
+      parseUnreportedModelRun(
+        "model.settled",
+        { runId: "run_1", outcome: "completed", finishReason: "stop" },
+        { turnId: "turn_1", runId: "run_1" },
+      ),
+    ).toEqual({
+      turnId: "turn_1",
+      stepIndex: null,
+      runKey: "run:run_1",
+      finishReason: "stop",
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      costUsd: null,
+      usageReported: false,
+    });
+  });
+
+  test("takes the run from scope when the fact omits it", () => {
+    expect(
+      parseUnreportedModelRun(
+        "model.settled",
+        { outcome: "completed" },
+        { turnId: "t", runId: "r" },
+      )?.runKey,
+    ).toBe("run:r");
+  });
+
+  test("ignores runs that did not complete, other facts, and runs without an id", () => {
+    expect(
+      parseUnreportedModelRun("model.settled", { runId: "r", outcome: "failed" }, { turnId: "t" }),
+    ).toBeNull();
+    expect(
+      parseUnreportedModelRun("model.started", { runId: "r", outcome: "completed" }, {}),
+    ).toBeNull();
+    expect(parseUnreportedModelRun("model.settled", { outcome: "completed" }, {})).toBeNull();
+  });
 });
 
 describe("parseStepUsageEvent", () => {

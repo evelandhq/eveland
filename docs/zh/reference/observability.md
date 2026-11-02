@@ -354,7 +354,9 @@ eve_session_id)` 与 SessionNode 的同名对一样是唯一索引，两条存�
 - Observability 不是计费账本；usage 只采用 Eve/provider 实际报告的值，缺失保持缺失。Eve 0.83 上一行用量对应一个 `step.completed`（按 Turn 与 Step 去重）；Eve 1.0 上对应一个由
   Model Run 或 Context Change 拥有的 `usage.recorded`（按 `run_key` 去重）。由 Call 拥有的 v27 记录
   是在重报子 Session 已记录的花费，因此只由子 Session 计入；v27 会把缺失的 Token 数填为零，
-  所以 1.0 上的用量缺失表现为某个 Model Run 完全没有记录。
+  所以 1.0 上的用量缺失表现为某个 Model Run 完全没有记录。已完成的 Model Run 自其
+  `model.settled` 起计为缺失，直到其记录到达；记录随后填充同一 `run_key` 行，无论两者谁先送达，
+  一次 Run 都不会被重复计数。失败或被取消的 Run 不计入。
 - 窗口跨越两套 Session 协议，因此 Observer、投影、Session 回放与 Trace 同时读取 v26 与 v27
   两套词汇。在 Eve 1.0 上未处理的 Hook 错误会让正在运行的 Turn 失败；注入的 Hook 会捕获每个
   遥测失败，因此对 Eveland 没有影响。

@@ -111,6 +111,7 @@ export function createPrivateAgentTelemetryRuntime(input: {
     }
     const sessionId = asString(context.session?.id);
     if (!sessionId) return;
+    let observedModel: ObservedModelCall | undefined;
     const correlatedSpan = mapAgentTelemetryLifecycleV27({
       eventType,
       data,
@@ -123,6 +124,9 @@ export function createPrivateAgentTelemetryRuntime(input: {
       now,
       capture: policy.capture,
       modelCapture,
+      onObservedModel: (observed) => {
+        observedModel = observed;
+      },
     });
     emitAgentTelemetryEventLog({
       eventType,
@@ -132,6 +136,7 @@ export function createPrivateAgentTelemetryRuntime(input: {
       correlatedSpan,
       logger: providers.logger,
       policy,
+      observedModel,
     });
   }
 
