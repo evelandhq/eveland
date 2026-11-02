@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.21.0](https://github.com/evelandhq/eveland/compare/eveland-v0.20.0...eveland-v0.21.0) (2026-11-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* Agents built against eve 0.81.x are no longer supported; upgrade them to eve 0.83.x or 1.0.x and rebuild.
+
+### Features
+
+* adopt eve 1.0.0-rc.1 with a {0.83.x, 1.0.x} window spanning the v27 session protocol, retiring 0.81 ([658dd8d](https://github.com/evelandhq/eveland/commit/658dd8d4403bd8e12f9f86cf1763113af65ee957))
+
 ## [0.20.0](https://github.com/evelandhq/eveland/compare/eveland-v0.19.0...eveland-v0.20.0) (2026-10-27)
 
 
