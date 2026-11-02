@@ -440,6 +440,14 @@ describe("Eve compatibility repository contract", () => {
       // carry the real verified version literal — `catalog:` is a fixture-only
       // marker the platform's specifier grammar rejects.
       const isTemplate = /^templates\/[^/]+\/package\.json$/.test(packagePath);
+      // Staged exception: a template installs the `eveland` SDK from the
+      // registry at build time, and no published SDK yet peers on eve 1.0
+      // (every release up to 0.20.0 declares `<1.0.0`), so a template on the
+      // 1.0 line cannot be installed. Templates stay on the previous line's
+      // verified version until the SDK release carrying the widened
+      // eve-sdk-peer range ships; the PR that moves the starter template to
+      // that SDK and to the latest line deletes this exception.
+      const templateLine = EVE_COMPATIBILITY_POLICY.supportedLines.at(-2) ?? latestLine;
       for (const dependencies of [packageJson.dependencies, packageJson.devDependencies]) {
         for (const dependencyName of Object.keys(dependencies ?? {}).filter((name) =>
           matrixDependencyNames.has(name),
@@ -455,7 +463,7 @@ describe("Eve compatibility repository contract", () => {
           }
           expect(dependencies?.[dependencyName], packagePath).toBe(
             isTemplate
-              ? latestLine!.verifiedVersion
+              ? templateLine!.verifiedVersion
               : isWorkspacePackage
                 ? dependencyName === "eve"
                   ? isPublishedSdk
