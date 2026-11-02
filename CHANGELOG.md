@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.66.2](https://github.com/evelandhq/eveland/compare/v0.66.1...v0.66.2) (2026-11-02)
+
+
+### Bug Fixes
+
+* distinguish idle sessions from pending human input ([#618](https://github.com/evelandhq/eveland/issues/618)) ([e28d991](https://github.com/evelandhq/eveland/commit/e28d991c270749c5accf7d14d13c6ac44c8c1750))
+
 ## [0.66.1](https://github.com/evelandhq/eveland/compare/v0.66.0...v0.66.1) (2026-11-02)
 
 
