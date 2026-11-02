@@ -4,6 +4,23 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.66.0](https://github.com/evelandhq/eveland/compare/v0.65.0...v0.66.0) (2026-11-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* Agents built against eve 0.81.x are no longer supported; upgrade them to eve 0.83.x or 1.0.x and rebuild.
+
+### Features
+
+* adopt eve 1.0.0-rc.1 with a {0.83.x, 1.0.x} window spanning the v27 session protocol, retiring 0.81 ([658dd8d](https://github.com/evelandhq/eveland/commit/658dd8d4403bd8e12f9f86cf1763113af65ee957))
+* move the starter template to eve 1.0.0-rc.1 and eveland 0.21.0 ([6909ea0](https://github.com/evelandhq/eveland/commit/6909ea0fd989fbf2e859b5235b140b1de3839758))
+
+
+### Bug Fixes
+
+* **worker:** name the app group explicitly when chowning deployment trees ([#607](https://github.com/evelandhq/eveland/issues/607)) ([666b75b](https://github.com/evelandhq/eveland/commit/666b75babc8ec7f61063b07b209598098d910f80))
+
 ## [0.65.0](https://github.com/evelandhq/eveland/compare/v0.64.0...v0.65.0) (2026-10-27)
 
 
