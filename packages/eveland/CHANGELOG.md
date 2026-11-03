@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.0](https://github.com/evelandhq/eveland/compare/eveland-v0.21.0...eveland-v0.22.0) (2026-11-03)
+
+
+### Features
+
+* move the verified eve 1.0 patch to 1.0.0-rc.2 ([#621](https://github.com/evelandhq/eveland/issues/621)) ([e57832b](https://github.com/evelandhq/eveland/commit/e57832bf89d38321712ff1c291add6b24743c34f))
+* route Agent model calls through a platform Model Gateway ([#620](https://github.com/evelandhq/eveland/issues/620)) ([95e5444](https://github.com/evelandhq/eveland/commit/95e544450f54f218619f796b8dc3c48bc3f3ae95))
+
 ## [0.21.0](https://github.com/evelandhq/eveland/compare/eveland-v0.20.0...eveland-v0.21.0) (2026-11-02)
 
 
