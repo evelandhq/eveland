@@ -66,6 +66,16 @@ describe("liteLlmManagementRoot", () => {
     );
     expect(liteLlmManagementRoot("https://llm.example")).toBe("https://llm.example");
   });
+
+  test("stays linear on a URL full of slashes", () => {
+    const slashes = "/".repeat(100_000);
+    expect(liteLlmManagementRoot(`https://llm.example${slashes}x`)).toBe(
+      `https://llm.example${slashes}x`,
+    );
+    expect(liteLlmManagementRoot(`https://llm.example/root${slashes}`)).toBe(
+      "https://llm.example/root",
+    );
+  });
 });
 
 describe("LiteLLM key management", () => {

@@ -131,6 +131,22 @@ describe("readModelGatewayConfig", () => {
     ).toThrow(/EVELAND_MODEL_GATEWAY_URL/);
   });
 
+  test("drops trailing slashes from the base URL, in linear time", () => {
+    const slashes = "/".repeat(100_000);
+    const read = (url: string) =>
+      readModelGatewayConfig({
+        [MODEL_GATEWAY_ENV.kind]: "litellm",
+        [MODEL_GATEWAY_ENV.url]: url,
+        [MODEL_GATEWAY_ENV.key]: "k",
+      });
+    expect(read(`https://llm.example/v1${slashes}`)).toMatchObject({
+      baseURL: "https://llm.example/v1",
+    });
+    expect(read(`https://llm.example${slashes}x`)).toMatchObject({
+      baseURL: `https://llm.example${slashes}x`,
+    });
+  });
+
   test("requires a key, without ever echoing configured values", () => {
     let message = "";
     try {

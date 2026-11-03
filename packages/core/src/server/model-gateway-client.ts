@@ -48,7 +48,7 @@ export function hashLiteLlmKey(key: string): string {
  * call; LiteLLM's management routes sit at the proxy root.
  */
 export function liteLlmManagementRoot(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
+  return trimTrailingSlashes(baseUrl).replace(/\/v1$/, "");
 }
 
 async function gatewayRequest(options: RequestOptions): Promise<GatewayResponse> {
@@ -212,7 +212,7 @@ export async function listGatewayModelIds(input: {
 }): Promise<string[]> {
   const secrets = [input.apiKey];
   const response = await gatewayRequest({
-    url: `${input.baseUrl.replace(/\/+$/, "")}/models`,
+    url: `${trimTrailingSlashes(input.baseUrl)}/models`,
     bearer: input.apiKey,
     secrets,
     fetchImpl: input.fetchImpl,
@@ -264,4 +264,11 @@ export async function testModelGatewayConnection(input: {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/** Drops trailing slashes without a regex (`/\/+$/` backtracks polynomially). */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end -= 1;
+  return value.slice(0, end);
 }

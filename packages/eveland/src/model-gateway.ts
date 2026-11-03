@@ -90,7 +90,7 @@ export function readModelGatewayConfig(
       `Eveland: the ${kind} Model Gateway needs an http(s) base URL in ${MODEL_GATEWAY_ENV.url}.`,
     );
   }
-  return { kind, baseURL: baseURL.replace(/\/+$/, ""), apiKey };
+  return { kind, baseURL: trimTrailingSlashes(baseURL), apiKey };
 }
 
 function isHttpUrl(value: string): boolean {
@@ -200,4 +200,11 @@ function withLiteLlmResponseCostHeader(model: LanguageModelV4): LanguageModelV4 
       };
     },
   };
+}
+
+/** Drops trailing slashes without a regex (`/\/+$/` backtracks polynomially). */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end -= 1;
+  return value.slice(0, end);
 }
