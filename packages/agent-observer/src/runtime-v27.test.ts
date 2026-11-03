@@ -314,6 +314,65 @@ describe("private Agent telemetry runtime on the v27 protocol", () => {
     }
   });
 
+  test("keeps content its turn wrote without a model run, and a turn-owned call, under the turn", async () => {
+    // eve 1.0.0-rc.2 lets a turn write content (no `runId`) and own a call
+    // (`owner: { turnId }`) without a model run.
+    const { runtime, traces, commit } = harness({ recordInputs: true, recordOutputs: true });
+    await commit(
+      {
+        type: "delivery.consumed",
+        scope: turn,
+        data: { deliveryId: "dlv_1", turnId: "turn_1", parts: [{ kind: "text", text: "Hi" }] },
+      },
+      {
+        type: "turn.started",
+        scope: turn,
+        data: { turnId: "turn_1", cause: { deliveryId: "dlv_1" }, follows: null },
+      },
+      {
+        type: "content.completed",
+        scope: turn,
+        data: { partId: "t1", kind: "text", phase: "narration", value: "Turn-written note" },
+      },
+      {
+        type: "call.requested",
+        scope: turn,
+        data: {
+          callId: "call_turn",
+          owner: { turnId: "turn_1" },
+          capability: { kind: "tool", name: "lookup" },
+          input: {},
+        },
+      },
+      {
+        type: "call.settled",
+        scope: turn,
+        data: { callId: "call_turn", outcome: "completed", output: {} },
+      },
+    );
+    await commit({
+      type: "model.started",
+      scope: { ...turn, runId: "run_1" },
+      data: { runId: "run_1", modelId: "anthropic/claude-sonnet-5", attempt: 1 },
+    });
+    await commit(
+      {
+        type: "model.settled",
+        scope: { ...turn, runId: "run_1" },
+        data: { runId: "run_1", outcome: "completed", finishReason: "stop" },
+      },
+      { type: "turn.settled", scope: turn, data: { turnId: "turn_1", outcome: "completed" } },
+    );
+    await runtime.forceFlush();
+
+    const spans = traces.getFinishedSpans();
+    const turnSpan = spans.find((span) => span.name.startsWith("invoke_agent Researcher"));
+    const tool = spans.find((span) => span.name === "execute_tool lookup");
+    expect(tool?.parentSpanContext?.spanId).toBe(turnSpan?.spanContext().spanId);
+    const run = spans.find((span) => span.attributes["gen_ai.operation.name"] === "chat");
+    expect(String(run?.attributes["gen_ai.input.messages"])).toContain("Turn-written note");
+  });
+
   test("carries the observed per-call model into the v27 usage log, not only the span", async () => {
     // The configured model and the model the provider actually ran differ, so
     // the Built-in projection must learn the real one from the usage log.

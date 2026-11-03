@@ -28,6 +28,7 @@ import {
   textMessage,
   toOutputMessage,
   transcriptFor,
+  type TranscriptMessage,
 } from "./messages.js";
 import { recordUsage, type AgentTelemetryMetrics } from "./metrics.js";
 import type { ModelCallCapture, ObservedModelCall } from "./model-capture.js";
@@ -243,20 +244,21 @@ export function mapAgentTelemetryLifecycleV27(input: {
       const kind = asString(data.kind);
       const span = runSpan ?? turnSpan;
       if (!capture.recordOutputs) return span;
+      // From eve 1.0.0-rc.2 a turn can write a part without a model run
+      // (no `runId`); it belongs to the turn's transcript on its own.
+      const assistant = () =>
+        runKey || !turnKey
+          ? stepAssistantFor(state, runKey, turnKey)
+          : turnAssistantFor(state, turnKey);
       if (kind === "reasoning") {
         const reasoning = contentText(data);
-        if (reasoning) {
-          stepAssistantFor(state, runKey, turnKey).parts.push({
-            type: "reasoning",
-            content: reasoning,
-          });
-        }
+        if (reasoning) assistant().parts.push({ type: "reasoning", content: reasoning });
         return span;
       }
       if (kind !== "text" && kind !== "result") return span;
       const text = contentText(data);
       if (!text) return span;
-      stepAssistantFor(state, runKey, turnKey).parts.push({ type: "text", content: text });
+      assistant().parts.push({ type: "text", content: text });
       if (turnSpan && asString(data.phase) === "reply") {
         turnSpan.setAttribute(
           ATTR_GEN_AI_OUTPUT_MESSAGES,
@@ -541,6 +543,13 @@ function findRunKey(
     if (key.startsWith(`${sessionId}\0`) && key.endsWith(suffix)) return key;
   }
   return undefined;
+}
+
+/** An assistant message of the turn's own, for a part no model run wrote. */
+function turnAssistantFor(state: AgentTelemetryRuntimeState, turnKey: string): TranscriptMessage {
+  const message: TranscriptMessage = { role: "assistant", parts: [] };
+  transcriptFor(state, turnKey).push(message);
+  return message;
 }
 
 function textOfParts(parts: unknown): string | undefined {

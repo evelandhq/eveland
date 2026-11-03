@@ -117,7 +117,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("1.0.0-rc.1");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("1.0.0-rc.2");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -197,7 +197,9 @@ describe("Eve compatibility repository contract", () => {
       // skipped): stable-workflow-names.js and the bundler default are
       // byte-identical to 0.83.3, and 0.85's cross-version handoff moves a
       // pre-v27 session into a fresh WORKFLOW_ENTRY_NAME run, a name already
-      // audited here. The activity collector (0.47.3-0.68)
+      // audited here. 1.0.0-rc.2 re-checked 2026-11-03: stable-workflow-names.js
+      // and the bundler default are byte-identical to 1.0.0-rc.1. The activity
+      // collector (0.47.3-0.68)
       // and the subagent execute body (0.51-0.68) left this list with 0.68 on
       // 2026-10-09.
       // 0.56.0 rebuilt the `workflow` tool around a
