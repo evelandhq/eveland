@@ -612,6 +612,11 @@ export interface DeploymentStore {
      * conservative state that blocks activation rather than guessing.
      */
     workflowWorld?: ReleaseWorkflowAttestation;
+    /**
+     * Whether release preparation injected the Model Gateway provider.
+     * Omitted records none: the Release calls models as authored.
+     */
+    modelGatewayProvider?: boolean;
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
   /**

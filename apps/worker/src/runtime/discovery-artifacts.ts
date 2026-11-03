@@ -80,25 +80,46 @@ async function readResolvedEveVersion(releaseDir: string): Promise<string | null
   }
 }
 
-/** Static model IDs in eve's compiled agent manifest, root first, deduplicated. */
+/**
+ * The string model IDs in eve's compiled agent manifest, root first,
+ * deduplicated: each agent's `config.model` and `config.compaction.model`,
+ * for the root and for every declared subagent. eve flattens nested
+ * subagents into the root's `subagents` list and keeps each one's compiled
+ * config under `agent`.
+ *
+ * Only a model authored as a string reaches the injected default provider.
+ * An authored model object -- whatever its provider, AI Gateway included --
+ * is loaded from the Agent's module and called directly; eve marks it with a
+ * `source`, and it is left out. A dynamically selected model compiles to
+ * `dynamicModel` and cannot be known before it runs.
+ */
 export function collectStaticModelIds(manifest: unknown): string[] {
   const ids = new Set<string>();
-  const visit = (node: unknown): void => {
-    if (typeof node !== "object" || node === null) return;
-    const record = node as Record<string, unknown>;
-    const id = modelIdOf(record.config);
-    if (id) ids.add(id);
-    if (record.manifest) visit(record.manifest);
-    if (Array.isArray(record.subagents)) for (const subagent of record.subagents) visit(subagent);
+  const collect = (agent: unknown): void => {
+    if (!isRecord(agent) || !isRecord(agent.config)) return;
+    for (const model of [agent.config.model, recordField(agent.config.compaction, "model")]) {
+      const id = stringModelIdOf(model);
+      if (id) ids.add(id);
+    }
   };
-  visit(manifest);
+  collect(manifest);
+  if (isRecord(manifest) && Array.isArray(manifest.subagents)) {
+    for (const subagent of manifest.subagents) {
+      if (isRecord(subagent)) collect(subagent.agent);
+    }
+  }
   return [...ids];
 }
 
-function modelIdOf(config: unknown): string | undefined {
-  if (typeof config !== "object" || config === null) return undefined;
-  const model = (config as { model?: unknown }).model;
-  if (typeof model !== "object" || model === null) return undefined;
-  const id = (model as { id?: unknown }).id;
-  return typeof id === "string" && id.length > 0 ? id : undefined;
+function stringModelIdOf(model: unknown): string | undefined {
+  if (!isRecord(model) || model.source !== undefined) return undefined;
+  return typeof model.id === "string" && model.id.length > 0 ? model.id : undefined;
+}
+
+function recordField(value: unknown, key: string): unknown {
+  return isRecord(value) ? value[key] : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -11,7 +11,12 @@ const json = (body: unknown) => ({
   body: JSON.stringify(body),
 });
 
-async function projectWithLiveDeployment(store: ReturnType<typeof createTestStore>, name: string) {
+async function projectWithLiveDeployment(
+  store: ReturnType<typeof createTestStore>,
+  name: string,
+  // false: a Release built before the provider existed, or on eve 0.83.
+  modelGatewayProvider = true,
+) {
   const project = await store.createProject({
     name,
     importKind: "zip",
@@ -36,6 +41,7 @@ async function projectWithLiveDeployment(store: ReturnType<typeof createTestStor
     internalPort: 3000,
     hostPort: 41000 + name.length,
     runtimeKind: "systemd",
+    modelGatewayProvider,
   });
   return { project, deployment };
 }
@@ -124,6 +130,44 @@ describe("instance Model Gateway routes", () => {
     });
     await expect(store.getModelGateway()).resolves.toBeNull();
   });
+
+  test("names the deployments a gateway change cannot reach instead of restarting them", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey });
+    const current = await projectWithLiveDeployment(store, "current");
+    const legacy = await projectWithLiveDeployment(store, "legacy", false);
+
+    const saved = await app.request("/api/platform/model-gateway", {
+      method: "PUT",
+      ...json({ kind: "litellm", baseUrl: "https://llm.example/v1" }),
+    });
+    const body = (await saved.json()) as {
+      jobs: Array<{ deploymentId: string }>;
+      rebuildRequired: unknown[];
+    };
+    // Restarting the legacy Release would reuse a build with no provider in
+    // it, so it is not restarted, and the change is not claimed for it.
+    expect(body.jobs.map((job) => job.deploymentId)).toEqual([current.deployment.id]);
+    expect(body.rebuildRequired).toEqual([
+      {
+        projectId: legacy.project.id,
+        projectName: "legacy",
+        deploymentId: legacy.deployment.id,
+        deploymentKey: legacy.deployment.deploymentKey,
+      },
+    ]);
+    await expect(
+      store.listProjectJobs(legacy.project.id, { type: "restart_deployment" }),
+    ).resolves.toEqual([]);
+
+    // Removing the gateway leaves the legacy Release calling models as
+    // authored, which is what removal asks for: nothing to rebuild.
+    const removed = await app.request("/api/platform/model-gateway", { method: "DELETE" });
+    await expect(removed.json()).resolves.toMatchObject({
+      jobs: [{ deploymentId: current.deployment.id }],
+      rebuildRequired: [],
+    });
+  });
 });
 
 describe("Model Gateway connection test", () => {
@@ -200,6 +244,7 @@ describe("project Model Gateway routes", () => {
     await expect(before.json()).resolves.toEqual({
       settings: { projectId: project.id, mode: "platform", updatedAt: null },
       gateway: null,
+      rebuildRequired: [],
     });
 
     await store.saveModelGateway({ kind: "litellm", baseUrl: "https://llm.example/v1" });
@@ -207,6 +252,32 @@ describe("project Model Gateway routes", () => {
     await expect(after.json()).resolves.toMatchObject({
       gateway: { kind: "litellm", baseUrl: "https://llm.example/v1" },
     });
+  });
+
+  test("names the project's live deployments that do not use the gateway it is set to use", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey });
+    const { project, deployment } = await projectWithLiveDeployment(store, "legacy-read", false);
+    const read = async () =>
+      (
+        (await (await app.request(`/api/projects/${project.id}/model-gateway`)).json()) as {
+          rebuildRequired: unknown[];
+        }
+      ).rebuildRequired;
+
+    // No gateway: the Release calls models as authored, as it should.
+    await expect(read()).resolves.toEqual([]);
+    await store.saveModelGateway({ kind: "litellm", baseUrl: "https://llm.example/v1" });
+    await expect(read()).resolves.toEqual([
+      {
+        projectId: project.id,
+        projectName: "legacy-read",
+        deploymentId: deployment.id,
+        deploymentKey: deployment.deploymentKey,
+      },
+    ]);
+    await store.saveProjectModelGatewayMode(project.id, "off");
+    await expect(read()).resolves.toEqual([]);
   });
 
   test("answers 404 for an unknown project", async () => {
@@ -236,5 +307,23 @@ describe("project Model Gateway routes", () => {
     const invalid = await save("project-key");
     expect(invalid.status).toBe(400);
     await expect(store.getProjectModelGateway(project.id)).resolves.toMatchObject({ mode: "off" });
+  });
+
+  test("opting a project back in names a deployment whose Release has no provider", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey });
+    await store.saveModelGateway({ kind: "litellm", baseUrl: "https://llm.example/v1" });
+    const { project, deployment } = await projectWithLiveDeployment(store, "opt-in", false);
+    await store.saveProjectModelGatewayMode(project.id, "off");
+
+    const response = await app.request(`/api/projects/${project.id}/model-gateway`, {
+      method: "PUT",
+      ...json({ mode: "platform" }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      settings: { mode: "platform" },
+      jobs: [],
+      rebuildRequired: [{ deploymentId: deployment.id }],
+    });
   });
 });

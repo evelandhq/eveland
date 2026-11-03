@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { CheckCircle2Icon, PlugZapIcon, Trash2Icon } from "lucide-react";
+import { AlertTriangleIcon, CheckCircle2Icon, PlugZapIcon, Trash2Icon } from "lucide-react";
 import type { ModelGateway, ModelGatewayKind } from "@evelandhq/core/model-gateway";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -31,6 +31,7 @@ import { deleteModelGateway, saveModelGateway, testModelGateway } from "@/lib/cl
 import {
   modelGatewayKindOption,
   modelGatewayKindOptions,
+  modelGatewayRebuildNotice,
   validateModelGatewayDraft,
   validateModelGatewayTest,
   type ModelGatewayDraft,
@@ -60,12 +61,15 @@ export function ModelGatewaySettings({ initialGateway }: { initialGateway: Model
   const [removeOpen, setRemoveOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // From the last save or removal: live deployments a restart cannot reach.
+  const [rebuildNotice, setRebuildNotice] = useState<string | null>(null);
   const option = modelGatewayKindOption(draft.kind);
 
   function update(patch: Partial<ModelGatewayDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
     setError(null);
     setNotice(null);
+    setRebuildNotice(null);
   }
 
   async function save() {
@@ -83,6 +87,7 @@ export function ModelGatewaySettings({ initialGateway }: { initialGateway: Model
       setDraft(draftFrom(result.gateway));
       setTestKey("");
       setNotice(restartNotice("Model Gateway saved.", result.jobs));
+      setRebuildNotice(modelGatewayRebuildNotice(result.rebuildRequired, "instance"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not reach the Eveland API.");
     } finally {
@@ -129,6 +134,7 @@ export function ModelGatewaySettings({ initialGateway }: { initialGateway: Model
       setDraft(draftFrom(null));
       setRemoveOpen(false);
       setNotice(restartNotice("Model Gateway removed.", result.jobs));
+      setRebuildNotice(modelGatewayRebuildNotice(result.rebuildRequired, "instance"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not remove the Model Gateway.");
     } finally {
@@ -153,6 +159,12 @@ export function ModelGatewaySettings({ initialGateway }: { initialGateway: Model
         <Alert>
           <CheckCircle2Icon />
           <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      ) : null}
+      {rebuildNotice ? (
+        <Alert>
+          <AlertTriangleIcon />
+          <AlertDescription>{rebuildNotice}</AlertDescription>
         </Alert>
       ) : null}
 

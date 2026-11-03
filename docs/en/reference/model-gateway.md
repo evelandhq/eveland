@@ -24,11 +24,12 @@ Every kind reads the same `AI_GATEWAY_API_KEY` (§3), so moving between Vercel A
 
 ## 2. Scope
 
-- **Only string model IDs are affected.** When an Agent writes a string such as `model: "anthropic/claude-sonnet-4.5"`, the call goes through the Model Gateway; a model object the Agent passes in (for example one it built with `createOpenAICompatible(...)`) is untouched.
+- **Only string model IDs are affected.** When an Agent writes a string such as `model: "anthropic/claude-sonnet-4.5"`, the call goes through the Model Gateway; a model object the Agent passes in (for example one it built with `createOpenAICompatible(...)`, or AI SDK's `gateway(...)`) is untouched and calls its own provider.
 - **The Agent's own provider wins.** If the Agent sets `globalThis.AI_SDK_DEFAULT_PROVIDER` in its own instrumentation, the platform does not replace it.
 - **Model IDs are forwarded verbatim.** Eveland neither rewrites model IDs nor keeps an alias table; aliases are configured on the gateway (for example LiteLLM's `model_name`). Vercel model catalog slugs are recommended, so eve can find the context window at build time and the Agent need not set `modelContextWindowTokens`.
-- **Only eve 1.0 and later Releases are affected.** An eve 0.83 Release builds as usual with a `WARNING` in its build log, and its model calls stay exactly as authored.
+- **Only eve 1.0 and later Releases are affected.** An eve 0.83 Release builds as usual with a `WARNING` in its build log, is not checked against the gateway (§7), and its model calls stay exactly as authored.
 - **Nothing happens until configured.** The platform always injects the provider module into eve 1.0 Releases, but it does nothing while the instance has no gateway or the project has opted out. Configuring a gateway after a deploy therefore needs a restart, not a rebuild.
+- **A Release without the provider needs a redeploy.** A Release built before the platform injected the provider, or on eve 0.83, has none, and a restart reuses that same Release. Such a deployment is not restarted on a gateway change; while its project is set to use the gateway, the settings pages list it as still calling models as authored until it is redeployed on eve 1.0 or later.
 
 ---
 
@@ -46,7 +47,7 @@ Every kind reads the same `AI_GATEWAY_API_KEY` (§3), so moving between Vercel A
 - Only admins can view or change it.
 - The configuration is the kind and base URL (none for Vercel AI Gateway). A base URL carrying credentials (`user:password@`) is rejected.
 - **Test connection**: enter a key on the gateway in the form's test-key field; the API lists the gateway's models with it once and reports the model count or the error. The key is not saved, follows no redirects, times out, and is masked in any error.
-- Saving a different gateway, or removing it, enqueues restarts for the live deployments of every project that uses it (every project not set to Off), onto their existing Releases.
+- Saving a different gateway, or removing it, enqueues restarts for the live deployments of every project that uses it (every project not set to Off), onto their existing Releases. A live deployment whose Release has no provider (§2) is not restarted; after a save the page names the projects that need a redeploy.
 
 ---
 
@@ -57,7 +58,7 @@ Every kind reads the same `AI_GATEWAY_API_KEY` (§3), so moving between Vercel A
 | Use the Model Gateway (default) | String model IDs go to the instance's gateway with the project's `AI_GATEWAY_API_KEY`.                  |
 | Off                             | Nothing is injected; the Agent calls models as authored (with `AI_GATEWAY_API_KEY`, Vercel AI Gateway). |
 
-Changing the option enqueues restarts for the project's live deployments.
+Changing the option enqueues restarts for the project's live deployments that carry the provider. While the project uses the gateway, the page lists any live deployment whose Release has no provider (§2) as needing a redeploy.
 
 ---
 
@@ -88,7 +89,7 @@ The provider:
 
 ## 7. Deploy-time check
 
-After the build, the Worker reads the static model IDs of the root agent and every subagent from eve's compiled output (`.output/.eve/compile/compiled-agent-manifest.json`) and lists the gateway's models with **this project's `AI_GATEWAY_API_KEY`**. Every log line names the gateway's address.
+After building a Release that carries the provider, the Worker reads from eve's compiled output (`.output/.eve/compile/compiled-agent-manifest.json`) every model ID written as a string: each agent's `model` and `compaction.model`, for the root agent and every subagent, nested ones included. It then lists the gateway's models with **this project's `AI_GATEWAY_API_KEY`**. Every log line names the gateway's address.
 
 | Outcome                                    | Result                                                                                                                          |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -97,7 +98,7 @@ After the build, the Worker reads the static model IDs of the root agent and eve
 | The project has no `AI_GATEWAY_API_KEY`    | `WARNING` in the build log; the deploy continues and model calls fail at the gateway.                                           |
 | The list endpoint is otherwise unavailable | `WARNING` in the build log; the deploy continues.                                                                               |
 
-Dynamically selected models cannot be checked statically and are out of scope.
+Model objects are not checked, since they never reach the gateway; nor is an eve 0.83 Release, for the same reason. Dynamically selected models cannot be checked statically and are out of scope.
 
 ---
 

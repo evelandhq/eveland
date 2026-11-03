@@ -186,10 +186,12 @@ export async function handleBuildDeployJob(
   }
   // Before anything is recorded or started: a key the gateway rejects, or a
   // model it explicitly does not offer this project's key, would fail every
-  // turn.
+  // turn. Only a Release carrying the injected provider calls the gateway at
+  // all (eve 0.83 Releases call models as authored), so only it is checked.
+  const modelGatewayProvider = build.modelGatewayProvider === true;
   const modelValidation = await validateModelGatewayModels({
     env: launchPrerequisites.env,
-    modelIds: build.staticModelIds ?? [],
+    modelIds: modelGatewayProvider ? (build.staticModelIds ?? []) : [],
     ...(options.listGatewayModels ? { listModels: options.listGatewayModels } : {}),
   });
   for (const line of modelGatewayValidationLog(modelValidation)) {
@@ -305,6 +307,7 @@ export async function handleBuildDeployJob(
       ...(build.workflowWorld
         ? { workflowWorld: deriveWorkflowWorldAttestation(build.workflowWorld) }
         : {}),
+      modelGatewayProvider,
     });
     deploymentRecorded = true;
     // Name the Deployment on the job row before anything else can complete

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { CheckCircle2Icon } from "lucide-react";
+import { AlertTriangleIcon, CheckCircle2Icon } from "lucide-react";
 import type { ProjectModelGatewayMode } from "@evelandhq/core/model-gateway";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { saveProjectModelGateway } from "@/lib/client-api";
 import {
+  modelGatewayRebuildNotice,
   projectModelGatewayModeOptions,
   projectModelGatewaySummary,
   type ProjectModelGatewayResponse,
@@ -37,6 +38,8 @@ export function ProjectModelGatewaySettings({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [rebuildRequired, setRebuildRequired] = useState(initial.rebuildRequired);
+  const rebuildNotice = modelGatewayRebuildNotice(rebuildRequired, "project");
   const gateway = initial.gateway;
   const modeOption = projectModelGatewayModeOptions.find((option) => option.value === mode)!;
 
@@ -48,6 +51,7 @@ export function ProjectModelGatewaySettings({
     try {
       const result = await saveProjectModelGateway(projectId, { mode });
       setSettings(result.settings);
+      setRebuildRequired(result.rebuildRequired);
       setNotice(
         result.jobs.length > 0
           ? `Saved. ${result.jobs.length} live deployment restart${result.jobs.length === 1 ? "" : "s"} queued.`
@@ -82,6 +86,12 @@ export function ProjectModelGatewaySettings({
         <Alert>
           <CheckCircle2Icon />
           <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      ) : null}
+      {rebuildNotice ? (
+        <Alert>
+          <AlertTriangleIcon />
+          <AlertDescription>{rebuildNotice}</AlertDescription>
         </Alert>
       ) : null}
 

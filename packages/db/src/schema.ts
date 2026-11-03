@@ -965,6 +965,11 @@ export const releases = pgTable(
     workflowStorageSpec: integer("workflow_storage_spec"),
     workflowDispatchProtocol: integer("workflow_dispatch_protocol"),
     workflowEnqueueCapability: text("workflow_enqueue_capability").notNull(),
+    // Whether release preparation injected the Model Gateway provider. Only
+    // such a Release routes string models through the instance gateway, so
+    // only it picks up a gateway change on restart. False for every Release
+    // built before the provider existed: they need a rebuild.
+    modelGatewayProvider: boolean("model_gateway_provider").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   // Postgres does not index foreign keys on its own; listReleaseSummaries

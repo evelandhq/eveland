@@ -89,3 +89,16 @@ export type ProjectModelGateway = {
   mode: ProjectModelGatewayMode;
   updatedAt: string | null;
 };
+
+/**
+ * A live Deployment that is set to use the Model Gateway but whose Release
+ * has no injected provider -- built before the provider existed, or on eve
+ * 0.83 -- so it still calls models as authored. A restart reuses that same
+ * Release; only a redeploy (on eve 1.0 or later) applies the gateway.
+ */
+export type ModelGatewayRebuildRequired = {
+  projectId: string;
+  projectName: string;
+  deploymentId: string;
+  deploymentKey: string;
+};

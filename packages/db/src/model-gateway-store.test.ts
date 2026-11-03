@@ -77,6 +77,47 @@ describe("Model Gateway store", () => {
     await expect(store.getProjectModelGateway(project.id)).resolves.toMatchObject({ mode: "off" });
   });
 
+  test("records on each Release whether it carries the Model Gateway provider", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "gateway-release", importKind: "zip" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath: "/tmp/gateway-release",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const record = (name: string, modelGatewayProvider?: boolean) =>
+      store.recordDeployment({
+        releaseId: `rel_${name}`,
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        imageTag: `eveland/${name}:rel`,
+        containerName: `eveland-${name}`,
+        internalPort: 3000,
+        hostPort: 41000 + name.length,
+        runtimeKind: "systemd",
+        ...(modelGatewayProvider === undefined ? {} : { modelGatewayProvider }),
+      });
+
+    await record("with", true);
+    await record("without", false);
+    // A writer that states nothing -- and every Release built before the
+    // provider existed -- has none.
+    await record("legacy");
+    await expect(store.getRelease("rel_with")).resolves.toMatchObject({
+      modelGatewayProvider: true,
+    });
+    await expect(store.getRelease("rel_without")).resolves.toMatchObject({
+      modelGatewayProvider: false,
+    });
+    await expect(store.getRelease("rel_legacy")).resolves.toMatchObject({
+      modelGatewayProvider: false,
+    });
+  });
+
   test("lists saved project settings and removes them with the project", async () => {
     const store = createTestStore();
     const kept = await store.createProject({ name: "gateway-kept", importKind: "zip" });

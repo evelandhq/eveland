@@ -466,8 +466,10 @@ never affects model objects, and never rewrites model IDs; aliases live on the
 gateway. The platform holds no gateway credential and supplies no key: each
 project brings its own key in `AI_GATEWAY_API_KEY`, the variable Eve's built-in
 gateway provider already reads, and a project without one has no fallback. A
-deploy fails when the gateway rejects the project's key or does not offer one of
-its static models, naming the gateway's address. Gateway-reported cost is
+deploy of a Release carrying the injected provider fails when the gateway
+rejects the project's key or does not offer one of its string models, naming the
+gateway's address. A configuration change restarts only deployments whose
+Release carries the provider; the others are reported as needing a redeploy. Gateway-reported cost is
 recorded where Eve reads it; a gateway that reports none leaves cost missing,
 never estimated. The behavioral contract lives in
 `docs/en/reference/model-gateway.md`, the rationale in

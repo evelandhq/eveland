@@ -12,8 +12,13 @@ import {
  * Deploy-time check that the gateway accepts the project's key and offers
  * every model the Agent names.
  *
- * Static model IDs come from eve's compiled agent manifest (the root agent's
- * and every declared subagent's `config.model.id`); a dynamically selected
+ * Runs only for a Release that carries the injected provider: without it no
+ * model call reaches the gateway, so nothing about the gateway can fail one.
+ *
+ * Static model IDs come from eve's compiled agent manifest: every model the
+ * root agent and its declared subagents name as a string, the ones the
+ * injected provider serves (see collectStaticModelIds). An authored model
+ * object calls its own provider and is not checked; a dynamically selected
  * model cannot be known before it runs and is not checked. The list is asked
  * for with the project's own AI_GATEWAY_API_KEY, so a per-key model
  * restriction on the gateway counts too.

@@ -2,6 +2,7 @@ import { MODEL_GATEWAY_ENV } from "@evelandhq/core/model-gateway";
 import { ModelGatewayRequestError } from "@evelandhq/core/server/model-gateway-client";
 import { describe, expect, test, vi } from "vitest";
 
+import compiledManifest from "../runtime/__fixtures__/compiled-agent-manifest.eve-1.0.0-rc.1.json" with { type: "json" };
 import { collectStaticModelIds } from "../runtime/discovery-artifacts.js";
 import {
   modelGatewayValidationLog,
@@ -15,19 +16,27 @@ const active = {
 };
 
 describe("collectStaticModelIds", () => {
-  test("reads the root and subagent models from eve's compiled agent manifest", () => {
-    const manifest = {
-      config: { model: { id: "anthropic/claude-sonnet-4.5" } },
-      subagents: [
-        { config: { model: { id: "openai/gpt-5" } } },
-        { manifest: { config: { model: { id: "anthropic/claude-sonnet-4.5" } }, subagents: [] } },
-        { config: {} },
-      ],
-    };
-    expect(collectStaticModelIds(manifest)).toEqual([
-      "anthropic/claude-sonnet-4.5",
-      "openai/gpt-5",
+  // Trimmed from a real `eve build` (eve 1.0.0-rc.1) of an Agent whose root
+  // names "vendor/root" with compaction model "vendor/compact", and whose
+  // subagents are: child ("vendor/child"), its nested grand ("vendor/grand"),
+  // custom (an authored model object with provider "custom.chat"), and gw (an
+  // authored model object with provider "gateway"). eve flattens nested
+  // subagents into one list and keeps each one's config under `agent`.
+  test("reads every string model from eve's compiled agent manifest", () => {
+    expect(collectStaticModelIds(compiledManifest)).toEqual([
+      "vendor/root",
+      "vendor/compact",
+      "vendor/child",
+      "vendor/grand",
     ]);
+  });
+
+  test("leaves out authored model objects, which never call the injected provider", () => {
+    // Both carry a `source`: eve loads the object from the Agent's module and
+    // calls it directly, whether its provider is external or AI Gateway.
+    const ids = collectStaticModelIds(compiledManifest);
+    expect(ids).not.toContain("custom/private-model");
+    expect(ids).not.toContain("gateway/vendor/gw-object");
   });
 
   test("finds nothing to check in a manifest it does not recognize", () => {

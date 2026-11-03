@@ -41,7 +41,14 @@ export type ReleaseBuildResult = {
    */
   discovery?: ReleaseDiscovery;
   /**
-   * Static model IDs from eve's compiled agent manifest (root agent and
+   * Whether release preparation injected the Model Gateway provider into this
+   * build (eve 1.0 and later). Absent or false: the Release calls models
+   * exactly as authored, so the gateway is neither checked at deploy nor
+   * applied by a restart. Persisted with the Release.
+   */
+  modelGatewayProvider?: boolean;
+  /**
+   * The string model IDs in eve's compiled agent manifest (root agent and
    * declared subagents), checked against the Model Gateway before launch.
    */
   staticModelIds?: string[];

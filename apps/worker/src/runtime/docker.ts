@@ -530,6 +530,7 @@ export function createDockerAdapter(
           releaseRef: imageTag,
           schedulerDefinitions: discovery.schedulerDefinitions,
           discovery,
+          modelGatewayProvider: observerInjection.modelGateway.status === "injected",
           ...(discovery.staticModelIds ? { staticModelIds: discovery.staticModelIds } : {}),
           // Echo what release preparation actually injected — the source of
           // the Release's persisted workflow attestation.

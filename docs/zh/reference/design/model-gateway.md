@@ -106,7 +106,7 @@ LiteLLM 是第一期的重点：它是公司的迁移目标，是能报告成本
 
 **模型目录按天缓存在 Eveland。** eve 构建时读取 `.eve/cache/model-catalog.json`：`fetchedAt` 在 5 分钟以内就直接用，否则去 `ai-gateway.vercel.sh` 重新取，取失败时退回旧缓存。Eveland 的 Worker 每天取一次目录，存在数据目录里，取失败就继续用旧的那份；每次构建前把它写进 Release 的 `.eve/cache/model-catalog.json`，`fetchedAt` 填写入时刻，所以构建期间 eve 不会联网。目录的真实获取时间写进构建日志。这样构建不再依赖访问 Vercel，在国内网络下也稳定。这依赖 eve 的内部缓存格式，由兼容性测试锁住；格式一旦变化，eve 会忽略这个文件、自己去取，退回到原来的行为，构建不会因此失败。
 
-**部署时校验。** Worker 从 eve 的编译产物（`compiled-agent-manifest.json` 里根 Agent 和各子 Agent 的 `config.model.id`）读出静态模型 ID。eve 的 `agent-summary.json` 只记录根 Agent 的模型，所以不用它，用这个项目的 `AI_GATEWAY_API_KEY` 请求 `GET /v1/models`。每条日志都写明网关地址：
+**部署时校验。** 只检查带有注入 provider 的 Release：没有它，模型调用根本不经过网关，网关的任何状况都不会让调用失败。Worker 从 eve 的编译产物 `compiled-agent-manifest.json` 读出字符串模型 ID（eve 的 `agent-summary.json` 只记录根 Agent 的模型，所以不用它）：根 Agent 和每个子 Agent 的 `config.model` 与 `config.compaction.model`；eve 把子 Agent（包括嵌套的）展平成一个 `subagents` 列表，各自的配置放在 `agent` 下。Agent 以对象形式写的模型编译后带有 `source`，无论 provider 是什么都跳过：eve 从 Agent 的模块加载它并直接调用。然后用这个项目的 `AI_GATEWAY_API_KEY` 请求 `GET /v1/models`。每条日志都写明网关地址：
 
 - 网关拒绝了这把 key（HTTP 401）：部署失败。典型情况是项目把别的网关的 key（例如 Vercel AI Gateway 的 key）带进了配置了 Model Gateway 的实例。
 - 网关明确返回了模型列表，但其中没有这个 ID：部署失败，日志给出可执行的诊断，并列出相近的 ID。
@@ -156,6 +156,8 @@ Project Settings 增加 Model Gateway 区块，二选一：
 
 **改了配置就重启。** 修改 Model Gateway 配置或项目选项，都会为相关的 `running` / `draining` 部署排队重启。重启沿用原来的 Release，与 Shared Agent Environment 的行为一致。
 
+重启只能重新配置 Release 里已有的 provider，所以每个 Release 都记录发布准备阶段是否注入了 provider（`releases.model_gateway_provider`）。Release 里没有 provider 的部署（provider 出现之前构建的，或 eve 0.83 的）不会重启。只要它的项目设为使用网关，API 就把它放进 `rebuildRequired` 返回，设置页提示它仍按原写法调用模型，直到重新部署。项目不使用网关时，这样的 Release 本来就符合预期，不做提示。
+
 ### 6.5 运行时模块与注入
 
 **运行时模块 `eveland/model-gateway`。** 模块加载时依次判断：
@@ -170,11 +172,11 @@ Project Settings 增加 Model Gateway 区块，二选一：
 
 **发布时注入。** Worker 在每个 eve 1.0.x 的 Release 里写入 `agent/instrumentation/eveland-model-gateway.js`，在 instrumentation 的 `setup` 里安装 Provider。`setup` 在所有 instrumentation 模块加载完之后、第一个事件之前运行，所以 Agent 在模块顶层设置的全局 Provider 一定先生效。如果用户已经写了同名文件，构建失败，与 observer 的保留文件处理方式相同。模块的代码由 Worker 打包进 Release（`.eveland/model-gateway/runtime.mjs`），不像 observer 那样从平台挂载目录加载。原因是 observer 只做观测，跟着平台版本走没有问题；而 Provider 决定了模型调用本身的行为，应该和 Release 一起固定下来（不可变产物原则）。只有配置（环境变量）是运行时注入的。
 
-模块总是注入，但未配置时不起作用。所以先部署、后配置 Model Gateway 也不需要重新构建，重启即可生效。
+模块总是注入，但未配置时不起作用。所以对带有该模块的 Release，先部署、后配置 Model Gateway 也不需要重新构建，重启即可生效。
 
 **依赖方向。** 运行时模块的源码放在 `packages/eveland/src/model-gateway.ts`，既作为 SDK 的子路径发布，也是 Worker 打包的唯一来源。Worker 按文件路径打包这份源码，不 import 它（workspace 里从不构建 SDK 的 `dist/`）；架构测试固定了只有 Worker 可以声明对 `eveland` 的依赖，并写明了理由。`eveland` 包本身仍然不依赖任何 workspace 包。
 
-**eve 版本。** 只为 eve 1.0.x 的 Release 注入。0.83.x 的 Release 不注入，部署日志写 `WARNING`，说明这次部署会按源码原样调用模型。0.83 很快就会退出兼容窗口。
+**eve 版本。** 只为 eve 1.0.x 的 Release 注入。0.83.x 的 Release 不注入，也不做部署时检查，部署日志写 `WARNING`，说明这次部署会按源码原样调用模型。0.83 很快就会退出兼容窗口。
 
 ---
 

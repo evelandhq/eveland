@@ -19,4 +19,5 @@ CREATE TABLE "project_model_gateway" (
 	CONSTRAINT "project_model_gateway_mode_check" CHECK ("project_model_gateway"."mode" in ('platform', 'off'))
 );
 --> statement-breakpoint
+ALTER TABLE "releases" ADD COLUMN "model_gateway_provider" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "project_model_gateway" ADD CONSTRAINT "project_model_gateway_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;

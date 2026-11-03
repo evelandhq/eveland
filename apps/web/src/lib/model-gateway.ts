@@ -1,6 +1,7 @@
 import {
   MODEL_GATEWAY_ENV,
   type ModelGatewayKind,
+  type ModelGatewayRebuildRequired,
   type ProjectModelGateway,
   type ProjectModelGatewayMode,
 } from "@evelandhq/core/model-gateway";
@@ -8,6 +9,7 @@ import {
 export type ProjectModelGatewayResponse = {
   settings: ProjectModelGateway;
   gateway: { kind: ModelGatewayKind; baseUrl: string | null } | null;
+  rebuildRequired: ModelGatewayRebuildRequired[];
 };
 
 export type ModelGatewayKindOption = {
@@ -125,4 +127,25 @@ export function projectModelGatewaySummary(
   }
   const where = gateway.baseUrl === null ? "" : ` at ${gateway.baseUrl}`;
   return `String model IDs go to ${modelGatewayKindOption(gateway.kind).label}${where} with this project's ${MODEL_GATEWAY_ENV.key}.`;
+}
+
+/**
+ * Live deployments a restart cannot move onto the gateway: their release has
+ * no injected provider, so only a redeploy applies it. Null when there are
+ * none.
+ */
+export function modelGatewayRebuildNotice(
+  rebuildRequired: readonly ModelGatewayRebuildRequired[],
+  scope: "project" | "instance",
+): string | null {
+  if (rebuildRequired.length === 0) return null;
+  const count = `${rebuildRequired.length} live deployment${rebuildRequired.length === 1 ? "" : "s"}`;
+  const which =
+    scope === "project"
+      ? ` (${rebuildRequired.map((entry) => entry.deploymentKey).join(", ")})`
+      : ` in ${[...new Set(rebuildRequired.map((entry) => entry.projectName))].join(", ")}`;
+  const verb = rebuildRequired.length === 1 ? "calls" : "call";
+  const its = rebuildRequired.length === 1 ? "its" : "their";
+  const redeploy = scope === "project" ? "Redeploy" : "Redeploy those projects";
+  return `${count}${which} still ${verb} models as authored: ${its} release was built without the Model Gateway provider. ${redeploy} on eve 1.0 or later to apply the gateway; a restart does not.`;
 }

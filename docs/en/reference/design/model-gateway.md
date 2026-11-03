@@ -106,7 +106,7 @@ Other gateways:
 
 **Eveland caches the model catalog daily.** At build time eve reads `.eve/cache/model-catalog.json`: if `fetchedAt` is within 5 minutes it uses the file as is; otherwise it fetches from `ai-gateway.vercel.sh` again and falls back to the old cache if the fetch fails. Eveland's Worker fetches the catalog once a day into the data directory, keeping the previous copy if a fetch fails, and before every build writes it into the Release's `.eve/cache/model-catalog.json` with `fetchedAt` set to the time of writing, so eve does not go to the network during the build. The catalog's real fetch time goes into the build log. Builds then no longer depend on reaching Vercel, which also keeps them stable on networks in mainland China. This relies on eve's internal cache format, which the compatibility tests lock; if the format changes, eve ignores the file and fetches on its own, falling back to today's behavior instead of failing the build.
 
-**Validation at deploy.** The Worker reads the static model IDs from eve's compiled output (the `config.model.id` of the root agent and each subagent in `compiled-agent-manifest.json`; eve's `agent-summary.json` records only the root agent's model) and requests `GET /v1/models` with the project's `AI_GATEWAY_API_KEY`. Every log line names the gateway's address:
+**Validation at deploy.** Only a Release that carries the injected provider is checked: without it no model call reaches the gateway, so nothing about the gateway can fail one. The Worker reads the string model IDs from eve's compiled output, `compiled-agent-manifest.json` (eve's `agent-summary.json` records only the root agent's model): each agent's `config.model` and `config.compaction.model`, for the root and for every subagent, which eve flattens into one `subagents` list with each one's config under `agent`. A model the Agent authored as an object compiles with a `source` and is skipped, whatever its provider: eve loads it from the Agent's module and calls it directly. The Worker then requests `GET /v1/models` with the project's `AI_GATEWAY_API_KEY`. Every log line names the gateway's address:
 
 - If the gateway rejects the key (HTTP 401), the deploy fails. This is the case where a project carried a key for another gateway, such as a Vercel AI Gateway key, into an instance with a Model Gateway.
 - If the gateway returns a model list and the ID is not in it, the deploy fails. The log gives an actionable diagnostic and lists similar IDs.
@@ -156,6 +156,8 @@ Both are always present and empty when the project has opted out or nothing is c
 
 **A configuration change restarts.** Changing the Model Gateway configuration or a project's option enqueues restarts for the affected `running` / `draining` deployments. The restart keeps the original Release, as a Shared Agent Environment change does.
 
+A restart can only reconfigure a provider the Release already carries, so each Release records whether release preparation injected one (`releases.model_gateway_provider`). A deployment whose Release has none (built before the provider existed, or on eve 0.83) is not restarted. While its project is set to use the gateway, the API returns it as `rebuildRequired`, and the settings pages say it still calls models as authored until it is redeployed. When the project is not using the gateway, such a Release already behaves as asked, and nothing is reported.
+
 ### 6.5 The runtime module and injection
 
 **The runtime module, `eveland/model-gateway`.** When the module loads, it checks in order:
@@ -170,11 +172,11 @@ The module forwards model IDs to the gateway verbatim, and the provider name is 
 
 **Injection at release time.** The Worker writes `agent/instrumentation/eveland-model-gateway.js` into every eve 1.0.x Release; it installs the provider in the instrumentation's `setup`, which runs after every instrumentation module has loaded and before the first event, so a global provider the Agent sets at module top level is always in place first. If the user has already authored a file with that name, the build fails, as with the observer's reserved file. The module's code is bundled into the Release (`.eveland/model-gateway/runtime.mjs`) rather than loaded from the platform mount the way the observer is. The observer only observes, so following the platform version is fine for it. A provider decides how the model call itself behaves, so it should be fixed together with the Release (the immutable-artifacts principle). Only the configuration, through environment variables, is injected at runtime.
 
-The module is always injected but inert when nothing is configured. So configuring a Model Gateway after a deploy needs no rebuild; a restart is enough.
+The module is always injected but inert when nothing is configured. So configuring a Model Gateway after a deploy needs no rebuild for a Release that carries it; a restart is enough.
 
 **Dependency direction.** The runtime module's source lives in `packages/eveland/src/model-gateway.ts`. It is published as an SDK subpath and is also the single source the Worker bundles. The Worker bundles that source by file path rather than importing it (the workspace never builds the SDK's `dist/`), and the architecture tests pin the Worker as the only package allowed to declare `eveland`, with the reason written next to the rule. The `eveland` package itself still depends on no workspace package.
 
-**eve version.** Injection applies only to eve 1.0.x Releases. A 0.83.x Release gets no injection, and its deploy log writes a `WARNING` saying that this deployment calls models exactly as authored. 0.83 is about to leave the compatibility window.
+**eve version.** Injection applies only to eve 1.0.x Releases. A 0.83.x Release gets no injection and no deploy-time check, and its deploy log writes a `WARNING` saying that this deployment calls models exactly as authored. 0.83 is about to leave the compatibility window.
 
 ---
 

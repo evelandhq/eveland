@@ -1,5 +1,5 @@
 {
-  "id": "ade4e16c-b481-4cc6-ac53-a967390f4a3b",
+  "id": "91cee048-7d82-4eca-9bfe-759e1ad8d5fb",
   "prevId": "b40304d9-6598-4785-a4fe-344597cbaeb4",
   "version": "7",
   "dialect": "postgresql",
@@ -5019,6 +5019,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "model_gateway_provider": {
+          "name": "model_gateway_provider",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "created_at": {
           "name": "created_at",

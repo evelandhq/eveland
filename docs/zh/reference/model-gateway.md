@@ -24,11 +24,12 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 
 ## 2. 作用范围
 
-- **只影响字符串模型 ID。** Agent 写 `model: "anthropic/claude-sonnet-4.5"` 这样的字符串时，调用经过 Model Gateway；Agent 自己传入的模型对象（例如用 `createOpenAICompatible(...)` 构造的）不受影响。
+- **只影响字符串模型 ID。** Agent 写 `model: "anthropic/claude-sonnet-4.5"` 这样的字符串时，调用经过 Model Gateway；Agent 自己传入的模型对象（例如用 `createOpenAICompatible(...)` 或 AI SDK 的 `gateway(...)` 构造的）不受影响，照常调用它自己的 provider。
 - **Agent 自己的 provider 优先。** Agent 在自己的 instrumentation 里设置了 `globalThis.AI_SDK_DEFAULT_PROVIDER`，平台不会替换它。
 - **模型 ID 原样转发。** Eveland 不改写模型 ID，也不维护别名表；别名在网关上配置（例如 LiteLLM 的 `model_name`）。推荐使用 Vercel 模型目录里的 slug，这样 eve 构建时能查到上下文窗口，Agent 不必自己写 `modelContextWindowTokens`。
-- **只作用于 eve 1.0 及以上的 Release。** eve 0.83 的 Release 照常构建，构建日志里会有一条 `WARNING`，模型调用保持 Agent 原本的写法。
+- **只作用于 eve 1.0 及以上的 Release。** eve 0.83 的 Release 照常构建，构建日志里会有一条 `WARNING`，不做网关检查（§7），模型调用保持 Agent 原本的写法。
 - **未配置时什么都不做。** 平台总是把 provider 模块注入 eve 1.0 的 Release，但实例没有配置网关、或者项目选择不用时，它不做任何事。所以部署之后再配置网关，只需要重启，不需要重新构建。
+- **没有 provider 的 Release 需要重新部署。** 平台开始注入 provider 之前构建的 Release，以及 eve 0.83 的 Release，里面都没有 provider，而重启沿用的还是同一个 Release。网关变更时不会重启这类部署；只要项目设为使用网关，设置页就会把它列为“仍按原写法调用模型”，直到在 eve 1.0 及以上重新部署。
 
 ---
 
@@ -46,7 +47,7 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 - 只有管理员能查看和修改。
 - 配置的内容是网关类型和 Base URL（Vercel AI Gateway 不需要）。带凭据的 Base URL（`user:password@`）会被拒绝。
 - **测试连接**：在表单的测试 key 输入框里填一把该网关上的 key，API 用它列一次网关的模型，返回模型数量或错误信息。这把 key 不保存；请求不跟随重定向、设有超时，错误信息里会打码。
-- 保存一个不同的网关或移除网关时，平台为所有使用它的项目（即没有设为“关闭”的项目）的在线部署排队重启，沿用现有 Release。
+- 保存一个不同的网关或移除网关时，平台为所有使用它的项目（即没有设为“关闭”的项目）的在线部署排队重启，沿用现有 Release。Release 里没有 provider 的在线部署（§2）不会重启；保存后页面会列出需要重新部署的项目。
 
 ---
 
@@ -57,7 +58,7 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 | 使用 Model Gateway（默认） | 字符串模型 ID 带着项目的 `AI_GATEWAY_API_KEY` 发往实例的网关。                                   |
 | 关闭                       | 不注入任何东西，Agent 按原本的写法调用模型（有 `AI_GATEWAY_API_KEY` 时就是 Vercel AI Gateway）。 |
 
-修改选项会为该项目的在线部署排队重启。
+修改选项会为该项目里带 provider 的在线部署排队重启。项目使用网关期间，页面会把 Release 里没有 provider 的在线部署（§2）列为需要重新部署。
 
 ---
 
@@ -88,7 +89,7 @@ key 是项目自己的 `AI_GATEWAY_API_KEY`，不是保留变量。
 
 ## 7. 部署时检查
 
-构建完成后，Worker 从 eve 的编译产物（`.output/.eve/compile/compiled-agent-manifest.json`）读出根 Agent 和所有子 Agent 的静态模型 ID，用**这个项目的 `AI_GATEWAY_API_KEY`** 向网关列出模型。每条日志都写明网关地址。
+构建出带 provider 的 Release 后，Worker 从 eve 的编译产物（`.output/.eve/compile/compiled-agent-manifest.json`）读出所有以字符串写的模型 ID：根 Agent 和每个子 Agent（包括嵌套的）的 `model` 与 `compaction.model`，再用**这个项目的 `AI_GATEWAY_API_KEY`** 向网关列出模型。每条日志都写明网关地址。
 
 | 情况                              | 结果                                                                                                         |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -97,7 +98,7 @@ key 是项目自己的 `AI_GATEWAY_API_KEY`，不是保留变量。
 | 项目没有设置 `AI_GATEWAY_API_KEY` | 构建日志写一条 `WARNING`，部署继续，模型调用会在网关那里失败。                                               |
 | 列表接口因其他原因不可用          | 构建日志写一条 `WARNING`，部署继续。                                                                         |
 
-动态选择的模型无法静态检查，不在范围内。
+模型对象不检查，因为它们不经过网关；eve 0.83 的 Release 同理不检查。动态选择的模型无法静态检查，不在范围内。
 
 ---
 

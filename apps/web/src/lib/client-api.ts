@@ -1,5 +1,6 @@
 import type {
   ModelGateway,
+  ModelGatewayRebuildRequired,
   ProjectModelGateway,
   ProjectModelGatewayMode,
 } from "@evelandhq/core/model-gateway";
@@ -225,9 +226,11 @@ export async function saveSharedAgentEnvironment(
   });
 }
 
-export async function saveModelGateway(
-  input: ModelGatewayInput,
-): Promise<{ gateway: ModelGateway; jobs: Job[] }> {
+export async function saveModelGateway(input: ModelGatewayInput): Promise<{
+  gateway: ModelGateway;
+  jobs: Job[];
+  rebuildRequired: ModelGatewayRebuildRequired[];
+}> {
   return clientRequest("/platform/model-gateway", {
     method: "PUT",
     headers: { "content-type": "application/json" },
@@ -235,7 +238,11 @@ export async function saveModelGateway(
   });
 }
 
-export async function deleteModelGateway(): Promise<{ deleted: boolean; jobs: Job[] }> {
+export async function deleteModelGateway(): Promise<{
+  deleted: boolean;
+  jobs: Job[];
+  rebuildRequired: ModelGatewayRebuildRequired[];
+}> {
   return clientRequest("/platform/model-gateway", { method: "DELETE" });
 }
 
@@ -256,7 +263,11 @@ export async function testModelGateway(
 export async function saveProjectModelGateway(
   projectId: string,
   input: { mode: ProjectModelGatewayMode },
-): Promise<{ settings: ProjectModelGateway; jobs: Job[] }> {
+): Promise<{
+  settings: ProjectModelGateway;
+  jobs: Job[];
+  rebuildRequired: ModelGatewayRebuildRequired[];
+}> {
   return clientRequest(`/projects/${projectId}/model-gateway`, {
     method: "PUT",
     headers: { "content-type": "application/json" },

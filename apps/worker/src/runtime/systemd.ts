@@ -601,6 +601,7 @@ export function createSystemdAdapter(
       return {
         releaseRef: releaseDir,
         schedulerDefinitions,
+        modelGatewayProvider: observerInjection.modelGateway.status === "injected",
         staticModelIds,
         ...(discovery ? { discovery } : {}),
         // Echo what release preparation actually injected — the source of

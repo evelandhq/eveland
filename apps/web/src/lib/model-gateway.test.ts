@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   modelGatewayKindOptions,
+  modelGatewayRebuildNotice,
   projectModelGatewaySummary,
   validateModelGatewayDraft,
   validateModelGatewayTest,
@@ -74,5 +75,45 @@ describe("projectModelGatewaySummary", () => {
     expect(
       projectModelGatewaySummary({ mode: "platform" }, { kind: "vercel", baseUrl: null }),
     ).toBe("String model IDs go to Vercel AI Gateway with this project's AI_GATEWAY_API_KEY.");
+  });
+});
+
+describe("Model Gateway rebuild notice", () => {
+  const deployment = (projectName: string, deploymentKey: string) => ({
+    projectId: `proj_${projectName}`,
+    projectName,
+    deploymentId: `dep_${deploymentKey}`,
+    deploymentKey,
+  });
+
+  test("says nothing when every live deployment picks the gateway up", () => {
+    expect(modelGatewayRebuildNotice([], "project")).toBeNull();
+    expect(modelGatewayRebuildNotice([], "instance")).toBeNull();
+  });
+
+  test("names a project's deployments and says a restart is not enough", () => {
+    expect(
+      modelGatewayRebuildNotice(
+        [deployment("crm", "a1b2c3d4"), deployment("crm", "e5f6g7h8")],
+        "project",
+      ),
+    ).toBe(
+      "2 live deployments (a1b2c3d4, e5f6g7h8) still call models as authored: their release was built without the Model Gateway provider. Redeploy on eve 1.0 or later to apply the gateway; a restart does not.",
+    );
+  });
+
+  test("names the projects across the instance", () => {
+    expect(
+      modelGatewayRebuildNotice(
+        [
+          deployment("crm", "a1b2c3d4"),
+          deployment("crm", "e5f6g7h8"),
+          deployment("ops", "i9j0k1l2"),
+        ],
+        "instance",
+      ),
+    ).toBe(
+      "3 live deployments in crm, ops still call models as authored: their release was built without the Model Gateway provider. Redeploy those projects on eve 1.0 or later to apply the gateway; a restart does not.",
+    );
   });
 });
