@@ -8,7 +8,7 @@ export const EVE_COMPATIBILITY_POLICY = {
     },
     {
       range: "1.0.x",
-      verifiedVersion: "1.0.0-rc.1",
+      verifiedVersion: "1.0.0-rc.2",
       dependencyName: "eve",
       sessionProtocol: "v27",
     },
@@ -20,6 +20,18 @@ export const EVE_COMPATIBILITY_POLICY = {
   // were skipped: each was superseded within days, and 0.84 through 0.91 and
   // 1.0 all speak the same v27 protocol, so 1.0 -- the first line eve puts
   // under semver -- is the one v27 line worth carrying.
+  //
+  // 1.0.0-rc.2 (published 2026-11-02, the npm `latest` tag) became the
+  // verified 1.0 patch on 2026-11-03. Against rc.1 it keeps every pinned
+  // surface Eveland reads -- discovery manifest 15, compiled agent manifest
+  // 55, checkpoint 18, stream 27, the stable workflow names and the bundler
+  // default, and every dependency -- and widens two v27 facts: a
+  // `call.requested` may be owned by its turn (`owner: { turnId }`) and a
+  // `content.completed` may leave out `runId`, with `scope.turnId` naming the
+  // turn. rc.2's runtime emits neither yet; the observer, the transcript, and
+  // the trace place both under their turn. `eve dev` also resolves a string
+  // model through `globalThis.AI_SDK_DEFAULT_PROVIDER` from rc.2
+  // (vercel/eve#5789), as `eve start` already did.
   //
   // 0.84 is the largest protocol move since 0.69, so the two lines in this
   // window speak different session protocols (`sessionProtocol`), and every
