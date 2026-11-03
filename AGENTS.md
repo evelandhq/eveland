@@ -10,8 +10,8 @@ Before changing code:
 1. Read `spec.md` for the product boundaries and architecture principles.
    It is deliberately principle-level: the per-domain
    behavioral contracts live in `docs/{zh,en}/reference/` (identity,
-   source-import, playground, scheduling, agent-environment, dashboard,
-   routing, observability, eve-compatibility) — read the domain page for the
+   source-import, playground, scheduling, agent-environment, model-gateway,
+   dashboard, routing, observability, eve-compatibility) — read the domain page for the
    area you touch.
 2. Read `README.md` for the current repository shape and local workflow.
 3. For Linux, systemd, sandbox, or host-worker work, also read
@@ -173,6 +173,7 @@ agent-observer, agent-scheduler -> core
 ctl -> core
 platform-observability, architecture-tests, cli -> no Eveland package
 sdk -> no Eveland package at all
+worker -> eveland (bundles src/model-gateway.ts into Releases, by path only)
 db -> core
 core -> no other Eveland package
 apps -X-> apps

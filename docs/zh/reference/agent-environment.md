@@ -45,6 +45,11 @@ Eve 项目在打包（`npx eve build`）时会静态解析部分配置（例如�
 - **持久记忆契约**：Eveland 会自动为每个 Agent 进程注入 `EVELAND_MEMORY_ROOT` 环境变量。这是 Agent 持久化 Eve `fileMemory()` 文件的存储根目录。
 - **租户安全隔离**：Worker 自动将该目录绑定至宿主机专属路径：`<EVELAND_DATA_DIR>/memory/<projectId>`。该路径按项目隔离且跨重新部署持久保留，项目被删除时统一清理。
 
+## 5. Model Gateway 保留变量
+
+- `EVELAND_MODEL_GATEWAY_KIND` 和 `EVELAND_MODEL_GATEWAY_URL` 属于平台保留层，总是存在：项目使用实例的 Model Gateway 时填入网关类型和地址，否则为空。项目或共享环境中的同名变量会被覆盖，因此项目无法把平台注入的 Provider 指向别的网关。
+- key 不是保留变量：它是项目自己的 secret `AI_GATEWAY_API_KEY`，平台从不提供。完整规则见 [Model Gateway 行为契约](/zh/docs/reference/model-gateway)。
+
 ## 相关参考
 
 - [密钥与连接配置](/zh/docs/agents/secrets-connections)：面向开发者的配置指引

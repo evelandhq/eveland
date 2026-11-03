@@ -1,0 +1,112 @@
+{
+  "kind": "eve-agent-compiled-manifest",
+  "version": 55,
+  "config": {
+    "model": {
+      "id": "vendor/root",
+      "routing": {
+        "kind": "gateway",
+        "target": "vendor"
+      },
+      "contextWindowTokens": 200000
+    },
+    "compaction": {
+      "model": {
+        "id": "vendor/compact",
+        "routing": {
+          "kind": "gateway",
+          "target": "vendor"
+        },
+        "contextWindowTokens": 100000
+      }
+    }
+  },
+  "subagents": [
+    {
+      "name": "child",
+      "nodeId": "subagents/child",
+      "parentNodeId": "__root__",
+      "description": "Child.",
+      "agent": {
+        "config": {
+          "model": {
+            "id": "vendor/child",
+            "routing": {
+              "kind": "gateway",
+              "target": "vendor"
+            },
+            "contextWindowTokens": 200000
+          },
+          "compaction": {}
+        }
+      }
+    },
+    {
+      "name": "grand",
+      "nodeId": "subagents/child::subagents/grand",
+      "parentNodeId": "subagents/child",
+      "description": "Grand.",
+      "agent": {
+        "config": {
+          "model": {
+            "id": "vendor/grand",
+            "routing": {
+              "kind": "gateway",
+              "target": "vendor"
+            },
+            "contextWindowTokens": 200000
+          },
+          "compaction": {}
+        }
+      }
+    },
+    {
+      "name": "custom",
+      "nodeId": "subagents/custom",
+      "parentNodeId": "__root__",
+      "description": "Custom.",
+      "agent": {
+        "config": {
+          "model": {
+            "id": "custom/private-model",
+            "routing": {
+              "kind": "external",
+              "provider": "custom"
+            },
+            "contextWindowTokens": 200000,
+            "source": {
+              "sourceKind": "module",
+              "logicalPath": "agent.ts",
+              "sourceId": "agent.ts"
+            }
+          },
+          "compaction": {}
+        }
+      }
+    },
+    {
+      "name": "gw",
+      "nodeId": "subagents/gw",
+      "parentNodeId": "__root__",
+      "description": "Gw.",
+      "agent": {
+        "config": {
+          "model": {
+            "id": "gateway/vendor/gw-object",
+            "routing": {
+              "kind": "gateway",
+              "target": "vendor"
+            },
+            "contextWindowTokens": 200000,
+            "source": {
+              "sourceKind": "module",
+              "logicalPath": "agent.ts",
+              "sourceId": "agent.ts"
+            }
+          },
+          "compaction": {}
+        }
+      }
+    }
+  ]
+}

@@ -453,6 +453,28 @@ and must not serve as a Playground authentication credential; a missing, deleted
 or undecryptable secret reference must fail closed, never falling back to an old
 value.
 
+### Model Gateway (/settings/model-gateway)
+
+The system has at most one admin-configured Model Gateway: the gateway Agents'
+string model IDs go through (LiteLLM, OpenRouter, Vercel AI Gateway, or a
+generic OpenAI-compatible endpoint), distinct from the Agent Gateway. When a
+gateway is configured and a project has not opted out, the platform supplies the
+default AI SDK provider for string model IDs in that project's deployments, so
+an Agent written with plain `provider/model` slugs runs unchanged on Vercel and
+on Eveland. The platform never overrides a provider the Agent installed itself,
+never affects model objects, and never rewrites model IDs; aliases live on the
+gateway. The platform holds no gateway credential and supplies no key: each
+project brings its own key in `AI_GATEWAY_API_KEY`, the variable Eve's built-in
+gateway provider already reads, and a project without one has no fallback. A
+deploy of a Release carrying the injected provider fails when the gateway
+rejects the project's key or does not offer one of its string models, naming the
+gateway's address. A configuration change restarts only deployments whose
+Release carries the provider; the others are reported as needing a redeploy. Gateway-reported cost is
+recorded where Eve reads it; a gateway that reports none leaves cost missing,
+never estimated. The behavioral contract lives in
+`docs/en/reference/model-gateway.md`, the rationale in
+`docs/en/reference/design/model-gateway.md`.
+
 ### Build-visible variables
 
 `variable` entries participate in Release builds — values the agent config reads
@@ -506,9 +528,11 @@ decision change — discuss first, then act:
    logs, telemetry, argv, builds, or any persisted artifact; diagnostics show only
    the configured state.
 6. **Platform injection, source-oblivious.** The sandbox backend, workflow world,
-   and observer hook are injected by the platform into the disposable Release
-   copy; imported source, manifests, and lockfiles are never modified, and
-   authored lifecycle and configuration must be preserved.
+   observer hook, and Model Gateway default provider (inert until a gateway is
+   configured) are injected by the platform into the disposable Release copy;
+   imported source, manifests, and lockfiles are never modified, and authored
+   lifecycle and configuration — including a model provider the Agent installs
+   itself — must be preserved.
 7. **A transparent proxy.** The Agent Gateway neither interprets nor rewrites the
    Agent's authentication protocol or response bytes; the single deliberate
    exception is Open mode injecting a Caller Token for credential-less requests,

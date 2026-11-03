@@ -448,12 +448,19 @@ export type ReleaseRecord = {
   // manifest could not be read or the release predates the column.
   summary: Record<string, unknown> | null;
   workflow: ReleaseWorkflowAttestation;
+  // Whether release preparation injected the Model Gateway provider (eve 1.0
+  // and later). Without it the Release calls models exactly as authored, and
+  // a Model Gateway change reaches it only through a rebuild.
+  modelGatewayProvider: boolean;
   createdAt: string;
 };
 
 // The browser-facing shape: registry refs, the observer delivery contract, and
-// the workflow attestation are runtime-internal.
-export type PublicReleaseRecord = Omit<ReleaseRecord, "imageTag" | "observerContract" | "workflow">;
+// the workflow and Model Gateway attestations are runtime-internal.
+export type PublicReleaseRecord = Omit<
+  ReleaseRecord,
+  "imageTag" | "observerContract" | "workflow" | "modelGatewayProvider"
+>;
 
 export type DeploymentRecord = {
   id: string;

@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { ProjectDangerZone } from "@/components/project-danger-zone";
 import { ProjectGeneralSettings } from "@/components/project-general-settings";
+import { ProjectModelGatewaySettings } from "@/components/project-model-gateway-settings";
 import { ProjectSecretsSettings } from "@/components/project-secrets-settings";
 import { Separator } from "@/components/ui/separator";
-import { getProject, getSecrets } from "@/lib/server-api";
+import { getProject, getProjectModelGateway, getSecrets } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -16,9 +17,13 @@ export default async function ProjectSettingsPage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const [project, secrets] = await Promise.all([getProject(projectId), getSecrets(projectId)]);
+  const [project, secrets, modelGateway] = await Promise.all([
+    getProject(projectId),
+    getSecrets(projectId),
+    getProjectModelGateway(projectId),
+  ]);
 
-  if (!project) notFound();
+  if (!project || !modelGateway) notFound();
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
@@ -44,6 +49,10 @@ export default async function ProjectSettingsPage({
       <Separator />
 
       <ProjectSecretsSettings projectId={projectId} initialEntries={secrets} />
+
+      <Separator />
+
+      <ProjectModelGatewaySettings projectId={projectId} initial={modelGateway} />
 
       <Separator />
 

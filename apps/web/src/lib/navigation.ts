@@ -12,6 +12,7 @@ import {
   LogsIcon,
   KeyRoundIcon,
   LockKeyholeIcon,
+  NetworkIcon,
   PlayIcon,
   RadioTowerIcon,
   SettingsIcon,
@@ -65,6 +66,12 @@ export const settingsNavigationGroups = [
         href: "/settings/shared-agent-environment",
         label: "Environment",
         icon: LockKeyholeIcon,
+        access: "admin",
+      },
+      {
+        href: "/settings/model-gateway",
+        label: "Model Gateway",
+        icon: NetworkIcon,
         access: "admin",
       },
       {

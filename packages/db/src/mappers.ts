@@ -765,6 +765,7 @@ export function releaseRowToRelease(row: {
   workflowStorageSpec: number | null;
   workflowDispatchProtocol: number | null;
   workflowEnqueueCapability: string;
+  modelGatewayProvider: boolean;
   createdAt: Date;
 }): ReleaseRecord {
   return {
@@ -783,6 +784,7 @@ export function releaseRowToRelease(row: {
       enqueueCapability:
         row.workflowEnqueueCapability as ReleaseWorkflowAttestation["enqueueCapability"],
     },
+    modelGatewayProvider: row.modelGatewayProvider,
     createdAt: timestampToIso(row.createdAt),
   };
 }

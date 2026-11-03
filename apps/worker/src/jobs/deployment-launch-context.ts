@@ -11,6 +11,7 @@ import {
 import { DOCKER_MEMORY_ROOT_MOUNT_DIR } from "../runtime/docker.js";
 import {
   composeDeploymentEnv,
+  type DeploymentEnvironmentStore,
   devSecretKey,
   resolveMemoryRootDirs,
   resolveRuntimeCommandContext,
@@ -60,7 +61,8 @@ export type DeploymentStartInput = Readonly<{
 export type LaunchInputStore = Pick<
   Store,
   "listSecretRecords" | "getSharedAgentEnvironmentRecord" | "getObservabilityPolicy" | "appendLog"
->;
+> &
+  DeploymentEnvironmentStore;
 
 export function createDeploymentStartInput(input: DeploymentStartInput): ProcessStartInput {
   const usesHostVisiblePaths = input.launchContext.runtimeKind === "docker";
@@ -86,7 +88,7 @@ export function createDeploymentStartInput(input: DeploymentStartInput): Process
 }
 
 export async function resolveDeploymentLaunchPrerequisites(input: {
-  store: Pick<LaunchInputStore, "listSecretRecords" | "getSharedAgentEnvironmentRecord">;
+  store: DeploymentEnvironmentStore;
   workerEnv: NodeJS.ProcessEnv;
   projectId: string;
   deploymentId: string;

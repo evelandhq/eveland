@@ -11,6 +11,13 @@ import { maskKnownSecrets } from "@evelandhq/core/server/secrets";
 import type { Store } from "@evelandhq/db";
 import { rm } from "node:fs/promises";
 import path from "node:path";
+import { MODEL_CATALOG_CACHE_RELATIVE_PATH } from "../runtime/model-catalog-cache.js";
+import {
+  modelGatewayValidationError,
+  modelGatewayValidationFails,
+  modelGatewayValidationLog,
+  validateModelGatewayModels,
+} from "./model-gateway-validation.js";
 import { waitForOwnedHttpHealth } from "../runtime/health.js";
 import { createRuntimeAdapterFromEnv } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
@@ -117,12 +124,8 @@ export async function handleBuildDeployJob(
   const releaseId = createId("rel");
   const deploymentId = createId("dep");
   const processName = `eveland-${processSafeName(project.id)}-${processSafeName(deploymentId)}`;
-  const buildDir = path.join(
-    process.env.EVELAND_DATA_DIR ?? ".eveland-data",
-    "builds",
-    project.id,
-    releaseId,
-  );
+  const dataDir = process.env.EVELAND_DATA_DIR ?? ".eveland-data";
+  const buildDir = path.join(dataDir, "builds", project.id, releaseId);
   const launchPrerequisites = await resolveDeploymentLaunchPrerequisites({
     store,
     workerEnv: process.env,
@@ -168,6 +171,7 @@ export async function handleBuildDeployJob(
       // the legacy per-project world and the rollout flag that selected it are
       // no longer build options.
       workflowWorld: EVELAND_WORKFLOW_WORLD,
+      modelCatalogCacheFile: path.join(dataDir, MODEL_CATALOG_CACHE_RELATIVE_PATH),
     });
   } catch (error) {
     await rm(buildDir, { recursive: true, force: true });
@@ -179,6 +183,26 @@ export async function handleBuildDeployJob(
       type: "build",
       line: maskKnownSecrets(build.log.trim(), launchPrerequisites.secretValues),
     });
+  }
+  // Before anything is recorded or started: a key the gateway rejects, or a
+  // model it explicitly does not offer this project's key, would fail every
+  // turn. Only a Release carrying the injected provider calls the gateway at
+  // all (eve 0.83 Releases call models as authored), so only it is checked.
+  const modelGatewayProvider = build.modelGatewayProvider === true;
+  const modelValidation = await validateModelGatewayModels({
+    env: launchPrerequisites.env,
+    modelIds: modelGatewayProvider ? (build.staticModelIds ?? []) : [],
+    ...(options.listGatewayModels ? { listModels: options.listGatewayModels } : {}),
+  });
+  for (const line of modelGatewayValidationLog(modelValidation)) {
+    await store.appendLog({ projectId: job.projectId, type: "build", line });
+  }
+  if (modelGatewayValidationFails(modelValidation)) {
+    // Nothing was recorded or started, so the built release is this job's to
+    // discard, as on a failed start.
+    await runtime.removeRelease?.(build.releaseRef).catch(() => undefined);
+    await rm(buildDir, { recursive: true, force: true }).catch(() => undefined);
+    throw modelGatewayValidationError(modelValidation);
   }
   if (build.schedulerDefinitions) {
     await store.recordScheduleVersions({
@@ -283,6 +307,7 @@ export async function handleBuildDeployJob(
       ...(build.workflowWorld
         ? { workflowWorld: deriveWorkflowWorldAttestation(build.workflowWorld) }
         : {}),
+      modelGatewayProvider,
     });
     deploymentRecorded = true;
     // Name the Deployment on the job row before anything else can complete

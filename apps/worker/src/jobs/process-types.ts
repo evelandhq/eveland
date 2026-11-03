@@ -53,6 +53,8 @@ export type ProcessJobOptions = {
   maxConcurrentHeavyJobs?: number;
   dispatchSchedule?: (input: ScheduleDispatchInput) => Promise<{ sessionIds: string[] }>;
   tracer?: Tracer;
+  /** Lists a Model Gateway's models for a key; the deploy-time model check. */
+  listGatewayModels?: (input: { baseUrl: string; apiKey: string }) => Promise<string[]>;
   /** Aborted when this execution's job lease is fenced away; long-running steps must stop. */
   signal?: AbortSignal;
 };

@@ -1,3 +1,4 @@
+import { ModelGatewayRequestError } from "@evelandhq/core/server/model-gateway-client";
 import { describe, expect, test, vi } from "vitest";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { processNextJob } from "./process.js";
@@ -117,6 +118,178 @@ describe("processNextJob", () => {
       expect(removedReleases).toEqual(["failed-start:image"]);
       expect(buildDir).not.toBeNull();
       await expect(access(buildDir!)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    {
+      case: "does not offer the Agent's model",
+      listGatewayModels: async () => ["anthropic/claude-sonnet-4-5"],
+      logLine:
+        /ERROR: model anthropic\/claude-sonnet-4\.5 is not offered by the Model Gateway at https:\/\/llm\.example\/v1 .*did you mean anthropic\/claude-sonnet-4-5/,
+    },
+    {
+      case: "rejects the project's key",
+      listGatewayModels: async () => {
+        throw new ModelGatewayRequestError("Model Gateway responded with HTTP 401", 401);
+      },
+      logLine:
+        /ERROR: the Model Gateway at https:\/\/llm\.example\/v1 rejected this project's AI_GATEWAY_API_KEY \(HTTP 401\)/,
+    },
+  ])("fails the deploy, before anything starts, when the Model Gateway $case", async (scenario) => {
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-missing-model-"));
+    vi.stubEnv("EVELAND_DATA_DIR", dataDir);
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Missing Model Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.saveModelGateway({ kind: "openai-compatible", baseUrl: "https://llm.example/v1" });
+    await store.upsertSecrets(project.id, [
+      {
+        key: "AI_GATEWAY_API_KEY",
+        value: JSON.stringify(
+          encryptSecretValue("sk-project-own", "eveland-test-secret-key-00000000"),
+        ),
+        kind: "secret",
+      },
+    ]);
+    await store.enqueueJob(project.id, "build_deploy");
+    let buildDir: string | null = null;
+    const removedReleases: string[] = [];
+    const listGatewayModels = vi.fn(scenario.listGatewayModels);
+
+    try {
+      await expect(
+        processNextJob(store, "worker-a", {
+          appSecretKey: "eveland-test-secret-key-00000000",
+          runtime: {
+            name: "docker",
+            async buildRelease(input) {
+              buildDir = input.buildDir;
+              await mkdir(input.buildDir, { recursive: true });
+              return {
+                releaseRef: "missing-model:image",
+                log: "",
+                modelGatewayProvider: true,
+                staticModelIds: ["anthropic/claude-sonnet-4.5"],
+              };
+            },
+            async startProcess() {
+              throw new Error("startProcess must not run");
+            },
+            async stopProcess() {
+              throw new Error("stopProcess must not run");
+            },
+            async removeRelease(releaseRef) {
+              removedReleases.push(releaseRef);
+            },
+          },
+          listGatewayModels,
+          allocateHostPort: () => 41096,
+        }),
+      ).resolves.toBe(true);
+
+      expect(listGatewayModels).toHaveBeenCalledWith({
+        baseUrl: "https://llm.example/v1",
+        apiKey: "sk-project-own",
+      });
+      await expect(store.getProject(project.id)).resolves.toMatchObject({
+        deploymentStatus: "failed",
+      });
+      const logs = (await store.listLogs(project.id)).map((log) => log.line).join("\n");
+      expect(logs).toMatch(scenario.logLine);
+      expect(logs).not.toContain("sk-project-own");
+      expect(removedReleases).toEqual(["missing-model:image"]);
+      await expect(access(buildDir!)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not check the Model Gateway for a Release built without its provider", async () => {
+    // eve 0.83: release preparation skips the provider, so the Agent's model
+    // calls never reach the gateway and nothing about the gateway may fail
+    // the deploy.
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-no-provider-"));
+    vi.stubEnv("EVELAND_DATA_DIR", dataDir);
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "No Provider Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.saveModelGateway({ kind: "openai-compatible", baseUrl: "https://llm.example/v1" });
+    await store.upsertSecrets(project.id, [
+      {
+        key: "AI_GATEWAY_API_KEY",
+        value: JSON.stringify(encryptSecretValue("sk-other", "eveland-test-secret-key-00000000")),
+        kind: "secret",
+      },
+    ]);
+    await store.enqueueJob(project.id, "build_deploy");
+    const listGatewayModels = vi.fn(async (): Promise<string[]> => {
+      throw new ModelGatewayRequestError("Model Gateway responded with HTTP 401", 401);
+    });
+    const startProcess = vi.fn(async () => {
+      throw new Error("start reached");
+    });
+
+    try {
+      await processNextJob(store, "worker-a", {
+        appSecretKey: "eveland-test-secret-key-00000000",
+        runtime: {
+          name: "docker",
+          async buildRelease(input) {
+            await mkdir(input.buildDir, { recursive: true });
+            return {
+              releaseRef: "no-provider:image",
+              log: "",
+              modelGatewayProvider: false,
+              staticModelIds: ["anthropic/claude-sonnet-4.5"],
+            };
+          },
+          startProcess,
+          async stopProcess() {},
+          async removeRelease() {},
+        },
+        listGatewayModels,
+        allocateHostPort: () => 41097,
+      });
+
+      expect(listGatewayModels).not.toHaveBeenCalled();
+      expect(startProcess).toHaveBeenCalled();
+      const logs = (await store.listLogs(project.id)).map((log) => log.line).join("\n");
+      expect(logs).not.toContain("Model Gateway at");
     } finally {
       vi.unstubAllEnvs();
       await rm(dataDir, { recursive: true, force: true });

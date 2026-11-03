@@ -763,6 +763,47 @@ export const sharedAgentEnvironment = pgTable(
   ],
 );
 
+// The instance's single Model Gateway: where Agents' string model IDs go. It
+// holds no credential; each project supplies its own AI_GATEWAY_API_KEY.
+export const modelGateway = pgTable(
+  "model_gateway",
+  {
+    key: text("key").primaryKey(),
+    kind: text("kind").notNull(),
+    baseUrl: text("base_url"),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("model_gateway_key_check", sql`${table.key} = 'global'`),
+    check(
+      "model_gateway_kind_check",
+      sql`${table.kind} in ('litellm', 'openrouter', 'vercel', 'openai-compatible')`,
+    ),
+    // Vercel AI Gateway's address is fixed; every other kind needs one.
+    check(
+      "model_gateway_base_url_check",
+      sql`(${table.kind} = 'vercel') = (${table.baseUrl} is null)`,
+    ),
+    check("model_gateway_revision_check", sql`${table.revision} > 0`),
+  ],
+);
+
+// Whether each project uses the Model Gateway. A project with no row uses it.
+export const projectModelGateway = pgTable(
+  "project_model_gateway",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    mode: text("mode").notNull().default("platform"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [check("project_model_gateway_mode_check", sql`${table.mode} in ('platform', 'off')`)],
+);
+
 export const observabilityPolicies = pgTable(
   "observability_policies",
   {
@@ -924,6 +965,11 @@ export const releases = pgTable(
     workflowStorageSpec: integer("workflow_storage_spec"),
     workflowDispatchProtocol: integer("workflow_dispatch_protocol"),
     workflowEnqueueCapability: text("workflow_enqueue_capability").notNull(),
+    // Whether release preparation injected the Model Gateway provider. Only
+    // such a Release routes string models through the instance gateway, so
+    // only it picks up a gateway change on restart. False for every Release
+    // built before the provider existed: they need a rebuild.
+    modelGatewayProvider: boolean("model_gateway_provider").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   // Postgres does not index foreign keys on its own; listReleaseSummaries

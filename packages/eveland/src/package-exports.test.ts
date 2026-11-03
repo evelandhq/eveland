@@ -55,3 +55,15 @@ test("keeps the package runnable from source as well as from dist", async () => 
   expect(tsconfig.compilerOptions?.allowImportingTsExtensions).toBe(true);
   expect(tsconfig.compilerOptions?.rewriteRelativeImportExtensions).toBe(true);
 });
+
+test("publishes the Model Gateway provider from eveland/model-gateway", async () => {
+  const packageJson = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { exports?: Record<string, unknown> };
+  const buildConfig = JSON.parse(
+    await readFile(new URL("../tsconfig.build.json", import.meta.url), "utf8"),
+  ) as { include?: string[] };
+
+  expect(packageJson.exports).toHaveProperty("./model-gateway");
+  expect(buildConfig.include).toContain("src/model-gateway.ts");
+});

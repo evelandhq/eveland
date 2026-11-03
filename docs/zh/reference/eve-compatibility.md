@@ -57,6 +57,15 @@ npm 上出现新版本并不自动扩大窗口。新的 Minor 只有在 Changelo
 
 诊断信息会请项目所有者升级，而不是猜测旧协议。在生产环境升级 Eve 或 Eveland 之前，请先阅读对应 Release Notes。
 
+## Model Gateway 依赖的 eve 行为
+
+[Model Gateway](/zh/docs/reference/model-gateway) 依赖的几项 eve 行为不在 eve 的公开 API 承诺之内，所以扩大兼容窗口时，还要用真实安装运行 `pnpm --filter @evelandhq/worker smoke:model-gateway`（把 `EVE_VERSION` 设为候选版本）：
+
+- `eve build` 信任预先写入、`fetchedAt` 在 5 分钟以内的 `.eve/cache/model-catalog.json`（`kind: "eve-model-catalog-cache"`，`version: 2`）；
+- instrumentation 的 `setup` 在所有 instrumentation 模块加载完之后运行，`eve start` 通过 `globalThis.AI_SDK_DEFAULT_PROVIDER` 解析字符串模型 ID；
+- eve 把 `providerMetadata.gateway.cost` 记为 `usage.recorded` 的 `costUsd`；
+- `eve dev` 同样遵守默认 Provider（从 1.0.0-rc.2 起；vercel/eve#5787）。
+
 ## 深入参考
 
 - [源码导入](/zh/docs/reference/source-import)：Preflight 校验与依赖扫描契约

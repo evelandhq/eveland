@@ -61,6 +61,12 @@ import type {
   UsageRange,
 } from "@evelandhq/core/contracts";
 import type { ModelStepUsage } from "@evelandhq/core/eve";
+import type {
+  ModelGateway,
+  ModelGatewayKind,
+  ProjectModelGateway,
+  ProjectModelGatewayMode,
+} from "@evelandhq/core/model-gateway";
 import type { AgentCatalogRecord } from "@evelandhq/core/catalog";
 import type { AgentEventObservation } from "@evelandhq/core/observability";
 import type { EveVersionInfo } from "@evelandhq/core/source";
@@ -500,6 +506,27 @@ export interface SecretStore {
   getSharedAgentEnvironmentRecord(): Promise<SharedAgentEnvironmentRecord | null>;
 }
 
+export type SaveModelGatewayInput = {
+  kind: ModelGatewayKind;
+  /** Null for `vercel`, whose address is fixed. */
+  baseUrl: string | null;
+};
+
+export interface ModelGatewayStore {
+  getModelGateway(): Promise<ModelGateway | null>;
+  saveModelGateway(
+    input: SaveModelGatewayInput,
+  ): Promise<{ gateway: ModelGateway; changed: boolean }>;
+  deleteModelGateway(): Promise<boolean>;
+  /** A project with no saved setting gets the default mode. */
+  getProjectModelGateway(projectId: string): Promise<ProjectModelGateway>;
+  listProjectModelGateways(): Promise<ProjectModelGateway[]>;
+  saveProjectModelGatewayMode(
+    projectId: string,
+    mode: ProjectModelGatewayMode,
+  ): Promise<{ setting: ProjectModelGateway; changed: boolean }>;
+}
+
 export type EnqueueJobArguments<Type extends JobType> = Type extends JobType
   ? {} extends JobPayloadMap[Type]
     ? [type: Type, payload?: JobPayloadMap[Type]]
@@ -585,6 +612,11 @@ export interface DeploymentStore {
      * conservative state that blocks activation rather than guessing.
      */
     workflowWorld?: ReleaseWorkflowAttestation;
+    /**
+     * Whether release preparation injected the Model Gateway provider.
+     * Omitted records none: the Release calls models as authored.
+     */
+    modelGatewayProvider?: boolean;
   }): Promise<DeploymentRecord>;
   getCurrentDeployment(projectId: string): Promise<DeploymentRecord | null>;
   /**
@@ -998,6 +1030,7 @@ export type Store = ProjectStore &
   AgentAuthStore &
   IdentityStore &
   SecretStore &
+  ModelGatewayStore &
   JobStore &
   DeploymentStore &
   RoutingStore &

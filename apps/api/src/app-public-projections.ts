@@ -34,11 +34,12 @@ export function publicDeployment<T extends DeploymentRecord>(
 
 export function publicRelease<T extends ReleaseRecord>(
   release: T,
-): Omit<T, "imageTag" | "observerContract" | "workflow"> {
+): Omit<T, "imageTag" | "observerContract" | "workflow" | "modelGatewayProvider"> {
   const {
     imageTag: _imageTag,
     observerContract: _observerContract,
     workflow: _workflow,
+    modelGatewayProvider: _modelGatewayProvider,
     ...rest
   } = release;
   return rest;

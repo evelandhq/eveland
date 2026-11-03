@@ -12,6 +12,7 @@
     "---领域行为契约---",
     "source-import",
     "agent-environment",
+    "model-gateway",
     "identity",
     "playground",
     "routing",
