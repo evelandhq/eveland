@@ -42,7 +42,6 @@
     "prepack": "pnpm build"
   },
   "dependencies": {
-    "@ai-sdk/gateway": "4.0.111",
     "@ai-sdk/openai-compatible": "3.0.82",
     "@ai-sdk/provider": "4.0.35"
   },

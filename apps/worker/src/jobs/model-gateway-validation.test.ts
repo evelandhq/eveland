@@ -1,4 +1,5 @@
 import { MODEL_GATEWAY_ENV } from "@evelandhq/core/model-gateway";
+import { ModelGatewayRequestError } from "@evelandhq/core/server/model-gateway-client";
 import { describe, expect, test, vi } from "vitest";
 
 import { collectStaticModelIds } from "../runtime/discovery-artifacts.js";
@@ -63,21 +64,32 @@ describe("validateModelGatewayModels", () => {
     });
   });
 
-  test("lists AI Gateway's own models for the vercel kind", async () => {
-    const listModels = vi.fn(async () => ["anthropic/claude-sonnet-4.5"]);
-    await validateModelGatewayModels({
-      env: {
-        [MODEL_GATEWAY_ENV.kind]: "vercel",
-        [MODEL_GATEWAY_ENV.url]: "",
-        [MODEL_GATEWAY_ENV.key]: "vck",
-      },
+  test("cannot check without the project's key, and only warns: the call fails on its own", async () => {
+    const listModels = vi.fn();
+    const result = await validateModelGatewayModels({
+      env: { ...active, [MODEL_GATEWAY_ENV.key]: "" },
       modelIds: ["anthropic/claude-sonnet-4.5"],
       listModels,
     });
-    expect(listModels).toHaveBeenCalledWith({
-      baseUrl: "https://ai-gateway.vercel.sh/v1",
-      apiKey: "vck",
+    expect(result).toEqual({ status: "no-key", baseUrl: "https://llm.example/v1" });
+    expect(listModels).not.toHaveBeenCalled();
+    expect(modelGatewayValidationLog(result)).toEqual([
+      "WARNING: AI_GATEWAY_API_KEY is not set, so model calls to the Model Gateway at https://llm.example/v1 will fail. Set it in the project's environment.",
+    ]);
+  });
+
+  test("reports a key the gateway rejects, naming the gateway", async () => {
+    const result = await validateModelGatewayModels({
+      env: active,
+      modelIds: ["anthropic/claude-sonnet-4.5"],
+      listModels: async () => {
+        throw new ModelGatewayRequestError("Model Gateway responded with HTTP 401", 401);
+      },
     });
+    expect(result).toEqual({ status: "rejected", baseUrl: "https://llm.example/v1" });
+    expect(modelGatewayValidationLog(result)).toEqual([
+      "ERROR: the Model Gateway at https://llm.example/v1 rejected this project's AI_GATEWAY_API_KEY (HTTP 401). Set a key issued by that gateway, or opt the project out of the Model Gateway.",
+    ]);
   });
 
   test("names each missing model with the closest IDs the gateway does offer", async () => {
@@ -92,12 +104,13 @@ describe("validateModelGatewayModels", () => {
     });
     expect(result).toEqual({
       status: "missing",
+      baseUrl: "https://llm.example/v1",
       missing: [
         { id: "anthropic/claude-sonnet-4.5", suggestions: ["anthropic/claude-sonnet-4-5"] },
       ],
     });
     expect(modelGatewayValidationLog(result).join("\n")).toMatch(
-      /anthropic\/claude-sonnet-4\.5 .*not offered.*did you mean anthropic\/claude-sonnet-4-5/,
+      /anthropic\/claude-sonnet-4\.5 .*not offered by the Model Gateway at https:\/\/llm\.example\/v1 .*did you mean anthropic\/claude-sonnet-4-5/,
     );
   });
 
@@ -111,10 +124,11 @@ describe("validateModelGatewayModels", () => {
     });
     expect(result).toEqual({
       status: "unavailable",
+      baseUrl: "https://llm.example/v1",
       error: "Model Gateway responded with HTTP 503",
     });
     expect(modelGatewayValidationLog(result)).toEqual([
-      "WARNING: could not check the Agent's models against the Model Gateway (Model Gateway responded with HTTP 503); deploying anyway.",
+      "WARNING: could not check the Agent's models against the Model Gateway at https://llm.example/v1 (Model Gateway responded with HTTP 503); deploying anyway.",
     ]);
   });
 });

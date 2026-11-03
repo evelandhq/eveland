@@ -62,12 +62,10 @@ import type {
 } from "@evelandhq/core/contracts";
 import type { ModelStepUsage } from "@evelandhq/core/eve";
 import type {
-  IssuedModelGatewayKeyRecord,
   ModelGateway,
   ModelGatewayKind,
-  ModelGatewayRecord,
+  ProjectModelGateway,
   ProjectModelGatewayMode,
-  ProjectModelGatewayRecord,
 } from "@evelandhq/core/model-gateway";
 import type { AgentCatalogRecord } from "@evelandhq/core/catalog";
 import type { AgentEventObservation } from "@evelandhq/core/observability";
@@ -510,33 +508,22 @@ export interface SecretStore {
 
 export type SaveModelGatewayInput = {
   kind: ModelGatewayKind;
-  baseUrl: string | null;
-  encryptedCredential: string;
-};
-
-export type SaveProjectModelGatewaySettingsInput = {
-  mode: ProjectModelGatewayMode;
-  /** A new encrypted key, `null` to clear it, or omitted to keep the stored one. */
-  encryptedProjectKey?: string | null;
+  baseUrl: string;
 };
 
 export interface ModelGatewayStore {
-  getModelGatewayRecord(): Promise<ModelGatewayRecord | null>;
+  getModelGateway(): Promise<ModelGateway | null>;
   saveModelGateway(
     input: SaveModelGatewayInput,
   ): Promise<{ gateway: ModelGateway; changed: boolean }>;
   deleteModelGateway(): Promise<boolean>;
-  getProjectModelGatewayRecord(projectId: string): Promise<ProjectModelGatewayRecord>;
-  listProjectModelGatewayRecords(): Promise<ProjectModelGatewayRecord[]>;
-  saveProjectModelGatewaySettings(
+  /** A project with no saved setting gets the default mode. */
+  getProjectModelGateway(projectId: string): Promise<ProjectModelGateway>;
+  listProjectModelGateways(): Promise<ProjectModelGateway[]>;
+  saveProjectModelGatewayMode(
     projectId: string,
-    input: SaveProjectModelGatewaySettingsInput,
-  ): Promise<ProjectModelGatewayRecord>;
-  saveIssuedModelGatewayKey(
-    projectId: string,
-    issuedKey: IssuedModelGatewayKeyRecord | null,
-  ): Promise<void>;
-  savePendingModelGatewayRotationKey(projectId: string, encryptedKey: string | null): Promise<void>;
+    mode: ProjectModelGatewayMode,
+  ): Promise<{ setting: ProjectModelGateway; changed: boolean }>;
 }
 
 export type EnqueueJobArguments<Type extends JobType> = Type extends JobType

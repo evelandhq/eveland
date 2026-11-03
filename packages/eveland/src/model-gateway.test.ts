@@ -108,27 +108,56 @@ describe("readModelGatewayConfig", () => {
     expect(readModelGatewayConfig({})).toBeUndefined();
   });
 
-  test("reads every supported kind", () => {
+  test("reads every supported kind, with the key from the project's AI_GATEWAY_API_KEY", () => {
+    expect(MODEL_GATEWAY_ENV.key).toBe("AI_GATEWAY_API_KEY");
     for (const kind of MODEL_GATEWAY_KINDS) {
       const env = {
         [MODEL_GATEWAY_ENV.kind]: kind,
-        [MODEL_GATEWAY_ENV.url]: kind === "vercel" ? undefined : "https://gateway.example/v1",
-        [MODEL_GATEWAY_ENV.key]: "sk-project",
+        [MODEL_GATEWAY_ENV.url]: "https://gateway.example/v1",
+        AI_GATEWAY_API_KEY: "sk-project",
       };
-      expect(readModelGatewayConfig(env)).toMatchObject({ kind, apiKey: "sk-project" });
+      expect(readModelGatewayConfig(env)).toEqual({
+        kind,
+        baseURL: "https://gateway.example/v1",
+        apiKey: "sk-project",
+      });
     }
   });
 
-  test("rejects an unknown kind", () => {
-    expect(() =>
-      readModelGatewayConfig({ [MODEL_GATEWAY_ENV.kind]: "new-api", [MODEL_GATEWAY_ENV.key]: "k" }),
-    ).toThrow(/unsupported Model Gateway kind "new-api"/);
+  test("leaves the key unset when the project set none", () => {
+    expect(
+      readModelGatewayConfig({
+        [MODEL_GATEWAY_ENV.kind]: "litellm",
+        [MODEL_GATEWAY_ENV.url]: "https://gateway.example/v1",
+        AI_GATEWAY_API_KEY: " ",
+      }),
+    ).toEqual({ kind: "litellm", baseURL: "https://gateway.example/v1", apiKey: undefined });
   });
 
-  test("requires a base URL for every kind except vercel", () => {
-    expect(() =>
-      readModelGatewayConfig({ [MODEL_GATEWAY_ENV.kind]: "litellm", [MODEL_GATEWAY_ENV.key]: "k" }),
-    ).toThrow(/EVELAND_MODEL_GATEWAY_URL/);
+  test("rejects an unknown kind", () => {
+    for (const kind of ["new-api", "vercel"]) {
+      expect(() =>
+        readModelGatewayConfig({
+          [MODEL_GATEWAY_ENV.kind]: kind,
+          [MODEL_GATEWAY_ENV.url]: "https://gateway.example/v1",
+        }),
+      ).toThrow(`unsupported Model Gateway kind "${kind}"`);
+    }
+  });
+
+  test("requires an http(s) base URL, without ever echoing configured values", () => {
+    let message = "";
+    try {
+      readModelGatewayConfig({
+        [MODEL_GATEWAY_ENV.kind]: "litellm",
+        [MODEL_GATEWAY_ENV.url]: "not a url sk-secret",
+        AI_GATEWAY_API_KEY: "sk-secret",
+      });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/EVELAND_MODEL_GATEWAY_URL/);
+    expect(message).not.toContain("sk-secret");
   });
 
   test("drops trailing slashes from the base URL, in linear time", () => {
@@ -137,7 +166,6 @@ describe("readModelGatewayConfig", () => {
       readModelGatewayConfig({
         [MODEL_GATEWAY_ENV.kind]: "litellm",
         [MODEL_GATEWAY_ENV.url]: url,
-        [MODEL_GATEWAY_ENV.key]: "k",
       });
     expect(read(`https://llm.example/v1${slashes}`)).toMatchObject({
       baseURL: "https://llm.example/v1",
@@ -145,20 +173,6 @@ describe("readModelGatewayConfig", () => {
     expect(read(`https://llm.example${slashes}x`)).toMatchObject({
       baseURL: `https://llm.example${slashes}x`,
     });
-  });
-
-  test("requires a key, without ever echoing configured values", () => {
-    let message = "";
-    try {
-      readModelGatewayConfig({
-        [MODEL_GATEWAY_ENV.kind]: "litellm",
-        [MODEL_GATEWAY_ENV.url]: "not a url sk-secret",
-      });
-    } catch (error) {
-      message = (error as Error).message;
-    }
-    expect(message).toMatch(/EVELAND_MODEL_GATEWAY_KEY/);
-    expect(message).not.toContain("sk-secret");
   });
 });
 
@@ -175,7 +189,7 @@ describe("installModelGateway", () => {
     const env = {
       [MODEL_GATEWAY_ENV.kind]: "litellm",
       [MODEL_GATEWAY_ENV.url]: "https://gateway.example/v1",
-      [MODEL_GATEWAY_ENV.key]: "sk-project",
+      AI_GATEWAY_API_KEY: "sk-project",
     };
     expect(installModelGateway({ env, target })).toEqual({ status: "kept-existing" });
     expect(target.AI_SDK_DEFAULT_PROVIDER).toBe(own);
@@ -186,7 +200,7 @@ describe("installModelGateway", () => {
     const env = {
       [MODEL_GATEWAY_ENV.kind]: "litellm",
       [MODEL_GATEWAY_ENV.url]: baseURL,
-      [MODEL_GATEWAY_ENV.key]: "sk-project",
+      AI_GATEWAY_API_KEY: "sk-project",
     };
     expect(installModelGateway({ env, target })).toEqual({ status: "installed", kind: "litellm" });
     const provider = target.AI_SDK_DEFAULT_PROVIDER as ReturnType<
@@ -197,14 +211,21 @@ describe("installModelGateway", () => {
     expect(model.modelId).toBe("anthropic/claude-sonnet-4.5");
   });
 
-  test("installs the native AI Gateway provider for the vercel kind", () => {
+  test("installs even without a key, so the call fails at the configured gateway", async () => {
     const target: Record<string, unknown> = {};
-    const env = { [MODEL_GATEWAY_ENV.kind]: "vercel", [MODEL_GATEWAY_ENV.key]: "vck-project" };
-    expect(installModelGateway({ env, target })).toEqual({ status: "installed", kind: "vercel" });
+    const env = { [MODEL_GATEWAY_ENV.kind]: "litellm", [MODEL_GATEWAY_ENV.url]: baseURL };
+    expect(installModelGateway({ env, target })).toEqual({ status: "installed", kind: "litellm" });
     const provider = target.AI_SDK_DEFAULT_PROVIDER as ReturnType<
       typeof createModelGatewayProvider
     >;
-    expect(provider.languageModel("anthropic/claude-sonnet-4.5").provider).toBe("gateway");
+    const { stream } = await provider.languageModel("anthropic/claude-sonnet-4.5").doStream({
+      prompt,
+    });
+    for await (const _part of stream as unknown as AsyncIterable<unknown>) {
+      // Drain.
+    }
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.headers.authorization).toBeUndefined();
   });
 });
 

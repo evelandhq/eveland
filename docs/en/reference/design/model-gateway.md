@@ -1,9 +1,9 @@
 ---
 title: Model Gateway decisions
-description: Why Agents keep Vercel-style model IDs while the platform injects a default provider at release time and issues each project its own gateway key.
+description: Why Agents keep Vercel-style model IDs while the platform injects a default provider at release time, and why each project brings its own key in AI_GATEWAY_API_KEY.
 ---
 
-> **Status:** the direction was agreed on 2026-11-03 and phase one is implemented. The [Model Gateway contract](/docs/reference/model-gateway) is authoritative for behavior; this page records the rationale and the alternatives considered.
+> **Status:** the direction was agreed on 2026-11-03 and phase one is implemented; the same day, platform-issued keys were replaced by each project's own `AI_GATEWAY_API_KEY` (section 6.3). The [Model Gateway contract](/docs/reference/model-gateway) is authoritative for behavior; this page records the rationale and the alternatives considered.
 
 A **Model Gateway** is the gateway an Agent's LLM calls go through, such as Vercel AI Gateway, OpenRouter, or LiteLLM. It is unrelated to Eveland's own [Agent Gateway](/docs/reference/design/gateway): that one is the Agent's inbound data plane, while a Model Gateway carries the Agent's outbound model traffic.
 
@@ -27,7 +27,7 @@ The goals:
 
 - Agent source writes only string model IDs, and the same source runs on both Vercel and Eveland.
 - An Eveland admin configures one Model Gateway that every Agent uses automatically.
-- Each project has its own key, issued and revoked by the platform, never handled by people.
+- Each project has its own key, created and managed on the gateway, and carried in the variable eve already knows.
 - Development behaves the same as production.
 
 ---
@@ -38,8 +38,8 @@ The goals:
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Mechanism                                | The platform injects a runtime module into the Release that sets `globalThis.AI_SDK_DEFAULT_PROVIDER`                                                 | A `gatewayModel(name)` helper (needs source changes); rewriting Agent source or manifests (violates "platform injection, source-oblivious") |
 | When it applies                          | Only when an admin has configured a Model Gateway and the project has not opted out; a global provider the Agent installed itself is never overridden | Taking over every model call unconditionally                                                                                                |
-| Gateway keys                             | LiteLLM: the platform issues one key per project; other kinds: one key shared across the instance                                                     | Every project always sharing one key; people assigning keys to projects by hand                                                             |
-| Supported gateways                       | `vercel`, `openrouter`, `litellm`, `openai-compatible`                                                                                                | Dedicated New API support (the company is moving to LiteLLM)                                                                                |
+| Gateway keys                             | Each project sets its own `AI_GATEWAY_API_KEY`; Eveland holds and issues no key, and supplies none when it is unset                                   | The platform issuing keys through LiteLLM's management API (section 6.3); an instance-wide shared key, or a shared key as fallback          |
+| Supported gateways                       | `litellm`, `openrouter`, `openai-compatible`; Vercel AI Gateway is what eve does natively                                                             | A `vercel` kind (it would change nothing); dedicated New API support (the company is moving to LiteLLM)                                     |
 | Model naming                             | Vercel catalog `provider/model` slugs, forwarded to the gateway verbatim; aliases live on the gateway                                                 | An alias table maintained in Eveland                                                                                                        |
 | Cost                                     | Write the gateway-reported cost into `providerMetadata.gateway.cost`                                                                                  | Separate cost capture in the observer                                                                                                       |
 | Code location                            | The runtime module lives in the `eveland` package (`eveland/model-gateway`); the Worker bundles it into the Release                                   | A new package that only platform injection can use                                                                                          |
@@ -70,20 +70,21 @@ The goals:
 
 ## 4. Supported gateways
 
-Phase one ships four kinds:
+Phase one ships three kinds:
 
-| kind                | Protocol                           | Model ID                                   | Cost source                                                                                              | Per-project keys                                     |
-| ------------------- | ---------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `vercel`            | Vercel AI Gateway native protocol  | Vercel slug                                | Native `providerMetadata.gateway.cost`                                                                   | No (the URL is not configurable; one API key is set) |
-| `openrouter`        | OpenAI-compatible Chat Completions | Mostly the same as Vercel slugs            | `usage.cost` in the response body (the final chunk when streaming)                                       | Phase two (provisioning keys)                        |
-| `litellm`           | OpenAI-compatible Chat Completions | The `model_name` configured on the gateway | Streaming: `usage.cost` in the final chunk; non-streaming: the `x-litellm-response-cost` response header | Yes (section 6)                                      |
-| `openai-compatible` | OpenAI-compatible Chat Completions | Forwarded verbatim                         | None                                                                                                     | No                                                   |
+| kind                | Protocol                           | Model ID                                   | Cost source                                                                                              |
+| ------------------- | ---------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `openrouter`        | OpenAI-compatible Chat Completions | Mostly the same as Vercel slugs            | `usage.cost` in the response body (the final chunk when streaming)                                       |
+| `litellm`           | OpenAI-compatible Chat Completions | The `model_name` configured on the gateway | Streaming: `usage.cost` in the final chunk; non-streaming: the `x-litellm-response-cost` response header |
+| `openai-compatible` | OpenAI-compatible Chat Completions | Forwarded verbatim                         | None                                                                                                     |
 
-LiteLLM is the focus of phase one: it is the company's migration target, and the only self-hosted gateway that offers both a key-issuing API and cost. The docs must warn against PyPI releases 1.82.7 and 1.82.8, which were compromised on 2026-03-24.
+**Vercel AI Gateway is not a kind.** eve's built-in provider already calls it with `AI_GATEWAY_API_KEY`, and its address cannot be changed, so a `vercel` kind would inject a provider that does exactly what eve does without one. An instance or project without a Model Gateway uses Vercel AI Gateway with its native cost.
+
+LiteLLM is the focus of phase one: it is the company's migration target, and a self-hosted gateway that reports cost and manages per-key budgets. The docs must warn against PyPI releases 1.82.7 and 1.82.8, which were compromised on 2026-03-24.
 
 Other gateways:
 
-- **No dedicated New API support.** If needed it connects as `openai-compatible`, but without cost and without per-project keys.
+- **No dedicated New API support.** If needed it connects as `openai-compatible`, but without cost.
 - **Documented only, connected as `openai-compatible`:** Cloudflare AI Gateway (its OpenAI-compatible endpoint), Portkey, Bifrost.
 - **No dedicated integration needed:** Kong and Agent Router (formerly Envoy AI Gateway). Both expose an OpenAI-compatible endpoint.
 - **Not recommended:** Helicone, which is reportedly in maintenance mode.
@@ -104,10 +105,12 @@ Other gateways:
 
 **Eveland caches the model catalog daily.** At build time eve reads `.eve/cache/model-catalog.json`: if `fetchedAt` is within 5 minutes it uses the file as is; otherwise it fetches from `ai-gateway.vercel.sh` again and falls back to the old cache if the fetch fails. Eveland's Worker fetches the catalog once a day into the data directory, keeping the previous copy if a fetch fails, and before every build writes it into the Release's `.eve/cache/model-catalog.json` with `fetchedAt` set to the time of writing, so eve does not go to the network during the build. The catalog's real fetch time goes into the build log. Builds then no longer depend on reaching Vercel, which also keeps them stable on networks in mainland China. This relies on eve's internal cache format, which the compatibility tests lock; if the format changes, eve ignores the file and fetches on its own, falling back to today's behavior instead of failing the build.
 
-**Validation at deploy.** The Worker reads the static model IDs from eve's compiled output (the `config.model.id` of the root agent and each subagent in `compiled-agent-manifest.json`; eve's `agent-summary.json` records only the root agent's model) and requests `GET /v1/models` with the project's key:
+**Validation at deploy.** The Worker reads the static model IDs from eve's compiled output (the `config.model.id` of the root agent and each subagent in `compiled-agent-manifest.json`; eve's `agent-summary.json` records only the root agent's model) and requests `GET /v1/models` with the project's `AI_GATEWAY_API_KEY`. Every log line names the gateway's address:
 
+- If the gateway rejects the key (HTTP 401), the deploy fails. This is the case where a project carried a key for another gateway, such as a Vercel AI Gateway key, into an instance with a Model Gateway.
 - If the gateway returns a model list and the ID is not in it, the deploy fails. The log gives an actionable diagnostic and lists similar IDs.
-- If the list endpoint is unavailable (an error or a timeout), the deploy log writes a `WARNING` and the deploy continues.
+- If the project has no `AI_GATEWAY_API_KEY`, the deploy log writes a `WARNING` and the deploy continues; the model calls then fail at the gateway on their own.
+- If the list endpoint is otherwise unavailable (an error or a timeout), the deploy log writes a `WARNING` and the deploy continues.
 
 Querying with the project's own key checks whether this project can call this model, so any per-key model restriction on the gateway applies too.
 
@@ -119,56 +122,47 @@ This departs from the fail-closed principle on purpose. The model list is only a
 
 ### 6.1 Instance configuration
 
-**There is one instance-level configuration**, like the Shared Agent Environment. The page is `/settings/model-gateway` under System settings, and only admins can change it:
+**There is one instance-level configuration**, like the Shared Agent Environment. The page is `/settings/model-gateway` under System settings, and only admins can change it. It holds only where the gateway is:
 
 - `kind`;
-- a base URL (not set for `vercel`);
-- a credential, whose meaning depends on the kind:
-  - `litellm`: a **management credential** that only the API and Worker use to issue, rotate, and revoke project keys. It **never reaches an Agent**;
-  - other kinds: a **shared key** delivered to every project that uses the platform gateway;
-- a Test connection button: for `litellm` it calls `/key/info` with the management credential to confirm it works; for other kinds it requests `/v1/models`. It shows only success or failure.
+- a base URL (one carrying `user:password@` credentials is rejected).
 
-The credential is stored as a secret, encrypted with `APP_SECRET_KEY`, and never returned to the browser after saving. Members see only whether it is configured.
+Eveland stores no credential for the gateway, so there is nothing to test it with; the deploy-time check (section 5) tells each project whether its own key works.
 
 ### 6.2 Project settings
 
-Project Settings gains a Model Gateway section with three options:
+Project Settings gains a Model Gateway section with two options:
 
-- **Use a platform-issued key** (the default). For kinds that cannot issue keys, this means the instance's shared key.
-- **Use the project's own key**: a secret, under the same rules as any other project secret. It covers exceptions, such as a project that obtained its own key on the gateway. The gateway address is still the instance's; a project can only change the key.
-- **Do not use the platform Model Gateway**: that project's deployments get no injection. This suits projects that bring their own `AI_GATEWAY_API_KEY` or call a vendor directly.
+- **Use the Model Gateway** (the default): string model IDs go to the instance's gateway with the project's `AI_GATEWAY_API_KEY`.
+- **Off**: that project's deployments get no injection and call models as authored. With `AI_GATEWAY_API_KEY` set, that is Vercel AI Gateway, so this suits a project that keeps using Vercel or calls a vendor directly.
 
-We chose explicit options over guessing from project variables.
+### 6.3 The key: the project's own `AI_GATEWAY_API_KEY`
 
-### 6.3 Per-project keys on LiteLLM
+**Each project sets its key as an ordinary project secret named `AI_GATEWAY_API_KEY`**, the variable eve's built-in Vercel AI Gateway provider reads. The same variable then means "the key for the gateway this project's string models go through", whether that is Vercel (no Model Gateway, or Off) or the instance's gateway. An Agent from eve.dev deploys unchanged with the key it already has, and a project switches gateways by swapping the key's value, not its name.
 
-The following builds on LiteLLM's `/key/generate`, `/key/info`, `/key/{key}/regenerate`, and `/key/delete` endpoints, checked against LiteLLM's main-branch source:
+- **No fallback.** A project that sets no key gets none from the platform. Its calls go to the gateway without `Authorization` and fail there, and the deploy log warns. A shared fallback key would quietly bill every keyless project to one key, which is exactly the ambiguity per-project keys are meant to remove.
+- **The key's lifecycle belongs to the gateway.** An admin creates one key per project in the gateway's own admin UI, with whatever budget, rate limits, and allowed models it needs, and revokes it there. Changing the project's secret restarts its live deployments, as any environment change does.
+- **A key goes to the configured gateway.** A project that still holds a Vercel AI Gateway key in an instance with a Model Gateway sends that key to the instance's gateway. The gateway rejects it, and the deploy-time check fails the deploy naming the gateway's address. The gateway is the instance's own, so this exposure was judged acceptable; the fix is to swap the key or set the project to Off.
 
-- **When a key is issued.** The first time a project deploys with a platform-issued key, the Worker issues one before starting the process. Later deploys, preview deploys, and restarts all use the same key.
-- **Crash-safe issuing.** LiteLLM stores only a key's hash, so a key lost after issuing can never be recovered, and `key_alias` is unique across the whole gateway, with a duplicate answered by 400. So issuing goes:
-  1. Eveland generates the key value locally (an `sk-` prefix plus a random string);
-  2. it writes the value, encrypted, to the database first;
-  3. then it calls `/key/generate` with that `key`, `key_alias: eveland-<projectId>`, and `metadata` recording the Eveland instance and project id.
+**Why the platform does not issue keys.** The first draft had Eveland issue one key per project through LiteLLM's management API (`/key/generate`, `/key/{key}/regenerate`, `/key/delete`), holding a management credential for the purpose. It was dropped before release:
 
-  On a retry where the alias already exists, Eveland calls `/key/info` with the stored key. If it is found, the previous attempt succeeded. If not, another key holds the alias, and the deploy fails with a diagnostic.
+- It made Eveland an identity system for the model gateway: it held a credential that can mint and revoke any key, and had to keep a crash-safe issue, rotate, and revoke protocol in step with a gateway it does not own.
+- Switching or removing the gateway orphaned every issued key, because the old management credential was gone by then.
+- Budgets, rate limits, and allowed models still had to be set on the gateway by alias, so an admin worked in the gateway's UI either way.
+- Only LiteLLM could issue keys; every other kind fell back to an instance-wide shared key.
 
-- **A failed issue fails the deploy.** There is no fallback to a shared key, which would defeat the isolation.
-- **Rotation.** Project settings offer "Rotate key": Eveland generates and stores a new key value locally, calls `/key/{key}/regenerate` with `new_key` and a `grace_period`, then restarts the live deployments. The old key stays valid during the grace period, so the restart causes no interruption.
-- **Revocation.** Deleting a project revokes its key through `/key/delete` by `key_aliases`. A failure is retried with the deletion job.
-- **Budgets and rate limits belong to the gateway.** In phase one Eveland sets no `max_budget`, `models`, or other limits; admins adjust them by alias in LiteLLM's admin UI.
-- **Switching or removing the gateway.** When an admin changes the gateway's address or kind, or removes it, every issued key becomes invalid, and projects are issued new keys on the new gateway at their next start. The `eveland-*` keys on the old gateway are not revoked automatically: saving the new configuration replaces the old management credential, so Eveland can no longer reach the old gateway. Deleting a project that holds such a key writes a `WARNING` with its alias to the deletion log, and the admin removes it on the old gateway by hand.
+With the project's own key, the gateway keeps sole ownership of keys, Eveland holds no gateway credential, and every kind behaves the same.
 
 ### 6.4 Runtime delivery
 
-Three variables join the reserved layer (`RESERVED_RUNTIME_ENVIRONMENT_SOURCES`):
+Two variables join the reserved layer (`RESERVED_RUNTIME_ENVIRONMENT_SOURCES`):
 
 - `EVELAND_MODEL_GATEWAY_KIND`;
-- `EVELAND_MODEL_GATEWAY_URL`;
-- `EVELAND_MODEL_GATEWAY_KEY`, a secret delivered through the root-owned, mode 0600 environment file. Its value follows the project's choice: the platform-issued key, the project's own key, or the instance's shared key. The management credential never appears here.
+- `EVELAND_MODEL_GATEWAY_URL`.
 
-None of the three is present when the project has opted out or nothing is configured. They never enter a build: the build environment receives no secrets in the first place, and reserved names are dropped from builds.
+Both are always present and empty when the project has opted out or nothing is configured, so a project entry cannot aim the injected provider at a gateway of its own choosing. `AI_GATEWAY_API_KEY` is not reserved: it is the project's own secret, delivered and masked like any other. Nothing here enters a build: the build environment receives no secrets in the first place, and reserved names are dropped from builds.
 
-**A configuration change restarts.** Changing the Model Gateway configuration or a project's option, or rotating a key, enqueues restarts for the affected `running` / `draining` deployments. The restart keeps the original Release, as a Shared Agent Environment change does.
+**A configuration change restarts.** Changing the Model Gateway configuration or a project's option enqueues restarts for the affected `running` / `draining` deployments. The restart keeps the original Release, as a Shared Agent Environment change does.
 
 ### 6.5 The runtime module and injection
 
@@ -176,9 +170,7 @@ None of the three is present when the project has opted out or nothing is config
 
 1. If `EVELAND_MODEL_GATEWAY_KIND` is absent, it does nothing.
 2. If `globalThis.AI_SDK_DEFAULT_PROVIDER` already has a value, it does nothing, so the Agent's own setting wins.
-3. Otherwise it installs a provider:
-   - `vercel`: `createGateway({ apiKey })`;
-   - other kinds: `createOpenAICompatible({ name: kind, baseURL, apiKey, includeUsage: true, ... })`, wrapped in the cost shim (section 7).
+3. Otherwise it installs `createOpenAICompatible({ name: kind, baseURL, apiKey, includeUsage: true, ... })`, wrapped in the cost shim (section 7), with `apiKey` from `AI_GATEWAY_API_KEY`. Without a key it installs the provider anyway, so the call fails at the configured gateway rather than falling through to Vercel.
 
 The module forwards model IDs to the gateway verbatim, and the provider name is the `kind`.
 
@@ -186,7 +178,7 @@ The module forwards model IDs to the gateway verbatim, and the provider name is 
 
 The module is always injected but inert when nothing is configured. So configuring a Model Gateway after a deploy needs no rebuild; a restart is enough.
 
-**Dependency direction.** The runtime module's source lives in `packages/eveland/src/model-gateway.ts`. It is published as an SDK subpath and is also the single source the Worker bundles. The Worker bundles that source by file path rather than importing it (the workspace never builds the SDK's `dist/`), and the architecture tests pin the Worker as the only package allowed to declare `eveland`, with the reason written next to the rule. The `eveland` package itself still depends on no workspace package. The LiteLLM client that issues keys lives only in the API and Worker, never in the `eveland` package.
+**Dependency direction.** The runtime module's source lives in `packages/eveland/src/model-gateway.ts`. It is published as an SDK subpath and is also the single source the Worker bundles. The Worker bundles that source by file path rather than importing it (the workspace never builds the SDK's `dist/`), and the architecture tests pin the Worker as the only package allowed to declare `eveland`, with the reason written next to the rule. The `eveland` package itself still depends on no workspace package.
 
 **eve version.** Injection applies only to eve 1.0.x Releases. A 0.83.x Release gets no injection, and its deploy log writes a `WARNING` saying that this deployment calls models exactly as authored. 0.83 is about to leave the compatibility window.
 
@@ -205,19 +197,19 @@ The module is always injected but inert when nothing is configured. So configuri
 
 - **Why not capture it in the observer.** Writing it where eve reads it means eve's own traces (`gen_ai.usage.cost`), Eveland's Usage pages, and external observability backends all see the same number through a single data path. The cost is a dependency on an eve-internal key, which the compatibility tests lock (section 9).
 - **Model attribution is unchanged.** `provider` is `<kind>.chat` and `modelId` is the verbatim slug, so the Usage pages' attribution rules need no change.
-- **The two ledgers reconcile.** With one key per project, the spend LiteLLM reports for alias `eveland-<projectId>` should match the cost on that project's Usage page in Eveland, so each can be checked against the other.
+- **The two ledgers reconcile.** With one key per project, the spend LiteLLM reports for that project's key should match the cost on its Usage page in Eveland, so each can be checked against the other.
 
 ---
 
 ## 8. Dev/prod parity
 
-| Mode                          | Local setup                                                                                                                             | Requires         |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| A: your own Vercel account    | `eve dev`, connected to Vercel through `/login`                                                                                         | No configuration |
-| B: a local non-Vercel gateway | `eve dev`, plus one instrumentation file in the Agent, `import "eveland/model-gateway";`, and `EVELAND_MODEL_GATEWAY_*` in `.env.local` | eve ≥ 1.0.0-rc.2 |
-| C: a company-issued dev key   | As B, with a key opened on LiteLLM for that developer                                                                                   | As B             |
+| Mode                          | Local setup                                                                                                                                                                 | Requires         |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| A: your own Vercel account    | `eve dev`, connected to Vercel through `/login`                                                                                                                             | No configuration |
+| B: a local non-Vercel gateway | `eve dev`, plus one instrumentation file in the Agent that calls `installModelGateway`, and `EVELAND_MODEL_GATEWAY_KIND` / `_URL` plus `AI_GATEWAY_API_KEY` in `.env.local` | eve ≥ 1.0.0-rc.2 |
+| C: a company-issued dev key   | As B, with a key opened on LiteLLM for that developer                                                                                                                       | As B             |
 
-A dev key is not the key the platform issued to the project. A project key exists only in its deployments' runtime environment and is never handed to developers.
+A dev key is not the project's deployed key: give each developer their own key on the gateway.
 
 In production, the Agent's own instrumentation and the platform's injected file are the same module reading the same variables, so the behavior is identical. Load order does not matter: whichever loads first installs the provider, and the later one sees the global already set and does nothing.
 
@@ -241,17 +233,17 @@ The window's verified point moves from `1.0.0-rc.1` to `1.0.0-rc.2`, and the sta
 
 ## 10. Security
 
-- **Keys flow one way.** The management credential, the shared key, and project keys are all secrets: encrypted at rest, and never entering builds, logs, telemetry, or anything returned to a client. Diagnostics show only whether they are configured. A project key is decrypted only at process start and delivered through the 0600 environment file.
-- **The management credential stays inside the platform.** It can issue and revoke any key, so only the API and Worker use it; it never reaches an Agent and never appears in any deployment's environment. It should be the least-privileged LiteLLM credential that can still manage keys, not the master key. How fine-grained LiteLLM's permissions are here is still to be verified.
-- **A leaked project key affects one project.** An Agent process can read its own project's key, which is unavoidable for any runtime secret. But each key belongs to one project, so a leak is fixed by rotating it, without touching other projects. With kinds that cannot issue keys, such as `vercel` and `openai-compatible`, every project still shares one key, and the docs state that risk.
-- **Constraints on the connection test.** The API makes the request, only an admin can trigger it, it has a timeout, it follows no redirects, and it does not echo the response body.
+- **Eveland holds no gateway credential.** It can neither mint nor revoke keys on the gateway, so a compromised Eveland cannot widen access there. The project's `AI_GATEWAY_API_KEY` is an ordinary project secret: encrypted at rest, decrypted only at process start, delivered through the root-owned 0600 environment file, masked in logs, and never entering builds, telemetry, or anything returned to a client.
+- **A leaked project key affects one project.** An Agent process can read its own project's key, which is unavoidable for any runtime secret. With one key per project, a leak is fixed by rotating that key on the gateway, without touching other projects.
+- **The gateway address is reserved.** A project cannot point the injected provider elsewhere: the kind and URL come only from the instance configuration.
+- **Constraints on the deploy-time request.** The Worker sends the project's key only to the configured gateway, with a timeout, following no redirects, and masks the key in any error it logs.
 
 ---
 
 ## 11. Product contract change
 
 - **Old contract:** the platform never changes an Agent's model selection.
-- **New contract:** when an admin has configured a Model Gateway and the project has not opted out, the platform supplies the default provider for string model IDs and, where the gateway supports it, issues each project its own key. It never overrides a provider the Agent installed, never affects model objects, and never rewrites model IDs.
+- **New contract:** when an admin has configured a Model Gateway and the project has not opted out, the platform supplies the default provider for string model IDs, using the project's own `AI_GATEWAY_API_KEY`. It never overrides a provider the Agent installed, never affects model objects, never rewrites model IDs, and never supplies a key.
 - **Accompanying changes:** in section 5 of `spec.md`, the "platform injection, source-oblivious" principle adds the Model Gateway default provider to what the platform injects, and a new section states the Model Gateway product contract.
 
 ---
@@ -260,8 +252,7 @@ The window's verified point moves from `1.0.0-rc.1` to `1.0.0-rc.2`, and the sta
 
 **Phase one:**
 
-- the configuration page, project options, reserved variables, and the runtime module (four kinds);
-- issuing, rotating, and revoking per-project keys on LiteLLM;
+- the configuration page, project options, reserved variables, and the runtime module (three kinds);
 - `includeUsage` and the cost shim (openrouter, litellm);
 - the daily model catalog cache;
 - validation at deploy;
@@ -270,22 +261,19 @@ The window's verified point moves from `1.0.0-rc.1` to `1.0.0-rc.2`, and the sta
 
 **Phase two:**
 
-- per-project keys on OpenRouter (provisioning keys);
 - an `eveland models` CLI (with a new scope in `apps/api/src/cli-auth.ts`);
-- setting a project's budget and model scope from Eveland (written onto its LiteLLM key);
 - a Claude Messages endpoint mode.
 
-**Not planned:** dedicated New API support; an alias table in Eveland; Helicone.
+**Not planned:** Eveland issuing or holding gateway keys (section 6.3); dedicated New API support; an alias table in Eveland; Helicone.
 
 **To verify:**
 
 - From which LiteLLM version the final streamed chunk carries `usage.cost`, and whether a non-streaming body carries `usage.cost` too. This sets the minimum version the docs require.
-- How to configure a LiteLLM credential that can manage keys with less privilege than the master key.
 - Whether LiteLLM's `/v1/models` returns only the models the requesting key can call.
 - Whether OpenRouter returns `usage.cost` by default.
 - The usage coverage of the 19 existing Agents on UAT. This is independent of this design and can be fixed separately first.
 
-**Internal Agents migrate together with the company's move to LiteLLM.** To migrate, an Agent switches to a string slug and drops `createOpenAICompatible`, `MODEL_NAME`, and the project's `OPENAI_*` variables; if the slug is in the Vercel catalog, `modelContextWindowTokens` can go too. After migration the platform issues the key, and `modelId` changes from the old `MODEL_NAME` value to the slug, so a Langfuse configuration that prices by model name needs a matching update, and the rules in `eve-dev-skill` change along with it.
+**Internal Agents migrate together with the company's move to LiteLLM.** To migrate, an Agent switches to a string slug and drops `createOpenAICompatible`, `MODEL_NAME`, and the project's `OPENAI_*` variables; if the slug is in the Vercel catalog, `modelContextWindowTokens` can go too. After migration the project's `AI_GATEWAY_API_KEY` holds its LiteLLM key, and `modelId` changes from the old `MODEL_NAME` value to the slug, so a Langfuse configuration that prices by model name needs a matching update, and the rules in `eve-dev-skill` change along with it.
 
 ## Deeper reference
 

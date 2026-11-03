@@ -47,8 +47,8 @@ Eve projects statically resolve certain configuration during compilation (`npx e
 
 ## 5. Model Gateway reserved variables
 
-- `EVELAND_MODEL_GATEWAY_KIND`, `EVELAND_MODEL_GATEWAY_URL`, and `EVELAND_MODEL_GATEWAY_KEY` belong to the platform reserved layer and are always present: when the project uses the instance's Model Gateway they carry the gateway kind, address, and this project's key; otherwise they are empty. A same-named project or shared entry is overridden, so a project cannot aim the platform-injected provider at another gateway.
-- The key is handled as a secret: decrypted only at process start, delivered through the 0600 environment file, and masked in logs. The full rules are in the [Model Gateway contract](/docs/reference/model-gateway).
+- `EVELAND_MODEL_GATEWAY_KIND` and `EVELAND_MODEL_GATEWAY_URL` belong to the platform reserved layer and are always present: when the project uses the instance's Model Gateway they carry the gateway kind and address; otherwise they are empty. A same-named project or shared entry is overridden, so a project cannot aim the platform-injected provider at another gateway.
+- The key is not reserved: it is the project's own `AI_GATEWAY_API_KEY` secret, and the platform never supplies one. The full rules are in the [Model Gateway contract](/docs/reference/model-gateway).
 
 ## Deeper reference
 

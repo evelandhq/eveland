@@ -1,5 +1,5 @@
 {
-  "id": "7c43d01e-fc49-40b3-8749-d8609752fc6e",
+  "id": "f0e8866c-3e85-4100-8dc0-6840fc4a3d1f",
   "prevId": "b40304d9-6598-4785-a4fe-344597cbaeb4",
   "version": "7",
   "dialect": "postgresql",
@@ -2836,12 +2836,6 @@
           "name": "base_url",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "encrypted_credential": {
-          "name": "encrypted_credential",
-          "type": "text",
-          "primaryKey": false,
           "notNull": true
         },
         "revision": {
@@ -2878,7 +2872,7 @@
         },
         "model_gateway_kind_check": {
           "name": "model_gateway_kind_check",
-          "value": "\"model_gateway\".\"kind\" in ('vercel', 'openrouter', 'litellm', 'openai-compatible')"
+          "value": "\"model_gateway\".\"kind\" in ('litellm', 'openrouter', 'openai-compatible')"
         },
         "model_gateway_revision_check": {
           "name": "model_gateway_revision_check",
@@ -4583,48 +4577,6 @@
           "notNull": true,
           "default": "'platform'"
         },
-        "encrypted_project_key": {
-          "name": "encrypted_project_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "issued_key_alias": {
-          "name": "issued_key_alias",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "issued_key_encrypted": {
-          "name": "issued_key_encrypted",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "issued_key_gateway_identity": {
-          "name": "issued_key_gateway_identity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "issued_key_state": {
-          "name": "issued_key_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "issued_key_issued_at": {
-          "name": "issued_key_issued_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_rotation_key_encrypted": {
-          "name": "pending_rotation_key_encrypted",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4662,15 +4614,7 @@
       "checkConstraints": {
         "project_model_gateway_mode_check": {
           "name": "project_model_gateway_mode_check",
-          "value": "\"project_model_gateway\".\"mode\" in ('platform', 'project-key', 'off')"
-        },
-        "project_model_gateway_issued_key_state_check": {
-          "name": "project_model_gateway_issued_key_state_check",
-          "value": "\"project_model_gateway\".\"issued_key_state\" is null or \"project_model_gateway\".\"issued_key_state\" in ('pending', 'registered')"
-        },
-        "project_model_gateway_issued_key_complete_check": {
-          "name": "project_model_gateway_issued_key_complete_check",
-          "value": "(\"project_model_gateway\".\"issued_key_alias\" is null) = (\"project_model_gateway\".\"issued_key_encrypted\" is null)\n        and (\"project_model_gateway\".\"issued_key_alias\" is null) = (\"project_model_gateway\".\"issued_key_gateway_identity\" is null)\n        and (\"project_model_gateway\".\"issued_key_alias\" is null) = (\"project_model_gateway\".\"issued_key_state\" is null)\n        and (\"project_model_gateway\".\"issued_key_alias\" is null) = (\"project_model_gateway\".\"issued_key_issued_at\" is null)"
+          "value": "\"project_model_gateway\".\"mode\" in ('platform', 'off')"
         }
       },
       "isRLSEnabled": false

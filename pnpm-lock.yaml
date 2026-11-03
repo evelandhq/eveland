@@ -551,9 +551,6 @@ importers:
 
   packages/eveland:
     dependencies:
-      '@ai-sdk/gateway':
-        specifier: 4.0.111
-        version: 4.0.111(zod@4.6.5)
       '@ai-sdk/openai-compatible':
         specifier: 3.0.82
         version: 3.0.82(zod@4.6.5)

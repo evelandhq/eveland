@@ -1,6 +1,5 @@
 import { createTestStore } from "@evelandhq/db/vitest";
-import { decryptSecretValue, type EncryptedSecret } from "@evelandhq/core/server/secrets";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 
 const appSecretKey = "eveland-test-secret-key-00000000";
@@ -8,8 +7,6 @@ const json = (body: unknown) => ({
   headers: { "content-type": "application/json" },
   body: JSON.stringify(body),
 });
-const decrypt = (value: string) =>
-  decryptSecretValue(JSON.parse(value) as EncryptedSecret, appSecretKey);
 
 async function projectWithLiveDeployment(store: ReturnType<typeof createTestStore>, name: string) {
   const project = await store.createProject({
@@ -41,7 +38,7 @@ async function projectWithLiveDeployment(store: ReturnType<typeof createTestStor
 }
 
 describe("instance Model Gateway routes", () => {
-  test("saves the gateway without ever returning its credential", async () => {
+  test("saves the gateway's kind and normalized base URL, and nothing else", async () => {
     const store = createTestStore();
     const app = createApp(store, { appSecretKey });
 
@@ -50,60 +47,26 @@ describe("instance Model Gateway routes", () => {
 
     const saved = await app.request("/api/platform/model-gateway", {
       method: "PUT",
-      ...json({
-        kind: "litellm",
-        baseUrl: "https://llm.example/v1/",
-        credential: "sk-admin-secret",
-      }),
+      ...json({ kind: "litellm", baseUrl: " https://llm.example/v1/ " }),
     });
     expect(saved.status).toBe(200);
-    const body = (await saved.json()) as Record<string, unknown>;
-    expect(body).toMatchObject({
-      gateway: {
-        kind: "litellm",
-        baseUrl: "https://llm.example/v1",
-        credentialConfigured: true,
-        revision: 1,
-      },
+    await expect(saved.json()).resolves.toMatchObject({
+      gateway: { kind: "litellm", baseUrl: "https://llm.example/v1", revision: 1 },
+      jobs: [],
     });
-    expect(JSON.stringify(body)).not.toContain("sk-admin-secret");
-    const record = await store.getModelGatewayRecord();
-    expect(decrypt(record!.encryptedCredential)).toBe("sk-admin-secret");
 
     const read = await app.request("/api/platform/model-gateway");
-    expect(JSON.stringify(await read.json())).not.toContain("sk-admin-secret");
-  });
-
-  test("keeps the stored credential when only an unchanged gateway is resaved", async () => {
-    const store = createTestStore();
-    const app = createApp(store, { appSecretKey });
-    await app.request("/api/platform/model-gateway", {
-      method: "PUT",
-      ...json({ kind: "openrouter", baseUrl: "https://openrouter.ai/api/v1", credential: "sk-or" }),
-    });
-
-    const resaved = await app.request("/api/platform/model-gateway", {
-      method: "PUT",
-      ...json({ kind: "openrouter", baseUrl: "https://openrouter.ai/api/v1" }),
-    });
-    expect(resaved.status).toBe(200);
-    await expect(resaved.json()).resolves.toMatchObject({ gateway: { revision: 1 }, jobs: [] });
-
-    const moved = await app.request("/api/platform/model-gateway", {
-      method: "PUT",
-      ...json({ kind: "litellm", baseUrl: "https://llm.example/v1" }),
-    });
-    expect(moved.status).toBe(400);
-    await expect(moved.json()).resolves.toMatchObject({
-      error: expect.stringContaining("credential is required"),
+    await expect(read.json()).resolves.toMatchObject({
+      gateway: { kind: "litellm", baseUrl: "https://llm.example/v1" },
     });
   });
 
   test.each([
-    [{ kind: "new-api", baseUrl: "https://x/v1", credential: "k" }, "kind"],
-    [{ kind: "litellm", credential: "k" }, "baseUrl"],
-    [{ kind: "litellm", baseUrl: "ftp://x", credential: "k" }, "baseUrl"],
-    [{ kind: "vercel", baseUrl: "https://x/v1", credential: "k" }, "baseUrl"],
+    [{ kind: "new-api", baseUrl: "https://x/v1" }, "kind"],
+    [{ kind: "vercel", baseUrl: "https://x/v1" }, "kind"],
+    [{ kind: "litellm" }, "baseUrl"],
+    [{ kind: "litellm", baseUrl: "ftp://x" }, "baseUrl"],
+    [{ kind: "litellm", baseUrl: "https://user:sk-secret@x/v1" }, "baseUrl"],
   ])("rejects an invalid gateway %j", async (input, field) => {
     const app = createApp(createTestStore(), { appSecretKey });
     const response = await app.request("/api/platform/model-gateway", {
@@ -111,7 +74,9 @@ describe("instance Model Gateway routes", () => {
       ...json(input),
     });
     expect(response.status).toBe(400);
-    expect(JSON.stringify(await response.json())).toContain(field);
+    const body = JSON.stringify(await response.json());
+    expect(body).toContain(field);
+    expect(body).not.toContain("sk-secret");
   });
 
   test("restarts the live deployments of every project that uses the gateway when it changes", async () => {
@@ -119,104 +84,49 @@ describe("instance Model Gateway routes", () => {
     const app = createApp(store, { appSecretKey });
     const using = await projectWithLiveDeployment(store, "uses-gateway");
     const optedOut = await projectWithLiveDeployment(store, "opted-out");
-    await store.saveProjectModelGatewaySettings(optedOut.project.id, { mode: "off" });
+    await store.saveProjectModelGatewayMode(optedOut.project.id, "off");
+    const save = () =>
+      app.request("/api/platform/model-gateway", {
+        method: "PUT",
+        ...json({ kind: "openai-compatible", baseUrl: "https://llm.example/v1" }),
+      });
 
-    const saved = await app.request("/api/platform/model-gateway", {
-      method: "PUT",
-      ...json({
-        kind: "openai-compatible",
-        baseUrl: "https://llm.example/v1",
-        credential: "sk-shared",
-      }),
-    });
-    const body = (await saved.json()) as {
+    const body = (await (await save()).json()) as {
       jobs: Array<{ projectId: string; deploymentId: string }>;
     };
-
     expect(body.jobs.map((job) => job.projectId)).toEqual([using.project.id]);
     expect(body.jobs[0]!.deploymentId).toBe(using.deployment.id);
     const [restart] = await store.listProjectJobs(using.project.id, { type: "restart_deployment" });
     expect(restart!.payload).toMatchObject({ reason: "model_gateway_changed" });
+
+    // Resaving the same gateway changes nothing, so nothing restarts.
+    await expect((await save()).json()).resolves.toMatchObject({ jobs: [] });
 
     const removed = await app.request("/api/platform/model-gateway", { method: "DELETE" });
     await expect(removed.json()).resolves.toMatchObject({
       deleted: true,
       jobs: [{ projectId: using.project.id }],
     });
-    await expect(store.getModelGatewayRecord()).resolves.toBeNull();
-  });
-
-  test("tests a connection with the submitted credential, or the stored one for an unchanged gateway", async () => {
-    const store = createTestStore();
-    const testModelGatewayConnection = vi.fn(async () => ({ ok: true as const, modelCount: 3 }));
-    const app = createApp(store, { appSecretKey, testModelGatewayConnection });
-
-    const fresh = await app.request("/api/platform/model-gateway/test", {
-      method: "POST",
-      ...json({
-        kind: "openai-compatible",
-        baseUrl: "https://llm.example/v1",
-        credential: "sk-new",
-      }),
-    });
-    await expect(fresh.json()).resolves.toEqual({ result: { ok: true, modelCount: 3 } });
-    expect(testModelGatewayConnection).toHaveBeenLastCalledWith({
-      kind: "openai-compatible",
-      baseUrl: "https://llm.example/v1",
-      credential: "sk-new",
-    });
-
-    await app.request("/api/platform/model-gateway", {
-      method: "PUT",
-      ...json({
-        kind: "openai-compatible",
-        baseUrl: "https://llm.example/v1",
-        credential: "sk-stored",
-      }),
-    });
-    await app.request("/api/platform/model-gateway/test", {
-      method: "POST",
-      ...json({ kind: "openai-compatible", baseUrl: "https://llm.example/v1" }),
-    });
-    expect(testModelGatewayConnection).toHaveBeenLastCalledWith(
-      expect.objectContaining({ credential: "sk-stored" }),
-    );
-
-    const elsewhere = await app.request("/api/platform/model-gateway/test", {
-      method: "POST",
-      ...json({ kind: "openai-compatible", baseUrl: "https://attacker.example/v1" }),
-    });
-    expect(elsewhere.status).toBe(400);
-    expect(testModelGatewayConnection).toHaveBeenCalledTimes(2);
+    await expect(store.getModelGateway()).resolves.toBeNull();
   });
 });
 
 describe("project Model Gateway routes", () => {
-  test("reads the project's settings with the instance gateway's kind", async () => {
+  test("reads the project's setting with the instance gateway it would use", async () => {
     const store = createTestStore();
     const app = createApp(store, { appSecretKey });
     const project = await store.createProject({ name: "gateway-read", importKind: "zip" });
 
     const before = await app.request(`/api/projects/${project.id}/model-gateway`);
     await expect(before.json()).resolves.toEqual({
-      settings: {
-        projectId: project.id,
-        mode: "platform",
-        projectKeyConfigured: false,
-        issuedKey: null,
-        updatedAt: null,
-      },
+      settings: { projectId: project.id, mode: "platform", updatedAt: null },
       gateway: null,
     });
 
-    await store.saveModelGateway({
-      kind: "litellm",
-      baseUrl: "https://llm.example/v1",
-      encryptedCredential: "x",
-    });
+    await store.saveModelGateway({ kind: "litellm", baseUrl: "https://llm.example/v1" });
     const after = await app.request(`/api/projects/${project.id}/model-gateway`);
     await expect(after.json()).resolves.toMatchObject({
-      gateway: { kind: "litellm", issuesProjectKeys: true },
+      gateway: { kind: "litellm", baseUrl: "https://llm.example/v1" },
     });
   });
 
@@ -226,85 +136,26 @@ describe("project Model Gateway routes", () => {
     expect(response.status).toBe(404);
   });
 
-  test("saves the project's own key encrypted and restarts its live deployments", async () => {
+  test("opts a project out, restarting its live deployments only when the mode changes", async () => {
     const store = createTestStore();
     const app = createApp(store, { appSecretKey });
-    const { project, deployment } = await projectWithLiveDeployment(store, "own-key");
+    const { project, deployment } = await projectWithLiveDeployment(store, "opt-out");
+    const save = (mode: unknown) =>
+      app.request(`/api/projects/${project.id}/model-gateway`, {
+        method: "PUT",
+        ...json({ mode }),
+      });
 
-    const saved = await app.request(`/api/projects/${project.id}/model-gateway`, {
-      method: "PUT",
-      ...json({ mode: "project-key", projectKey: "sk-project-own" }),
-    });
-    expect(saved.status).toBe(200);
-    const body = (await saved.json()) as Record<string, unknown>;
-    expect(body).toMatchObject({
-      settings: { mode: "project-key", projectKeyConfigured: true },
+    const optedOut = await save("off");
+    expect(optedOut.status).toBe(200);
+    await expect(optedOut.json()).resolves.toMatchObject({
+      settings: { mode: "off" },
       jobs: [{ deploymentId: deployment.id }],
     });
-    expect(JSON.stringify(body)).not.toContain("sk-project-own");
-    const record = await store.getProjectModelGatewayRecord(project.id);
-    expect(decrypt(record.encryptedProjectKey!)).toBe("sk-project-own");
-  });
+    await expect((await save("off")).json()).resolves.toMatchObject({ jobs: [] });
 
-  test("requires a key before a project can switch to its own key", async () => {
-    const store = createTestStore();
-    const app = createApp(store, { appSecretKey });
-    const project = await store.createProject({ name: "own-key-missing", importKind: "zip" });
-
-    const response = await app.request(`/api/projects/${project.id}/model-gateway`, {
-      method: "PUT",
-      ...json({ mode: "project-key" }),
-    });
-    expect(response.status).toBe(400);
-  });
-
-  test("clears the project's own key when it leaves that mode", async () => {
-    const store = createTestStore();
-    const app = createApp(store, { appSecretKey });
-    const project = await store.createProject({ name: "own-key-cleared", importKind: "zip" });
-    await app.request(`/api/projects/${project.id}/model-gateway`, {
-      method: "PUT",
-      ...json({ mode: "project-key", projectKey: "sk-project-own" }),
-    });
-
-    await app.request(`/api/projects/${project.id}/model-gateway`, {
-      method: "PUT",
-      ...json({ mode: "off" }),
-    });
-    await expect(store.getProjectModelGatewayRecord(project.id)).resolves.toMatchObject({
-      mode: "off",
-      encryptedProjectKey: null,
-    });
-  });
-
-  test("queues a key rotation only for a project holding an issued key", async () => {
-    const store = createTestStore();
-    const app = createApp(store, { appSecretKey });
-    const project = await store.createProject({ name: "rotate", importKind: "zip" });
-
-    const refused = await app.request(`/api/projects/${project.id}/model-gateway/rotate`, {
-      method: "POST",
-    });
-    expect(refused.status).toBe(409);
-
-    await store.saveModelGateway({
-      kind: "litellm",
-      baseUrl: "https://llm.example/v1",
-      encryptedCredential: "x",
-    });
-    await store.saveIssuedModelGatewayKey(project.id, {
-      alias: `eveland-${project.id}`,
-      encryptedKey: "y",
-      gatewayIdentity: "litellm:https://llm.example/v1",
-      state: "registered",
-      issuedAt: "2026-11-03T00:00:00.000Z",
-    });
-    const queued = await app.request(`/api/projects/${project.id}/model-gateway/rotate`, {
-      method: "POST",
-    });
-    expect(queued.status).toBe(202);
-    await expect(queued.json()).resolves.toMatchObject({
-      job: { type: "rotate_model_gateway_key" },
-    });
+    const invalid = await save("project-key");
+    expect(invalid.status).toBe(400);
+    await expect(store.getProjectModelGateway(project.id)).resolves.toMatchObject({ mode: "off" });
   });
 });

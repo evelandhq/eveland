@@ -13,6 +13,8 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 import { MODEL_CATALOG_CACHE_RELATIVE_PATH } from "../runtime/model-catalog-cache.js";
 import {
+  modelGatewayValidationError,
+  modelGatewayValidationFails,
   modelGatewayValidationLog,
   validateModelGatewayModels,
 } from "./model-gateway-validation.js";
@@ -182,8 +184,9 @@ export async function handleBuildDeployJob(
       line: maskKnownSecrets(build.log.trim(), launchPrerequisites.secretValues),
     });
   }
-  // Before anything is recorded or started: a model the gateway explicitly
-  // does not offer this project's key would fail every turn.
+  // Before anything is recorded or started: a key the gateway rejects, or a
+  // model it explicitly does not offer this project's key, would fail every
+  // turn.
   const modelValidation = await validateModelGatewayModels({
     env: launchPrerequisites.env,
     modelIds: build.staticModelIds ?? [],
@@ -192,14 +195,12 @@ export async function handleBuildDeployJob(
   for (const line of modelGatewayValidationLog(modelValidation)) {
     await store.appendLog({ projectId: job.projectId, type: "build", line });
   }
-  if (modelValidation.status === "missing") {
+  if (modelGatewayValidationFails(modelValidation)) {
     // Nothing was recorded or started, so the built release is this job's to
     // discard, as on a failed start.
     await runtime.removeRelease?.(build.releaseRef).catch(() => undefined);
     await rm(buildDir, { recursive: true, force: true }).catch(() => undefined);
-    throw new Error(
-      `The Model Gateway does not offer ${modelValidation.missing.map(({ id }) => id).join(", ")} to this project. See the build log.`,
-    );
+    throw modelGatewayValidationError(modelValidation);
   }
   if (build.schedulerDefinitions) {
     await store.recordScheduleVersions({

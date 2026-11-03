@@ -47,8 +47,8 @@ Eve 项目在打包（`npx eve build`）时会静态解析部分配置（例如�
 
 ## 5. Model Gateway 保留变量
 
-- `EVELAND_MODEL_GATEWAY_KIND`、`EVELAND_MODEL_GATEWAY_URL` 和 `EVELAND_MODEL_GATEWAY_KEY` 属于平台保留层，总是存在：项目使用实例的 Model Gateway 时填入网关类型、地址和本项目的 key，否则为空。项目或共享环境中的同名变量会被覆盖，因此项目无法把平台注入的 Provider 指向别的网关。
-- key 按 secret 处理：只在进程启动时解密，经 0600 环境文件下发，并参与日志脱敏。完整规则见 [Model Gateway 行为契约](/zh/docs/reference/model-gateway)。
+- `EVELAND_MODEL_GATEWAY_KIND` 和 `EVELAND_MODEL_GATEWAY_URL` 属于平台保留层，总是存在：项目使用实例的 Model Gateway 时填入网关类型和地址，否则为空。项目或共享环境中的同名变量会被覆盖，因此项目无法把平台注入的 Provider 指向别的网关。
+- key 不是保留变量：它是项目自己的 secret `AI_GATEWAY_API_KEY`，平台从不提供。完整规则见 [Model Gateway 行为契约](/zh/docs/reference/model-gateway)。
 
 ## 相关参考
 

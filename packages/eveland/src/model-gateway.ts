@@ -1,4 +1,3 @@
-import { createGateway } from "@ai-sdk/gateway";
 import { createOpenAICompatible, type MetadataExtractor } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV4, ProviderV4, SharedV4ProviderMetadata } from "@ai-sdk/provider";
 
@@ -9,12 +8,18 @@ import type { LanguageModelV4, ProviderV4, SharedV4ProviderMetadata } from "@ai-
  * `(globalThis.AI_SDK_DEFAULT_PROVIDER ?? gateway).languageModel(id)`, so an
  * Agent that writes `model: "anthropic/claude-sonnet-4.5"` reaches whatever
  * provider sits in that global by its first model call. Eveland injects this
- * module into every eve 1.0 Release and delivers the configuration through
- * reserved runtime variables; an Agent can import the same module from its own
- * instrumentation to get identical behavior under `eve dev`.
+ * module into every eve 1.0 Release and delivers the gateway's kind and
+ * address through reserved runtime variables; an Agent can import the same
+ * module from its own instrumentation to get identical behavior under
+ * `eve dev`.
  *
  * Contract:
  * - With no `EVELAND_MODEL_GATEWAY_KIND`, nothing happens.
+ * - The key is the project's own `AI_GATEWAY_API_KEY`, the variable eve's
+ *   built-in AI Gateway provider reads, so it means "the key for the gateway
+ *   this project's models go through" either way. Eveland never supplies a
+ *   key: without one the provider is still installed and the call fails at
+ *   the configured gateway, not somewhere else.
  * - A provider the Agent installed itself is never replaced.
  * - Model IDs are forwarded verbatim; aliases live on the gateway.
  * - A gateway-reported USD cost is recorded at `providerMetadata.gateway.cost`,
@@ -25,28 +30,21 @@ import type { LanguageModelV4, ProviderV4, SharedV4ProviderMetadata } from "@ai-
  * dependency on `eve` or on an Eveland workspace package.
  */
 
-export const MODEL_GATEWAY_KINDS = [
-  "vercel",
-  "openrouter",
-  "litellm",
-  "openai-compatible",
-] as const;
+export const MODEL_GATEWAY_KINDS = ["litellm", "openrouter", "openai-compatible"] as const;
 
 export type ModelGatewayKind = (typeof MODEL_GATEWAY_KINDS)[number];
 
 export const MODEL_GATEWAY_ENV = {
   kind: "EVELAND_MODEL_GATEWAY_KIND",
   url: "EVELAND_MODEL_GATEWAY_URL",
-  key: "EVELAND_MODEL_GATEWAY_KEY",
+  key: "AI_GATEWAY_API_KEY",
 } as const;
 
-export type ModelGatewayConfig =
-  | { readonly kind: "vercel"; readonly apiKey: string }
-  | {
-      readonly kind: Exclude<ModelGatewayKind, "vercel">;
-      readonly baseURL: string;
-      readonly apiKey: string;
-    };
+export type ModelGatewayConfig = {
+  readonly kind: ModelGatewayKind;
+  readonly baseURL: string;
+  readonly apiKey: string | undefined;
+};
 
 export type ModelGatewayInstallResult =
   | { readonly status: "not-configured" }
@@ -63,10 +61,10 @@ function isModelGatewayKind(value: string): value is ModelGatewayKind {
 
 /**
  * Reads the Model Gateway configuration from the environment. Returns
- * undefined when none is configured and throws on an incomplete or invalid
- * one: a half-configured gateway must stop startup loudly rather than send
- * model traffic somewhere unintended. Error messages name variables, never
- * their values.
+ * undefined when none is configured and throws on an invalid one: a
+ * misconfigured gateway must stop startup loudly rather than send model
+ * traffic somewhere unintended. A missing key is not invalid; it is the
+ * project's to set. Error messages name variables, never their values.
  */
 export function readModelGatewayConfig(
   env: Environment = process.env,
@@ -78,18 +76,13 @@ export function readModelGatewayConfig(
       `Eveland: unsupported Model Gateway kind "${kind}" in ${MODEL_GATEWAY_ENV.kind}; expected one of ${MODEL_GATEWAY_KINDS.join(", ")}.`,
     );
   }
-  const apiKey = env[MODEL_GATEWAY_ENV.key]?.trim();
-  if (!apiKey) {
-    throw new Error(`Eveland: the ${kind} Model Gateway needs a key in ${MODEL_GATEWAY_ENV.key}.`);
-  }
-  if (kind === "vercel") return { kind, apiKey };
-
   const baseURL = env[MODEL_GATEWAY_ENV.url]?.trim();
   if (!baseURL || !isHttpUrl(baseURL)) {
     throw new Error(
       `Eveland: the ${kind} Model Gateway needs an http(s) base URL in ${MODEL_GATEWAY_ENV.url}.`,
     );
   }
+  const apiKey = env[MODEL_GATEWAY_ENV.key]?.trim() || undefined;
   return { kind, baseURL: trimTrailingSlashes(baseURL), apiKey };
 }
 
@@ -104,8 +97,6 @@ function isHttpUrl(value: string): boolean {
 
 /** Builds the provider for a Model Gateway configuration. */
 export function createModelGatewayProvider(config: ModelGatewayConfig): ProviderV4 {
-  if (config.kind === "vercel") return createGateway({ apiKey: config.apiKey });
-
   const reportsCost = config.kind === "litellm" || config.kind === "openrouter";
   const provider = createOpenAICompatible({
     name: config.kind,

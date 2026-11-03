@@ -1,3 +1,4 @@
+import { ModelGatewayRequestError } from "@evelandhq/core/server/model-gateway-client";
 import { describe, expect, test, vi } from "vitest";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { processNextJob } from "./process.js";
@@ -123,7 +124,22 @@ describe("processNextJob", () => {
     }
   });
 
-  test("fails the deploy, before anything starts, when the Model Gateway does not offer the Agent's model", async () => {
+  test.each([
+    {
+      case: "does not offer the Agent's model",
+      listGatewayModels: async () => ["anthropic/claude-sonnet-4-5"],
+      logLine:
+        /ERROR: model anthropic\/claude-sonnet-4\.5 is not offered by the Model Gateway at https:\/\/llm\.example\/v1 .*did you mean anthropic\/claude-sonnet-4-5/,
+    },
+    {
+      case: "rejects the project's key",
+      listGatewayModels: async () => {
+        throw new ModelGatewayRequestError("Model Gateway responded with HTTP 401", 401);
+      },
+      logLine:
+        /ERROR: the Model Gateway at https:\/\/llm\.example\/v1 rejected this project's AI_GATEWAY_API_KEY \(HTTP 401\)/,
+    },
+  ])("fails the deploy, before anything starts, when the Model Gateway $case", async (scenario) => {
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-missing-model-"));
     vi.stubEnv("EVELAND_DATA_DIR", dataDir);
     const store = createTestStore();
@@ -144,17 +160,20 @@ describe("processNextJob", () => {
       files: [],
       schedules: [],
     });
-    await store.saveModelGateway({
-      kind: "openai-compatible",
-      baseUrl: "https://llm.example/v1",
-      encryptedCredential: JSON.stringify(
-        encryptSecretValue("sk-shared", "eveland-test-secret-key-00000000"),
-      ),
-    });
+    await store.saveModelGateway({ kind: "openai-compatible", baseUrl: "https://llm.example/v1" });
+    await store.upsertSecrets(project.id, [
+      {
+        key: "AI_GATEWAY_API_KEY",
+        value: JSON.stringify(
+          encryptSecretValue("sk-project-own", "eveland-test-secret-key-00000000"),
+        ),
+        kind: "secret",
+      },
+    ]);
     await store.enqueueJob(project.id, "build_deploy");
     let buildDir: string | null = null;
     const removedReleases: string[] = [];
-    const listGatewayModels = vi.fn(async () => ["anthropic/claude-sonnet-4-5"]);
+    const listGatewayModels = vi.fn(scenario.listGatewayModels);
 
     try {
       await expect(
@@ -188,16 +207,14 @@ describe("processNextJob", () => {
 
       expect(listGatewayModels).toHaveBeenCalledWith({
         baseUrl: "https://llm.example/v1",
-        apiKey: "sk-shared",
+        apiKey: "sk-project-own",
       });
       await expect(store.getProject(project.id)).resolves.toMatchObject({
         deploymentStatus: "failed",
       });
       const logs = (await store.listLogs(project.id)).map((log) => log.line).join("\n");
-      expect(logs).toMatch(
-        /ERROR: model anthropic\/claude-sonnet-4\.5 is not offered .*did you mean anthropic\/claude-sonnet-4-5/,
-      );
-      expect(logs).not.toContain("sk-shared");
+      expect(logs).toMatch(scenario.logLine);
+      expect(logs).not.toContain("sk-project-own");
       expect(removedReleases).toEqual(["missing-model:image"]);
       await expect(access(buildDir!)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {

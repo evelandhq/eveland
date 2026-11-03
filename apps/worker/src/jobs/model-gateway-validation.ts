@@ -1,28 +1,34 @@
 import { MODEL_GATEWAY_ENV } from "@evelandhq/core/model-gateway";
-import { listGatewayModelIds } from "@evelandhq/core/server/model-gateway-client";
+import {
+  ModelGatewayRequestError,
+  listGatewayModelIds,
+} from "@evelandhq/core/server/model-gateway-client";
 
 /**
- * Deploy-time check that the gateway offers every model the Agent names.
+ * Deploy-time check that the gateway accepts the project's key and offers
+ * every model the Agent names.
  *
  * Static model IDs come from eve's compiled agent manifest (the root agent's
  * and every declared subagent's `config.model.id`); a dynamically selected
  * model cannot be known before it runs and is not checked. The list is asked
- * for with the project's own key, so a per-key model restriction on the
- * gateway counts too.
+ * for with the project's own AI_GATEWAY_API_KEY, so a per-key model
+ * restriction on the gateway counts too.
  *
- * A model the gateway explicitly does not offer fails the deploy with the
- * closest IDs it does offer. A gateway that cannot list its models only warns:
- * the list is a reference rather than a fact Eveland can prove, and a model
- * call that then fails says so on its own.
+ * Fails the deploy: a key the gateway rejects (HTTP 401), and a model the
+ * gateway explicitly does not offer (with the closest IDs it does offer).
+ * Only warns: a project with no key -- Eveland never supplies one, and the
+ * model call then fails on its own -- and a gateway that cannot list its
+ * models, since the list is a reference rather than a fact Eveland can prove.
+ * Every outcome names the gateway's address.
  */
-
-const VERCEL_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
 
 export type ModelGatewayValidationResult =
   | { status: "skipped" }
   | { status: "ok"; checked: string[] }
-  | { status: "missing"; missing: Array<{ id: string; suggestions: string[] }> }
-  | { status: "unavailable"; error: string };
+  | { status: "no-key"; baseUrl: string }
+  | { status: "rejected"; baseUrl: string }
+  | { status: "missing"; baseUrl: string; missing: Array<{ id: string; suggestions: string[] }> }
+  | { status: "unavailable"; baseUrl: string; error: string };
 
 export async function validateModelGatewayModels(input: {
   env: Readonly<Record<string, string>>;
@@ -30,16 +36,23 @@ export async function validateModelGatewayModels(input: {
   listModels?: (input: { baseUrl: string; apiKey: string }) => Promise<string[]>;
 }): Promise<ModelGatewayValidationResult> {
   const kind = input.env[MODEL_GATEWAY_ENV.kind];
-  if (!kind || input.modelIds.length === 0) return { status: "skipped" };
-  const baseUrl = kind === "vercel" ? VERCEL_AI_GATEWAY_BASE_URL : input.env[MODEL_GATEWAY_ENV.url];
-  const apiKey = input.env[MODEL_GATEWAY_ENV.key];
-  if (!baseUrl || !apiKey) return { status: "skipped" };
+  const baseUrl = input.env[MODEL_GATEWAY_ENV.url];
+  if (!kind || !baseUrl || input.modelIds.length === 0) return { status: "skipped" };
+  const apiKey = input.env[MODEL_GATEWAY_ENV.key]?.trim();
+  if (!apiKey) return { status: "no-key", baseUrl };
 
   let offered: string[];
   try {
     offered = await (input.listModels ?? listGatewayModelIds)({ baseUrl, apiKey });
   } catch (error) {
-    return { status: "unavailable", error: error instanceof Error ? error.message : String(error) };
+    if (error instanceof ModelGatewayRequestError && error.status === 401) {
+      return { status: "rejected", baseUrl };
+    }
+    return {
+      status: "unavailable",
+      baseUrl,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
   const available = new Set(offered);
   const missing = input.modelIds
@@ -47,7 +60,14 @@ export async function validateModelGatewayModels(input: {
     .map((id) => ({ id, suggestions: closestIds(id, offered) }));
   return missing.length === 0
     ? { status: "ok", checked: [...input.modelIds] }
-    : { status: "missing", missing };
+    : { status: "missing", baseUrl, missing };
+}
+
+/** Whether the result must fail the deploy before anything is recorded or started. */
+export function modelGatewayValidationFails(
+  result: ModelGatewayValidationResult,
+): result is Extract<ModelGatewayValidationResult, { status: "rejected" | "missing" }> {
+  return result.status === "rejected" || result.status === "missing";
 }
 
 export function modelGatewayValidationLog(result: ModelGatewayValidationResult): string[] {
@@ -56,18 +76,37 @@ export function modelGatewayValidationLog(result: ModelGatewayValidationResult):
       return [];
     case "ok":
       return [`Model Gateway offers the Agent's models: ${result.checked.join(", ")}`];
+    case "no-key":
+      return [
+        `WARNING: ${MODEL_GATEWAY_ENV.key} is not set, so model calls to the Model Gateway at ${result.baseUrl} will fail. Set it in the project's environment.`,
+      ];
+    case "rejected":
+      return [
+        `ERROR: the Model Gateway at ${result.baseUrl} rejected this project's ${MODEL_GATEWAY_ENV.key} (HTTP 401). Set a key issued by that gateway, or opt the project out of the Model Gateway.`,
+      ];
     case "unavailable":
       return [
-        `WARNING: could not check the Agent's models against the Model Gateway (${result.error}); deploying anyway.`,
+        `WARNING: could not check the Agent's models against the Model Gateway at ${result.baseUrl} (${result.error}); deploying anyway.`,
       ];
     case "missing":
       return result.missing.map(
         ({ id, suggestions }) =>
-          `ERROR: model ${id} is not offered by the Model Gateway to this project's key${
+          `ERROR: model ${id} is not offered by the Model Gateway at ${result.baseUrl} to this project's key${
             suggestions.length > 0 ? `; did you mean ${suggestions.join(", ")}?` : "."
           } Add it (or an alias with this name) on the gateway, or change the Agent's model.`,
       );
   }
+}
+
+/** The deploy failure for a result that fails it; the build log has the detail. */
+export function modelGatewayValidationError(
+  result: Extract<ModelGatewayValidationResult, { status: "rejected" | "missing" }>,
+): Error {
+  return new Error(
+    result.status === "rejected"
+      ? `The Model Gateway at ${result.baseUrl} rejected this project's ${MODEL_GATEWAY_ENV.key}. See the build log.`
+      : `The Model Gateway at ${result.baseUrl} does not offer ${result.missing.map(({ id }) => id).join(", ")} to this project. See the build log.`,
+  );
 }
 
 function closestIds(id: string, offered: readonly string[]): string[] {

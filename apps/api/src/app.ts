@@ -175,14 +175,7 @@ export function createApp(
     appSecretKey,
     enqueueLiveDeploymentRestarts,
   });
-  registerModelGatewayRoutes({
-    app,
-    store,
-    appSecretKey,
-    ...(options.testModelGatewayConnection
-      ? { testConnection: options.testModelGatewayConnection }
-      : {}),
-  });
+  registerModelGatewayRoutes({ app, store });
   registerObservabilityRoutes({ app, store, options, appSecretKey });
   registerQueryRoutes(app, store);
 

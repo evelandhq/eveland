@@ -1,9 +1,9 @@
 ---
 title: Model Gateway 设计决策
-description: 为什么让 Agent 保留 Vercel 风格的模型 ID，由平台在发布时注入默认 Provider，并为每个项目签发独立的网关 key。
+description: 为什么让 Agent 保留 Vercel 风格的模型 ID，由平台在发布时注入默认 Provider，以及为什么每个项目用自己的 AI_GATEWAY_API_KEY。
 ---
 
-> **状态：** 方向于 2026-11-03 确认，第一期已实现。行为契约以 [Model Gateway 行为契约](/zh/docs/reference/model-gateway) 为准，本页记录设计理由和考虑过的方案。
+> **状态：** 方向于 2026-11-03 确认，第一期已实现；同一天，平台签发 key 改为由每个项目使用自己的 `AI_GATEWAY_API_KEY`（第 6.3 节）。行为契约以 [Model Gateway 行为契约](/zh/docs/reference/model-gateway) 为准，本页记录设计理由和考虑过的方案。
 
 **Model Gateway** 指 Agent 调用大模型时经过的网关，例如 Vercel AI Gateway、OpenRouter、LiteLLM。它和 Eveland 自己的 [Agent Gateway](/zh/docs/reference/design/gateway) 是两回事：后者是 Agent 的入站数据面，前者是 Agent 的出站模型流量。
 
@@ -27,24 +27,24 @@ Eve Agent 写 `model: "anthropic/claude-sonnet-4.5"` 这样的字符串 ID 时�
 
 - Agent 源码只写字符串模型 ID，同一份源码在 Vercel 和 Eveland 上都能跑。
 - Eveland 管理员配置一个 Model Gateway，所有 Agent 自动使用。
-- 每个项目一把 key，由平台签发和吊销，不经人手。
+- 每个项目一把 key，在网关上创建和管理，放在 eve 本来就认识的那个变量里。
 - 开发环境和生产环境的行为一致。
 
 ---
 
 ## 2. 决策一览
 
-| 决策                                     | 选择                                                                                     | 放弃的方案                                                                                                 |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| 接入机制                                 | 平台在 Release 中注入一个运行时模块，设置 `globalThis.AI_SDK_DEFAULT_PROVIDER`           | 提供 `gatewayModel(name)` helper（需要改源码）；改写 Agent 源码或 manifest（违反"平台注入、不碰源码"原则） |
-| 生效条件                                 | 只在管理员配置了 Model Gateway、项目没有关闭时注入；Agent 自己设了全局 Provider 时不覆盖 | 无条件接管所有模型调用                                                                                     |
-| 网关 key                                 | LiteLLM：平台为每个项目签发一把 key；其他类型：实例共用一把 key                          | 所有项目始终共用一把 key；由人工给项目分配 key                                                             |
-| 支持的网关                               | `vercel`、`openrouter`、`litellm`、`openai-compatible`                                   | 专门支持 New API（公司会迁到 LiteLLM）                                                                     |
-| 模型命名                                 | 统一用 Vercel 模型目录的 `provider/model` 写法，原样转发给网关；别名在网关上配           | 在 Eveland 里维护一张别名表                                                                                |
-| 成本                                     | 把网关返回的成本写进 `providerMetadata.gateway.cost`                                     | 由 observer 另外抓取成本                                                                                   |
-| 代码位置                                 | 运行时模块放在 `eveland` 包里（`eveland/model-gateway`），Worker 把它打包进 Release      | 新建一个只能由平台注入的包                                                                                 |
-| eve 的 `anthropic()` / `openai()` helper | 不设置 `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`                                          | 同时设置这两个变量，把 helper 也导向网关                                                                   |
-| CLI                                      | 第二期再做 `eveland models`                                                              | 第一期就做                                                                                                 |
+| 决策                                     | 选择                                                                                      | 放弃的方案                                                                                                 |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 接入机制                                 | 平台在 Release 中注入一个运行时模块，设置 `globalThis.AI_SDK_DEFAULT_PROVIDER`            | 提供 `gatewayModel(name)` helper（需要改源码）；改写 Agent 源码或 manifest（违反"平台注入、不碰源码"原则） |
+| 生效条件                                 | 只在管理员配置了 Model Gateway、项目没有关闭时注入；Agent 自己设了全局 Provider 时不覆盖  | 无条件接管所有模型调用                                                                                     |
+| 网关 key                                 | 每个项目设置自己的 `AI_GATEWAY_API_KEY`；Eveland 不持有、不签发 key，项目没设时也不补一把 | 平台通过 LiteLLM 管理接口签发 key（第 6.3 节）；实例共用一把 key，或用共享 key 兜底                        |
+| 支持的网关                               | `litellm`、`openrouter`、`openai-compatible`；Vercel AI Gateway 就是 eve 的原生行为       | 单独的 `vercel` 类型（什么都不会改变）；专门支持 New API（公司会迁到 LiteLLM）                             |
+| 模型命名                                 | 统一用 Vercel 模型目录的 `provider/model` 写法，原样转发给网关；别名在网关上配            | 在 Eveland 里维护一张别名表                                                                                |
+| 成本                                     | 把网关返回的成本写进 `providerMetadata.gateway.cost`                                      | 由 observer 另外抓取成本                                                                                   |
+| 代码位置                                 | 运行时模块放在 `eveland` 包里（`eveland/model-gateway`），Worker 把它打包进 Release       | 新建一个只能由平台注入的包                                                                                 |
+| eve 的 `anthropic()` / `openai()` helper | 不设置 `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`                                           | 同时设置这两个变量，把 helper 也导向网关                                                                   |
+| CLI                                      | 第二期再做 `eveland models`                                                               | 第一期就做                                                                                                 |
 
 ---
 
@@ -70,20 +70,21 @@ Eve Agent 写 `model: "anthropic/claude-sonnet-4.5"` 这样的字符串 ID 时�
 
 ## 4. 支持哪些网关
 
-第一期内置四种类型（`kind`）：
+第一期内置三种类型（`kind`）：
 
-| kind                | 协议                         | 模型 ID                   | 成本来源                                                                       | 按项目签发 key                     |
-| ------------------- | ---------------------------- | ------------------------- | ------------------------------------------------------------------------------ | ---------------------------------- |
-| `vercel`            | Vercel AI Gateway 原生协议   | Vercel slug               | 原生 `providerMetadata.gateway.cost`                                           | 否（地址不可配，只填一把 API key） |
-| `openrouter`        | OpenAI 兼容 Chat Completions | 大多数与 Vercel slug 相同 | 响应体 `usage.cost`（流式在最后一个 chunk）                                    | 第二期（provisioning keys）        |
-| `litellm`           | OpenAI 兼容 Chat Completions | 网关上配的 `model_name`   | 流式：最后一个 chunk 的 `usage.cost`；非流式：响应头 `x-litellm-response-cost` | 是（第 6 节）                      |
-| `openai-compatible` | OpenAI 兼容 Chat Completions | 原样转发                  | 无                                                                             | 否                                 |
+| kind                | 协议                         | 模型 ID                   | 成本来源                                                                       |
+| ------------------- | ---------------------------- | ------------------------- | ------------------------------------------------------------------------------ |
+| `openrouter`        | OpenAI 兼容 Chat Completions | 大多数与 Vercel slug 相同 | 响应体 `usage.cost`（流式在最后一个 chunk）                                    |
+| `litellm`           | OpenAI 兼容 Chat Completions | 网关上配的 `model_name`   | 流式：最后一个 chunk 的 `usage.cost`；非流式：响应头 `x-litellm-response-cost` |
+| `openai-compatible` | OpenAI 兼容 Chat Completions | 原样转发                  | 无                                                                             |
 
-LiteLLM 是第一期的重点：它是公司的迁移目标，也是唯一同时提供签发接口和成本的自托管网关。文档要提醒避开 PyPI 上被投毒的 1.82.7 和 1.82.8（2026-03-24）。
+**Vercel AI Gateway 不是一种类型。** eve 自带的 Provider 本来就用 `AI_GATEWAY_API_KEY` 调它，地址也改不了，所以 `vercel` 类型注入的 Provider 和不注入时 eve 的行为完全一样。没有配置 Model Gateway 的实例或项目，用的就是 Vercel AI Gateway，成本也是它原生报告的。
+
+LiteLLM 是第一期的重点：它是公司的迁移目标，是能报告成本、并能按 key 管理预算的自托管网关。文档要提醒避开 PyPI 上被投毒的 1.82.7 和 1.82.8（2026-03-24）。
 
 其余网关的处理：
 
-- **New API 不专门支持。** 需要时可以按 `openai-compatible` 接入，但没有成本，也不能按项目签发 key。
+- **New API 不专门支持。** 需要时可以按 `openai-compatible` 接入，但没有成本。
 - **只写文档，按 `openai-compatible` 接入：** Cloudflare AI Gateway（OpenAI 兼容端点）、Portkey、Bifrost。
 - **不需要专门集成：** Kong、Agent Router（原 Envoy AI Gateway）。它们对外就是 OpenAI 兼容端点。
 - **不推荐：** Helicone，据报道已进入维护模式。
@@ -104,10 +105,12 @@ LiteLLM 是第一期的重点：它是公司的迁移目标，也是唯一同时
 
 **模型目录按天缓存在 Eveland。** eve 构建时读取 `.eve/cache/model-catalog.json`：`fetchedAt` 在 5 分钟以内就直接用，否则去 `ai-gateway.vercel.sh` 重新取，取失败时退回旧缓存。Eveland 的 Worker 每天取一次目录，存在数据目录里，取失败就继续用旧的那份；每次构建前把它写进 Release 的 `.eve/cache/model-catalog.json`，`fetchedAt` 填写入时刻，所以构建期间 eve 不会联网。目录的真实获取时间写进构建日志。这样构建不再依赖访问 Vercel，在国内网络下也稳定。这依赖 eve 的内部缓存格式，由兼容性测试锁住；格式一旦变化，eve 会忽略这个文件、自己去取，退回到原来的行为，构建不会因此失败。
 
-**部署时校验。** Worker 从 eve 的编译产物（`compiled-agent-manifest.json` 里根 Agent 和各子 Agent 的 `config.model.id`）读出静态模型 ID。eve 的 `agent-summary.json` 只记录根 Agent 的模型，所以不用它，用这个项目的 key 请求 `GET /v1/models`：
+**部署时校验。** Worker 从 eve 的编译产物（`compiled-agent-manifest.json` 里根 Agent 和各子 Agent 的 `config.model.id`）读出静态模型 ID。eve 的 `agent-summary.json` 只记录根 Agent 的模型，所以不用它，用这个项目的 `AI_GATEWAY_API_KEY` 请求 `GET /v1/models`。每条日志都写明网关地址：
 
+- 网关拒绝了这把 key（HTTP 401）：部署失败。典型情况是项目把别的网关的 key（例如 Vercel AI Gateway 的 key）带进了配置了 Model Gateway 的实例。
 - 网关明确返回了模型列表，但其中没有这个 ID：部署失败，日志给出可执行的诊断，并列出相近的 ID。
-- 列表接口不可用（报错或超时）：部署日志写 `WARNING`，部署继续。
+- 项目没有设置 `AI_GATEWAY_API_KEY`：部署日志写 `WARNING`，部署继续，模型调用会在网关那里自行失败。
+- 列表接口因其他原因不可用（报错或超时）：部署日志写 `WARNING`，部署继续。
 
 用项目自己的 key 去查，校验的就是"这个项目能不能调用这个模型"，网关上按 key 限制的模型范围也一并生效。
 
@@ -119,56 +122,47 @@ LiteLLM 是第一期的重点：它是公司的迁移目标，也是唯一同时
 
 ### 6.1 实例配置
 
-**实例级配置，只有一份**，与 Shared Agent Environment 一样。配置页在 System 设置下的 `/settings/model-gateway`，只有 admin 能修改：
+**实例级配置，只有一份**，与 Shared Agent Environment 一样。配置页在 System 设置下的 `/settings/model-gateway`，只有 admin 能修改。它只记录网关在哪里：
 
 - `kind`；
-- Base URL（`vercel` 类型不填）；
-- 凭据，按类型含义不同：
-  - `litellm`：**管理凭据**，只给 API 和 Worker 用来签发、轮换、吊销项目 key，**绝不下发给 Agent**；
-  - 其他类型：**共享 key**，下发给所有使用平台网关的项目；
-- "测试连接"按钮：`litellm` 用管理凭据请求 `/key/info` 确认凭据可用，其他类型请求 `/v1/models`；只显示成功与否。
+- Base URL（带 `user:password@` 凭据的会被拒绝）。
 
-凭据以 secret 形式存储，用 `APP_SECRET_KEY` 加密，保存后永不返回浏览器。成员只能看到是否已配置。
+Eveland 不保存网关的任何凭据，所以也没有"测试连接"；每个项目自己的 key 能不能用，由部署时校验（第 5 节）告诉它。
 
 ### 6.2 项目设置
 
-Project Settings 增加 Model Gateway 区块，三选一：
+Project Settings 增加 Model Gateway 区块，二选一：
 
-- **使用平台签发的 key**（默认）。对不支持签发的类型，就是使用实例共享 key。
-- **使用项目自己的 key**：填一个 secret，规则与其他项目 secret 相同。用于例外情况，例如某个项目在网关上有单独申请的 key。网关地址仍然由实例决定，项目只能换 key。
-- **不使用平台 Model Gateway**：这个项目的部署不注入。适用于自带 `AI_GATEWAY_API_KEY` 或者直接连厂商的项目。
+- **使用 Model Gateway**（默认）：字符串模型 ID 带着项目的 `AI_GATEWAY_API_KEY` 发往实例的网关。
+- **关闭**：这个项目的部署不注入，按源码原样调用模型。设置了 `AI_GATEWAY_API_KEY` 时就是 Vercel AI Gateway，适合继续用 Vercel 或者直接连厂商的项目。
 
-我们选择显式选项，而不是靠猜测项目变量来决定。
+### 6.3 Key：项目自己的 `AI_GATEWAY_API_KEY`
 
-### 6.3 LiteLLM 按项目签发 key
+**每个项目把 key 设为一个普通的项目 secret，名字是 `AI_GATEWAY_API_KEY`**，也就是 eve 自带的 Vercel AI Gateway Provider 读的那个变量。这样同一个变量的含义就是"这个项目的字符串模型所走网关的 key"，不论走的是 Vercel（没有 Model Gateway，或者设为关闭），还是实例的网关。eve.dev 上的 Agent 带着原有的 key 就能直接部署；项目切换网关，只需要换 key 的值，不用换变量名。
 
-以下行为基于 LiteLLM 的 `/key/generate`、`/key/info`、`/key/{key}/regenerate`、`/key/delete` 接口（已对照 LiteLLM 主干源码核实）：
+- **没设就是没设，没有兜底。** 项目没设 key，平台不会补一把。调用不带 `Authorization` 发到网关，在网关那里失败，部署日志里有警告。用一把共享 key 兜底，会把所有没设 key 的项目悄悄记到同一把 key 上，正好违背了"每个项目一把 key"要解决的问题。
+- **key 的生命周期归网关管。** 管理员在网关自己的后台为每个项目建一把 key，按需设置预算、限流和允许的模型，吊销也在那边做。修改项目的 secret 会重启它的在线部署，和其他环境变量变更一样。
+- **key 发往配置的网关。** 项目在配置了 Model Gateway 的实例里仍然保留着 Vercel AI Gateway 的 key，这把 key 就会被发到实例的网关。网关会拒绝它，部署时校验会让部署失败，并写明网关地址。网关是实例自己的，所以这个暴露面被认为可以接受；解决办法是换成网关的 key，或者把项目设为关闭。
 
-- **何时签发。** 项目第一次以"平台签发"方式部署时，Worker 在启动进程之前签发。之后的部署、预览部署和重启都用同一把 key。
-- **崩溃安全的签发流程。** LiteLLM 只存 key 的哈希，签发后丢了就再也拿不回来；`key_alias` 在整个网关内唯一，重复会返回 400。所以签发流程是：
-  1. Eveland 在本地生成 key 值（`sk-` 前缀加随机串）；
-  2. 先把它加密写进数据库；
-  3. 再调用 `/key/generate`，传入这个 `key`，以及 `key_alias: eveland-<projectId>` 和 `metadata`（记录 Eveland 实例和项目 id）。
+**为什么平台不签发 key。** 最初的方案是由 Eveland 持有一个管理凭据，通过 LiteLLM 的管理接口（`/key/generate`、`/key/{key}/regenerate`、`/key/delete`）为每个项目签发 key。发布前放弃了这个方案：
 
-  重试时如果 alias 已存在，就用本地保存的 key 调 `/key/info`：能查到，说明上次已经成功；查不到，说明 alias 被别的 key 占用了，部署失败并给出诊断。
+- 它让 Eveland 变成了模型网关的身份系统：持有一个能签发、吊销任意 key 的凭据，还要维护一套崩溃安全的签发、轮换、吊销流程，去追一个不归它管的网关。
+- 切换或移除网关会让所有已签发的 key 变成孤儿，因为那时旧的管理凭据已经没了。
+- 预算、限流、允许的模型仍然要按别名在网关上设置，管理员横竖都要进网关后台。
+- 只有 LiteLLM 能签发；其他类型都退回到实例共用一把 key。
 
-- **签发失败时部署失败。** 不回退到共享 key，否则隔离就形同虚设。
-- **轮换。** 项目设置里提供"轮换 key"：先在本地生成新 key 值并保存，再调用 `/key/{key}/regenerate`，传入 `new_key` 和 `grace_period`，然后重启在线部署。旧 key 在宽限期内仍然有效，所以重启期间不会中断。
-- **吊销。** 删除项目时，用 `/key/delete` 按 `key_aliases` 吊销。失败会随删除任务一起重试。
-- **预算和限流由网关管。** Eveland 第一期不设置 `max_budget`、`models` 等限制，管理员按 alias 在 LiteLLM 后台调整。
-- **切换或移除网关。** 管理员改了网关地址、类型或移除网关后，已签发的 key 全部作废，项目在下次启动时在新网关上重新签发。旧网关上的 `eveland-*` key 不会自动吊销：保存新配置时旧的管理凭据已经被替换，Eveland 无法再访问旧网关。删除项目时如果遇到这种 key，删除日志会写 `WARNING` 并给出别名，由管理员到旧网关上手动清理。
+改成项目自己的 key 之后，key 完全归网关管，Eveland 不持有任何网关凭据，各种类型的行为也一致。
 
 ### 6.4 运行时下发
 
-在保留变量层（`RESERVED_RUNTIME_ENVIRONMENT_SOURCES`）里增加三个变量：
+在保留变量层（`RESERVED_RUNTIME_ENVIRONMENT_SOURCES`）里增加两个变量：
 
 - `EVELAND_MODEL_GATEWAY_KIND`；
-- `EVELAND_MODEL_GATEWAY_URL`；
-- `EVELAND_MODEL_GATEWAY_KEY`：secret，经 root 所有、权限 0600 的环境文件下发。它的值按项目的选择决定：平台签发的 key、项目自己的 key，或者实例共享 key。管理凭据永远不会出现在这里。
+- `EVELAND_MODEL_GATEWAY_URL`。
 
-项目选择"不使用"或者实例未配置时，这三个变量都不出现。它们不进入构建：构建环境本来就拿不到 secret，保留名也会从构建环境里剔除。
+这两个变量总是存在，项目选择关闭或实例未配置时为空，所以项目条目无法把注入的 Provider 指向它自己选的网关。`AI_GATEWAY_API_KEY` 不是保留变量：它是项目自己的 secret，和其他 secret 一样下发、一样在日志里打码。这些都不进入构建：构建环境本来就拿不到 secret，保留名也会从构建环境里剔除。
 
-**改了配置就重启。** 修改 Model Gateway 配置、项目选项或轮换 key，都会为相关的 `running` / `draining` 部署排队重启。重启沿用原来的 Release，与 Shared Agent Environment 的行为一致。
+**改了配置就重启。** 修改 Model Gateway 配置或项目选项，都会为相关的 `running` / `draining` 部署排队重启。重启沿用原来的 Release，与 Shared Agent Environment 的行为一致。
 
 ### 6.5 运行时模块与注入
 
@@ -176,9 +170,7 @@ Project Settings 增加 Model Gateway 区块，三选一：
 
 1. 没有 `EVELAND_MODEL_GATEWAY_KIND`：什么都不做。
 2. `globalThis.AI_SDK_DEFAULT_PROVIDER` 已有值：什么都不做，Agent 自己的设置优先。
-3. 否则安装 Provider：
-   - `vercel`：`createGateway({ apiKey })`；
-   - 其他类型：`createOpenAICompatible({ name: kind, baseURL, apiKey, includeUsage: true, ... })`，再套上成本 shim（见第 7 节）。
+3. 否则安装 `createOpenAICompatible({ name: kind, baseURL, apiKey, includeUsage: true, ... })`，再套上成本 shim（见第 7 节），`apiKey` 取自 `AI_GATEWAY_API_KEY`。没有 key 也照样安装，这样调用会在配置的网关那里失败，而不是落到 Vercel。
 
 模块把模型 ID 原样传给网关，Provider 名就是 `kind`。
 
@@ -186,7 +178,7 @@ Project Settings 增加 Model Gateway 区块，三选一：
 
 模块总是注入，但未配置时不起作用。所以先部署、后配置 Model Gateway 也不需要重新构建，重启即可生效。
 
-**依赖方向。** 运行时模块的源码放在 `packages/eveland/src/model-gateway.ts`，既作为 SDK 的子路径发布，也是 Worker 打包的唯一来源。Worker 按文件路径打包这份源码，不 import 它（workspace 里从不构建 SDK 的 `dist/`）；架构测试固定了只有 Worker 可以声明对 `eveland` 的依赖，并写明了理由。`eveland` 包本身仍然不依赖任何 workspace 包。签发 key 的 LiteLLM 客户端只在 API 和 Worker 里，不进入 `eveland` 包。
+**依赖方向。** 运行时模块的源码放在 `packages/eveland/src/model-gateway.ts`，既作为 SDK 的子路径发布，也是 Worker 打包的唯一来源。Worker 按文件路径打包这份源码，不 import 它（workspace 里从不构建 SDK 的 `dist/`）；架构测试固定了只有 Worker 可以声明对 `eveland` 的依赖，并写明了理由。`eveland` 包本身仍然不依赖任何 workspace 包。
 
 **eve 版本。** 只为 eve 1.0.x 的 Release 注入。0.83.x 的 Release 不注入，部署日志写 `WARNING`，说明这次部署会按源码原样调用模型。0.83 很快就会退出兼容窗口。
 
@@ -205,19 +197,19 @@ Project Settings 增加 Model Gateway 区块，三选一：
 
 - **为什么不用 observer 抓取。** 写在 eve 读取的位置，eve 自己的 trace（`gen_ai.usage.cost`）、Eveland 的 Usage 页面以及外部观测平台看到的就是同一个数字，只有一条数据路径。代价是依赖 eve 的一个内部键名，由兼容性测试锁住（见第 9 节）。
 - **模型归因不变。** `provider` 为 `<kind>.chat`，`modelId` 为原样的 slug，Usage 页面的模型归因规则不需要改。
-- **两边的账能对上。** 每个项目一把 key，LiteLLM 后台按 alias `eveland-<projectId>` 统计的花费，与 Eveland 项目 Usage 页面的成本应当一致，可以互相核对。
+- **两边的账能对上。** 每个项目一把 key，LiteLLM 后台按这把 key 统计的花费，与 Eveland 项目 Usage 页面的成本应当一致，可以互相核对。
 
 ---
 
 ## 8. 开发与生产一致
 
-| 模式                    | 本地怎么用                                                                                                                               | 需要什么         |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| A：用自己的 Vercel 账号 | `eve dev`，`/login` 连 Vercel                                                                                                            | 什么都不用配     |
-| B：本地连非 Vercel 网关 | `eve dev`，在 Agent 里加一个 instrumentation 文件：`import "eveland/model-gateway";`，并在 `.env.local` 里设置 `EVELAND_MODEL_GATEWAY_*` | eve ≥ 1.0.0-rc.2 |
-| C：公司发的开发 key     | 同 B，用 LiteLLM 上为开发者单独开的 key                                                                                                  | 同 B             |
+| 模式                    | 本地怎么用                                                                                                                                                             | 需要什么         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| A：用自己的 Vercel 账号 | `eve dev`，`/login` 连 Vercel                                                                                                                                          | 什么都不用配     |
+| B：本地连非 Vercel 网关 | `eve dev`，在 Agent 里加一个调用 `installModelGateway` 的 instrumentation 文件，并在 `.env.local` 里设置 `EVELAND_MODEL_GATEWAY_KIND` / `_URL` 和 `AI_GATEWAY_API_KEY` | eve ≥ 1.0.0-rc.2 |
+| C：公司发的开发 key     | 同 B，用 LiteLLM 上为开发者单独开的 key                                                                                                                                | 同 B             |
 
-开发用的 key 不是平台为项目签发的那把。项目 key 只存在于部署的运行时环境里，不发给开发者。
+开发用的 key 不是项目部署用的那把：在网关上给每个开发者单独开一把。
 
 到了生产环境，Agent 自己的 instrumentation 和平台注入的是同一个模块，读的是同一组变量，行为完全一样。哪个先加载都没有关系：先加载的那个安装 Provider，后加载的那个看到全局变量已有值，就什么都不做。
 
@@ -241,17 +233,17 @@ Project Settings 增加 Model Gateway 区块，三选一：
 
 ## 10. 安全
 
-- **密钥只进不出。** 管理凭据、共享 key 和项目 key 都是 secret：加密存储，不进入构建、日志、遥测或任何返回给客户端的内容；诊断页面只显示是否已配置。项目 key 只在进程启动时解密，经 0600 环境文件下发。
-- **管理凭据只在平台内部。** 它能签发和吊销任意 key，权限很大，所以只有 API 和 Worker 使用，永远不下发给 Agent，也不出现在任何部署的环境里。应当使用 LiteLLM 上权限最小、但能管理 key 的凭据，而不是 master key；LiteLLM 具体支持到什么粒度待验证。
-- **项目 key 泄露只影响一个项目。** Agent 进程能读到自己项目的 key，这和所有运行时 secret 一样无法避免。但一把 key 只属于一个项目，泄露后轮换即可，不影响其他项目。使用 `vercel`、`openai-compatible` 等不能签发的类型时，所有项目仍然共用一把 key，这个风险在文档里写明。
-- **测试连接的约束。** 由 API 发起，只有 admin 能触发，设有超时，不跟随重定向，不回显响应体。
+- **Eveland 不持有网关凭据。** 它既不能在网关上签发 key，也不能吊销 key，所以 Eveland 被攻破也不会扩大在网关上的权限。项目的 `AI_GATEWAY_API_KEY` 是普通的项目 secret：加密存储，只在进程启动时解密，经 root 所有、权限 0600 的环境文件下发，日志里打码，不进入构建、遥测或任何返回给客户端的内容。
+- **项目 key 泄露只影响一个项目。** Agent 进程能读到自己项目的 key，这和所有运行时 secret 一样无法避免。每个项目一把 key，泄露后在网关上轮换这一把即可，不影响其他项目。
+- **网关地址是保留的。** 项目无法把注入的 Provider 指向别处：类型和地址只来自实例配置。
+- **部署时请求的约束。** Worker 只把项目的 key 发给配置的网关，设有超时，不跟随重定向，记录的错误里 key 会被打码。
 
 ---
 
 ## 11. 产品约定的变更
 
 - **原约定：** 平台从不改变 Agent 的模型选择。
-- **新约定：** 管理员配置了 Model Gateway、项目没有关闭时，平台为字符串模型 ID 提供默认 Provider，并在网关支持时为每个项目签发独立的 key。平台不覆盖 Agent 自己安装的 Provider，不影响模型对象，也不改写模型 ID。
+- **新约定：** 管理员配置了 Model Gateway、项目没有关闭时，平台为字符串模型 ID 提供默认 Provider，使用项目自己的 `AI_GATEWAY_API_KEY`。平台不覆盖 Agent 自己安装的 Provider，不影响模型对象，不改写模型 ID，也从不提供 key。
 - **配套修改：** `spec.md` 第 5 节"平台注入、不碰源码"原则的注入对象里加上 Model Gateway 默认 Provider，并新增一节 Model Gateway 的产品约定。
 
 ---
@@ -260,8 +252,7 @@ Project Settings 增加 Model Gateway 区块，三选一：
 
 **第一期：**
 
-- 配置页、项目选项、保留变量、运行时模块（四种 kind）；
-- LiteLLM 按项目签发、轮换、吊销 key；
+- 配置页、项目选项、保留变量、运行时模块（三种 kind）；
 - `includeUsage`、成本 shim（openrouter、litellm）；
 - 模型目录按天缓存；
 - 部署时校验；
@@ -270,22 +261,19 @@ Project Settings 增加 Model Gateway 区块，三选一：
 
 **第二期：**
 
-- OpenRouter 按项目签发 key（provisioning keys）；
 - `eveland models` CLI（在 `apps/api/src/cli-auth.ts` 中增加 scope）；
-- 在 Eveland 里为项目设置预算和模型范围（写到 LiteLLM key 上）；
 - Claude Messages 端点模式。
 
-**不做：** 专门支持 New API；Eveland 侧的别名表；Helicone。
+**不做：** 由 Eveland 签发或持有网关 key（第 6.3 节）；专门支持 New API；Eveland 侧的别名表；Helicone。
 
 **待验证：**
 
 - LiteLLM 从哪个版本开始在流式最后一个 chunk 里返回 `usage.cost`，非流式响应体里是否也有 `usage.cost`。由此确定文档要求的最低版本。
-- LiteLLM 上能管理 key、但权限小于 master key 的凭据怎么配。
 - LiteLLM 的 `/v1/models` 是否只返回该 key 能调用的模型。
 - OpenRouter 是否默认在响应里返回 `usage.cost`。
 - 那 19 个现有 Agent 在 UAT 上的用量覆盖率。这个问题与本设计无关，可以先单独修。
 
-**内部 Agent 的迁移，跟着公司迁 LiteLLM 一起做。** 一个 Agent 要迁移，就改成字符串 slug，删掉 `createOpenAICompatible`、`MODEL_NAME` 和项目里的 `OPENAI_*` 变量；如果 slug 在 Vercel 目录里，`modelContextWindowTokens` 也可以删掉。迁移后 key 由平台签发，`modelId` 从原来的 `MODEL_NAME` 变成 slug，按模型名计算成本的 Langfuse 配置要同步调整；`eve-dev-skill` 里的规则也要一起改。
+**内部 Agent 的迁移，跟着公司迁 LiteLLM 一起做。** 一个 Agent 要迁移，就改成字符串 slug，删掉 `createOpenAICompatible`、`MODEL_NAME` 和项目里的 `OPENAI_*` 变量；如果 slug 在 Vercel 目录里，`modelContextWindowTokens` 也可以删掉。迁移后项目的 `AI_GATEWAY_API_KEY` 存放它在 LiteLLM 上的 key，`modelId` 从原来的 `MODEL_NAME` 变成 slug，按模型名计算成本的 Langfuse 配置要同步调整；`eve-dev-skill` 里的规则也要一起改。
 
 ## 相关参考
 

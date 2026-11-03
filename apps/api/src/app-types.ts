@@ -12,7 +12,6 @@ import type {
   WorkflowDispatchWorkload,
 } from "@evelandhq/core/instance-health";
 import type { ExternalDestinationConfig } from "@evelandhq/core/observability";
-import type { testModelGatewayConnection } from "@evelandhq/core/server/model-gateway-client";
 import type {
   ExternalObservabilityRequestInput,
   ExternalObservabilityResponse,
@@ -67,8 +66,6 @@ export type AppOptions = {
   oidcVerifyAccessToken?: OidcAuthorizationCodeProviderOptions["verifyAccessToken"];
   oidcCallbackUrl?: string;
   agentAuthNow?: () => Date;
-  /** The admin's Model Gateway connection test; tests inject a stub. */
-  testModelGatewayConnection?: typeof testModelGatewayConnection;
   runtimeActivationWaiter?: (
     claim: ActivationLeaseClaim,
     input: { signal: AbortSignal; timeoutMs: number },
