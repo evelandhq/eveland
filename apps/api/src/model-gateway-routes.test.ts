@@ -1,3 +1,6 @@
+import { once } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
@@ -108,6 +111,70 @@ describe("instance Model Gateway routes", () => {
       jobs: [{ projectId: using.project.id }],
     });
     await expect(store.getModelGateway()).resolves.toBeNull();
+  });
+});
+
+describe("Model Gateway connection test", () => {
+  async function fakeGateway(acceptedKey: string) {
+    const seen: Array<{ url: string; authorization: string | undefined }> = [];
+    const server = createServer((req, res) => {
+      seen.push({ url: req.url ?? "", authorization: req.headers.authorization });
+      if (req.headers.authorization !== `Bearer ${acceptedKey}`) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: { message: `invalid key ${req.headers.authorization}` } }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "a/one" }, { id: "b/two" }] }));
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+    return { baseUrl, seen, close: () => server.close() };
+  }
+
+  test("lists the gateway's models with the key entered in the form, and stores nothing", async () => {
+    const gateway = await fakeGateway("sk-test-key");
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey });
+    try {
+      const response = await app.request("/api/platform/model-gateway/test", {
+        method: "POST",
+        ...json({ kind: "litellm", baseUrl: gateway.baseUrl, key: "sk-test-key" }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ result: { ok: true, modelCount: 2 } });
+      expect(gateway.seen).toEqual([{ url: "/v1/models", authorization: "Bearer sk-test-key" }]);
+      await expect(store.getModelGateway()).resolves.toBeNull();
+    } finally {
+      gateway.close();
+    }
+  });
+
+  test("reports a rejected key without echoing it", async () => {
+    const gateway = await fakeGateway("sk-right");
+    const app = createApp(createTestStore(), { appSecretKey });
+    try {
+      const response = await app.request("/api/platform/model-gateway/test", {
+        method: "POST",
+        ...json({ kind: "openrouter", baseUrl: gateway.baseUrl, key: "sk-wrong-key" }),
+      });
+      const body = (await response.json()) as { result: { ok: boolean; error?: string } };
+      expect(body.result).toMatchObject({ ok: false, error: expect.stringContaining("HTTP 401") });
+      expect(JSON.stringify(body)).not.toContain("sk-wrong-key");
+    } finally {
+      gateway.close();
+    }
+  });
+
+  test("needs a gateway and a key to test", async () => {
+    const app = createApp(createTestStore(), { appSecretKey });
+    const response = await app.request("/api/platform/model-gateway/test", {
+      method: "POST",
+      ...json({ kind: "litellm", baseUrl: "https://llm.example/v1", key: " " }),
+    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("key") });
   });
 });
 

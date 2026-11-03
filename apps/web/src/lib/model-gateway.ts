@@ -58,6 +58,17 @@ export function validateModelGatewayDraft(
   return { ok: true, input: { kind: draft.kind, baseUrl } };
 }
 
+/** The connection test: the form's gateway, plus a key that is sent once and never saved. */
+export function validateModelGatewayTest(
+  draft: ModelGatewayInput,
+  key: string,
+): { ok: true; input: ModelGatewayInput & { key: string } } | { ok: false; error: string } {
+  const validated = validateModelGatewayDraft(draft);
+  if (!validated.ok) return validated;
+  if (key.trim() === "") return { ok: false, error: "Enter a key to test the gateway with." };
+  return { ok: true, input: { ...validated.input, key: key.trim() } };
+}
+
 function isHttpUrl(value: string): boolean {
   try {
     const { protocol } = new URL(value);

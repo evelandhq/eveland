@@ -44,6 +44,7 @@ Any other gateway with an OpenAI-compatible Chat Completions endpoint (Cloudflar
 
 - Only admins can view or change it.
 - The configuration is the kind and base URL. A base URL carrying credentials (`user:password@`) is rejected.
+- **Test connection**: enter a key on the gateway in the form's test-key field; the API lists the gateway's models with it once and reports the model count or the error. The key is not saved, follows no redirects, times out, and is masked in any error.
 - Saving a different gateway, or removing it, enqueues restarts for the live deployments of every project that uses it (every project not set to Off), onto their existing Releases.
 
 ---

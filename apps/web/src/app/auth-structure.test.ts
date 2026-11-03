@@ -95,6 +95,7 @@ describe("team management web surfaces", () => {
     expect(page).toContain('member.role !== "admin"');
     const settings = source("../components/model-gateway-settings.tsx");
     expect(settings).toContain("saveModelGateway");
+    expect(settings).toContain("testModelGateway");
     expect(settings).toContain("<AlertDialog");
     expect(settings).toContain("<FieldGroup");
     const project = source("../components/project-model-gateway-settings.tsx");

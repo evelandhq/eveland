@@ -3,7 +3,7 @@ title: Model Gateway 设计决策
 description: 为什么让 Agent 保留 Vercel 风格的模型 ID，由平台在发布时注入默认 Provider，以及为什么每个项目用自己的 AI_GATEWAY_API_KEY。
 ---
 
-> **状态：** 方向于 2026-11-03 确认，第一期已实现；同一天，平台签发 key 改为由每个项目使用自己的 `AI_GATEWAY_API_KEY`（第 6.3 节）。行为契约以 [Model Gateway 行为契约](/zh/docs/reference/model-gateway) 为准，本页记录设计理由和考虑过的方案。
+> **状态：** 方向于 2026-11-03 确认，第一期已实现。行为契约以 [Model Gateway 行为契约](/zh/docs/reference/model-gateway) 为准，本页记录设计理由和考虑过的方案。
 
 **Model Gateway** 指 Agent 调用大模型时经过的网关，例如 Vercel AI Gateway、OpenRouter、LiteLLM。它和 Eveland 自己的 [Agent Gateway](/zh/docs/reference/design/gateway) 是两回事：后者是 Agent 的入站数据面，前者是 Agent 的出站模型流量。
 
@@ -38,7 +38,7 @@ Eve Agent 写 `model: "anthropic/claude-sonnet-4.5"` 这样的字符串 ID 时�
 | ---------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | 接入机制                                 | 平台在 Release 中注入一个运行时模块，设置 `globalThis.AI_SDK_DEFAULT_PROVIDER`            | 提供 `gatewayModel(name)` helper（需要改源码）；改写 Agent 源码或 manifest（违反"平台注入、不碰源码"原则） |
 | 生效条件                                 | 只在管理员配置了 Model Gateway、项目没有关闭时注入；Agent 自己设了全局 Provider 时不覆盖  | 无条件接管所有模型调用                                                                                     |
-| 网关 key                                 | 每个项目设置自己的 `AI_GATEWAY_API_KEY`；Eveland 不持有、不签发 key，项目没设时也不补一把 | 平台通过 LiteLLM 管理接口签发 key（第 6.3 节）；实例共用一把 key，或用共享 key 兜底                        |
+| 网关 key                                 | 每个项目设置自己的 `AI_GATEWAY_API_KEY`；Eveland 不持有、不签发 key，项目没设时也不补一把 | 实例共用一把 key，或用共享 key 兜底                                                                        |
 | 支持的网关                               | `litellm`、`openrouter`、`openai-compatible`；Vercel AI Gateway 就是 eve 的原生行为       | 单独的 `vercel` 类型（什么都不会改变）；专门支持 New API（公司会迁到 LiteLLM）                             |
 | 模型命名                                 | 统一用 Vercel 模型目录的 `provider/model` 写法，原样转发给网关；别名在网关上配            | 在 Eveland 里维护一张别名表                                                                                |
 | 成本                                     | 把网关返回的成本写进 `providerMetadata.gateway.cost`                                      | 由 observer 另外抓取成本                                                                                   |
@@ -127,7 +127,7 @@ LiteLLM 是第一期的重点：它是公司的迁移目标，是能报告成本
 - `kind`；
 - Base URL（带 `user:password@` 凭据的会被拒绝）。
 
-Eveland 不保存网关的任何凭据，所以也没有"测试连接"；每个项目自己的 key 能不能用，由部署时校验（第 5 节）告诉它。
+Eveland 不保存网关的任何凭据。**测试连接**使用管理员在表单里临时输入的 key，用它列一次网关的模型，不保存。每个项目自己的 key 能不能用，由部署时校验（第 5 节）告诉它。
 
 ### 6.2 项目设置
 
@@ -143,15 +143,6 @@ Project Settings 增加 Model Gateway 区块，二选一：
 - **没设就是没设，没有兜底。** 项目没设 key，平台不会补一把。调用不带 `Authorization` 发到网关，在网关那里失败，部署日志里有警告。用一把共享 key 兜底，会把所有没设 key 的项目悄悄记到同一把 key 上，正好违背了"每个项目一把 key"要解决的问题。
 - **key 的生命周期归网关管。** 管理员在网关自己的后台为每个项目建一把 key，按需设置预算、限流和允许的模型，吊销也在那边做。修改项目的 secret 会重启它的在线部署，和其他环境变量变更一样。
 - **key 发往配置的网关。** 项目在配置了 Model Gateway 的实例里仍然保留着 Vercel AI Gateway 的 key，这把 key 就会被发到实例的网关。网关会拒绝它，部署时校验会让部署失败，并写明网关地址。网关是实例自己的，所以这个暴露面被认为可以接受；解决办法是换成网关的 key，或者把项目设为关闭。
-
-**为什么平台不签发 key。** 最初的方案是由 Eveland 持有一个管理凭据，通过 LiteLLM 的管理接口（`/key/generate`、`/key/{key}/regenerate`、`/key/delete`）为每个项目签发 key。发布前放弃了这个方案：
-
-- 它让 Eveland 变成了模型网关的身份系统：持有一个能签发、吊销任意 key 的凭据，还要维护一套崩溃安全的签发、轮换、吊销流程，去追一个不归它管的网关。
-- 切换或移除网关会让所有已签发的 key 变成孤儿，因为那时旧的管理凭据已经没了。
-- 预算、限流、允许的模型仍然要按别名在网关上设置，管理员横竖都要进网关后台。
-- 只有 LiteLLM 能签发；其他类型都退回到实例共用一把 key。
-
-改成项目自己的 key 之后，key 完全归网关管，Eveland 不持有任何网关凭据，各种类型的行为也一致。
 
 ### 6.4 运行时下发
 
@@ -236,7 +227,7 @@ Project Settings 增加 Model Gateway 区块，二选一：
 - **Eveland 不持有网关凭据。** 它既不能在网关上签发 key，也不能吊销 key，所以 Eveland 被攻破也不会扩大在网关上的权限。项目的 `AI_GATEWAY_API_KEY` 是普通的项目 secret：加密存储，只在进程启动时解密，经 root 所有、权限 0600 的环境文件下发，日志里打码，不进入构建、遥测或任何返回给客户端的内容。
 - **项目 key 泄露只影响一个项目。** Agent 进程能读到自己项目的 key，这和所有运行时 secret 一样无法避免。每个项目一把 key，泄露后在网关上轮换这一把即可，不影响其他项目。
 - **网关地址是保留的。** 项目无法把注入的 Provider 指向别处：类型和地址只来自实例配置。
-- **部署时请求的约束。** Worker 只把项目的 key 发给配置的网关，设有超时，不跟随重定向，记录的错误里 key 会被打码。
+- **对外请求的约束。** 部署时校验只把项目的 key 发给配置的网关；测试连接只有 admin 能触发，只把临时输入的 key 发给表单里的网关，不保存。两者都设有超时、不跟随重定向，报告的错误里 key 会被打码。
 
 ---
 
@@ -264,7 +255,7 @@ Project Settings 增加 Model Gateway 区块，二选一：
 - `eveland models` CLI（在 `apps/api/src/cli-auth.ts` 中增加 scope）；
 - Claude Messages 端点模式。
 
-**不做：** 由 Eveland 签发或持有网关 key（第 6.3 节）；专门支持 New API；Eveland 侧的别名表；Helicone。
+**不做：** 专门支持 New API；Eveland 侧的别名表；Helicone。
 
 **待验证：**
 

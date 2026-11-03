@@ -4,6 +4,7 @@ import {
   modelGatewayKindOptions,
   projectModelGatewaySummary,
   validateModelGatewayDraft,
+  validateModelGatewayTest,
 } from "./model-gateway";
 
 describe("Model Gateway form", () => {
@@ -26,6 +27,20 @@ describe("Model Gateway form", () => {
       ok: false,
       error: "Enter the gateway's http(s) base URL, such as https://llm.example.com/v1.",
     });
+  });
+});
+
+describe("validateModelGatewayTest", () => {
+  test("tests the form's gateway with a key that is entered but never saved", () => {
+    expect(
+      validateModelGatewayTest({ kind: "litellm", baseUrl: "https://llm.example/v1/" }, " sk-k "),
+    ).toEqual({
+      ok: true,
+      input: { kind: "litellm", baseUrl: "https://llm.example/v1", key: "sk-k" },
+    });
+    expect(
+      validateModelGatewayTest({ kind: "litellm", baseUrl: "https://llm.example/v1" }, ""),
+    ).toEqual({ ok: false, error: "Enter a key to test the gateway with." });
   });
 });
 

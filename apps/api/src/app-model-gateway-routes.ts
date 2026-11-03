@@ -6,6 +6,7 @@ import {
   isProjectModelGatewayMode,
   type ModelGatewayKind,
 } from "@evelandhq/core/model-gateway";
+import { listGatewayModelIds } from "@evelandhq/core/server/model-gateway-client";
 import type { Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
 
@@ -29,7 +30,8 @@ type ModelGatewayRouteStore = Pick<
  * member's project setting, like its environment).
  *
  * The gateway is only an address: Eveland holds no credential for it, and each
- * project supplies its own AI_GATEWAY_API_KEY. A change restarts the live
+ * project supplies its own AI_GATEWAY_API_KEY. The admin's connection test
+ * takes a key in the request and keeps it nowhere. A change restarts the live
  * Deployments it affects, onto their existing Releases, the way an
  * environment change does.
  */
@@ -55,6 +57,24 @@ export function registerModelGatewayRoutes(input: {
     const deleted = await store.deleteModelGateway();
     const jobs = deleted ? await restartProjectsUsingGateway(store) : [];
     return c.json({ deleted, jobs: jobs.map(toPublicJob) });
+  });
+
+  app.post("/api/platform/model-gateway/test", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const parsed = parseGatewayInput(body);
+    if ("error" in parsed) return c.json({ error: parsed.error }, 400);
+    const key = (body as Record<string, unknown>).key;
+    if (typeof key !== "string" || key.trim() === "") {
+      return c.json({ error: "Enter a key to test the gateway with." }, 400);
+    }
+    try {
+      const models = await listGatewayModelIds({ baseUrl: parsed.baseUrl, apiKey: key.trim() });
+      return c.json({ result: { ok: true, modelCount: models.length } });
+    } catch (error) {
+      // The client masks the key out of every message it builds.
+      const message = error instanceof Error ? error.message : "The connection test failed.";
+      return c.json({ result: { ok: false, error: message } });
+    }
   });
 
   app.get("/api/projects/:projectId/model-gateway", async (c) => {

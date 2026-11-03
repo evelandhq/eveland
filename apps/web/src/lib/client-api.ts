@@ -239,6 +239,20 @@ export async function deleteModelGateway(): Promise<{ deleted: boolean; jobs: Jo
   return clientRequest("/platform/model-gateway", { method: "DELETE" });
 }
 
+/** Tests a gateway with a key the API uses once and stores nowhere. */
+export async function testModelGateway(
+  input: ModelGatewayInput & { key: string },
+): Promise<{ ok: true; modelCount: number } | { ok: false; error: string }> {
+  const data = await clientRequest<{
+    result: { ok: true; modelCount: number } | { ok: false; error: string };
+  }>("/platform/model-gateway/test", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return data.result;
+}
+
 export async function saveProjectModelGateway(
   projectId: string,
   input: { mode: ProjectModelGatewayMode },

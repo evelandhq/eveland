@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { CheckCircle2Icon, Trash2Icon } from "lucide-react";
+import { CheckCircle2Icon, PlugZapIcon, Trash2Icon } from "lucide-react";
 import type { ModelGateway, ModelGatewayKind } from "@evelandhq/core/model-gateway";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -27,11 +27,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { deleteModelGateway, saveModelGateway } from "@/lib/client-api";
+import { deleteModelGateway, saveModelGateway, testModelGateway } from "@/lib/client-api";
 import {
   modelGatewayKindOption,
   modelGatewayKindOptions,
   validateModelGatewayDraft,
+  validateModelGatewayTest,
   type ModelGatewayInput,
 } from "@/lib/model-gateway";
 
@@ -50,9 +51,12 @@ function restartNotice(prefix: string, jobs: readonly unknown[]): string {
 export function ModelGatewaySettings({ initialGateway }: { initialGateway: ModelGateway | null }) {
   const kindId = useId();
   const baseUrlId = useId();
+  const testKeyId = useId();
   const [gateway, setGateway] = useState(initialGateway);
   const [draft, setDraft] = useState<ModelGatewayInput>(() => draftFrom(initialGateway));
-  const [pending, setPending] = useState<"save" | "remove" | null>(null);
+  // Only for the connection test: sent once, never saved, cleared on save.
+  const [testKey, setTestKey] = useState("");
+  const [pending, setPending] = useState<"save" | "test" | "remove" | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -77,7 +81,33 @@ export function ModelGatewaySettings({ initialGateway }: { initialGateway: Model
       const result = await saveModelGateway(validated.input);
       setGateway(result.gateway);
       setDraft(draftFrom(result.gateway));
+      setTestKey("");
       setNotice(restartNotice("Model Gateway saved.", result.jobs));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not reach the Eveland API.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function test() {
+    const validated = validateModelGatewayTest(draft, testKey);
+    if (!validated.ok) {
+      setError(validated.error);
+      return;
+    }
+    setPending("test");
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await testModelGateway(validated.input);
+      if (result.ok) {
+        setNotice(
+          `Connected. The gateway lists ${result.modelCount} model${result.modelCount === 1 ? "" : "s"} for this key.`,
+        );
+      } else {
+        setError(result.error);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not reach the Eveland API.");
     } finally {
@@ -171,12 +201,47 @@ export function ModelGatewaySettings({ initialGateway }: { initialGateway: Model
             for it: each project sets its own AI_GATEWAY_API_KEY.
           </FieldDescription>
         </Field>
+
+        <Field>
+          <FieldLabel htmlFor={testKeyId}>Test key</FieldLabel>
+          <Input
+            id={testKeyId}
+            type="password"
+            value={testKey}
+            onChange={(event) => {
+              setTestKey(event.target.value);
+              setError(null);
+              setNotice(null);
+            }}
+            autoComplete="off"
+            spellCheck={false}
+            className="font-mono"
+            disabled={pending !== null}
+          />
+          <FieldDescription>
+            Only for Test connection: a key on this gateway to list its models with. It is not
+            saved.
+          </FieldDescription>
+        </Field>
       </FieldGroup>
 
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={pending !== null}>
           {pending === "save" ? <Spinner data-icon="inline-start" /> : null}
           {pending === "save" ? "Saving…" : "Save gateway"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={pending !== null}
+          onClick={() => void test()}
+        >
+          {pending === "test" ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <PlugZapIcon data-icon="inline-start" />
+          )}
+          Test connection
         </Button>
         {gateway !== null ? (
           <AlertDialog
