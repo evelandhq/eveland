@@ -1,3 +1,9 @@
+import type {
+  ModelGateway,
+  ProjectModelGateway,
+  ProjectModelGatewayMode,
+} from "@evelandhq/core/model-gateway";
+import type { ModelGatewayInput } from "./model-gateway";
 import type { Job, Project, PublicSecret, ScheduleRun } from "./api";
 import type {
   AgentConnection,
@@ -217,6 +223,48 @@ export async function saveSharedAgentEnvironment(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ entries }),
   });
+}
+
+export async function saveModelGateway(
+  input: ModelGatewayInput,
+): Promise<{ gateway: ModelGateway; jobs: Job[] }> {
+  return clientRequest("/platform/model-gateway", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteModelGateway(): Promise<{ deleted: boolean; jobs: Job[] }> {
+  return clientRequest("/platform/model-gateway", { method: "DELETE" });
+}
+
+export async function testModelGateway(
+  input: ModelGatewayInput,
+): Promise<{ ok: true; modelCount?: number } | { ok: false; error: string }> {
+  const data = await clientRequest<{
+    result: { ok: true; modelCount?: number } | { ok: false; error: string };
+  }>("/platform/model-gateway/test", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return data.result;
+}
+
+export async function saveProjectModelGateway(
+  projectId: string,
+  input: { mode: ProjectModelGatewayMode; projectKey?: string },
+): Promise<{ settings: ProjectModelGateway; jobs: Job[] }> {
+  return clientRequest(`/projects/${projectId}/model-gateway`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function rotateProjectModelGatewayKey(projectId: string): Promise<{ job: Job }> {
+  return clientRequest(`/projects/${projectId}/model-gateway/rotate`, { method: "POST" });
 }
 
 export async function saveObservabilitySettings(input: {

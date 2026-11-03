@@ -45,6 +45,11 @@ Eve projects statically resolve certain configuration during compilation (`npx e
 - **Memory contract**: Eveland automatically injects `EVELAND_MEMORY_ROOT` into agent processes, designating the root directory where Eve persists `fileMemory()` documents.
 - **Tenant isolation**: The Worker binds this to a dedicated host path: `<EVELAND_DATA_DIR>/memory/<projectId>`. The directory persists across redeployments and restarts, and is cleaned up only upon project deletion.
 
+## 5. Model Gateway reserved variables
+
+- `EVELAND_MODEL_GATEWAY_KIND`, `EVELAND_MODEL_GATEWAY_URL`, and `EVELAND_MODEL_GATEWAY_KEY` belong to the platform reserved layer and are always present: when the project uses the instance's Model Gateway they carry the gateway kind, address, and this project's key; otherwise they are empty. A same-named project or shared entry is overridden, so a project cannot aim the platform-injected provider at another gateway.
+- The key is handled as a secret: decrypted only at process start, delivered through the 0600 environment file, and masked in logs. The full rules are in the [Model Gateway contract](/docs/reference/model-gateway).
+
 ## Deeper reference
 
 - [Secrets and Connections](/docs/agents/secrets-connections): developer guide to credentials and interactive auth

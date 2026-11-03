@@ -9,6 +9,7 @@
     "gateway",
     "observability",
     "identity",
-    "agent-catalog"
+    "agent-catalog",
+    "model-gateway"
   ]
 }

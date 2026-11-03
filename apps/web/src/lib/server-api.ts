@@ -1,3 +1,5 @@
+import type { ModelGateway } from "@evelandhq/core/model-gateway";
+import type { ProjectModelGatewayResponse } from "./model-gateway";
 import { cookies } from "next/headers";
 import { API_INTERNAL_URL_FALLBACK } from "@evelandhq/core/ports";
 import { PUBLIC_API_PREFIX } from "@evelandhq/core/front-door";
@@ -168,6 +170,10 @@ export const getSharedAgentEnvironment = () =>
   apiGet<{ environment: SharedAgentEnvironment | null }>("/platform/shared-agent-environment").then(
     (data) => data.environment,
   );
+export const getModelGateway = () =>
+  apiGet<{ gateway: ModelGateway | null }>("/platform/model-gateway").then((data) => data.gateway);
+export const getProjectModelGateway = (projectId: string) =>
+  apiGetOptional<ProjectModelGatewayResponse>(`/projects/${projectId}/model-gateway`);
 export const getIdentityProviderSettings = () =>
   apiGet<{ providers: PublicIdentityProvider[]; oidcRedirectUri: string }>(
     "/system/identity/providers",

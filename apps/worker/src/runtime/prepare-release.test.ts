@@ -2,7 +2,7 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promise
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { prepareReleaseTree } from "./prepare-release.js";
+import { preparedReleaseLogLines, prepareReleaseTree } from "./prepare-release.js";
 
 const roots: string[] = [];
 
@@ -217,4 +217,88 @@ test("wraps every Eve-supported authored agent module extension", async () => {
       `from "./eveland-authored-agent.${extension}"`,
     );
   }
+});
+
+async function eveProject(eve: string) {
+  const root = await mkdtemp(path.join(os.tmpdir(), "eveland-release-"));
+  roots.push(root);
+  const sourcePath = path.join(root, "source");
+  const buildDir = path.join(root, "build");
+  await mkdir(path.join(sourcePath, "agent"), { recursive: true });
+  await writeFile(path.join(sourcePath, "package.json"), JSON.stringify({ dependencies: { eve } }));
+  await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
+  return { root, sourcePath, buildDir };
+}
+
+test("injects the Model Gateway provider into an eve 1.0 release and logs it", async () => {
+  const { sourcePath, buildDir } = await eveProject("1.0.0-rc.2");
+
+  const result = await prepareReleaseTree({ sourcePath, buildDir });
+
+  expect(result.modelGateway).toEqual({
+    status: "injected",
+    injectedFiles: ["agent/instrumentation/eveland-model-gateway.js"],
+    runtimeFile: ".eveland/model-gateway/runtime.mjs",
+  });
+  expect(preparedReleaseLogLines(result)).toContain(
+    "Injected Eveland Model Gateway provider: agent/instrumentation/eveland-model-gateway.js",
+  );
+  await expect(access(path.join(sourcePath, "agent", "instrumentation"))).rejects.toThrow();
+});
+
+test("leaves an eve 0.83 release's model calls as authored, and says so", async () => {
+  const { sourcePath, buildDir } = await eveProject("0.83.3");
+
+  const result = await prepareReleaseTree({ sourcePath, buildDir });
+
+  expect(result.modelGateway).toEqual({ status: "skipped", reason: "eve-version" });
+  expect(preparedReleaseLogLines(result).join("\n")).toMatch(/WARNING: .*Model Gateway.* eve 1\.0/);
+});
+
+test("seeds the cached model catalog into the release before the build", async () => {
+  const { root, sourcePath, buildDir } = await eveProject("1.0.0-rc.2");
+  const cacheFile = path.join(root, "data", "cache", "model-catalog.json");
+  await mkdir(path.dirname(cacheFile), { recursive: true });
+  await writeFile(
+    cacheFile,
+    JSON.stringify({
+      fetchedAt: new Date().toISOString(),
+      models: [{ slug: "anthropic/claude-sonnet-4.5", providers: [] }],
+      providerAliases: {},
+    }),
+  );
+
+  const result = await prepareReleaseTree({
+    sourcePath,
+    buildDir,
+    modelCatalogCacheFile: cacheFile,
+  });
+
+  expect(result.modelCatalog?.source).toBe("cache");
+  const seeded = JSON.parse(
+    await readFile(path.join(buildDir, ".eve", "cache", "model-catalog.json"), "utf8"),
+  );
+  expect(seeded).toMatchObject({ kind: "eve-model-catalog-cache", version: 2 });
+  expect(preparedReleaseLogLines(result).join("\n")).toMatch(
+    /Model catalog: Eveland cache fetched at /,
+  );
+});
+
+test("builds without a seed, and warns, when no catalog is available", async () => {
+  const { sourcePath, buildDir } = await eveProject("1.0.0-rc.2");
+
+  const result = await prepareReleaseTree({
+    sourcePath,
+    buildDir,
+    modelCatalogCacheFile: path.join(buildDir, "..", "missing", "model-catalog.json"),
+    fetchModelCatalog: async () => {
+      throw new Error("offline");
+    },
+  });
+
+  expect(result.modelCatalog?.source).toBe("unavailable");
+  await expect(
+    access(path.join(buildDir, ".eve", "cache", "model-catalog.json")),
+  ).rejects.toThrow();
+  expect(preparedReleaseLogLines(result).join("\n")).toMatch(/WARNING: .*model catalog.*offline/);
 });

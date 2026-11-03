@@ -12,7 +12,8 @@
     "smoke:connections": "tsx src/integration/connections-e2e.ts",
     "smoke:docker-sandbox": "tsx src/integration/docker-sandbox-smoke.ts",
     "smoke:workflow-wake": "tsx src/integration/workflow-wake-e2e.ts",
-    "smoke:workflow-dual-release": "tsx src/integration/workflow-dual-release-e2e.ts"
+    "smoke:workflow-dual-release": "tsx src/integration/workflow-dual-release-e2e.ts",
+    "smoke:model-gateway": "tsx src/integration/model-gateway-eve-e2e.ts"
   },
   "dependencies": {
     "@evelandhq/agent-observer": "workspace:*",
@@ -25,6 +26,7 @@
     "@opentelemetry/api": "^1.9.1",
     "@workflow/world-postgres": "5.0.0-beta.34",
     "esbuild": "^0.28.2",
+    "eveland": "workspace:*",
     "execa": "^10.0.1",
     "graphile-worker": "0.16.6",
     "pg": "8.20.0",

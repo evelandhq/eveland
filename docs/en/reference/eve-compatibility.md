@@ -57,6 +57,15 @@ Eveland fails closed when the dependency is missing, outside the window, or cann
 
 The diagnostic asks the project owner to upgrade instead of guessing an older protocol. Review the release notes before upgrading either Eve or Eveland in production.
 
+## Behavior the Model Gateway relies on
+
+The [Model Gateway](/docs/reference/model-gateway) depends on eve behavior that no eve API promises, so widening the window also reruns `pnpm --filter @evelandhq/worker smoke:model-gateway` (with `EVE_VERSION` set to the candidate) against a real install:
+
+- `eve build` trusts a seeded `.eve/cache/model-catalog.json` (`kind: "eve-model-catalog-cache"`, `version: 2`) whose `fetchedAt` is under five minutes old;
+- an instrumentation's `setup` runs after every instrumentation module has loaded, and `eve start` resolves a string model ID through `globalThis.AI_SDK_DEFAULT_PROVIDER`;
+- eve records `providerMetadata.gateway.cost` as `usage.recorded` `costUsd`;
+- `eve dev` honors the default provider too (from 1.0.0-rc.2; vercel/eve#5787).
+
 ## Deeper reference
 
 - [Source import](/docs/reference/source-import): preflight validation and dependency scanning contract

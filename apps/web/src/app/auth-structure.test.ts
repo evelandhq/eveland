@@ -89,6 +89,22 @@ describe("team management web surfaces", () => {
     expect(environmentSettings).toContain("Configured");
   });
 
+  test("provides one administrator-only Model Gateway whose credential never comes back", () => {
+    const page = source("./settings/model-gateway/page.tsx");
+    expect(page).toContain("getModelGateway");
+    expect(page).toContain('member.role !== "admin"');
+    const settings = source("../components/model-gateway-settings.tsx");
+    expect(settings).toContain("saveModelGateway");
+    expect(settings).toContain("testModelGateway");
+    expect(settings).toContain('type="password"');
+    expect(settings).toContain("<AlertDialog");
+    expect(settings).toContain("<FieldGroup");
+    const project = source("../components/project-model-gateway-settings.tsx");
+    expect(project).toContain("saveProjectModelGateway");
+    expect(project).toContain("rotateProjectModelGatewayKey");
+    expect(project).toContain('type="password"');
+  });
+
   test("provides administrator controls for Eveland capture and external OTLP destinations", () => {
     const pageUrl = new URL("./settings/observability/page.tsx", import.meta.url);
     const settingsUrl = new URL("../components/observability/settings.tsx", import.meta.url);

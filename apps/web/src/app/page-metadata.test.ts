@@ -20,6 +20,7 @@ const titledPages = [
   ["./settings/git-credentials/page.tsx", "Git credentials"],
   ["./settings/health/page.tsx", "Instance health"],
   ["./settings/members/page.tsx", "Members"],
+  ["./settings/model-gateway/page.tsx", "Model Gateway"],
   ["./settings/observability/page.tsx", "Observability"],
   ["./settings/profile/page.tsx", "Profile"],
   ["./settings/shared-agent-environment/page.tsx", "Environment"],

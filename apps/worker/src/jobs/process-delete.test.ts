@@ -7,6 +7,8 @@ import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createFixtureEveProject } from "./process.test-support.js";
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import type { ModelGatewayKeyClient } from "./model-gateway-environment.js";
 
 describe("processNextJob", () => {
   test("delete_project stops the deployment through its recorded runtimeKind adapter, logging before stopping, then deletes the project last", async () => {
@@ -382,5 +384,122 @@ describe("processNextJob", () => {
     // The handler must return immediately after the missing getProject check --
     // it must never call getCurrentDeployment or deleteProject again.
     expect(calls).toEqual([`getProject:${project.id}`]);
+  });
+
+  test("delete_project revokes the project's issued Model Gateway key before deleting the project", async () => {
+    const appSecretKey = "eveland-test-secret-key-00000000";
+    const encrypt = (value: string) => JSON.stringify(encryptSecretValue(value, appSecretKey));
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Delete Gateway Agent", importKind: "zip" });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.saveModelGateway({
+      kind: "litellm",
+      baseUrl: "https://llm.example/v1",
+      encryptedCredential: encrypt("sk-admin"),
+    });
+    await store.saveIssuedModelGatewayKey(project.id, {
+      alias: `eveland-${project.id}`,
+      encryptedKey: encrypt("sk-eveland-issued"),
+      gatewayIdentity: "litellm:https://llm.example/v1",
+      state: "registered",
+      issuedAt: "2026-11-03T00:00:00.000Z",
+    });
+    await store.enqueueJob(project.id, "delete_project");
+    const calls: string[] = [];
+    const client: ModelGatewayKeyClient = {
+      generate: async () => ({ status: "created" }),
+      exists: async () => true,
+      regenerate: async () => undefined,
+      delete: async (input) => {
+        calls.push(`revoke:${input.key}`);
+        return { status: "deleted" };
+      },
+    };
+    const spyingStore: Store = {
+      ...store,
+      async deleteProject(projectId) {
+        calls.push("deleteProject");
+        return store.deleteProject(projectId);
+      },
+    };
+
+    await expect(
+      processNextJob(spyingStore, "worker-a", {
+        appSecretKey,
+        modelGatewayKeyClient: client,
+        dropProjectWorkflowWorld: async () => {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(calls).toEqual(["revoke:sk-eveland-issued", "deleteProject"]);
+    await expect(store.getProject(project.id)).resolves.toBeNull();
+  });
+
+  test("rotate_model_gateway_key swaps the issued key and restarts the live deployments onto it", async () => {
+    const appSecretKey = "eveland-test-secret-key-00000000";
+    const encrypt = (value: string) => JSON.stringify(encryptSecretValue(value, appSecretKey));
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Rotate Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const deployment = await store.recordDeployment({
+      releaseId: "rel_rot",
+      deploymentId: "dep_rot",
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/proj:rel_rot",
+      containerName: "eveland-rot",
+      internalPort: 3000,
+      hostPort: 41061,
+      runtimeKind: "systemd",
+    });
+    await store.saveModelGateway({
+      kind: "litellm",
+      baseUrl: "https://llm.example/v1",
+      encryptedCredential: encrypt("sk-admin"),
+    });
+    await store.saveIssuedModelGatewayKey(project.id, {
+      alias: `eveland-${project.id}`,
+      encryptedKey: encrypt("sk-eveland-old"),
+      gatewayIdentity: "litellm:https://llm.example/v1",
+      state: "registered",
+      issuedAt: "2026-11-03T00:00:00.000Z",
+    });
+    await store.enqueueJob(project.id, "rotate_model_gateway_key", {});
+    const regenerated: Array<{ key: string; newKey: string }> = [];
+    const client: ModelGatewayKeyClient = {
+      generate: async () => ({ status: "created" }),
+      exists: async () => false,
+      regenerate: async (input) => {
+        regenerated.push({ key: input.key, newKey: input.newKey });
+      },
+      delete: async () => ({ status: "deleted" }),
+    };
+
+    await expect(
+      processNextJob(store, "worker-a", { appSecretKey, modelGatewayKeyClient: client }),
+    ).resolves.toBe(true);
+
+    expect(regenerated).toHaveLength(1);
+    expect(regenerated[0]!.key).toBe("sk-eveland-old");
+    const restarts = await store.listProjectJobs(project.id, { type: "restart_deployment" });
+    expect(restarts.map((job) => job.payload)).toEqual([
+      { deploymentId: deployment.id, reason: "model_gateway_key_rotated" },
+    ]);
   });
 });

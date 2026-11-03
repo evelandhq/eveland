@@ -11,6 +11,7 @@ import { createPostgresOtlpStore } from "./postgres-otel-store.js";
 import { createPostgresProjectStore } from "./postgres-project-store.js";
 import { createPostgresRuntimeStore } from "./postgres-runtime-store.js";
 import { createPostgresScheduleStore } from "./postgres-schedule-store.js";
+import { createPostgresModelGatewayStore } from "./postgres-model-gateway-store.js";
 import { createPostgresSecretStore } from "./postgres-secret-store.js";
 import { createPostgresSessionQueryStore } from "./postgres-session-query-store.js";
 import { createPostgresSessionStore } from "./postgres-session-store.js";
@@ -33,6 +34,7 @@ export function createPostgresStore(database: StoreDatabase): Store {
     ...createPostgresAgentAuthStore(context),
     ...createPostgresIdentityStore(context),
     ...createPostgresSecretStore(context),
+    ...createPostgresModelGatewayStore(context),
     ...jobSource,
     ...createPostgresDeploymentRoutingStore(context),
     ...createPostgresSessionStore(context),

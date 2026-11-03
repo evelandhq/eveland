@@ -3,10 +3,14 @@ import { createHash } from "node:crypto";
 import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
-import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discovery-artifacts.js";
+import {
+  readReleaseDiscovery,
+  readReleaseSchedulerDefinitions,
+  readReleaseStaticModelIds,
+} from "./discovery-artifacts.js";
 import { assertReleaseSandboxArtifacts } from "./sandbox-artifacts.js";
 import { injectSandboxModules } from "./sandbox-inject.js";
-import { prepareReleaseTree } from "./prepare-release.js";
+import { preparedReleaseLogLines, prepareReleaseTree } from "./prepare-release.js";
 import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
 import {
   PNPM_FROZEN_INSTALL_COMMAND,
@@ -464,6 +468,9 @@ export function createSystemdAdapter(
         sourcePath: input.sourcePath,
         buildDir: releaseDir,
         workflowWorld: input.workflowWorld,
+        ...(input.modelCatalogCacheFile
+          ? { modelCatalogCacheFile: input.modelCatalogCacheFile }
+          : {}),
       });
 
       // Runs after cp -a (so it has a release to write into) and before the build
@@ -590,9 +597,11 @@ export function createSystemdAdapter(
         : undefined;
       const discovery = await readReleaseDiscovery(releaseDir);
       const schedulerDefinitions = await readReleaseSchedulerDefinitions(releaseDir);
+      const staticModelIds = await readReleaseStaticModelIds(releaseDir);
       return {
         releaseRef: releaseDir,
         schedulerDefinitions,
+        staticModelIds,
         ...(discovery ? { discovery } : {}),
         // Echo what release preparation actually injected — the source of
         // the Release's persisted workflow attestation.
@@ -601,6 +610,7 @@ export function createSystemdAdapter(
           : {}),
         log: [
           `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
+          ...preparedReleaseLogLines(observerInjection),
           observerInjection.workflowWorld
             ? `Injected platform workflow world: ${input.workflowWorld?.packageName} (${observerInjection.workflowWorld.agentConfigPath})`
             : undefined,

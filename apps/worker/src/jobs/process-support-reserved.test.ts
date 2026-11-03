@@ -1,3 +1,4 @@
+import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import { createTestStore } from "@evelandhq/db/vitest";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -20,6 +21,9 @@ const baseOptions = {
   identityIssuer: "https://identity.example.com",
   identityJwksUrl: "https://identity.example.com/.well-known/jwks.json",
 } as const;
+
+const encrypt = (value: string) =>
+  JSON.stringify(encryptSecretValue(value, baseOptions.appSecretKey));
 
 /**
  * Every platform-owned runtime name for a Deployment still on the legacy
@@ -98,14 +102,42 @@ describe("reserved runtime environment names", () => {
     );
 
     expect(undeclared).toEqual([]);
-    // EVELAND_PROJECT_ID is derived per project; EVE_TELEMETRY_DISABLED and
+    // EVELAND_PROJECT_ID is derived per project; the EVELAND_MODEL_GATEWAY_*
+    // names come from the database at every launch; EVE_TELEMETRY_DISABLED and
     // WORKFLOW_OPTIMISTIC_INLINE_START are platform constants. None has a
     // worker-environment input.
     expect(
       RESERVED_RUNTIME_ENVIRONMENT_KEYS.filter(
         (key) => RESERVED_RUNTIME_ENVIRONMENT_SOURCES[key]?.length === 0,
       ),
-    ).toEqual(["EVELAND_PROJECT_ID", "EVE_TELEMETRY_DISABLED", "WORKFLOW_OPTIMISTIC_INLINE_START"]);
+    ).toEqual([
+      "EVELAND_MODEL_GATEWAY_KIND",
+      "EVELAND_MODEL_GATEWAY_KEY",
+      "EVELAND_MODEL_GATEWAY_URL",
+      "EVELAND_PROJECT_ID",
+      "EVE_TELEMETRY_DISABLED",
+      "WORKFLOW_OPTIMISTIC_INLINE_START",
+    ]);
+  });
+
+  test("a project entry cannot aim the injected provider at a gateway of its own", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "gateway-spoof", importKind: "zip" });
+    await store.upsertSecrets(project.id, [
+      { key: "EVELAND_MODEL_GATEWAY_KIND", value: encrypt("openai-compatible"), kind: "variable" },
+      {
+        key: "EVELAND_MODEL_GATEWAY_URL",
+        value: encrypt("https://attacker.example/v1"),
+        kind: "variable",
+      },
+      { key: "EVELAND_MODEL_GATEWAY_KEY", value: encrypt("sk-attacker"), kind: "secret" },
+    ]);
+
+    const { env } = await composeDeploymentEnv(store, project.id, baseOptions, {});
+
+    expect(env.EVELAND_MODEL_GATEWAY_KIND).toBe("");
+    expect(env.EVELAND_MODEL_GATEWAY_URL).toBe("");
+    expect(env.EVELAND_MODEL_GATEWAY_KEY).toBe("");
   });
 
   test("a project entry never wins against a reserved name at runtime", async () => {

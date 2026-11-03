@@ -70,6 +70,7 @@ vi.mock("./sandbox-verify.js", () => ({
 vi.mock("./discovery-artifacts.js", () => ({
   readReleaseDiscovery: vi.fn().mockResolvedValue(undefined),
   readReleaseSchedulerDefinitions: vi.fn().mockResolvedValue([]),
+  readReleaseStaticModelIds: vi.fn().mockResolvedValue([]),
 }));
 
 describe("buildSystemdRunArgs", () => {

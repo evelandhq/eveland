@@ -73,6 +73,30 @@ describe("workspace import boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  // The single sanctioned edge onto the published sdk. The Worker bundles
+  // `packages/eveland/src/model-gateway.ts` -- by file path, never by import --
+  // into every eve 1.0 Release, so the provider an Agent imports as
+  // `eveland/model-gateway` under `eve dev` and the one the platform injects
+  // are the same code (apps/worker/src/runtime/model-gateway-injection.ts). It
+  // goes away if that runtime moves into a workspace package the sdk can
+  // re-publish from.
+  test("only the Worker declares the published sdk, to bundle its Model Gateway runtime", () => {
+    const declaring = workspaces
+      .filter((workspace) => workspace.name !== "eveland")
+      .filter((workspace) => {
+        const manifest = workspace.manifest as Record<string, Record<string, string> | undefined>;
+        return ["dependencies", "devDependencies", "peerDependencies"].some(
+          (key) => manifest[key]?.eveland !== undefined,
+        );
+      })
+      .map((workspace) => workspace.name);
+    expect(declaring).toEqual(["@evelandhq/worker"]);
+
+    const bundler = readSource("apps/worker/src/runtime/model-gateway-injection.ts");
+    expect(bundler).toContain('resolve("eveland/package.json")');
+    expect(bundler).toContain('"src", "model-gateway.ts"');
+  });
+
   test("no deep imports into another workspace's src", () => {
     // Production files only: test files may carry fixture import strings
     // (e.g. the scheduler injector's rewrite tests).

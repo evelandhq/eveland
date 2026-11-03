@@ -4,7 +4,8 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseSchedulerDefinitions } from "@evelandhq/agent-scheduler";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
-import { prepareReleaseTree } from "./prepare-release.js";
+import { collectStaticModelIds } from "./discovery-artifacts.js";
+import { preparedReleaseLogLines, prepareReleaseTree } from "./prepare-release.js";
 import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
 import {
   platformSandboxArtifactsProblem,
@@ -218,7 +219,8 @@ const readImageDiscoveryScript =
   'try{m=JSON.parse(fs.readFileSync("/app/.eve/discovery/agent-discovery-manifest.json","utf8"))}catch{}' +
   'try{v=require("/app/node_modules/eve/package.json").version}catch{}' +
   'try{d=JSON.parse(fs.readFileSync("/app/.eveland/scheduler/definitions.json","utf8"))}catch{}' +
-  'process.stdout.write(JSON.stringify({manifest:m,resolvedEveVersion:typeof v==="string"?v:null,...Array.isArray(d)?{schedulerDefinitions:d}:{}}))';
+  'let c=null;try{c=JSON.parse(fs.readFileSync("/app/.output/.eve/compile/compiled-agent-manifest.json","utf8"))}catch{}' +
+  'process.stdout.write(JSON.stringify({manifest:m,resolvedEveVersion:typeof v==="string"?v:null,...Array.isArray(d)?{schedulerDefinitions:d}:{},compiledManifest:c}))';
 
 export async function readImageDiscovery(imageTag: string): Promise<ReleaseDiscovery> {
   const result = await execa(
@@ -240,15 +242,18 @@ export async function readImageDiscovery(imageTag: string): Promise<ReleaseDisco
       manifest: unknown;
       resolvedEveVersion: string | null;
       schedulerDefinitions?: unknown;
+      compiledManifest?: unknown;
     };
     const schedulerDefinitions = parseSchedulerDefinitions(parsed.schedulerDefinitions);
     if (!schedulerDefinitions) {
       throw new Error("Required scheduler definitions are missing or invalid.");
     }
+    const staticModelIds = collectStaticModelIds(parsed.compiledManifest);
     return {
       manifest: parsed.manifest,
       resolvedEveVersion: parsed.resolvedEveVersion,
       schedulerDefinitions,
+      ...(staticModelIds.length > 0 ? { staticModelIds } : {}),
     };
   } catch (error) {
     throw new Error(
@@ -489,6 +494,9 @@ export function createDockerAdapter(
           sourcePath: input.sourcePath,
           buildDir: input.buildDir,
           workflowWorld: input.workflowWorld,
+          ...(input.modelCatalogCacheFile
+            ? { modelCatalogCacheFile: input.modelCatalogCacheFile }
+            : {}),
         });
         const sandboxInjection = await injectSandboxModules({
           releaseDir: path.resolve(input.buildDir),
@@ -522,6 +530,7 @@ export function createDockerAdapter(
           releaseRef: imageTag,
           schedulerDefinitions: discovery.schedulerDefinitions,
           discovery,
+          ...(discovery.staticModelIds ? { staticModelIds: discovery.staticModelIds } : {}),
           // Echo what release preparation actually injected — the source of
           // the Release's persisted workflow attestation.
           ...(observerInjection.workflowWorld && input.workflowWorld
@@ -531,6 +540,7 @@ export function createDockerAdapter(
             log,
             rejectedBuildVariablesLog(buildVariables.rejectedKeys),
             `Injected Eveland observer hooks: ${observerInjection.injectedFiles.join(", ") || "none"}`,
+            ...preparedReleaseLogLines(observerInjection),
             observerInjection.workflowWorld
               ? `Injected platform workflow world: ${input.workflowWorld?.packageName} (${observerInjection.workflowWorld.agentConfigPath})`
               : undefined,

@@ -4,7 +4,6 @@ import {
   decryptSecretValue,
   maskKnownSecrets,
   mergeRuntimeEnvironment,
-  type EncryptedSecret,
 } from "@evelandhq/core/server/secrets";
 import { isSupportedEveDependency, unsupportedEveVersionMessage } from "@evelandhq/core/source";
 import type { Store } from "@evelandhq/db";
@@ -30,7 +29,14 @@ import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.
 import { resolveWorkflowRunnerMode } from "../runtime/workflow-world.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";
 
+import { parseEncryptedSecret } from "./encrypted-secret.js";
+import {
+  resolveModelGatewayEnvironment,
+  type ModelGatewayEnvironmentStore,
+} from "./model-gateway-environment.js";
 import type { ProcessJobOptions, ScheduleDispatchInput } from "./process-types.js";
+
+export { parseEncryptedSecret };
 
 export const devSecretKey = "eveland-dev-secret-key-000000000";
 const runtimeDiagnosticMaxCharacters = 32_000;
@@ -210,8 +216,14 @@ function resolveWorkflowMaxPoolSize(workerEnv: NodeJS.ProcessEnv): string {
 // Shared by build_deploy and restart_deployment. Durable-workflow gating is
 // NOT part of this: build_deploy only calls this after deciding the deploy may
 // proceed, and restart never re-gates an already-deployed release.
+export type DeploymentEnvironmentStore = Pick<
+  Store,
+  "listSecretRecords" | "getSharedAgentEnvironmentRecord"
+> &
+  ModelGatewayEnvironmentStore;
+
 export async function composeDeploymentEnv(
-  store: Pick<Store, "listSecretRecords" | "getSharedAgentEnvironmentRecord">,
+  store: DeploymentEnvironmentStore,
   projectId: string,
   options: ProcessJobOptions,
   workerEnv: NodeJS.ProcessEnv = process.env,
@@ -284,6 +296,12 @@ export async function composeDeploymentEnv(
     await store.getSharedAgentEnvironmentRecord(),
     appSecretKey,
   );
+  // Issues the project's gateway key on first use, so a failure here fails
+  // the launch rather than starting an Agent that cannot reach its models.
+  const modelGateway = await resolveModelGatewayEnvironment(store, projectId, {
+    appSecretKey,
+    ...(options.modelGatewayKeyClient ? { client: options.modelGatewayKeyClient } : {}),
+  });
   const sandboxProcessLimits = resolveSandboxProcessLimits(workerEnv);
   // Project secrets are runtime input, but the workflow database is
   // platform-owned and bootstrapped before this worker accepts jobs. Keep its
@@ -310,6 +328,10 @@ export async function composeDeploymentEnv(
     // `npx eve start` is a CLI command, and from eve 0.52.0 the CLI reports
     // usage to Vercel unless told not to (see ../runtime/reserved-environment.ts).
     EVE_TELEMETRY_DISABLED: "1",
+    // Always reserved, empty when the project uses no Model Gateway, so a
+    // project entry can never aim the injected default provider at a gateway
+    // (or key) of its own choosing. See ./model-gateway-environment.ts.
+    ...modelGateway.env,
     // Only injected when the platform has the shared world configured. A
     // project that could set these could scope its world at another tenant's
     // data, or hand the runner a database nothing provisions.
@@ -359,6 +381,7 @@ export async function composeDeploymentEnv(
     // masked out of build and runtime logs the same way.
     ...(evelandWorldUrl ? [evelandWorldUrl] : []),
     ...(schedulerRuntimeSecret ? [schedulerRuntimeSecret] : []),
+    ...modelGateway.secretValues,
   ];
   return { env, secretValues };
 }
@@ -426,14 +449,6 @@ async function readRuntimeSecrets(
   }
 
   return values;
-}
-
-export function parseEncryptedSecret(value: string): EncryptedSecret {
-  const parsed = JSON.parse(value) as Partial<EncryptedSecret>;
-  if (parsed.algorithm !== "aes-256-gcm" || !parsed.iv || !parsed.authTag || !parsed.ciphertext) {
-    throw new Error("Invalid encrypted secret payload.");
-  }
-  return parsed as EncryptedSecret;
 }
 
 export async function resolveRuntimeCommandContext(

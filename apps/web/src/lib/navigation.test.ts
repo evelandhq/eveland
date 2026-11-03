@@ -44,6 +44,7 @@ describe("sidebar navigation", () => {
             href: "/settings/shared-agent-environment",
             label: "Environment",
           },
+          { href: "/settings/model-gateway", label: "Model Gateway" },
           { href: "/settings/observability", label: "Observability" },
           { href: "/settings/health", label: "Instance health" },
           { href: "/settings/about", label: "About" },

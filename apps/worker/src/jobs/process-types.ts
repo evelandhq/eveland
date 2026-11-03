@@ -1,5 +1,6 @@
 import type { RuntimeAdapter } from "../runtime/types.js";
 import type { Tracer } from "@opentelemetry/api";
+import type { ModelGatewayKeyClient } from "./model-gateway-environment.js";
 
 export type ProcessJobOptions = {
   runtime?: RuntimeAdapter;
@@ -53,6 +54,10 @@ export type ProcessJobOptions = {
   maxConcurrentHeavyJobs?: number;
   dispatchSchedule?: (input: ScheduleDispatchInput) => Promise<{ sessionIds: string[] }>;
   tracer?: Tracer;
+  /** Issues, rotates, and revokes per-project keys on a key-issuing Model Gateway. */
+  modelGatewayKeyClient?: ModelGatewayKeyClient;
+  /** Lists a Model Gateway's models for a key; the deploy-time model check. */
+  listGatewayModels?: (input: { baseUrl: string; apiKey: string }) => Promise<string[]>;
   /** Aborted when this execution's job lease is fenced away; long-running steps must stop. */
   signal?: AbortSignal;
 };

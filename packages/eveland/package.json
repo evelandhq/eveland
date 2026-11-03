@@ -25,7 +25,12 @@
     "./memory": {
       "types": "./dist/memory.d.ts",
       "import": "./dist/memory.js"
-    }
+    },
+    "./model-gateway": {
+      "types": "./dist/model-gateway.d.ts",
+      "import": "./dist/model-gateway.js"
+    },
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public"
@@ -35,6 +40,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --maxWorkers=2 --testTimeout=30000",
     "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "4.0.111",
+    "@ai-sdk/openai-compatible": "3.0.82",
+    "@ai-sdk/provider": "4.0.35"
   },
   "devDependencies": {
     "eve": "1.0.0-rc.1",

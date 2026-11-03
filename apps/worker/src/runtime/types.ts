@@ -18,6 +18,8 @@ export type ReleaseBuildInput = {
   buildVariables?: Readonly<Record<string, string>>;
   /** Platform-owned durable world injected only into the prepared Release. */
   workflowWorld?: WorkflowWorldBuildConfig;
+  /** The Worker's daily AI Gateway model catalog, seeded into the Release before `eve build`. */
+  modelCatalogCacheFile?: string;
   /** Aborts the build (the job's lease was fenced away); adapters cancel the build command. */
   signal?: AbortSignal;
 };
@@ -38,6 +40,11 @@ export type ReleaseBuildResult = {
    * fail the build when absent or corrupt.
    */
   discovery?: ReleaseDiscovery;
+  /**
+   * Static model IDs from eve's compiled agent manifest (root agent and
+   * declared subagents), checked against the Model Gateway before launch.
+   */
+  staticModelIds?: string[];
 };
 
 export type ReleaseDiscovery = {
@@ -47,6 +54,8 @@ export type ReleaseDiscovery = {
   resolvedEveVersion: string | null;
   /** Post-install definitions, including mounted Extension schedules. */
   schedulerDefinitions?: SchedulerDefinition[];
+  /** Static model IDs from the compiled agent manifest, where the adapter reads it with discovery. */
+  staticModelIds?: string[];
 };
 
 export type ProcessStartInput = {

@@ -31,6 +31,7 @@ description: Eveland 为什么长成这个样子——平台结构性选择背�
 | [可观测性](/zh/docs/reference/design/observability)      | 为什么 OpenTelemetry 是唯一的遥测传输           |
 | [身份](/zh/docs/reference/design/identity)               | Agent 为什么只见 brokered Caller Token          |
 | [Agent Catalog](/zh/docs/reference/design/agent-catalog) | Catalog 为什么是投影，以及聊天客户端契约        |
+| [Model Gateway](/zh/docs/reference/design/model-gateway) | 字符串模型 ID 如何接到自托管的模型网关          |
 
 ## 深入参考
 

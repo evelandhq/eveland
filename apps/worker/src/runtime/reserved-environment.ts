@@ -44,6 +44,13 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   // path -- or, worse, at a directory shared with another tenant. Derived from
   // the data root (the host one when the worker itself runs in Compose).
   EVELAND_MEMORY_ROOT: ["EVELAND_DATA_DIR", "EVELAND_HOST_DATA_DIR"],
+  // The instance's Model Gateway and this project's key on it, read from the
+  // database at every launch (never from worker environment). Always present,
+  // empty when the project uses no gateway, so a project entry cannot aim the
+  // injected default provider at a gateway or key of its own choosing.
+  EVELAND_MODEL_GATEWAY_KIND: [],
+  EVELAND_MODEL_GATEWAY_KEY: [],
+  EVELAND_MODEL_GATEWAY_URL: [],
   // Per project by construction; no platform input can change it.
   EVELAND_PROJECT_ID: [],
   EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES: ["EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES"],

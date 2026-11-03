@@ -36,6 +36,7 @@ can run, and for failing closed instead of failing mysteriously.
 | [Observability](/docs/reference/design/observability) | Why OpenTelemetry is the only telemetry transport                |
 | [Identity](/docs/reference/design/identity)           | Why Agents see brokered Caller Tokens, never upstream IdP tokens |
 | [Agent Catalog](/docs/reference/design/agent-catalog) | Why the Catalog is a projection, and the chat-client contract    |
+| [Model Gateway](/docs/reference/design/model-gateway) | How string model IDs reach a self-hosted model gateway           |
 
 ## Deeper reference
 

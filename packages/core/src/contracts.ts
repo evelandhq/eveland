@@ -264,6 +264,9 @@ export type JobPayloadMap = {
   };
   archive_deployment: { deploymentId: string; automatic?: boolean };
   delete_project: { sourcePaths?: string[] };
+  // Replaces the project's issued Model Gateway key, then restarts its live
+  // Deployments onto the new one.
+  rotate_model_gateway_key: Record<string, unknown>;
 };
 
 export type JobType = keyof JobPayloadMap;

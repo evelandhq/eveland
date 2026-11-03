@@ -57,6 +57,7 @@ const jobPayloadSchemas: {
     })
     .passthrough(),
   delete_project: z.object({ sourcePaths: z.array(z.string()).optional() }).passthrough(),
+  rotate_model_gateway_key: z.object({}).passthrough(),
 };
 
 /**
@@ -94,6 +95,10 @@ export const LATENCY_SENSITIVE_JOB_TYPES = [
 export const PROJECT_MUTATION_JOB_TYPES = [
   "import_source",
   "build_deploy",
+  // Serialized with builds so a Deployment built during a rotation never
+  // starts on the key being rotated out after the rotation listed what to
+  // restart.
+  "rotate_model_gateway_key",
 ] as const satisfies readonly JobType[];
 
 /**

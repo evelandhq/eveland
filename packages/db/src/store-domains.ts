@@ -61,6 +61,14 @@ import type {
   UsageRange,
 } from "@evelandhq/core/contracts";
 import type { ModelStepUsage } from "@evelandhq/core/eve";
+import type {
+  IssuedModelGatewayKeyRecord,
+  ModelGateway,
+  ModelGatewayKind,
+  ModelGatewayRecord,
+  ProjectModelGatewayMode,
+  ProjectModelGatewayRecord,
+} from "@evelandhq/core/model-gateway";
 import type { AgentCatalogRecord } from "@evelandhq/core/catalog";
 import type { AgentEventObservation } from "@evelandhq/core/observability";
 import type { EveVersionInfo } from "@evelandhq/core/source";
@@ -498,6 +506,37 @@ export interface SecretStore {
     input: SaveSharedAgentEnvironmentInput,
   ): Promise<SharedAgentEnvironment>;
   getSharedAgentEnvironmentRecord(): Promise<SharedAgentEnvironmentRecord | null>;
+}
+
+export type SaveModelGatewayInput = {
+  kind: ModelGatewayKind;
+  baseUrl: string | null;
+  encryptedCredential: string;
+};
+
+export type SaveProjectModelGatewaySettingsInput = {
+  mode: ProjectModelGatewayMode;
+  /** A new encrypted key, `null` to clear it, or omitted to keep the stored one. */
+  encryptedProjectKey?: string | null;
+};
+
+export interface ModelGatewayStore {
+  getModelGatewayRecord(): Promise<ModelGatewayRecord | null>;
+  saveModelGateway(
+    input: SaveModelGatewayInput,
+  ): Promise<{ gateway: ModelGateway; changed: boolean }>;
+  deleteModelGateway(): Promise<boolean>;
+  getProjectModelGatewayRecord(projectId: string): Promise<ProjectModelGatewayRecord>;
+  listProjectModelGatewayRecords(): Promise<ProjectModelGatewayRecord[]>;
+  saveProjectModelGatewaySettings(
+    projectId: string,
+    input: SaveProjectModelGatewaySettingsInput,
+  ): Promise<ProjectModelGatewayRecord>;
+  saveIssuedModelGatewayKey(
+    projectId: string,
+    issuedKey: IssuedModelGatewayKeyRecord | null,
+  ): Promise<void>;
+  savePendingModelGatewayRotationKey(projectId: string, encryptedKey: string | null): Promise<void>;
 }
 
 export type EnqueueJobArguments<Type extends JobType> = Type extends JobType
@@ -998,6 +1037,7 @@ export type Store = ProjectStore &
   AgentAuthStore &
   IdentityStore &
   SecretStore &
+  ModelGatewayStore &
   JobStore &
   DeploymentStore &
   RoutingStore &

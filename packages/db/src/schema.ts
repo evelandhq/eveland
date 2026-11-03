@@ -763,6 +763,68 @@ export const sharedAgentEnvironment = pgTable(
   ],
 );
 
+// The instance's single Model Gateway. For a key-issuing kind the credential
+// is the management credential that issues per-project keys and never reaches
+// an Agent; for any other kind it is the key every project shares.
+export const modelGateway = pgTable(
+  "model_gateway",
+  {
+    key: text("key").primaryKey(),
+    kind: text("kind").notNull(),
+    baseUrl: text("base_url"),
+    encryptedCredential: text("encrypted_credential").notNull(),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("model_gateway_key_check", sql`${table.key} = 'global'`),
+    check(
+      "model_gateway_kind_check",
+      sql`${table.kind} in ('vercel', 'openrouter', 'litellm', 'openai-compatible')`,
+    ),
+    check("model_gateway_revision_check", sql`${table.revision} > 0`),
+  ],
+);
+
+// How each project uses the Model Gateway, and the key Eveland issued for it.
+// A project with no row uses the platform gateway with no key issued yet.
+export const projectModelGateway = pgTable(
+  "project_model_gateway",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    mode: text("mode").notNull().default("platform"),
+    encryptedProjectKey: text("encrypted_project_key"),
+    issuedKeyAlias: text("issued_key_alias"),
+    issuedKeyEncrypted: text("issued_key_encrypted"),
+    issuedKeyGatewayIdentity: text("issued_key_gateway_identity"),
+    issuedKeyState: text("issued_key_state"),
+    issuedKeyIssuedAt: timestamp("issued_key_issued_at", { withTimezone: true }),
+    pendingRotationKeyEncrypted: text("pending_rotation_key_encrypted"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      "project_model_gateway_mode_check",
+      sql`${table.mode} in ('platform', 'project-key', 'off')`,
+    ),
+    check(
+      "project_model_gateway_issued_key_state_check",
+      sql`${table.issuedKeyState} is null or ${table.issuedKeyState} in ('pending', 'registered')`,
+    ),
+    check(
+      "project_model_gateway_issued_key_complete_check",
+      sql`(${table.issuedKeyAlias} is null) = (${table.issuedKeyEncrypted} is null)
+        and (${table.issuedKeyAlias} is null) = (${table.issuedKeyGatewayIdentity} is null)
+        and (${table.issuedKeyAlias} is null) = (${table.issuedKeyState} is null)
+        and (${table.issuedKeyAlias} is null) = (${table.issuedKeyIssuedAt} is null)`,
+    ),
+  ],
+);
+
 export const observabilityPolicies = pgTable(
   "observability_policies",
   {

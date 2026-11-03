@@ -16,6 +16,7 @@ import {
 import { registerAgentCatalogRoutes } from "./app-agent-catalog-routes.js";
 import { registerProjectRoutes } from "./app-project-routes.js";
 import { registerQueryRoutes } from "./app-query-routes.js";
+import { registerModelGatewayRoutes } from "./app-model-gateway-routes.js";
 import { registerSecretRoutes } from "./app-secret-routes.js";
 import type { AppOptions } from "./app-types.js";
 import { registerObservabilityRoutes } from "./app-observability-routes.js";
@@ -173,6 +174,14 @@ export function createApp(
     store,
     appSecretKey,
     enqueueLiveDeploymentRestarts,
+  });
+  registerModelGatewayRoutes({
+    app,
+    store,
+    appSecretKey,
+    ...(options.testModelGatewayConnection
+      ? { testConnection: options.testModelGatewayConnection }
+      : {}),
   });
   registerObservabilityRoutes({ app, store, options, appSecretKey });
   registerQueryRoutes(app, store);

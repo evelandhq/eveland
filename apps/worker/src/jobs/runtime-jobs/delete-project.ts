@@ -4,7 +4,11 @@ import { dropEvelandWorkflowTenant } from "../../runtime/eveland-workflow-world-
 import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
 import { dropProjectWorkflowWorld } from "../../runtime/workflow-world-bootstrap.js";
-import { removeManagedProjectFiles } from "../process-support.js";
+import {
+  revokeProjectModelGatewayKey,
+  type ModelGatewayEnvironmentStore,
+} from "../model-gateway-environment.js";
+import { devSecretKey, removeManagedProjectFiles } from "../process-support.js";
 import type { ProcessJobOptions } from "../process-types.js";
 import type { RuntimeJob } from "./types.js";
 
@@ -17,7 +21,8 @@ type DeleteProjectStore = Pick<
   | "getRelease"
   | "listDeployments"
   | "listSourceRevisions"
->;
+> &
+  ModelGatewayEnvironmentStore;
 
 export async function handleDeleteProjectJob(
   store: DeleteProjectStore,
@@ -79,6 +84,20 @@ export async function handleDeleteProjectJob(
       evelandWorldUrl,
       job.projectId,
     );
+  }
+
+  // The project's own key on the Model Gateway goes too. A failure leaves the
+  // project row for the retry, like the workflow drops above.
+  const revocation = await revokeProjectModelGatewayKey(store, job.projectId, {
+    appSecretKey: options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey,
+    ...(options.modelGatewayKeyClient ? { client: options.modelGatewayKeyClient } : {}),
+  });
+  if (revocation.status === "orphaned") {
+    await store.appendLog({
+      projectId: job.projectId,
+      type: "deploy",
+      line: `WARNING: this project's Model Gateway key ${revocation.alias} was issued on a gateway this instance no longer uses, so Eveland could not revoke it. Delete it on that gateway.`,
+    });
   }
 
   const sourceRevisions = await store.listSourceRevisions(job.projectId);

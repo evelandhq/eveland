@@ -6,6 +6,7 @@ import { handleArchiveDeploymentJob } from "./runtime-jobs/archive-deployment.js
 import { handleDeleteProjectJob } from "./runtime-jobs/delete-project.js";
 import { handleEnsureDeploymentRunningJob } from "./runtime-jobs/ensure-deployment-running.js";
 import { handleRestartDeploymentJob } from "./runtime-jobs/restart-deployment.js";
+import { handleRotateModelGatewayKeyJob } from "./runtime-jobs/rotate-model-gateway-key.js";
 import { handleTriggerScheduleJob } from "./runtime-jobs/trigger-schedule.js";
 import type { ProcessJobOptions } from "./process-types.js";
 
@@ -84,6 +85,11 @@ export const jobRegistry: { [Type in JobType]: JobDescriptor<Type> } = {
     onFailure: async (store, job, message) => {
       await store.setProjectDeletionFailed(job.projectId, message);
     },
+  },
+  // A failed rotation leaves the current key in place and working, so the
+  // project's state is untouched; the failure is the job row and its log.
+  rotate_model_gateway_key: {
+    handle: handleRotateModelGatewayKeyJob,
   },
 };
 

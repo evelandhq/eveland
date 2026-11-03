@@ -16,6 +16,22 @@ import {
  */
 export const DISCOVERY_MANIFEST_RELEASE_PATH = ".eve/discovery/agent-discovery-manifest.json";
 
+/** eve's compiled agent manifest; read only for the static model IDs it names. */
+export const COMPILED_AGENT_MANIFEST_RELEASE_PATH =
+  ".output/.eve/compile/compiled-agent-manifest.json";
+
+export async function readReleaseStaticModelIds(releaseDir: string): Promise<string[]> {
+  try {
+    return collectStaticModelIds(
+      JSON.parse(
+        await readFile(path.join(releaseDir, COMPILED_AGENT_MANIFEST_RELEASE_PATH), "utf8"),
+      ),
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function readReleaseDiscovery(
   releaseDir: string,
 ): Promise<ReleaseDiscovery | undefined> {
@@ -62,4 +78,27 @@ async function readResolvedEveVersion(releaseDir: string): Promise<string | null
   } catch {
     return null;
   }
+}
+
+/** Static model IDs in eve's compiled agent manifest, root first, deduplicated. */
+export function collectStaticModelIds(manifest: unknown): string[] {
+  const ids = new Set<string>();
+  const visit = (node: unknown): void => {
+    if (typeof node !== "object" || node === null) return;
+    const record = node as Record<string, unknown>;
+    const id = modelIdOf(record.config);
+    if (id) ids.add(id);
+    if (record.manifest) visit(record.manifest);
+    if (Array.isArray(record.subagents)) for (const subagent of record.subagents) visit(subagent);
+  };
+  visit(manifest);
+  return [...ids];
+}
+
+function modelIdOf(config: unknown): string | undefined {
+  if (typeof config !== "object" || config === null) return undefined;
+  const model = (config as { model?: unknown }).model;
+  if (typeof model !== "object" || model === null) return undefined;
+  const id = (model as { id?: unknown }).id;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
 }

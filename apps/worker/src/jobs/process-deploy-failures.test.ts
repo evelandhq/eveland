@@ -123,6 +123,89 @@ describe("processNextJob", () => {
     }
   });
 
+  test("fails the deploy, before anything starts, when the Model Gateway does not offer the Agent's model", async () => {
+    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-missing-model-"));
+    vi.stubEnv("EVELAND_DATA_DIR", dataDir);
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({
+      name: "Missing Model Agent",
+      importKind: "zip",
+      sourcePath,
+    });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    await store.saveModelGateway({
+      kind: "openai-compatible",
+      baseUrl: "https://llm.example/v1",
+      encryptedCredential: JSON.stringify(
+        encryptSecretValue("sk-shared", "eveland-test-secret-key-00000000"),
+      ),
+    });
+    await store.enqueueJob(project.id, "build_deploy");
+    let buildDir: string | null = null;
+    const removedReleases: string[] = [];
+    const listGatewayModels = vi.fn(async () => ["anthropic/claude-sonnet-4-5"]);
+
+    try {
+      await expect(
+        processNextJob(store, "worker-a", {
+          appSecretKey: "eveland-test-secret-key-00000000",
+          runtime: {
+            name: "docker",
+            async buildRelease(input) {
+              buildDir = input.buildDir;
+              await mkdir(input.buildDir, { recursive: true });
+              return {
+                releaseRef: "missing-model:image",
+                log: "",
+                staticModelIds: ["anthropic/claude-sonnet-4.5"],
+              };
+            },
+            async startProcess() {
+              throw new Error("startProcess must not run");
+            },
+            async stopProcess() {
+              throw new Error("stopProcess must not run");
+            },
+            async removeRelease(releaseRef) {
+              removedReleases.push(releaseRef);
+            },
+          },
+          listGatewayModels,
+          allocateHostPort: () => 41096,
+        }),
+      ).resolves.toBe(true);
+
+      expect(listGatewayModels).toHaveBeenCalledWith({
+        baseUrl: "https://llm.example/v1",
+        apiKey: "sk-shared",
+      });
+      await expect(store.getProject(project.id)).resolves.toMatchObject({
+        deploymentStatus: "failed",
+      });
+      const logs = (await store.listLogs(project.id)).map((log) => log.line).join("\n");
+      expect(logs).toMatch(
+        /ERROR: model anthropic\/claude-sonnet-4\.5 is not offered .*did you mean anthropic\/claude-sonnet-4-5/,
+      );
+      expect(logs).not.toContain("sk-shared");
+      expect(removedReleases).toEqual(["missing-model:image"]);
+      await expect(access(buildDir!)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   test("fails a build_deploy job when the deployment port never becomes reachable", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
