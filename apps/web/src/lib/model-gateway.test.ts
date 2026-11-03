@@ -12,6 +12,7 @@ describe("Model Gateway form", () => {
     expect(modelGatewayKindOptions.map((option) => option.value)).toEqual([
       "litellm",
       "openrouter",
+      "vercel",
       "openai-compatible",
     ]);
   });
@@ -20,6 +21,13 @@ describe("Model Gateway form", () => {
     expect(
       validateModelGatewayDraft({ kind: "litellm", baseUrl: " https://llm.example/v1/ " }),
     ).toEqual({ ok: true, input: { kind: "litellm", baseUrl: "https://llm.example/v1" } });
+  });
+
+  test("takes no base URL for Vercel AI Gateway", () => {
+    expect(validateModelGatewayDraft({ kind: "vercel", baseUrl: "ignored" })).toEqual({
+      ok: true,
+      input: { kind: "vercel" },
+    });
   });
 
   test("needs an http(s) base URL", () => {
@@ -63,5 +71,8 @@ describe("projectModelGatewaySummary", () => {
     ).toBe(
       "String model IDs go to LiteLLM at https://llm.example/v1 with this project's AI_GATEWAY_API_KEY.",
     );
+    expect(
+      projectModelGatewaySummary({ mode: "platform" }, { kind: "vercel", baseUrl: null }),
+    ).toBe("String model IDs go to Vercel AI Gateway with this project's AI_GATEWAY_API_KEY.");
   });
 });

@@ -1,4 +1,8 @@
-import { MODEL_GATEWAY_ENV } from "@evelandhq/core/model-gateway";
+import {
+  MODEL_GATEWAY_ENV,
+  isModelGatewayKind,
+  modelGatewayModelsBaseUrl,
+} from "@evelandhq/core/model-gateway";
 import {
   ModelGatewayRequestError,
   listGatewayModelIds,
@@ -36,8 +40,12 @@ export async function validateModelGatewayModels(input: {
   listModels?: (input: { baseUrl: string; apiKey: string }) => Promise<string[]>;
 }): Promise<ModelGatewayValidationResult> {
   const kind = input.env[MODEL_GATEWAY_ENV.kind];
-  const baseUrl = input.env[MODEL_GATEWAY_ENV.url];
-  if (!kind || !baseUrl || input.modelIds.length === 0) return { status: "skipped" };
+  if (!isModelGatewayKind(kind) || input.modelIds.length === 0) return { status: "skipped" };
+  const baseUrl = modelGatewayModelsBaseUrl({
+    kind,
+    baseUrl: input.env[MODEL_GATEWAY_ENV.url] ?? null,
+  });
+  if (!baseUrl) return { status: "skipped" };
   const apiKey = input.env[MODEL_GATEWAY_ENV.key]?.trim();
   if (!apiKey) return { status: "no-key", baseUrl };
 

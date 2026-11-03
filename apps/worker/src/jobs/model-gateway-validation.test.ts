@@ -64,6 +64,25 @@ describe("validateModelGatewayModels", () => {
     });
   });
 
+  test("lists Vercel AI Gateway's models at its fixed address for the vercel kind", async () => {
+    const listModels = vi.fn(async () => ["anthropic/claude-sonnet-4.5"]);
+    await expect(
+      validateModelGatewayModels({
+        env: {
+          [MODEL_GATEWAY_ENV.kind]: "vercel",
+          [MODEL_GATEWAY_ENV.url]: "",
+          [MODEL_GATEWAY_ENV.key]: "vck",
+        },
+        modelIds: ["anthropic/claude-sonnet-4.5"],
+        listModels,
+      }),
+    ).resolves.toEqual({ status: "ok", checked: ["anthropic/claude-sonnet-4.5"] });
+    expect(listModels).toHaveBeenCalledWith({
+      baseUrl: "https://ai-gateway.vercel.sh/v1",
+      apiKey: "vck",
+    });
+  });
+
   test("cannot check without the project's key, and only warns: the call fails on its own", async () => {
     const listModels = vi.fn();
     const result = await validateModelGatewayModels({

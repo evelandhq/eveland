@@ -13,11 +13,12 @@ A **Model Gateway** is the gateway Agents' LLM calls go through. An admin config
 | ----------------- | -------------------------- | -------------------------------------- |
 | LiteLLM           | Base URL (ending in `/v1`) | LiteLLM's reported cost is recorded    |
 | OpenRouter        | Base URL                   | OpenRouter's reported cost is recorded |
+| Vercel AI Gateway | Nothing (address is fixed) | Vercel AI Gateway's native cost        |
 | OpenAI-compatible | Base URL                   | Not recorded (missing)                 |
 
 Any other gateway with an OpenAI-compatible Chat Completions endpoint (Cloudflare AI Gateway, Portkey, Bifrost, Kong, Agent Router, New API, and so on) connects as OpenAI-compatible. For LiteLLM, avoid PyPI releases 1.82.7 and 1.82.8, which were compromised.
 
-**Vercel AI Gateway is not a kind.** eve calls it natively with the project's `AI_GATEWAY_API_KEY`, so an instance (or a project) without a Model Gateway already uses it, with its native cost.
+Every kind reads the same `AI_GATEWAY_API_KEY` (§3), so moving between Vercel AI Gateway and another gateway changes only the kind and each project's key value, never a variable name.
 
 ---
 
@@ -43,7 +44,7 @@ Any other gateway with an OpenAI-compatible Chat Completions endpoint (Cloudflar
 ## 4. Instance configuration (`/settings/model-gateway`)
 
 - Only admins can view or change it.
-- The configuration is the kind and base URL. A base URL carrying credentials (`user:password@`) is rejected.
+- The configuration is the kind and base URL (none for Vercel AI Gateway). A base URL carrying credentials (`user:password@`) is rejected.
 - **Test connection**: enter a key on the gateway in the form's test-key field; the API lists the gateway's models with it once and reports the model count or the error. The key is not saved, follows no redirects, times out, and is masked in any error.
 - Saving a different gateway, or removing it, enqueues restarts for the live deployments of every project that uses it (every project not set to Off), onto their existing Releases.
 
@@ -69,10 +70,10 @@ The platform writes into every eve 1.0 Release:
 
 Where the gateway is arrives through two **platform-reserved variables** (a project entry with the same name is overridden):
 
-| Variable                     | Contents                                                 |
-| ---------------------------- | -------------------------------------------------------- |
-| `EVELAND_MODEL_GATEWAY_KIND` | The gateway kind; empty when the project uses no gateway |
-| `EVELAND_MODEL_GATEWAY_URL`  | The base URL; empty when the project uses no gateway     |
+| Variable                     | Contents                                                                      |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `EVELAND_MODEL_GATEWAY_KIND` | The gateway kind; empty when the project uses no gateway                      |
+| `EVELAND_MODEL_GATEWAY_URL`  | The base URL; empty for Vercel AI Gateway or when the project uses no gateway |
 
 The key is the project's own `AI_GATEWAY_API_KEY`, which is not reserved.
 

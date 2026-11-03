@@ -33,12 +33,12 @@ import {
   modelGatewayKindOptions,
   validateModelGatewayDraft,
   validateModelGatewayTest,
-  type ModelGatewayInput,
+  type ModelGatewayDraft,
 } from "@/lib/model-gateway";
 
 const kindItems = modelGatewayKindOptions.map(({ label, value }) => ({ label, value }));
 
-function draftFrom(gateway: ModelGateway | null): ModelGatewayInput {
+function draftFrom(gateway: ModelGateway | null): ModelGatewayDraft {
   return { kind: gateway?.kind ?? "litellm", baseUrl: gateway?.baseUrl ?? "" };
 }
 
@@ -53,7 +53,7 @@ export function ModelGatewaySettings({ initialGateway }: { initialGateway: Model
   const baseUrlId = useId();
   const testKeyId = useId();
   const [gateway, setGateway] = useState(initialGateway);
-  const [draft, setDraft] = useState<ModelGatewayInput>(() => draftFrom(initialGateway));
+  const [draft, setDraft] = useState<ModelGatewayDraft>(() => draftFrom(initialGateway));
   // Only for the connection test: sent once, never saved, cleared on save.
   const [testKey, setTestKey] = useState("");
   const [pending, setPending] = useState<"save" | "test" | "remove" | null>(null);
@@ -62,7 +62,7 @@ export function ModelGatewaySettings({ initialGateway }: { initialGateway: Model
   const [notice, setNotice] = useState<string | null>(null);
   const option = modelGatewayKindOption(draft.kind);
 
-  function update(patch: Partial<ModelGatewayInput>) {
+  function update(patch: Partial<ModelGatewayDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
     setError(null);
     setNotice(null);
@@ -181,26 +181,30 @@ export function ModelGatewaySettings({ initialGateway }: { initialGateway: Model
               </SelectGroup>
             </SelectContent>
           </Select>
-          <FieldDescription>{option.description}</FieldDescription>
-        </Field>
-
-        <Field>
-          <FieldLabel htmlFor={baseUrlId}>Base URL</FieldLabel>
-          <Input
-            id={baseUrlId}
-            value={draft.baseUrl}
-            onChange={(event) => update({ baseUrl: event.target.value })}
-            placeholder={option.baseUrlPlaceholder}
-            autoComplete="off"
-            spellCheck={false}
-            className="font-mono"
-            disabled={pending !== null}
-          />
           <FieldDescription>
-            The OpenAI-compatible endpoint Agents call, usually ending in /v1. Eveland stores no key
-            for it: each project sets its own AI_GATEWAY_API_KEY.
+            {option.description} Eveland stores no key for it: each project sets its own
+            AI_GATEWAY_API_KEY.
           </FieldDescription>
         </Field>
+
+        {option.baseUrlPlaceholder !== null ? (
+          <Field>
+            <FieldLabel htmlFor={baseUrlId}>Base URL</FieldLabel>
+            <Input
+              id={baseUrlId}
+              value={draft.baseUrl}
+              onChange={(event) => update({ baseUrl: event.target.value })}
+              placeholder={option.baseUrlPlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+              className="font-mono"
+              disabled={pending !== null}
+            />
+            <FieldDescription>
+              The OpenAI-compatible endpoint Agents call, usually ending in /v1.
+            </FieldDescription>
+          </Field>
+        ) : null}
 
         <Field>
           <FieldLabel htmlFor={testKeyId}>Test key</FieldLabel>

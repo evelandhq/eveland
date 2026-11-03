@@ -7,14 +7,15 @@ import {
 
 export type ProjectModelGatewayResponse = {
   settings: ProjectModelGateway;
-  gateway: { kind: ModelGatewayKind; baseUrl: string } | null;
+  gateway: { kind: ModelGatewayKind; baseUrl: string | null } | null;
 };
 
 export type ModelGatewayKindOption = {
   value: ModelGatewayKind;
   label: string;
   description: string;
-  baseUrlPlaceholder: string;
+  /** Null for Vercel AI Gateway, whose address is fixed. */
+  baseUrlPlaceholder: string | null;
 };
 
 export const modelGatewayKindOptions: readonly ModelGatewayKindOption[] = [
@@ -31,6 +32,12 @@ export const modelGatewayKindOptions: readonly ModelGatewayKindOption[] = [
     baseUrlPlaceholder: "https://openrouter.ai/api/v1",
   },
   {
+    value: "vercel",
+    label: "Vercel AI Gateway",
+    description: "Vercel AI Gateway's native cost is recorded. Its address is fixed.",
+    baseUrlPlaceholder: null,
+  },
+  {
     value: "openai-compatible",
     label: "OpenAI-compatible",
     description: "Any Chat Completions endpoint. Cost is not reported.",
@@ -42,12 +49,19 @@ export function modelGatewayKindOption(kind: ModelGatewayKind): ModelGatewayKind
   return modelGatewayKindOptions.find((option) => option.value === kind)!;
 }
 
-export type ModelGatewayInput = { kind: ModelGatewayKind; baseUrl: string };
+/** The form's state. */
+export type ModelGatewayDraft = { kind: ModelGatewayKind; baseUrl: string };
+
+/** What the API takes: no base URL for Vercel AI Gateway. */
+export type ModelGatewayInput = { kind: ModelGatewayKind; baseUrl?: string };
 
 /** Mirrors the API's rules so the form can explain a problem before saving. */
 export function validateModelGatewayDraft(
-  draft: ModelGatewayInput,
+  draft: ModelGatewayDraft,
 ): { ok: true; input: ModelGatewayInput } | { ok: false; error: string } {
+  if (modelGatewayKindOption(draft.kind).baseUrlPlaceholder === null) {
+    return { ok: true, input: { kind: draft.kind } };
+  }
   const baseUrl = trimTrailingSlashes(draft.baseUrl.trim());
   if (!isHttpUrl(baseUrl)) {
     return {
@@ -60,7 +74,7 @@ export function validateModelGatewayDraft(
 
 /** The connection test: the form's gateway, plus a key that is sent once and never saved. */
 export function validateModelGatewayTest(
-  draft: ModelGatewayInput,
+  draft: ModelGatewayDraft,
   key: string,
 ): { ok: true; input: ModelGatewayInput & { key: string } } | { ok: false; error: string } {
   const validated = validateModelGatewayDraft(draft);
@@ -109,5 +123,6 @@ export function projectModelGatewaySummary(
   if (settings.mode === "off") {
     return "Not using the Model Gateway; Agents call models as authored.";
   }
-  return `String model IDs go to ${modelGatewayKindOption(gateway.kind).label} at ${gateway.baseUrl} with this project's ${MODEL_GATEWAY_ENV.key}.`;
+  const where = gateway.baseUrl === null ? "" : ` at ${gateway.baseUrl}`;
+  return `String model IDs go to ${modelGatewayKindOption(gateway.kind).label}${where} with this project's ${MODEL_GATEWAY_ENV.key}.`;
 }

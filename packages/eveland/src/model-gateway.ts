@@ -1,3 +1,4 @@
+import { createGateway } from "@ai-sdk/gateway";
 import { createOpenAICompatible, type MetadataExtractor } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV4, ProviderV4, SharedV4ProviderMetadata } from "@ai-sdk/provider";
 
@@ -20,6 +21,9 @@ import type { LanguageModelV4, ProviderV4, SharedV4ProviderMetadata } from "@ai-
  *   this project's models go through" either way. Eveland never supplies a
  *   key: without one the provider is still installed and the call fails at
  *   the configured gateway, not somewhere else.
+ * - The `vercel` kind installs Vercel AI Gateway's own provider, so switching
+ *   between Vercel and another gateway changes only the kind, never the
+ *   project's variables.
  * - A provider the Agent installed itself is never replaced.
  * - Model IDs are forwarded verbatim; aliases live on the gateway.
  * - A gateway-reported USD cost is recorded at `providerMetadata.gateway.cost`,
@@ -30,7 +34,12 @@ import type { LanguageModelV4, ProviderV4, SharedV4ProviderMetadata } from "@ai-
  * dependency on `eve` or on an Eveland workspace package.
  */
 
-export const MODEL_GATEWAY_KINDS = ["litellm", "openrouter", "openai-compatible"] as const;
+export const MODEL_GATEWAY_KINDS = [
+  "litellm",
+  "openrouter",
+  "vercel",
+  "openai-compatible",
+] as const;
 
 export type ModelGatewayKind = (typeof MODEL_GATEWAY_KINDS)[number];
 
@@ -40,11 +49,13 @@ export const MODEL_GATEWAY_ENV = {
   key: "AI_GATEWAY_API_KEY",
 } as const;
 
-export type ModelGatewayConfig = {
-  readonly kind: ModelGatewayKind;
-  readonly baseURL: string;
-  readonly apiKey: string | undefined;
-};
+export type ModelGatewayConfig =
+  | { readonly kind: "vercel"; readonly apiKey: string | undefined }
+  | {
+      readonly kind: Exclude<ModelGatewayKind, "vercel">;
+      readonly baseURL: string;
+      readonly apiKey: string | undefined;
+    };
 
 export type ModelGatewayInstallResult =
   | { readonly status: "not-configured" }
@@ -76,13 +87,16 @@ export function readModelGatewayConfig(
       `Eveland: unsupported Model Gateway kind "${kind}" in ${MODEL_GATEWAY_ENV.kind}; expected one of ${MODEL_GATEWAY_KINDS.join(", ")}.`,
     );
   }
+  const apiKey = env[MODEL_GATEWAY_ENV.key]?.trim() || undefined;
+  // Vercel AI Gateway's address is fixed by Vercel.
+  if (kind === "vercel") return { kind, apiKey };
+
   const baseURL = env[MODEL_GATEWAY_ENV.url]?.trim();
   if (!baseURL || !isHttpUrl(baseURL)) {
     throw new Error(
       `Eveland: the ${kind} Model Gateway needs an http(s) base URL in ${MODEL_GATEWAY_ENV.url}.`,
     );
   }
-  const apiKey = env[MODEL_GATEWAY_ENV.key]?.trim() || undefined;
   return { kind, baseURL: trimTrailingSlashes(baseURL), apiKey };
 }
 
@@ -97,6 +111,10 @@ function isHttpUrl(value: string): boolean {
 
 /** Builds the provider for a Model Gateway configuration. */
 export function createModelGatewayProvider(config: ModelGatewayConfig): ProviderV4 {
+  if (config.kind === "vercel") {
+    return createGateway(config.apiKey === undefined ? {} : { apiKey: config.apiKey });
+  }
+
   const reportsCost = config.kind === "litellm" || config.kind === "openrouter";
   const provider = createOpenAICompatible({
     name: config.kind,

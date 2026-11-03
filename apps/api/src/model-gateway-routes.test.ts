@@ -64,9 +64,21 @@ describe("instance Model Gateway routes", () => {
     });
   });
 
+  test("saves Vercel AI Gateway with no base URL, its address being fixed", async () => {
+    const app = createApp(createTestStore(), { appSecretKey });
+    const saved = await app.request("/api/platform/model-gateway", {
+      method: "PUT",
+      ...json({ kind: "vercel" }),
+    });
+    expect(saved.status).toBe(200);
+    await expect(saved.json()).resolves.toMatchObject({
+      gateway: { kind: "vercel", baseUrl: null },
+    });
+  });
+
   test.each([
     [{ kind: "new-api", baseUrl: "https://x/v1" }, "kind"],
-    [{ kind: "vercel", baseUrl: "https://x/v1" }, "kind"],
+    [{ kind: "vercel", baseUrl: "https://x/v1" }, "baseUrl"],
     [{ kind: "litellm" }, "baseUrl"],
     [{ kind: "litellm", baseUrl: "ftp://x" }, "baseUrl"],
     [{ kind: "litellm", baseUrl: "https://user:sk-secret@x/v1" }, "baseUrl"],

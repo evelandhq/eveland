@@ -36,4 +36,15 @@ describe("resolveModelGatewayEnvironment", () => {
 
     await expect(resolveModelGatewayEnvironment(store, project.id)).resolves.toEqual(inactive);
   });
+
+  test("leaves the URL empty for Vercel AI Gateway, whose address is fixed", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "vercel-gateway", importKind: "zip" });
+    await store.saveModelGateway({ kind: "vercel", baseUrl: null });
+
+    await expect(resolveModelGatewayEnvironment(store, project.id)).resolves.toEqual({
+      EVELAND_MODEL_GATEWAY_KIND: "vercel",
+      EVELAND_MODEL_GATEWAY_URL: "",
+    });
+  });
 });

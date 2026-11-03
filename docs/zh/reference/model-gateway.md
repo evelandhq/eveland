@@ -13,11 +13,12 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 | ----------------- | ------------------------- | -------------------------- |
 | LiteLLM           | Base URL（以 `/v1` 结尾） | 记录 LiteLLM 报告的成本    |
 | OpenRouter        | Base URL                  | 记录 OpenRouter 报告的成本 |
+| Vercel AI Gateway | 无（地址固定）            | Vercel AI Gateway 原生成本 |
 | OpenAI-compatible | Base URL                  | 不记录（缺失）             |
 
 其他提供 OpenAI 兼容 Chat Completions 端点的网关（Cloudflare AI Gateway、Portkey、Bifrost、Kong、Agent Router、New API 等）按 OpenAI-compatible 接入。LiteLLM 请避开 PyPI 上被投毒的 1.82.7 和 1.82.8。
 
-**Vercel AI Gateway 不是一种类型。** eve 自带的 provider 直接用项目的 `AI_GATEWAY_API_KEY` 调它，所以没有配置 Model Gateway 的实例（或关闭了网关的项目）本来就在用它，成本也是它原生报告的。
+所有类型读的都是同一个 `AI_GATEWAY_API_KEY`（§3），所以在 Vercel AI Gateway 和其他网关之间切换，只需要改类型和各项目 key 的值，不用改变量名。
 
 ---
 
@@ -43,7 +44,7 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 ## 4. 实例配置（`/settings/model-gateway`）
 
 - 只有管理员能查看和修改。
-- 配置的内容是网关类型和 Base URL。带凭据的 Base URL（`user:password@`）会被拒绝。
+- 配置的内容是网关类型和 Base URL（Vercel AI Gateway 不需要）。带凭据的 Base URL（`user:password@`）会被拒绝。
 - **测试连接**：在表单的测试 key 输入框里填一把该网关上的 key，API 用它列一次网关的模型，返回模型数量或错误信息。这把 key 不保存；请求不跟随重定向、设有超时，错误信息里会打码。
 - 保存一个不同的网关或移除网关时，平台为所有使用它的项目（即没有设为“关闭”的项目）的在线部署排队重启，沿用现有 Release。
 
@@ -69,10 +70,10 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 
 网关在哪里，通过两个**平台保留变量**传入（项目里的同名条目会被覆盖）：
 
-| 变量                         | 内容                           |
-| ---------------------------- | ------------------------------ |
-| `EVELAND_MODEL_GATEWAY_KIND` | 网关类型；项目不使用网关时为空 |
-| `EVELAND_MODEL_GATEWAY_URL`  | Base URL；项目不使用网关时为空 |
+| 变量                         | 内容                                               |
+| ---------------------------- | -------------------------------------------------- |
+| `EVELAND_MODEL_GATEWAY_KIND` | 网关类型；项目不使用网关时为空                     |
+| `EVELAND_MODEL_GATEWAY_URL`  | Base URL；Vercel AI Gateway 或项目不使用网关时为空 |
 
 key 是项目自己的 `AI_GATEWAY_API_KEY`，不是保留变量。
 

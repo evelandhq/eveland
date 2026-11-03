@@ -39,7 +39,7 @@ The goals:
 | Mechanism                                | The platform injects a runtime module into the Release that sets `globalThis.AI_SDK_DEFAULT_PROVIDER`                                                 | A `gatewayModel(name)` helper (needs source changes); rewriting Agent source or manifests (violates "platform injection, source-oblivious") |
 | When it applies                          | Only when an admin has configured a Model Gateway and the project has not opted out; a global provider the Agent installed itself is never overridden | Taking over every model call unconditionally                                                                                                |
 | Gateway keys                             | Each project sets its own `AI_GATEWAY_API_KEY`; Eveland holds and issues no key, and supplies none when it is unset                                   | An instance-wide shared key, or a shared key as fallback                                                                                    |
-| Supported gateways                       | `litellm`, `openrouter`, `openai-compatible`; Vercel AI Gateway is what eve does natively                                                             | A `vercel` kind (it would change nothing); dedicated New API support (the company is moving to LiteLLM)                                     |
+| Supported gateways                       | `litellm`, `openrouter`, `vercel`, `openai-compatible`                                                                                                | Dedicated New API support (the company is moving to LiteLLM)                                                                                |
 | Model naming                             | Vercel catalog `provider/model` slugs, forwarded to the gateway verbatim; aliases live on the gateway                                                 | An alias table maintained in Eveland                                                                                                        |
 | Cost                                     | Write the gateway-reported cost into `providerMetadata.gateway.cost`                                                                                  | Separate cost capture in the observer                                                                                                       |
 | Code location                            | The runtime module lives in the `eveland` package (`eveland/model-gateway`); the Worker bundles it into the Release                                   | A new package that only platform injection can use                                                                                          |
@@ -70,15 +70,16 @@ The goals:
 
 ## 4. Supported gateways
 
-Phase one ships three kinds:
+Phase one ships four kinds:
 
 | kind                | Protocol                           | Model ID                                   | Cost source                                                                                              |
 | ------------------- | ---------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `openrouter`        | OpenAI-compatible Chat Completions | Mostly the same as Vercel slugs            | `usage.cost` in the response body (the final chunk when streaming)                                       |
 | `litellm`           | OpenAI-compatible Chat Completions | The `model_name` configured on the gateway | Streaming: `usage.cost` in the final chunk; non-streaming: the `x-litellm-response-cost` response header |
+| `vercel`            | Vercel AI Gateway native protocol  | Vercel slug                                | Native `providerMetadata.gateway.cost`                                                                   |
 | `openai-compatible` | OpenAI-compatible Chat Completions | Forwarded verbatim                         | None                                                                                                     |
 
-**Vercel AI Gateway is not a kind.** eve's built-in provider already calls it with `AI_GATEWAY_API_KEY`, and its address cannot be changed, so a `vercel` kind would inject a provider that does exactly what eve does without one. An instance or project without a Model Gateway uses Vercel AI Gateway with its native cost.
+**`vercel` installs Vercel AI Gateway's own provider** (`createGateway`), whose address is fixed. It is a kind so that moving between Vercel and another gateway changes only the kind: every kind reads the same `AI_GATEWAY_API_KEY`.
 
 LiteLLM is the focus of phase one: it is the company's migration target, and a self-hosted gateway that reports cost and manages per-key budgets. The docs must warn against PyPI releases 1.82.7 and 1.82.8, which were compromised on 2026-03-24.
 
@@ -125,7 +126,7 @@ This departs from the fail-closed principle on purpose. The model list is only a
 **There is one instance-level configuration**, like the Shared Agent Environment. The page is `/settings/model-gateway` under System settings, and only admins can change it. It holds only where the gateway is:
 
 - `kind`;
-- a base URL (one carrying `user:password@` credentials is rejected).
+- a base URL, not set for `vercel` (one carrying `user:password@` credentials is rejected).
 
 Eveland stores no credential for the gateway. **Test connection** takes a key the admin types into the form, lists the gateway's models with it once, and keeps it nowhere. The deploy-time check (section 5) then tells each project whether its own key works.
 
@@ -161,7 +162,9 @@ Both are always present and empty when the project has opted out or nothing is c
 
 1. If `EVELAND_MODEL_GATEWAY_KIND` is absent, it does nothing.
 2. If `globalThis.AI_SDK_DEFAULT_PROVIDER` already has a value, it does nothing, so the Agent's own setting wins.
-3. Otherwise it installs `createOpenAICompatible({ name: kind, baseURL, apiKey, includeUsage: true, ... })`, wrapped in the cost shim (section 7), with `apiKey` from `AI_GATEWAY_API_KEY`. Without a key it installs the provider anyway, so the call fails at the configured gateway rather than falling through to Vercel.
+3. Otherwise it installs a provider, with `apiKey` from `AI_GATEWAY_API_KEY`:
+   - `vercel`: `createGateway({ apiKey })`;
+   - other kinds: `createOpenAICompatible({ name: kind, baseURL, apiKey, includeUsage: true, ... })`, wrapped in the cost shim (section 7). Without a key it installs the provider anyway, so the call fails at the configured gateway rather than falling through to Vercel.
 
 The module forwards model IDs to the gateway verbatim, and the provider name is the `kind`.
 
@@ -243,7 +246,7 @@ The window's verified point moves from `1.0.0-rc.1` to `1.0.0-rc.2`, and the sta
 
 **Phase one:**
 
-- the configuration page, project options, reserved variables, and the runtime module (three kinds);
+- the configuration page, project options, reserved variables, and the runtime module (four kinds);
 - `includeUsage` and the cost shim (openrouter, litellm);
 - the daily model catalog cache;
 - validation at deploy;

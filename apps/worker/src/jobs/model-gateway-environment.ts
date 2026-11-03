@@ -31,6 +31,6 @@ export async function resolveModelGatewayEnvironment(
   const active = gateway !== null && setting.mode === "platform";
   return {
     [MODEL_GATEWAY_ENV.kind]: active ? gateway.kind : "",
-    [MODEL_GATEWAY_ENV.url]: active ? gateway.baseUrl : "",
+    [MODEL_GATEWAY_ENV.url]: active ? (gateway.baseUrl ?? "") : "",
   };
 }

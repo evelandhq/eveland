@@ -4,6 +4,8 @@ import {
   PROJECT_MODEL_GATEWAY_MODES,
   isModelGatewayKind,
   isProjectModelGatewayMode,
+  modelGatewayModelsBaseUrl,
+  modelGatewayNeedsBaseUrl,
   type ModelGatewayKind,
 } from "@evelandhq/core/model-gateway";
 import { listGatewayModelIds } from "@evelandhq/core/server/model-gateway-client";
@@ -68,7 +70,10 @@ export function registerModelGatewayRoutes(input: {
       return c.json({ error: "Enter a key to test the gateway with." }, 400);
     }
     try {
-      const models = await listGatewayModelIds({ baseUrl: parsed.baseUrl, apiKey: key.trim() });
+      const models = await listGatewayModelIds({
+        baseUrl: modelGatewayModelsBaseUrl(parsed),
+        apiKey: key.trim(),
+      });
       return c.json({ result: { ok: true, modelCount: models.length } });
     } catch (error) {
       // The client masks the key out of every message it builds.
@@ -109,11 +114,17 @@ export function registerModelGatewayRoutes(input: {
 
 function parseGatewayInput(
   body: unknown,
-): { kind: ModelGatewayKind; baseUrl: string } | { error: string } {
+): { kind: ModelGatewayKind; baseUrl: string | null } | { error: string } {
   if (typeof body !== "object" || body === null) return { error: "Expected a JSON object." };
   const { kind, baseUrl } = body as Record<string, unknown>;
   if (!isModelGatewayKind(kind)) {
     return { error: `kind must be one of ${MODEL_GATEWAY_KINDS.join(", ")}.` };
+  }
+  if (!modelGatewayNeedsBaseUrl(kind)) {
+    if (baseUrl !== undefined && baseUrl !== null && baseUrl !== "") {
+      return { error: "baseUrl is fixed for Vercel AI Gateway and must be omitted." };
+    }
+    return { kind, baseUrl: null };
   }
   if (typeof baseUrl !== "string" || !isHttpUrl(baseUrl.trim())) {
     return { error: "baseUrl must be an http(s) URL without credentials." };

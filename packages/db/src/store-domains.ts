@@ -508,7 +508,8 @@ export interface SecretStore {
 
 export type SaveModelGatewayInput = {
   kind: ModelGatewayKind;
-  baseUrl: string;
+  /** Null for `vercel`, whose address is fixed. */
+  baseUrl: string | null;
 };
 
 export interface ModelGatewayStore {

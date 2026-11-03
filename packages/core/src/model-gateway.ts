@@ -1,9 +1,9 @@
 /**
  * Model Gateway contract shared by the API, Worker, and Dashboard.
  *
- * A Model Gateway is the OpenAI-compatible gateway Agents' string model IDs
- * resolve through (OpenRouter, LiteLLM, or any OpenAI-compatible endpoint),
- * distinct from Eveland's own Agent Gateway. Eveland delivers only where the
+ * A Model Gateway is the gateway Agents' string model IDs resolve through
+ * (LiteLLM, OpenRouter, Vercel AI Gateway, or any OpenAI-compatible
+ * endpoint), distinct from Eveland's own Agent Gateway. Eveland delivers only where the
  * gateway is: the key is the project's own `AI_GATEWAY_API_KEY`, the variable
  * eve's built-in Vercel AI Gateway provider already reads, and Eveland never
  * supplies one. The runtime half of the contract -- the provider an Agent
@@ -12,18 +12,39 @@
  * module and drive it with these names, so the two sides cannot drift apart
  * silently.
  *
- * Vercel AI Gateway is not a kind: eve reaches it natively with the same
- * `AI_GATEWAY_API_KEY`, so an instance with no Model Gateway already uses it.
+ * The `vercel` kind is eve's own Vercel AI Gateway provider. Keeping it a kind
+ * means moving between Vercel and another gateway changes only the kind,
+ * never a project's variables.
  *
  * Browser-safe: no Node imports.
  */
 
-export const MODEL_GATEWAY_KINDS = ["litellm", "openrouter", "openai-compatible"] as const;
+export const MODEL_GATEWAY_KINDS = [
+  "litellm",
+  "openrouter",
+  "vercel",
+  "openai-compatible",
+] as const;
 
 export type ModelGatewayKind = (typeof MODEL_GATEWAY_KINDS)[number];
 
 export function isModelGatewayKind(value: unknown): value is ModelGatewayKind {
   return typeof value === "string" && (MODEL_GATEWAY_KINDS as readonly string[]).includes(value);
+}
+
+/** Kinds that take a base URL. Vercel AI Gateway's address is fixed by Vercel. */
+export function modelGatewayNeedsBaseUrl(kind: ModelGatewayKind): boolean {
+  return kind !== "vercel";
+}
+
+export const VERCEL_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
+
+/** Where a gateway lists its models: its base URL, or Vercel AI Gateway's fixed one. */
+export function modelGatewayModelsBaseUrl(gateway: {
+  kind: ModelGatewayKind;
+  baseUrl: string | null;
+}): string {
+  return gateway.kind === "vercel" ? VERCEL_AI_GATEWAY_BASE_URL : (gateway.baseUrl ?? "");
 }
 
 /**
@@ -56,7 +77,8 @@ export const DEFAULT_PROJECT_MODEL_GATEWAY_MODE: ProjectModelGatewayMode = "plat
 /** The instance's Model Gateway. It holds no credential. */
 export type ModelGateway = {
   kind: ModelGatewayKind;
-  baseUrl: string;
+  /** Null for `vercel`, whose address is fixed. */
+  baseUrl: string | null;
   revision: number;
   createdAt: string;
   updatedAt: string;

@@ -1,5 +1,5 @@
 {
-  "id": "f0e8866c-3e85-4100-8dc0-6840fc4a3d1f",
+  "id": "ade4e16c-b481-4cc6-ac53-a967390f4a3b",
   "prevId": "b40304d9-6598-4785-a4fe-344597cbaeb4",
   "version": "7",
   "dialect": "postgresql",
@@ -2836,7 +2836,7 @@
           "name": "base_url",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "revision": {
           "name": "revision",
@@ -2872,7 +2872,11 @@
         },
         "model_gateway_kind_check": {
           "name": "model_gateway_kind_check",
-          "value": "\"model_gateway\".\"kind\" in ('litellm', 'openrouter', 'openai-compatible')"
+          "value": "\"model_gateway\".\"kind\" in ('litellm', 'openrouter', 'vercel', 'openai-compatible')"
+        },
+        "model_gateway_base_url_check": {
+          "name": "model_gateway_base_url_check",
+          "value": "(\"model_gateway\".\"kind\" = 'vercel') = (\"model_gateway\".\"base_url\" is null)"
         },
         "model_gateway_revision_check": {
           "name": "model_gateway_revision_check",

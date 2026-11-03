@@ -39,7 +39,7 @@ Eve Agent 写 `model: "anthropic/claude-sonnet-4.5"` 这样的字符串 ID 时�
 | 接入机制                                 | 平台在 Release 中注入一个运行时模块，设置 `globalThis.AI_SDK_DEFAULT_PROVIDER`            | 提供 `gatewayModel(name)` helper（需要改源码）；改写 Agent 源码或 manifest（违反"平台注入、不碰源码"原则） |
 | 生效条件                                 | 只在管理员配置了 Model Gateway、项目没有关闭时注入；Agent 自己设了全局 Provider 时不覆盖  | 无条件接管所有模型调用                                                                                     |
 | 网关 key                                 | 每个项目设置自己的 `AI_GATEWAY_API_KEY`；Eveland 不持有、不签发 key，项目没设时也不补一把 | 实例共用一把 key，或用共享 key 兜底                                                                        |
-| 支持的网关                               | `litellm`、`openrouter`、`openai-compatible`；Vercel AI Gateway 就是 eve 的原生行为       | 单独的 `vercel` 类型（什么都不会改变）；专门支持 New API（公司会迁到 LiteLLM）                             |
+| 支持的网关                               | `litellm`、`openrouter`、`vercel`、`openai-compatible`                                    | 专门支持 New API（公司会迁到 LiteLLM）                                                                     |
 | 模型命名                                 | 统一用 Vercel 模型目录的 `provider/model` 写法，原样转发给网关；别名在网关上配            | 在 Eveland 里维护一张别名表                                                                                |
 | 成本                                     | 把网关返回的成本写进 `providerMetadata.gateway.cost`                                      | 由 observer 另外抓取成本                                                                                   |
 | 代码位置                                 | 运行时模块放在 `eveland` 包里（`eveland/model-gateway`），Worker 把它打包进 Release       | 新建一个只能由平台注入的包                                                                                 |
@@ -70,15 +70,16 @@ Eve Agent 写 `model: "anthropic/claude-sonnet-4.5"` 这样的字符串 ID 时�
 
 ## 4. 支持哪些网关
 
-第一期内置三种类型（`kind`）：
+第一期内置四种类型（`kind`）：
 
 | kind                | 协议                         | 模型 ID                   | 成本来源                                                                       |
 | ------------------- | ---------------------------- | ------------------------- | ------------------------------------------------------------------------------ |
 | `openrouter`        | OpenAI 兼容 Chat Completions | 大多数与 Vercel slug 相同 | 响应体 `usage.cost`（流式在最后一个 chunk）                                    |
 | `litellm`           | OpenAI 兼容 Chat Completions | 网关上配的 `model_name`   | 流式：最后一个 chunk 的 `usage.cost`；非流式：响应头 `x-litellm-response-cost` |
+| `vercel`            | Vercel AI Gateway 原生协议   | Vercel slug               | 原生 `providerMetadata.gateway.cost`                                           |
 | `openai-compatible` | OpenAI 兼容 Chat Completions | 原样转发                  | 无                                                                             |
 
-**Vercel AI Gateway 不是一种类型。** eve 自带的 Provider 本来就用 `AI_GATEWAY_API_KEY` 调它，地址也改不了，所以 `vercel` 类型注入的 Provider 和不注入时 eve 的行为完全一样。没有配置 Model Gateway 的实例或项目，用的就是 Vercel AI Gateway，成本也是它原生报告的。
+**`vercel` 安装 Vercel AI Gateway 自己的 Provider**（`createGateway`），地址固定。把它作为一种类型，是为了在 Vercel 和其他网关之间切换时只改类型：所有类型读的都是同一个 `AI_GATEWAY_API_KEY`。
 
 LiteLLM 是第一期的重点：它是公司的迁移目标，是能报告成本、并能按 key 管理预算的自托管网关。文档要提醒避开 PyPI 上被投毒的 1.82.7 和 1.82.8（2026-03-24）。
 
@@ -125,7 +126,7 @@ LiteLLM 是第一期的重点：它是公司的迁移目标，是能报告成本
 **实例级配置，只有一份**，与 Shared Agent Environment 一样。配置页在 System 设置下的 `/settings/model-gateway`，只有 admin 能修改。它只记录网关在哪里：
 
 - `kind`；
-- Base URL（带 `user:password@` 凭据的会被拒绝）。
+- Base URL，`vercel` 类型不填（带 `user:password@` 凭据的会被拒绝）。
 
 Eveland 不保存网关的任何凭据。**测试连接**使用管理员在表单里临时输入的 key，用它列一次网关的模型，不保存。每个项目自己的 key 能不能用，由部署时校验（第 5 节）告诉它。
 
@@ -161,7 +162,9 @@ Project Settings 增加 Model Gateway 区块，二选一：
 
 1. 没有 `EVELAND_MODEL_GATEWAY_KIND`：什么都不做。
 2. `globalThis.AI_SDK_DEFAULT_PROVIDER` 已有值：什么都不做，Agent 自己的设置优先。
-3. 否则安装 `createOpenAICompatible({ name: kind, baseURL, apiKey, includeUsage: true, ... })`，再套上成本 shim（见第 7 节），`apiKey` 取自 `AI_GATEWAY_API_KEY`。没有 key 也照样安装，这样调用会在配置的网关那里失败，而不是落到 Vercel。
+3. 否则安装 Provider，`apiKey` 取自 `AI_GATEWAY_API_KEY`：
+   - `vercel`：`createGateway({ apiKey })`；
+   - 其他类型：`createOpenAICompatible({ name: kind, baseURL, apiKey, includeUsage: true, ... })`，再套上成本 shim（见第 7 节）。没有 key 也照样安装，这样调用会在配置的网关那里失败，而不是落到 Vercel。
 
 模块把模型 ID 原样传给网关，Provider 名就是 `kind`。
 
@@ -243,7 +246,7 @@ Project Settings 增加 Model Gateway 区块，二选一：
 
 **第一期：**
 
-- 配置页、项目选项、保留变量、运行时模块（三种 kind）；
+- 配置页、项目选项、保留变量、运行时模块（四种 kind）；
 - `includeUsage`、成本 shim（openrouter、litellm）；
 - 模型目录按天缓存；
 - 部署时校验；

@@ -36,6 +36,18 @@ describe("Model Gateway store", () => {
     await expect(store.deleteModelGateway()).resolves.toBe(false);
   });
 
+  test("stores Vercel AI Gateway without a base URL, and switches kinds in place", async () => {
+    const store = createTestStore();
+    await store.saveModelGateway({ kind: "litellm", baseUrl: "https://llm.example/v1" });
+
+    const switched = await store.saveModelGateway({ kind: "vercel", baseUrl: null });
+    expect(switched).toMatchObject({
+      changed: true,
+      gateway: { kind: "vercel", baseUrl: null, revision: 2 },
+    });
+    await expect(store.saveModelGateway({ kind: "litellm", baseUrl: null })).rejects.toThrow();
+  });
+
   test("defaults a project to the platform gateway until it opts out", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "gateway-default", importKind: "zip" });

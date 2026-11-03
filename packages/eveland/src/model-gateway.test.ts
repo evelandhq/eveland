@@ -113,14 +113,14 @@ describe("readModelGatewayConfig", () => {
     for (const kind of MODEL_GATEWAY_KINDS) {
       const env = {
         [MODEL_GATEWAY_ENV.kind]: kind,
-        [MODEL_GATEWAY_ENV.url]: "https://gateway.example/v1",
+        [MODEL_GATEWAY_ENV.url]: kind === "vercel" ? "" : "https://gateway.example/v1",
         AI_GATEWAY_API_KEY: "sk-project",
       };
-      expect(readModelGatewayConfig(env)).toEqual({
-        kind,
-        baseURL: "https://gateway.example/v1",
-        apiKey: "sk-project",
-      });
+      expect(readModelGatewayConfig(env)).toEqual(
+        kind === "vercel"
+          ? { kind, apiKey: "sk-project" }
+          : { kind, baseURL: "https://gateway.example/v1", apiKey: "sk-project" },
+      );
     }
   });
 
@@ -135,7 +135,7 @@ describe("readModelGatewayConfig", () => {
   });
 
   test("rejects an unknown kind", () => {
-    for (const kind of ["new-api", "vercel"]) {
+    for (const kind of ["new-api"]) {
       expect(() =>
         readModelGatewayConfig({
           [MODEL_GATEWAY_ENV.kind]: kind,
@@ -209,6 +209,16 @@ describe("installModelGateway", () => {
     const model = provider.languageModel("anthropic/claude-sonnet-4.5");
     expect(model.provider).toBe("litellm.chat");
     expect(model.modelId).toBe("anthropic/claude-sonnet-4.5");
+  });
+
+  test("installs Vercel AI Gateway's own provider for the vercel kind, needing no base URL", () => {
+    const target: Record<string, unknown> = {};
+    const env = { [MODEL_GATEWAY_ENV.kind]: "vercel", AI_GATEWAY_API_KEY: "vck-project" };
+    expect(installModelGateway({ env, target })).toEqual({ status: "installed", kind: "vercel" });
+    const provider = target.AI_SDK_DEFAULT_PROVIDER as ReturnType<
+      typeof createModelGatewayProvider
+    >;
+    expect(provider.languageModel("anthropic/claude-sonnet-4.5").provider).toBe("gateway");
   });
 
   test("installs even without a key, so the call fails at the configured gateway", async () => {

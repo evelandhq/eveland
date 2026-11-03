@@ -770,7 +770,7 @@ export const modelGateway = pgTable(
   {
     key: text("key").primaryKey(),
     kind: text("kind").notNull(),
-    baseUrl: text("base_url").notNull(),
+    baseUrl: text("base_url"),
     revision: integer("revision").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -779,7 +779,12 @@ export const modelGateway = pgTable(
     check("model_gateway_key_check", sql`${table.key} = 'global'`),
     check(
       "model_gateway_kind_check",
-      sql`${table.kind} in ('litellm', 'openrouter', 'openai-compatible')`,
+      sql`${table.kind} in ('litellm', 'openrouter', 'vercel', 'openai-compatible')`,
+    ),
+    // Vercel AI Gateway's address is fixed; every other kind needs one.
+    check(
+      "model_gateway_base_url_check",
+      sql`(${table.kind} = 'vercel') = (${table.baseUrl} is null)`,
     ),
     check("model_gateway_revision_check", sql`${table.revision} > 0`),
   ],
