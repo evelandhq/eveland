@@ -160,6 +160,17 @@ describe("instance Model Gateway routes", () => {
       store.listProjectJobs(legacy.project.id, { type: "restart_deployment" }),
     ).resolves.toEqual([]);
 
+    // Resaving the same gateway restarts nothing, but the legacy Release
+    // still lacks the provider, so it is still named.
+    const resaved = await app.request("/api/platform/model-gateway", {
+      method: "PUT",
+      ...json({ kind: "litellm", baseUrl: "https://llm.example/v1" }),
+    });
+    await expect(resaved.json()).resolves.toMatchObject({
+      jobs: [],
+      rebuildRequired: [{ deploymentId: legacy.deployment.id }],
+    });
+
     // Removing the gateway leaves the legacy Release calling models as
     // authored, which is what removal asks for: nothing to rebuild.
     const removed = await app.request("/api/platform/model-gateway", { method: "DELETE" });
@@ -167,6 +178,36 @@ describe("instance Model Gateway routes", () => {
       jobs: [{ deploymentId: current.deployment.id }],
       rebuildRequired: [],
     });
+  });
+});
+
+describe("Model Gateway rebuild requirements for stopped deployments", () => {
+  test("names a stopped deployment, which wakes on the same Release, without restarting it", async () => {
+    const store = createTestStore();
+    const app = createApp(store, { appSecretKey });
+    const { project, deployment } = await projectWithLiveDeployment(store, "stopped", false);
+    await store.updateDeploymentStatus(deployment.id, "stopped");
+    const expected = [
+      {
+        projectId: project.id,
+        projectName: "stopped",
+        deploymentId: deployment.id,
+        deploymentKey: deployment.deploymentKey,
+      },
+    ];
+
+    const saved = await app.request("/api/platform/model-gateway", {
+      method: "PUT",
+      ...json({ kind: "litellm", baseUrl: "https://llm.example/v1" }),
+    });
+    await expect(saved.json()).resolves.toMatchObject({ jobs: [], rebuildRequired: expected });
+    const read = await app.request(`/api/projects/${project.id}/model-gateway`);
+    await expect(read.json()).resolves.toMatchObject({ rebuildRequired: expected });
+
+    // An archived deployment can no longer be reached, so it needs nothing.
+    await store.updateDeploymentStatus(deployment.id, "archived");
+    const archived = await app.request(`/api/projects/${project.id}/model-gateway`);
+    await expect(archived.json()).resolves.toMatchObject({ rebuildRequired: [] });
   });
 });
 
@@ -322,6 +363,17 @@ describe("project Model Gateway routes", () => {
     });
     await expect(response.json()).resolves.toMatchObject({
       settings: { mode: "platform" },
+      jobs: [],
+      rebuildRequired: [{ deploymentId: deployment.id }],
+    });
+
+    // Saving the mode it already has changes nothing, yet the Release still
+    // lacks the provider: the requirement must not disappear from the page.
+    const unchanged = await app.request(`/api/projects/${project.id}/model-gateway`, {
+      method: "PUT",
+      ...json({ mode: "platform" }),
+    });
+    await expect(unchanged.json()).resolves.toMatchObject({
       jobs: [],
       rebuildRequired: [{ deploymentId: deployment.id }],
     });

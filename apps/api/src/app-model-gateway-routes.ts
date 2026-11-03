@@ -40,10 +40,11 @@ type ModelGatewayRouteStore = Pick<
  * environment change does.
  *
  * A restart can only reconfigure the provider a Release already carries. A
- * live Deployment whose Release has none (built before the provider existed,
- * or on eve 0.83) is not restarted; while its project is set to use the
- * gateway it is reported in `rebuildRequired`, since only a redeploy applies
- * the gateway to it.
+ * Deployment whose Release has none (built before the provider existed, or on
+ * eve 0.83) is not restarted. While its project is set to use the gateway,
+ * every save and every read of the project's setting reports it in
+ * `rebuildRequired` -- a stopped one too, since it wakes on that same Release
+ * -- because only a redeploy applies the gateway to it.
  */
 export function registerModelGatewayRoutes(input: {
   app: ApiApp;
@@ -59,17 +60,19 @@ export function registerModelGatewayRoutes(input: {
     const parsed = parseGatewayInput(await c.req.json().catch(() => null));
     if ("error" in parsed) return c.json({ error: parsed.error }, 400);
     const { gateway, changed } = await store.saveModelGateway(parsed);
-    const applied = changed
-      ? await applyToProjectsUsingGateway(store, { gatewayActive: true })
-      : { jobs: [], rebuildRequired: [] };
+    const applied = await applyToProjectsUsingGateway(store, {
+      restart: changed,
+      gatewayActive: true,
+    });
     return c.json({ gateway, ...publicApplied(applied) });
   });
 
   app.delete("/api/platform/model-gateway", async (c) => {
     const deleted = await store.deleteModelGateway();
-    const applied = deleted
-      ? await applyToProjectsUsingGateway(store, { gatewayActive: false })
-      : { jobs: [], rebuildRequired: [] };
+    const applied = await applyToProjectsUsingGateway(store, {
+      restart: deleted,
+      gatewayActive: false,
+    });
     return c.json({ deleted, ...publicApplied(applied) });
   });
 
@@ -104,7 +107,7 @@ export function registerModelGatewayRoutes(input: {
     ]);
     const rebuildRequired =
       gateway !== null && settings.mode === "platform"
-        ? (await partitionLiveDeployments(store, project)).withoutProvider
+        ? (await classifyDeployments(store, project)).rebuildRequired
         : [];
     return c.json({
       settings,
@@ -126,11 +129,10 @@ export function registerModelGatewayRoutes(input: {
       );
     }
     const { setting, changed } = await store.saveProjectModelGatewayMode(projectId, mode);
-    const applied = changed
-      ? await applyToLiveDeployments(store, project, {
-          gatewayActive: mode === "platform" && (await store.getModelGateway()) !== null,
-        })
-      : { jobs: [], rebuildRequired: [] };
+    const applied = await applyToDeployments(store, project, {
+      restart: changed,
+      gatewayActive: mode === "platform" && (await store.getModelGateway()) !== null,
+    });
     return c.json({ settings: setting, ...publicApplied(applied) });
   });
 }
@@ -183,58 +185,71 @@ function publicApplied(applied: Applied) {
   return { jobs: applied.jobs.map(toPublicJob), rebuildRequired: applied.rebuildRequired };
 }
 
-/** A project's live Deployments, split by whether their Release carries the provider. */
-async function partitionLiveDeployments(store: ModelGatewayRouteStore, project: ProjectRef) {
-  const live = (await store.listDeployments(project.id)).filter(
-    (deployment) => deployment.status === "running" || deployment.status === "draining",
+/**
+ * A project's Deployments as a Model Gateway change sees them:
+ * `restartable` are the live (running / draining) ones whose Release carries
+ * the provider, which a restart reconfigures; `rebuildRequired` are the
+ * addressable ones -- live, or stopped and waiting to wake on the same
+ * Release -- whose Release has none.
+ */
+async function classifyDeployments(store: ModelGatewayRouteStore, project: ProjectRef) {
+  const addressable = (await store.listDeployments(project.id)).filter(
+    (deployment) =>
+      deployment.status === "running" ||
+      deployment.status === "draining" ||
+      deployment.status === "stopped",
   );
   const releases = await Promise.all(
-    live.map((deployment) => store.getRelease(deployment.releaseId)),
+    addressable.map((deployment) => store.getRelease(deployment.releaseId)),
   );
-  const withProvider: typeof live = [];
-  const withoutProvider: ModelGatewayRebuildRequired[] = [];
-  live.forEach((deployment, index) => {
-    if (releases[index]?.modelGatewayProvider) {
-      withProvider.push(deployment);
-    } else {
-      withoutProvider.push({
+  const restartable: typeof addressable = [];
+  const rebuildRequired: ModelGatewayRebuildRequired[] = [];
+  addressable.forEach((deployment, index) => {
+    if (!releases[index]?.modelGatewayProvider) {
+      rebuildRequired.push({
         projectId: project.id,
         projectName: project.name,
         deploymentId: deployment.id,
         deploymentKey: deployment.deploymentKey,
       });
+    } else if (deployment.status !== "stopped") {
+      restartable.push(deployment);
     }
   });
-  return { withProvider, withoutProvider };
+  return { restartable, rebuildRequired };
 }
 
 /**
- * Restarts the live Deployments a restart can reconfigure. The rest keep
- * calling models as authored, which is a rebuild requirement only when the
- * project is now set to use a gateway.
+ * Restarts, when the change asks for it, the live Deployments a restart can
+ * reconfigure. Deployments without the provider keep calling models as
+ * authored, which is a rebuild requirement whenever the project is now set to
+ * use a gateway -- whether or not this save changed anything.
  */
-async function applyToLiveDeployments(
+async function applyToDeployments(
   store: ModelGatewayRouteStore,
   project: ProjectRef,
-  options: { gatewayActive: boolean },
+  options: { restart: boolean; gatewayActive: boolean },
 ): Promise<Applied> {
-  const { withProvider, withoutProvider } = await partitionLiveDeployments(store, project);
-  const jobs = await Promise.all(
-    withProvider.map((deployment) =>
-      store.enqueueJob(project.id, "restart_deployment", {
-        deploymentId: deployment.id,
-        reason: "model_gateway_changed",
-      }),
-    ),
-  );
-  return { jobs, rebuildRequired: options.gatewayActive ? withoutProvider : [] };
+  const { restartable, rebuildRequired } = await classifyDeployments(store, project);
+  const jobs = options.restart
+    ? await Promise.all(
+        restartable.map((deployment) =>
+          store.enqueueJob(project.id, "restart_deployment", {
+            deploymentId: deployment.id,
+            reason: "model_gateway_changed",
+          }),
+        ),
+      )
+    : [];
+  return { jobs, rebuildRequired: options.gatewayActive ? rebuildRequired : [] };
 }
 
 /** Every project except those that opted out of the platform gateway. */
 async function applyToProjectsUsingGateway(
   store: ModelGatewayRouteStore,
-  options: { gatewayActive: boolean },
+  options: { restart: boolean; gatewayActive: boolean },
 ): Promise<Applied> {
+  if (!options.restart && !options.gatewayActive) return { jobs: [], rebuildRequired: [] };
   const optedOut = new Set(
     (await store.listProjectModelGateways())
       .filter((setting) => setting.mode === "off")
@@ -242,7 +257,7 @@ async function applyToProjectsUsingGateway(
   );
   const projects = (await store.listProjects()).filter((project) => !optedOut.has(project.id));
   const applied = await Promise.all(
-    projects.map((project) => applyToLiveDeployments(store, project, options)),
+    projects.map((project) => applyToDeployments(store, project, options)),
   );
   return {
     jobs: applied.flatMap((entry) => entry.jobs),

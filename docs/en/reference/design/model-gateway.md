@@ -156,7 +156,7 @@ Both are always present and empty when the project has opted out or nothing is c
 
 **A configuration change restarts.** Changing the Model Gateway configuration or a project's option enqueues restarts for the affected `running` / `draining` deployments. The restart keeps the original Release, as a Shared Agent Environment change does.
 
-A restart can only reconfigure a provider the Release already carries, so each Release records whether release preparation injected one (`releases.model_gateway_provider`). A deployment whose Release has none (built before the provider existed, or on eve 0.83) is not restarted. While its project is set to use the gateway, the API returns it as `rebuildRequired`, and the settings pages say it still calls models as authored until it is redeployed. When the project is not using the gateway, such a Release already behaves as asked, and nothing is reported.
+A restart can only reconfigure a provider the Release already carries, so each Release records whether release preparation injected one (`releases.model_gateway_provider`). A deployment whose Release has none (built before the provider existed, or on eve 0.83) is not restarted. While its project is set to use the gateway, every save and every read of the project's setting return it as `rebuildRequired`, whether or not the save changed anything, and the settings pages say it still calls models as authored until it is redeployed. That covers a `stopped` deployment as well as a live one, since a stopped deployment wakes on the same Release. When the project is not using the gateway, such a Release already behaves as asked, and nothing is reported.
 
 ### 6.5 The runtime module and injection
 

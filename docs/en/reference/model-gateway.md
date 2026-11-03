@@ -29,7 +29,7 @@ Every kind reads the same `AI_GATEWAY_API_KEY` (§3), so moving between Vercel A
 - **Model IDs are forwarded verbatim.** Eveland neither rewrites model IDs nor keeps an alias table; aliases are configured on the gateway (for example LiteLLM's `model_name`). Vercel model catalog slugs are recommended, so eve can find the context window at build time and the Agent need not set `modelContextWindowTokens`.
 - **Only eve 1.0 and later Releases are affected.** An eve 0.83 Release builds as usual with a `WARNING` in its build log, is not checked against the gateway (§7), and its model calls stay exactly as authored.
 - **Nothing happens until configured.** The platform always injects the provider module into eve 1.0 Releases, but it does nothing while the instance has no gateway or the project has opted out. Configuring a gateway after a deploy therefore needs a restart, not a rebuild.
-- **A Release without the provider needs a redeploy.** A Release built before the platform injected the provider, or on eve 0.83, has none, and a restart reuses that same Release. Such a deployment is not restarted on a gateway change; while its project is set to use the gateway, the settings pages list it as still calling models as authored until it is redeployed on eve 1.0 or later.
+- **A Release without the provider needs a redeploy.** A Release built before the platform injected the provider, or on eve 0.83, has none, and a restart reuses that same Release. Such a deployment is not restarted on a gateway change; while its project is set to use the gateway, the settings pages list it as still calling models as authored until it is redeployed on eve 1.0 or later. A stopped deployment counts too, since it wakes on the same Release.
 
 ---
 
@@ -47,7 +47,7 @@ Every kind reads the same `AI_GATEWAY_API_KEY` (§3), so moving between Vercel A
 - Only admins can view or change it.
 - The configuration is the kind and base URL (none for Vercel AI Gateway). A base URL carrying credentials (`user:password@`) is rejected.
 - **Test connection**: enter a key on the gateway in the form's test-key field; the API lists the gateway's models with it once and reports the model count or the error. The key is not saved, follows no redirects, times out, and is masked in any error.
-- Saving a different gateway, or removing it, enqueues restarts for the live deployments of every project that uses it (every project not set to Off), onto their existing Releases. A live deployment whose Release has no provider (§2) is not restarted; after a save the page names the projects that need a redeploy.
+- Saving a different gateway, or removing it, enqueues restarts for the live deployments of every project that uses it (every project not set to Off), onto their existing Releases. A deployment whose Release has no provider (§2) is not restarted; after every save the page names the projects that need a redeploy.
 
 ---
 
@@ -58,7 +58,7 @@ Every kind reads the same `AI_GATEWAY_API_KEY` (§3), so moving between Vercel A
 | Use the Model Gateway (default) | String model IDs go to the instance's gateway with the project's `AI_GATEWAY_API_KEY`.                  |
 | Off                             | Nothing is injected; the Agent calls models as authored (with `AI_GATEWAY_API_KEY`, Vercel AI Gateway). |
 
-Changing the option enqueues restarts for the project's live deployments that carry the provider. While the project uses the gateway, the page lists any live deployment whose Release has no provider (§2) as needing a redeploy.
+Changing the option enqueues restarts for the project's live deployments that carry the provider. While the project uses the gateway, the page lists any running or stopped deployment whose Release has no provider (§2) as needing a redeploy.
 
 ---
 

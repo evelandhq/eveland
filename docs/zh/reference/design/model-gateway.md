@@ -156,7 +156,7 @@ Project Settings 增加 Model Gateway 区块，二选一：
 
 **改了配置就重启。** 修改 Model Gateway 配置或项目选项，都会为相关的 `running` / `draining` 部署排队重启。重启沿用原来的 Release，与 Shared Agent Environment 的行为一致。
 
-重启只能重新配置 Release 里已有的 provider，所以每个 Release 都记录发布准备阶段是否注入了 provider（`releases.model_gateway_provider`）。Release 里没有 provider 的部署（provider 出现之前构建的，或 eve 0.83 的）不会重启。只要它的项目设为使用网关，API 就把它放进 `rebuildRequired` 返回，设置页提示它仍按原写法调用模型，直到重新部署。项目不使用网关时，这样的 Release 本来就符合预期，不做提示。
+重启只能重新配置 Release 里已有的 provider，所以每个 Release 都记录发布准备阶段是否注入了 provider（`releases.model_gateway_provider`）。Release 里没有 provider 的部署（provider 出现之前构建的，或 eve 0.83 的）不会重启。只要它的项目设为使用网关，每次保存（不论这次保存有没有改动）和每次读取项目设置，API 都把它放进 `rebuildRequired` 返回，设置页提示它仍按原写法调用模型，直到重新部署。`stopped` 的部署和在线部署一样算在内，因为它被唤醒时用的还是同一个 Release。项目不使用网关时，这样的 Release 本来就符合预期，不做提示。
 
 ### 6.5 运行时模块与注入
 

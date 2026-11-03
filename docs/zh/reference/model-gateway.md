@@ -29,7 +29,7 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 - **模型 ID 原样转发。** Eveland 不改写模型 ID，也不维护别名表；别名在网关上配置（例如 LiteLLM 的 `model_name`）。推荐使用 Vercel 模型目录里的 slug，这样 eve 构建时能查到上下文窗口，Agent 不必自己写 `modelContextWindowTokens`。
 - **只作用于 eve 1.0 及以上的 Release。** eve 0.83 的 Release 照常构建，构建日志里会有一条 `WARNING`，不做网关检查（§7），模型调用保持 Agent 原本的写法。
 - **未配置时什么都不做。** 平台总是把 provider 模块注入 eve 1.0 的 Release，但实例没有配置网关、或者项目选择不用时，它不做任何事。所以部署之后再配置网关，只需要重启，不需要重新构建。
-- **没有 provider 的 Release 需要重新部署。** 平台开始注入 provider 之前构建的 Release，以及 eve 0.83 的 Release，里面都没有 provider，而重启沿用的还是同一个 Release。网关变更时不会重启这类部署；只要项目设为使用网关，设置页就会把它列为“仍按原写法调用模型”，直到在 eve 1.0 及以上重新部署。
+- **没有 provider 的 Release 需要重新部署。** 平台开始注入 provider 之前构建的 Release，以及 eve 0.83 的 Release，里面都没有 provider，而重启沿用的还是同一个 Release。网关变更时不会重启这类部署；只要项目设为使用网关，设置页就会把它列为“仍按原写法调用模型”，直到在 eve 1.0 及以上重新部署。已停止的部署也算在内，因为它被唤醒时用的还是同一个 Release。
 
 ---
 
@@ -47,7 +47,7 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 - 只有管理员能查看和修改。
 - 配置的内容是网关类型和 Base URL（Vercel AI Gateway 不需要）。带凭据的 Base URL（`user:password@`）会被拒绝。
 - **测试连接**：在表单的测试 key 输入框里填一把该网关上的 key，API 用它列一次网关的模型，返回模型数量或错误信息。这把 key 不保存；请求不跟随重定向、设有超时，错误信息里会打码。
-- 保存一个不同的网关或移除网关时，平台为所有使用它的项目（即没有设为“关闭”的项目）的在线部署排队重启，沿用现有 Release。Release 里没有 provider 的在线部署（§2）不会重启；保存后页面会列出需要重新部署的项目。
+- 保存一个不同的网关或移除网关时，平台为所有使用它的项目（即没有设为“关闭”的项目）的在线部署排队重启，沿用现有 Release。Release 里没有 provider 的部署（§2）不会重启；每次保存后页面都会列出需要重新部署的项目。
 
 ---
 
@@ -58,7 +58,7 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 | 使用 Model Gateway（默认） | 字符串模型 ID 带着项目的 `AI_GATEWAY_API_KEY` 发往实例的网关。                                   |
 | 关闭                       | 不注入任何东西，Agent 按原本的写法调用模型（有 `AI_GATEWAY_API_KEY` 时就是 Vercel AI Gateway）。 |
 
-修改选项会为该项目里带 provider 的在线部署排队重启。项目使用网关期间，页面会把 Release 里没有 provider 的在线部署（§2）列为需要重新部署。
+修改选项会为该项目里带 provider 的在线部署排队重启。项目使用网关期间，页面会把 Release 里没有 provider 的运行中或已停止的部署（§2）列为需要重新部署。
 
 ---
 
