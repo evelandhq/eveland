@@ -4,6 +4,14 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.67.0](https://github.com/evelandhq/eveland/compare/v0.66.2...v0.67.0) (2026-11-03)
+
+
+### Features
+
+* move the verified eve 1.0 patch to 1.0.0-rc.2 ([#621](https://github.com/evelandhq/eveland/issues/621)) ([e57832b](https://github.com/evelandhq/eveland/commit/e57832bf89d38321712ff1c291add6b24743c34f))
+* route Agent model calls through a platform Model Gateway ([#620](https://github.com/evelandhq/eveland/issues/620)) ([95e5444](https://github.com/evelandhq/eveland/commit/95e544450f54f218619f796b8dc3c48bc3f3ae95))
+
 ## [0.66.2](https://github.com/evelandhq/eveland/compare/v0.66.1...v0.66.2) (2026-11-02)
 
 
