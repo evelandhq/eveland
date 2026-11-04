@@ -8,6 +8,10 @@ import {
   VERIFIED_EVE_VERSIONS,
 } from "@evelandhq/core/eve-compatibility";
 
+function supportedLinesBeforeLatest() {
+  return EVE_COMPATIBILITY_POLICY.supportedLines.slice(0, -1);
+}
+
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 function repositoryFile(relativePath: string): string {
@@ -253,10 +257,9 @@ describe("Eve compatibility repository contract", () => {
     // The covered list is the union across the window: a line may predate a
     // stable workflow, but every stable workflow any supported line runs must
     // be audited, and the list must not keep entries no line runs anymore.
-    // 0.83.x and 1.0.x export the same set: four (no activity collector),
-    // the agent serve body, and the two connection-event runs; neither opens
-    // a per-turn run any more, but both keep the turn name for legacy-session
-    // import.
+    // 1.0.x exports four (no activity collector), the agent serve body, and
+    // the two connection-event runs; it no longer opens a per-turn run, but
+    // keeps the turn name for legacy-session import.
     const observedConstants = new Set<string>();
     for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
       for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
@@ -294,9 +297,11 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported 0.83/1.0 compatibility window", () => {
+  test("describes the supported compatibility window", () => {
     const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
-    const stableDependencyNames = ["eve-previous", "eve"];
+    // The newest line installs as the plain `eve` catalog entry; a previous
+    // line, when the window carries one, as `eve-previous` from eve-matrix.
+    const stableDependencyNames = supportedLines.length === 1 ? ["eve"] : ["eve-previous", "eve"];
     const lineNumbers = supportedLines.map((line, index) => {
       const rangeMatch = /^(\d+)\.(\d+)\.x$/.exec(line.range);
       const verifiedMatch = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.]+)?$/.exec(line.verifiedVersion);
@@ -312,14 +317,18 @@ describe("Eve compatibility repository contract", () => {
       return { major, minor, prerelease: verifiedMatch[4] !== undefined };
     });
 
-    expect(supportedLines).toHaveLength(2);
+    // One line, or two while a newer line overlaps the one it replaces. The
+    // window has carried a single line since 0.83 retired on 2026-11-04.
+    expect(supportedLines.length).toBeGreaterThanOrEqual(1);
+    expect(supportedLines.length).toBeLessThanOrEqual(2);
     // Lines are strictly ascending but need not be contiguous: a minor that
     // was superseded before it could host a real deployment may be skipped
     // (0.40/0.41 were replaced by 0.42 within 48 hours of release, 0.43 by
     // 0.44 within four hours, 0.84 through 0.91 by 1.0 within a week). Each
     // skip must be re-justified: it is only safe when every wire format is
     // byte-identical across the whole span, or -- as across the 0.84
-    // session-protocol boundary -- every consumer reads both protocols.
+    // session-protocol boundary while 0.83 and 1.0 overlapped -- every
+    // consumer reads both protocols.
     const order = lineNumbers.map(({ major, minor }) => major * 10_000 + minor);
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(new Set(order).size).toBe(order.length);
@@ -344,14 +353,6 @@ describe("Eve compatibility repository contract", () => {
         })
         .join(" || "),
     );
-
-    // Each line names the session protocol it speaks: v26 through 0.83, v27
-    // from 0.84.
-    for (const line of supportedLines) {
-      expect(line.sessionProtocol, line.range).toBe(
-        line.range.startsWith("0.") && Number(line.range.split(".")[1]) < 84 ? "v26" : "v27",
-      );
-    }
   });
 
   test("derives public compatibility values from the policy", async () => {
@@ -365,9 +366,11 @@ describe("Eve compatibility repository contract", () => {
     expect(compatibility.VERIFIED_EVE_VERSIONS).toEqual(expectedVersions);
     expect(compatibility.LATEST_VERIFIED_EVE_VERSION).toBe(expectedVersions.at(-1));
     expect(compatibility.SUPPORTED_EVE_VERSION_RANGE).toBe(
-      expectedRanges.length === 2
-        ? `${expectedRanges[0]} or ${expectedRanges[1]}`
-        : `${expectedRanges.slice(0, -1).join(", ")}, or ${expectedRanges.at(-1)}`,
+      expectedRanges.length === 1
+        ? expectedRanges[0]
+        : expectedRanges.length === 2
+          ? `${expectedRanges[0]} or ${expectedRanges[1]}`
+          : `${expectedRanges.slice(0, -1).join(", ")}, or ${expectedRanges.at(-1)}`,
     );
   });
 
@@ -485,14 +488,14 @@ describe("Eve compatibility repository contract", () => {
       "packages/agent-scheduler/package.json",
       "packages/eveland/package.json",
     ]);
-    // The Dashboard bundles the previous line's client too: the window spans
-    // the v26/v27 session-protocol boundary and neither client reads the
-    // other's stream.
-    expect([...legacyMatrixConsumers].sort()).toEqual([
-      "apps/web/package.json",
-      "packages/agent-observer/package.json",
-      "packages/agent-scheduler/package.json",
-    ]);
+    // A single-line window installs no previous line anywhere. While two
+    // lines overlap, the matrix suites (observer, scheduler) install the
+    // previous one as `eve-previous`.
+    expect([...legacyMatrixConsumers].sort()).toEqual(
+      supportedLinesBeforeLatest().length === 0
+        ? []
+        : ["packages/agent-observer/package.json", "packages/agent-scheduler/package.json"],
+    );
     expect([...standaloneFixtureConsumers].sort()).toEqual([
       "apps/worker/src/integration/fixtures/agent-sandbox-e2e/package.json",
       "apps/worker/src/integration/fixtures/connections-e2e/package.json",

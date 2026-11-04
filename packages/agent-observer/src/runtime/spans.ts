@@ -19,23 +19,16 @@ export type AgentSpanState = {
   stepStartedAt: Map<string, number>;
   actions: Map<string, Span>;
   subagents: Map<string, Span>;
-  /** Parent invocation spans whose child returned a still-working task receipt. */
-  backgroundSubagents: Set<string>;
-  /**
-   * Calls that started an Eve >= 0.69 task: their `action.result` is only the
-   * receipt, so the span stays open until the call's `task.settled`.
-   */
-  taskCalls: Set<string>;
   /** The call an open task is serving now, keyed by {@link taskKey}. */
   taskCurrentCalls: Map<string, string>;
   /** The task behind the call that opened an agent session, keyed by that call. */
   agentTasks: Map<string, string>;
-  /** v27: the turn a model run belongs to, keyed by session and run id. */
+  /** The turn a model run belongs to, keyed by session and run id. */
   runTurns: Map<string, string>;
-  /** v27: the model a run started with (or was observed calling), keyed by run span key. */
+  /** The model a run started with (or was observed calling), keyed by run span key. */
   runModels: Map<string, string>;
   /**
-   * v27: runs whose `model.settled` arrived, held open for the `usage.recorded`
+   * Runs whose `model.settled` arrived, held open for the `usage.recorded`
    * that follows it in the same commit; keyed by run span key.
    */
   settledRuns: Map<string, { endedAt: number; finishReason: string | undefined }>;
@@ -52,8 +45,6 @@ export function createAgentTelemetryRuntimeState(): AgentTelemetryRuntimeState {
     stepStartedAt: new Map(),
     actions: new Map(),
     subagents: new Map(),
-    backgroundSubagents: new Set(),
-    taskCalls: new Set(),
     taskCurrentCalls: new Map(),
     agentTasks: new Map(),
     runTurns: new Map(),
@@ -84,8 +75,8 @@ export function parentContext(
   const callId = asString(context.session?.parent?.callId);
   if (!parentSessionId || !callId) return ROOT_CONTEXT;
   const callKey = spanKey(parentSessionId, callId);
-  // A child keeps naming the call that opened it. From Eve 0.69 an agent is a
-  // task the parent can continue by `taskId`, so a later turn of the same
+  // A child keeps naming the call that opened it. An agent is a task the
+  // parent can continue by `taskId`, so a later turn of the same
   // child belongs under the call the task is serving now. A session an
   // authored tool opens with `ctx.agent` names that tool's call.
   const task = state.agentTasks.get(callKey);
@@ -116,8 +107,6 @@ export function endAllAgentTelemetrySpans(state: AgentTelemetryRuntimeState): vo
   }
   state.stepStartedAt.clear();
   state.turnStartedAt.clear();
-  state.backgroundSubagents.clear();
-  state.taskCalls.clear();
   state.taskCurrentCalls.clear();
   state.agentTasks.clear();
   state.runTurns.clear();
@@ -146,13 +135,12 @@ export function endTurnChildren(
     state.actions.delete(key);
   }
   for (const [key, span] of state.subagents) {
-    if (!key.startsWith(sessionPrefix) || state.backgroundSubagents.has(key)) continue;
+    if (!key.startsWith(sessionPrefix)) continue;
     span.end();
     state.subagents.delete(key);
   }
   // A task's calls end with their turn; the task itself, and the agent
   // session it opened, outlive it until the session ends.
-  deleteKeysWithPrefix(state.taskCalls, sessionPrefix);
   deleteKeysWithPrefix(state.taskCurrentCalls, sessionPrefix);
   forgetSessionActions(state, sessionPrefix);
 }
@@ -178,8 +166,6 @@ export function endSessionSpans(
     }
   }
   for (const keys of [
-    state.backgroundSubagents,
-    state.taskCalls,
     state.taskCurrentCalls,
     state.agentTasks,
     state.runTurns,

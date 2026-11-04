@@ -6,9 +6,7 @@ import {
   DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
 } from "@evelandhq/core/routing";
 import {
-  classifyEveTaskInputRequest,
   classifyEveSessionRequest,
-  isEveTaskInputNamespace,
   isEveSessionNamespace,
   isWorkflowQueueNamespace,
   isWorkflowWebhookRoute,
@@ -225,23 +223,16 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     // dispatcher on the deployment's own port — bypass the Gateway entirely, so
     // anything arriving here is external and has no business driving a
     // project's workflow steps. The one exception is the webhook resume route
-    // (eve 0.48 `createWebhook()`): its token is the credential, exactly like
-    // `/eve/v1/task-input/:token`, so it rides the public-request path below.
+    // (eve 0.48 `createWebhook()`): its token is the credential, so it rides
+    // the public-request path below.
     if (
       isWorkflowQueueNamespace(requestUrl.pathname) &&
       !isWorkflowWebhookRoute(requestUrl.pathname)
     ) {
       return context.json({ error: "Route not found" }, 404);
     }
-    const sessionRequest = classifyEveSessionRequest(context.req.method, requestUrl.pathname);
-    const taskInputRequest = classifyEveTaskInputRequest(context.req.method, requestUrl.pathname);
-    let eveRequest =
-      sessionRequest ??
-      (taskInputRequest ? ({ kind: "task_input", sessionId: null } as const) : null);
-    if (
-      !eveRequest &&
-      (isEveSessionNamespace(requestUrl.pathname) || isEveTaskInputNamespace(requestUrl.pathname))
-    ) {
+    let eveRequest = classifyEveSessionRequest(context.req.method, requestUrl.pathname);
+    if (!eveRequest && isEveSessionNamespace(requestUrl.pathname)) {
       return context.json({ error: "Route not found" }, 404);
     }
     const requestId = crypto.randomUUID();

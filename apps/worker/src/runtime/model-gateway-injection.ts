@@ -29,7 +29,7 @@ export const MODEL_GATEWAY_RUNTIME_FILE = ".eveland/model-gateway/runtime.mjs";
 
 export type ModelGatewayInjectionResult =
   | { status: "injected"; injectedFiles: string[]; runtimeFile: string }
-  | { status: "skipped"; reason: "eve-version" | "eve-unknown" | "no-agent-root" };
+  | { status: "skipped"; reason: "eve-unknown" | "no-agent-root" };
 
 let bundledRuntime: Promise<string> | undefined;
 
@@ -65,12 +65,6 @@ function modelGatewayRuntimeSourcePath(): string {
   return path.join(path.dirname(packageJson), "src", "model-gateway.ts");
 }
 
-/** Only eve 1.0 and later resolve string models through the default-provider global in `eve dev` too. */
-export function eveSupportsModelGateway(eveVersion: string): boolean {
-  const major = Number.parseInt(eveVersion.replace(/^[^\d]*/, ""), 10);
-  return Number.isFinite(major) && major >= 1;
-}
-
 export async function injectModelGateway(input: {
   releaseDir: string;
   eveVersion: string;
@@ -78,9 +72,6 @@ export async function injectModelGateway(input: {
   // Import already refuses a project whose eve dependency cannot be read, so
   // this only happens on paths that bypass import (tests, smoke fixtures).
   if (input.eveVersion.trim() === "") return { status: "skipped", reason: "eve-unknown" };
-  if (!eveSupportsModelGateway(input.eveVersion)) {
-    return { status: "skipped", reason: "eve-version" };
-  }
 
   const releaseDir = path.resolve(input.releaseDir);
   const agentRoot = await resolveAgentRoot(releaseDir);

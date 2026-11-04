@@ -32,8 +32,8 @@ description: 详细规范：Host 模型、加权路由、SessionBinding、持久
 
 - **亲和性锁定**：后续的继续（Continue）、取消（Cancel）及流式请求（Stream），即使经历 Promote、Rollback 或权重清零，**仍严格路由至最初绑定的 Deployment**。
 - **过期策略**：Playground 绑定默认在空闲 24 小时后过期；公开 API 绑定默认在空闲 7 天后过期。每次请求刷新期限；请求已知但过期的绑定返回 `410 session_expired`。
-- **受绑定的路由**：Continue、Cancel、Clear、Compact、Reset（及其 Eve 1.0 名称 `end`）、Session Stream、经由父 Session 的远端子 Session Stream，以及 Eve 1.0 的后代跟随 Stream（`GET /eve/v1/session/:sessionId/descendants/stream`）都按路径中的 Session ID 固定。
-- **跨协议迁移（Eve 0.85+）**：这是 Session 离开其 Deployment 的唯一途径。空闲的 Eve 0.83（v26）Session，若其 Owner 收到由 Eve 1.0（v27）Deployment 接收的投递——1.0 Release 被提升后来自未固定的 Channel 入口、`ctx.to()` 或 Schedule，绝不会来自网关自己固定的流量——就会经由共享的 Workflow World 迁移到该 Deployment。迁移是单向的，因此当 1.0 Deployment 第一次报告该 Session 时，Session 投影会把 `SessionBinding` 改指到它；之后固定的请求、Playground Client 的选择与保留策略都跟随该 Session。其他任何不一致都不会移动绑定。
+- **受绑定的路由**：Continue、Cancel、Clear、Compact、Reset（及其新名称 `end`）、Session Stream、经由父 Session 的远端子 Session Stream，以及后代跟随 Stream（`GET /eve/v1/session/:sessionId/descendants/stream`）都按路径中的 Session ID 固定。
+- **不迁移**：绑定从不移到其他 Deployment；在绑定过期之前，所有固定的请求都由被绑定的 Deployment 应答。
 
 ---
 

@@ -28,7 +28,6 @@
   },
   "devDependencies": {
     "eve": "catalog:",
-    "eve-previous": "catalog:eve-matrix",
     "vitest": "^5.0.3"
   }
 }

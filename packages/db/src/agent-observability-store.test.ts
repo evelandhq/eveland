@@ -1190,7 +1190,7 @@ describe("v27 (eve 0.84+) observations", () => {
   });
 });
 
-describe("cross-protocol session handoff (eve 0.85+)", () => {
+describe("session binding pinning", () => {
   async function boundSession(input: { bound: string; observed: string }) {
     const { store, projectId, revisionId } = await createStore();
     const deploy = (eveVersionResolved: string, hostPort: number) =>
@@ -1226,49 +1226,25 @@ describe("cross-protocol session handoff (eve 0.85+)", () => {
     return { store, projectId, bound, observed };
   }
 
-  test("re-points a v26 session's binding at the v27 Deployment eve moved it to", async () => {
-    const { store, projectId, observed } = await boundSession({
-      bound: "0.83.3",
-      observed: "1.0.0-rc.1",
+  test("an observation from another Deployment does not move a session's binding", async () => {
+    // A session stays on the Deployment that created it; the Agent Gateway
+    // pins its continuations and streams there, so a report of the same Eve
+    // session from another Deployment (a late event, or an unpinned delivery)
+    // must not re-point the binding.
+    const { store, projectId, bound, observed } = await boundSession({
+      bound: "1.0.0-rc.2",
+      observed: "1.0.0-rc.2",
     });
-
     await store.ingestAgentEvent(
       envelope(observed.id, {
-        telemetryEventId: "after-move",
-        eventFingerprint: "position:40:0",
+        telemetryEventId: "other",
         eveSessionId: "eve_moved",
-        sourceSequence: 40_000,
-        event: { type: "turn.started", scope: { turnId: "turn_9" }, data: { turnId: "turn_9" } },
+        event: { type: "turn.started", data: { turnId: "turn_2" } },
       }),
     );
-
     await expect(store.findSessionBinding(projectId, "eve_moved")).resolves.toMatchObject({
-      deploymentId: observed.id,
+      deploymentId: bound.id,
     });
-    const [session] = await store.listSessions(projectId);
-    expect(session).toMatchObject({ eveSessionId: "eve_moved", deploymentId: observed.id });
-  });
-
-  test("leaves a binding alone when no protocol boundary was crossed", async () => {
-    for (const versions of [
-      { bound: "0.83.3", observed: "0.83.3" },
-      { bound: "1.0.0-rc.1", observed: "1.0.0-rc.1" },
-      // Nothing moves a v27 session back onto a v26 runtime; a late event
-      // from the old Deployment must not undo a move.
-      { bound: "1.0.0-rc.1", observed: "0.83.3" },
-    ]) {
-      const { store, projectId, bound, observed } = await boundSession(versions);
-      await store.ingestAgentEvent(
-        envelope(observed.id, {
-          telemetryEventId: "other",
-          eveSessionId: "eve_moved",
-          event: { type: "turn.started", data: { turnId: "turn_2" } },
-        }),
-      );
-      await expect(store.findSessionBinding(projectId, "eve_moved")).resolves.toMatchObject({
-        deploymentId: bound.id,
-      });
-    }
   });
 });
 

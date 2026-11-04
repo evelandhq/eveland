@@ -166,12 +166,10 @@ async function runTypeScriptTurn(hostPort: number): Promise<void> {
     buffered = lines.pop() ?? "";
     for (const line of lines) {
       if (!line.trim()) continue;
-      // A v26 event, or a v27 (eve 0.84+) commit line's facts.
       for (const event of sessionStreamLineEvents(JSON.parse(line))) {
-        assert.notEqual(event.type, "turn.failed", "the live sandbox turn failed");
         if (event.type === "turn.settled")
           assert.ok(isCompletedTurnEvent(event), "the live sandbox turn failed");
-        if (isCompletedTurnEvent(event) || event.type === "session.completed") completed = true;
+        if (isCompletedTurnEvent(event)) completed = true;
       }
       if (completed) break;
     }

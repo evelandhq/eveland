@@ -10,7 +10,7 @@ Playground 是 Eveland 控制台内置的交互式调试环境，直接连接目
 ## 1. 传输与会话生命周期
 
 - **流式传输协议**：前端通过内部受服务凭证保护的专用网关路径与 Agent 通信，增量接收 NDJSON 流式输出（包含文本分块、思维链推理 reasoning、工具调用及人机协同 HITL 请求）。
-- **两个 Eve Client**：受支持窗口跨越 Eve 的 v26（0.83）与 v27（1.0）Session 协议，两个 Eve Client 都读不了对方的 Stream（0.83 的读取 Stream 版本 21–26，1.0 的只读 27）。Playground 同时打包两者，并渲染与项目当前 Deployment 所跑 Eve 相匹配的那个。在 1.0 Deployment 上，审批、提问与登录都是以 `{ interactionId, optionId?, text? }` 作答的 Interaction，Turn 运行中发送的消息会 Steer 该 Turn，Interaction 的按钮在 Eve 结算它之前保持可用。
+- **一个 Eve Client**：每条受支持的线都说 Eve 的 v27 Session 协议，Playground 打包的是 1.0 的 `eve/client`，它读取 Stream 版本 27。审批、提问与登录都是以 `{ interactionId, optionId?, text? }` 作答的 Interaction，Turn 运行中发送的消息会 Steer 该 Turn，Interaction 的按钮在 Eve 结算它之前保持可用。
 - **页面与会话映射**：每次打开或刷新 Playground 会新建一个干净的 Eve Session。同一页面内的后续对话、工具交互均复用该 Session。
 - **审批可见性**：流式工具调用进入等待审批状态时，Playground 会自动展开工具卡片，使 Approve 与 Cancel 控件保持可见；用户之后仍可手动收起卡片。
 - **协作式流取消**：在流式生成中点击停止时，客户端向服务端发送规范的 `cancel()` 命令并等待确认边界到达，确保服务端状态的一致性。

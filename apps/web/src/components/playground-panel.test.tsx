@@ -22,13 +22,13 @@ vi.mock("eve/react", () => ({
   useEveAgent: () => agent.current,
 }));
 
-import { PlaygroundPanelV27 } from "./playground-panel-v27";
+import { PlaygroundPanel } from "./playground-panel";
 
 const eveVersion: EveVersionInfo = {
   version: "1.0.0-rc.1",
   supported: true,
-  expected: "0.83.x or 1.0.x",
-  supportedRanges: ["0.83.x", "1.0.x"],
+  expected: "1.0.x",
+  supportedRanges: ["1.0.x"],
   sourceRevisionId: null,
 };
 
@@ -51,11 +51,11 @@ afterEach(() => {
   window.sessionStorage.clear();
 });
 
-describe("PlaygroundPanelV27 Stop", () => {
+describe("PlaygroundPanel Stop", () => {
   test("requests durable cancellation through the Eve client before the first create answers", async () => {
     const cancel = vi.fn(() => Promise.resolve({ deliveryId: "d" }));
     firstSubmissionInFlight(cancel);
-    render(<PlaygroundPanelV27 projectId="proj_1" eveVersion={eveVersion} />);
+    render(<PlaygroundPanel projectId="proj_1" eveVersion={eveVersion} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
 
@@ -68,7 +68,7 @@ describe("PlaygroundPanelV27 Stop", () => {
   test("a first create that never produced a session leaves nothing to cancel and no error", async () => {
     const cancel = vi.fn(() => Promise.reject(new SessionNotActiveError()));
     firstSubmissionInFlight(cancel);
-    render(<PlaygroundPanelV27 projectId="proj_1" eveVersion={eveVersion} />);
+    render(<PlaygroundPanel projectId="proj_1" eveVersion={eveVersion} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
 

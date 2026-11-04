@@ -19,7 +19,7 @@ Eveland 将对话建模为树状结构，直观呈现复杂多 Agent 协同流�
 
 ## 2. 真实模型用量统计 (Token Usage)
 
-Eveland 的 Token 统计完全基于底层模型提供商返回的真实数据：Eve 0.83 上来自 `step.completed`，Eve 1.0 上来自每个 Model Run 拥有的 `usage.recorded` Fact：
+Eveland 的 Token 统计完全基于底层模型提供商返回的真实数据：来自每个 Model Run 拥有的 `usage.recorded` Fact（在 Eve 0.83 上记录的 Session 保留其 `step.completed` 事件报告的用量）：
 
 - **输入与输出 Token**：统计 Prompt 与 Completion 的精确消耗。
 - **缓存命中 Token**：记录 Cache Read 与 Cache Write，精准评估上下文缓存节省的成本。

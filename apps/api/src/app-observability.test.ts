@@ -13,7 +13,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: { eveVersion: "0.83.3" },
+      summary: { eveVersion: "1.0.0-rc.2" },
       envVars: [],
       files: [],
       schedules: [],

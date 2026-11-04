@@ -22,12 +22,9 @@ import {
 import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
 
 /**
- * One budget for the whole delegation. eve 0.51 through 0.68 finish the root
- * turn while the subagent is still a background task, so `subagent.called`
- * arrives on the parent stream only after `turn.completed`, once the external
- * dispatcher has driven the child run's first durable steps. eve 0.69 holds
- * the root turn for the agent task instead (`agent.started`, `turn.waiting`,
- * `task.settled`), so the same budget covers the child inside the turn.
+ * One budget for the whole delegation. eve holds the root turn for the agent
+ * call (`child.opened`, `call.settled`, then `turn.settled`), so the budget
+ * covers the child inside the turn.
  */
 const DELEGATED_TURN_BUDGET_MS = 60_000;
 
@@ -195,11 +192,8 @@ async function waitForAgentObservations(
       );
     }
     if (
-      // Provider usage: v26 reports it on `step.completed`, v27 (eve 0.84+) as
-      // `usage.recorded`.
-      observations.some((observation) =>
-        ["step.completed", "usage.recorded"].includes(eventType(observation.event) ?? ""),
-      ) &&
+      // Provider usage is its own `usage.recorded` fact.
+      observations.some((observation) => eventType(observation.event) === "usage.recorded") &&
       observations.some((observation) => observation.parentEveSessionId !== null)
     ) {
       return observations;

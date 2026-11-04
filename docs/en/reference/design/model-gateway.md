@@ -156,7 +156,7 @@ Both are always present and empty when the project has opted out or nothing is c
 
 **A configuration change restarts.** Changing the Model Gateway configuration or a project's option enqueues restarts for the affected `running` / `draining` deployments. The restart keeps the original Release, as a Shared Agent Environment change does.
 
-A restart can only reconfigure a provider the Release already carries, so each Release records whether release preparation injected one (`releases.model_gateway_provider`). A deployment whose Release has none (built before the provider existed, or on eve 0.83) is not restarted. While its project is set to use the gateway, every save and every read of the project's setting return it as `rebuildRequired`, whether or not the save changed anything, and the settings pages say it still calls models as authored until it is redeployed. That covers a `stopped` deployment as well as a live one, since a stopped deployment wakes on the same Release. When the project is not using the gateway, such a Release already behaves as asked, and nothing is reported.
+A restart can only reconfigure a provider the Release already carries, so each Release records whether release preparation injected one (`releases.model_gateway_provider`). A deployment whose Release has none (built before the provider existed) is not restarted. While its project is set to use the gateway, every save and every read of the project's setting return it as `rebuildRequired`, whether or not the save changed anything, and the settings pages say it still calls models as authored until it is redeployed. That covers a `stopped` deployment as well as a live one, since a stopped deployment wakes on the same Release. When the project is not using the gateway, such a Release already behaves as asked, and nothing is reported.
 
 ### 6.5 The runtime module and injection
 
@@ -176,7 +176,7 @@ The module is always injected but inert when nothing is configured. So configuri
 
 **Dependency direction.** The runtime module's source lives in `packages/eveland/src/model-gateway.ts`. It is published as an SDK subpath and is also the single source the Worker bundles. The Worker bundles that source by file path rather than importing it (the workspace never builds the SDK's `dist/`), and the architecture tests pin the Worker as the only package allowed to declare `eveland`, with the reason written next to the rule. The `eveland` package itself still depends on no workspace package.
 
-**eve version.** Injection applies only to eve 1.0.x Releases. A 0.83.x Release gets no injection and no deploy-time check, and its deploy log writes a `WARNING` saying that this deployment calls models exactly as authored. 0.83 is about to leave the compatibility window.
+**eve version.** Injection applies to every Release: every line in the compatibility window resolves a string model through `globalThis.AI_SDK_DEFAULT_PROVIDER`, in `eve start` and `eve dev` alike.
 
 ---
 

@@ -60,17 +60,6 @@ describe("injectModelGateway", () => {
     expect(shim).toContain('from "../.eveland/model-gateway/runtime.mjs"');
   });
 
-  test("skips an eve 0.83 release, whose model calls stay as authored", async () => {
-    const releaseDir = await releaseWithAgentDir();
-
-    const result = await injectModelGateway({ releaseDir, eveVersion: "0.83.3" });
-
-    expect(result).toEqual({ status: "skipped", reason: "eve-version" });
-    await expect(
-      readFile(path.join(releaseDir, MODEL_GATEWAY_RUNTIME_FILE), "utf8"),
-    ).rejects.toThrow();
-  });
-
   test("skips a release whose eve version could not be read, without claiming it is too old", async () => {
     const releaseDir = await releaseWithAgentDir();
 

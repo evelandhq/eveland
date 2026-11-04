@@ -272,14 +272,10 @@ export async function projectPlaygroundStreamLine(
   eveSessionId: string,
 ): Promise<SessionStatus> {
   const record = parseEveJsonObject(line);
-  // A v26 line is one event. A v27 (eve 0.84+) line is either a commit --
-  // every fact one transition recorded, in order -- or a progress or
-  // transport record, which carries no `facts` and never moves the status.
-  const events = Array.isArray(record?.facts)
-    ? record.facts.filter(isEveRecord)
-    : record
-      ? [record]
-      : [];
+  // A stream line is either a commit -- every fact one transition recorded,
+  // in order -- or a progress or transport record, which carries no `facts`
+  // and never moves the status.
+  const events = Array.isArray(record?.facts) ? record.facts.filter(isEveRecord) : [];
   let status = currentStatus;
   let projected = false;
   let failure: { type: string; event: Record<string, unknown> } | null = null;
@@ -300,13 +296,7 @@ export async function projectPlaygroundStreamLine(
       eveSessionId,
       ...(status === "failed" && failure
         ? {
-            error: sessionErrorFromEveEvent(
-              failure.type,
-              // v26 put the message on the event; v27 nests it under data.error.
-              isEveRecord(failure.event.data) && failure.event.data.error !== undefined
-                ? failure.event.data
-                : failure.event,
-            ),
+            error: sessionErrorFromEveEvent(failure.type, failure.event.data),
           }
         : {}),
     })

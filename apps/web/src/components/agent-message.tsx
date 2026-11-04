@@ -1,11 +1,10 @@
 "use client";
 
-// The v27 (eve 0.84+) message renderer. eve 1.0's `useEveAgent` renders a
+// The Playground's message renderer. eve 1.0's `useEveAgent` renders a
 // conversation as `EveMessage`s whose parts are `text`, `reasoning`, `file`,
 // `tool` (a call, carrying the latest approval or question about it), and
 // `interaction` (a sign-in, a budget prompt, or a question no call carries).
-// Answers are `{ interactionId, optionId?, text? }`. Structure follows the v26
-// renderer (`agent-message-v26.tsx`) so the two Playgrounds look alike.
+// Answers are `{ interactionId, optionId?, text? }`.
 
 import type { EveMessage, EveMessagePart, EveToolPart, Interaction } from "eve/react";
 import { interactions, openInteractions } from "eve/events";
@@ -70,7 +69,7 @@ export function ownedOpenQuestionIds(view: SessionView, callId: string): readonl
  * Every question one tool call asks, oldest first. A call can ask several at
  * once (parallel `ctx.ask`), directly or relayed from a child session, and eve
  * 1.0 keeps only the newest on the message part, so the session view is the
- * source of truth (as the v26 Playground did with `questionsForCall`).
+ * source of truth.
  *
  * Every attribution comes from ownership, never from a display call id: a
  * relayed question displays its child's call, whose id is unique only inside
@@ -100,7 +99,7 @@ export function questionsForCall(
     : asked;
 }
 
-export function AgentMessageV27({
+export function AgentMessage({
   canRespond,
   isStreaming,
   message,

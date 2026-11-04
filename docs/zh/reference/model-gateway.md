@@ -27,9 +27,8 @@ description: 平台如何用每个项目自己的 AI_GATEWAY_API_KEY，把 Agent
 - **只影响字符串模型 ID。** Agent 写 `model: "anthropic/claude-sonnet-4.5"` 这样的字符串时，调用经过 Model Gateway；Agent 自己传入的模型对象（例如用 `createOpenAICompatible(...)` 或 AI SDK 的 `gateway(...)` 构造的）不受影响，照常调用它自己的 provider。
 - **Agent 自己的 provider 优先。** Agent 在自己的 instrumentation 里设置了 `globalThis.AI_SDK_DEFAULT_PROVIDER`，平台不会替换它。
 - **模型 ID 原样转发。** Eveland 不改写模型 ID，也不维护别名表；别名在网关上配置（例如 LiteLLM 的 `model_name`）。推荐使用 Vercel 模型目录里的 slug，这样 eve 构建时能查到上下文窗口，Agent 不必自己写 `modelContextWindowTokens`。
-- **只作用于 eve 1.0 及以上的 Release。** eve 0.83 的 Release 照常构建，构建日志里会有一条 `WARNING`，不做网关检查（§7），模型调用保持 Agent 原本的写法。
-- **未配置时什么都不做。** 平台总是把 provider 模块注入 eve 1.0 的 Release，但实例没有配置网关、或者项目选择不用时，它不做任何事。所以部署之后再配置网关，只需要重启，不需要重新构建。
-- **没有 provider 的 Release 需要重新部署。** 平台开始注入 provider 之前构建的 Release，以及 eve 0.83 的 Release，里面都没有 provider，而重启沿用的还是同一个 Release。网关变更时不会重启这类部署；只要项目设为使用网关，设置页就会把它列为“仍按原写法调用模型”，直到在 eve 1.0 及以上重新部署。已停止的部署也算在内，因为它被唤醒时用的还是同一个 Release。
+- **未配置时什么都不做。** 平台总是把 provider 模块注入每个 Release，但实例没有配置网关、或者项目选择不用时，它不做任何事。所以部署之后再配置网关，只需要重启，不需要重新构建。
+- **没有 provider 的 Release 需要重新部署。** 平台开始注入 provider 之前构建的 Release 里没有 provider，而重启沿用的还是同一个 Release。网关变更时不会重启这类部署；只要项目设为使用网关，设置页就会把它列为“仍按原写法调用模型”，直到重新部署。已停止的部署也算在内，因为它被唤醒时用的还是同一个 Release。
 
 ---
 
@@ -98,7 +97,7 @@ key 是项目自己的 `AI_GATEWAY_API_KEY`，不是保留变量。
 | 项目没有设置 `AI_GATEWAY_API_KEY` | 构建日志写一条 `WARNING`，部署继续，模型调用会在网关那里失败。                                               |
 | 列表接口因其他原因不可用          | 构建日志写一条 `WARNING`，部署继续。                                                                         |
 
-模型对象不检查，因为它们不经过网关；eve 0.83 的 Release 同理不检查。动态选择的模型无法静态检查，不在范围内。
+模型对象不检查，因为它们不经过网关。动态选择的模型无法静态检查，不在范围内。
 
 ---
 

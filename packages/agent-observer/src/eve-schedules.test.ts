@@ -9,11 +9,10 @@ import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
-  ({ verifiedVersion, dependencyName, sessionProtocol }) => ({
+  ({ verifiedVersion, dependencyName }) => ({
     version: verifiedVersion,
     fixtureName: "matrix-schedules",
     packageName: dependencyName,
-    sessionProtocol,
   }),
 );
 
@@ -148,21 +147,6 @@ async function prepareFixture(entry: (typeof compatibilityMatrix)[number]): Prom
       return ![".eve", ".workflow-data", "node_modules"].includes(topLevelEntry);
     },
   });
-  // The authored schedule shape differs across the protocol boundary (v27
-  // renamed `markdown` to `content`), so a protocol overlay replaces the files
-  // that cannot be written once for both lines.
-  const overlayDir = path.resolve(
-    import.meta.dirname,
-    `../fixtures/${entry.fixtureName}.${entry.sessionProtocol}`,
-  );
-  if (
-    await access(overlayDir).then(
-      () => true,
-      () => false,
-    )
-  ) {
-    await cp(overlayDir, fixtureDir, { recursive: true });
-  }
   await writeFile(
     path.join(fixtureDir, "package.json"),
     `${JSON.stringify({ name: "eveland-eve-schedules-fixture", private: true, type: "module", dependencies: { eve: entry.version } }, null, 2)}\n`,

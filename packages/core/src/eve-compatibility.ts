@@ -1,224 +1,66 @@
 export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
-      range: "0.83.x",
-      verifiedVersion: "0.83.3",
-      dependencyName: "eve-previous",
-      sessionProtocol: "v26",
-    },
-    {
       range: "1.0.x",
       verifiedVersion: "1.0.0-rc.2",
       dependencyName: "eve",
-      sessionProtocol: "v27",
     },
   ],
-  // A window that spans the session-protocol boundary: 1.0.0-rc.1 (published
-  // 2026-10-31, the npm `latest` tag; byte-identical to 0.91.0 on every
-  // surface Eveland reads) entered on 2026-11-02 and 0.81 retired with it
-  // (Eveland v0.65.0 had carried 0.83 since 2026-10-27). 0.84 through 0.91
-  // were skipped: each was superseded within days, and 0.84 through 0.91 and
-  // 1.0 all speak the same v27 protocol, so 1.0 -- the first line eve puts
-  // under semver -- is the one v27 line worth carrying.
+  // A single-line window: 0.83 retired on 2026-11-04 (Eveland v0.66.0 had
+  // carried 1.0 since 2026-11-02, so every 0.83 Release already had a newer
+  // line to rebuild on). Its retirement also retired the v26 session
+  // protocol: every line in the window now speaks v27, so the Dashboard
+  // bundles one `eve/client`, the injected observer and scheduler read one
+  // vocabulary, and the one-way v26 -> v27 session handoff that 0.85 allowed
+  // can no longer happen (a retired Release cannot activate, and its parked
+  // runs are settled). Sessions and usage that v26 Deployments already
+  // recorded stay readable: the Session/usage projection and session replay
+  // keep reading the v26 events Postgres holds.
   //
-  // 1.0.0-rc.2 (published 2026-11-02, the npm `latest` tag) became the
-  // verified 1.0 patch on 2026-11-03. Against rc.1 it keeps every pinned
-  // surface Eveland reads -- discovery manifest 15, compiled agent manifest
-  // 55, checkpoint 18, stream 27, the stable workflow names and the bundler
-  // default, and every dependency -- and widens two v27 facts: a
-  // `call.requested` may be owned by its turn (`owner: { turnId }`) and a
-  // `content.completed` may leave out `runId`, with `scope.turnId` naming the
-  // turn. rc.2's runtime emits neither yet; the observer, the transcript, and
-  // the trace place both under their turn. `eve dev` also resolves a string
-  // model through `globalThis.AI_SDK_DEFAULT_PROVIDER` from rc.2
-  // (vercel/eve#5789), as `eve start` already did.
+  // 1.0.0-rc.1 (published 2026-10-31; byte-identical to 0.91.0 on every
+  // surface Eveland reads) entered on 2026-11-02. 0.84 through 0.91 were
+  // skipped: each was superseded within days, and all of them speak the same
+  // v27 protocol as 1.0 -- the first line eve puts under semver.
   //
-  // 0.84 is the largest protocol move since 0.69, so the two lines in this
-  // window speak different session protocols (`sessionProtocol`), and every
-  // Eveland consumer of the session stream reads both:
-  // - Session events are v27 facts: `{ type, scope?, data }` envelopes,
-  //   positioned by `(line, index)` instead of an event id, with one settled
-  //   event per item (`turn.settled`, `session.ended`, `call.settled`,
-  //   `task.ended`, `interaction.settled`, `delivery.settled`) whose `outcome`
-  //   says how it ended. Provider usage is its own `usage.recorded` fact,
-  //   owned by a model run (`owner.runId`); `step.*` became `model.*`, and the
-  //   step index is gone. The observer, the Session/usage projection, and the
-  //   schedule outcome read both vocabularies (see `eve.ts`).
+  // 1.0.0-rc.2 (published 2026-11-02) became the verified 1.0 patch on
+  // 2026-11-03. Against rc.1 it keeps every pinned surface Eveland reads --
+  // discovery manifest 15, compiled agent manifest 55, checkpoint 18, stream
+  // 27, the stable workflow names and the bundler default, and every
+  // dependency -- and widens two v27 facts: a `call.requested` may be owned by
+  // its turn (`owner: { turnId }`) and a `content.completed` may leave out
+  // `runId`, with `scope.turnId` naming the turn. rc.2's runtime emits neither
+  // yet; the observer, the transcript, and the trace place both under their
+  // turn. `eve dev` also resolves a string model through
+  // `globalThis.AI_SDK_DEFAULT_PROVIDER` from rc.2 (vercel/eve#5789), as
+  // `eve start` already did.
+  //
+  // What the v27 protocol (introduced by 0.84) means for Eveland:
+  // - Session events are `{ type, scope?, data }` facts, positioned by
+  //   `(line, index)` instead of an event id, with one settled event per item
+  //   (`turn.settled`, `session.ended`, `call.settled`, `task.ended`,
+  //   `interaction.settled`, `delivery.settled`) whose `outcome` says how it
+  //   ended. Provider usage is its own `usage.recorded` fact, owned by a model
+  //   run (`owner.runId`).
   // - Hook handlers get `ctx.position` and `ctx.view`, and an unhandled hook
-  //   error now fails the running turn; the observer's handler never throws.
-  // - The stream is version 27. The 1.0 `eve/client` reads only 27 and the
-  //   0.83 client only 21-26, so the Dashboard bundles both and picks one by
-  //   the target Deployment's resolved eve version.
-  // - Session routes: `POST /session/:id/end` (0.87; `/reset` stays as an
-  //   alias) and `GET /session/:id/descendants/stream` (followed child
-  //   sessions) are new, both pinned by the root session id like `reset` and
-  //   `stream`; `POST /task-input/:token` is gone (0.84). The HTTP channel
-  //   rejects unknown top-level body fields with 400, and answers replace
-  //   `inputResponses`.
-  // - `defineSchedule`'s `markdown` became `content`, and `send()` resolves a
-  //   `Delivery` (`sessionId`) instead of a Session (`id`); the scheduler
-  //   channel reads both. `defineChannel` no longer reads `kindHint`, so a
+  //   error fails the running turn; the observer's handler never throws.
+  // - The stream is version 27, which the 1.0 `eve/client` reads.
+  // - Session routes: `POST /session/:id/end` (`/reset` stays as an alias) and
+  //   `GET /session/:id/descendants/stream` (followed child sessions), both
+  //   pinned by the root session id like `reset` and `stream`. The HTTP
+  //   channel rejects unknown top-level body fields with 400, and answers
+  //   replace `inputResponses`.
+  // - `defineSchedule` takes `content`, and `send()` resolves a `Delivery`
+  //   (`sessionId`). `defineChannel` no longer reads `kindHint`, so a
   //   channel's kind is `channel:<name>` (the HTTP channel is `channel:eve`).
-  // - The sandbox provider contract renamed `abortSignal` to `signal` (0.84)
-  //   and added optional spawn `stdin` (0.84.1); `@evelandhq/sandbox-bwrap`
-  //   already reads both signal names.
-  // - The bundled Workflow set is byte-identical to 0.83.3 (core 5.2.3, world
-  //   5.0.5, spec 6-8), so `@evelandhq/workflow-world` 0.28.0 serves both
-  //   lines unchanged.
-  // - 0.85 lets a v27 Deployment import a 0.69-0.83 session checkpoint, so a
-  //   v26 session whose idle owner run receives a delivery another Deployment
-  //   accepted now moves onto that Deployment through the shared World, and
-  //   is compacted on the way (remembered approvals and usage limits start
-  //   over). The Agent Gateway's pinned traffic never triggers that (the
-  //   owner accepts it), but unpinned channel ingress, `ctx.to()`, and
-  //   schedules can once a v27 Release is promoted. The move is one-way --
-  //   a v26 runtime cannot read checkpoint 18 -- so "a session stays on its
-  //   Deployment" holds until such a move and from then on for the new one:
-  //   the Session projection re-points the SessionBinding at the v27
-  //   Deployment the first time that Deployment reports the session, so
-  //   continuations, streams, the Dashboard client, and retention follow it.
-  //
-  // 0.81 history follows (kept while the 0.83 line it describes is carried):
-  // A gapped two-line window: 0.83.3 (published 2026-10-26) entered on
-  // 2026-10-27 and 0.79 retired with it (Eveland v0.64.0 had carried 0.81
-  // since 2026-10-21); 0.82 was skipped, superseded by 0.83.0 within two
-  // days, before any Eveland release carried it. 0.81.1 had entered on
-  // 2026-10-21 and 0.76 retired with it (Eveland v0.63.0 had carried 0.79
-  // since 2026-10-14); 0.80 was skipped, superseded by 0.81.0 within four
-  // days, before any Eveland release carried it. 0.79.0 had entered on
-  // 2026-10-14 and 0.74 retired with it (Eveland v0.62.0 had carried 0.76
-  // since 2026-10-10); 0.77 and 0.78 were skipped. 0.76.0 had entered on
-  // 2026-10-10 and 0.75 retired with it, one day after it had entered and
-  // before any Eveland release carried it. 0.68 retired on 2026-10-09 when 0.75 entered (v0.61.0 had carried
-  // 0.74 since the day before). 0.74.0 entered on 2026-10-08 and 0.73 retired
-  // with it, hours after it had entered and before any Eveland release
-  // carried it; 0.72 retired the same way earlier that day, 0.70 (and the
-  // skipped 0.71) on 2026-10-07, 0.69 on 2026-10-02, and 0.62 when 0.69
-  // entered: their Releases answer 409 on activation and their parked runs
-  // are settled.
-  //
-  // 0.69 was the largest protocol move since 0.31: background tasks are gone,
-  // every workflow tool and agent call blocks its turn until it settles, the
-  // `subagent.*` stream events and hooks are replaced by `task.started`,
-  // `task.settled`, and `agent.started`, a call's receipt is plain text, and a
-  // question raised inside a running call parks the turn with `turn.waiting`
-  // instead of ending it. 0.70 extends the hold to tool approvals and
-  // connection sign-ins (`turn.waiting` now says what it waits `on`). 0.71 and
-  // 0.72 keep the message stream at v26 (the client still reads v21-v25, so
-  // one Dashboard client serves both lines; `input.requested` only gains an
-  // optional `callId`), move the session checkpoint to 12 (eve rejects a
-  // handoff across the boundary; a session stays on its Deployment), bundle
-  // the stable @workflow 5.0.1 set instead of the 5.0.0 betas (the World
-  // interface only gains optional members and the spec range is unchanged),
-  // and drop the `tool` and `dynamicTool` extension contract versions built
-  // before 0.72 (`evaluate` became `decide`); Eveland's own extensions compile
-  // inside each Release. Approvals now answer only to the principal whose turn
-  // requested them. 0.73 leaves every surface Eveland reads byte-identical to
-  // 0.72.1, only adds extension contract versions, and moves the bundled
-  // Workflow set to core 5.1.0 / world 5.0.2 with the same World calls and
-  // spec range. 0.74 again leaves every surface Eveland reads byte-identical,
-  // including the Workflow set, and adds experimental schedule collections
-  // (`defineDynamicSchedules`), which Eveland's scheduler refuses at build
-  // because they declare no static cron. 0.75 renames the sandbox provider
-  // handle hooks (`onSessionStop`/`onSessionDelete` became
-  // `onSandboxStop`/`onSandboxDelete`, no fallback) and releases a durable
-  // session's sandbox once the session completes, expires, or fails;
-  // `@evelandhq/sandbox-bwrap` 0.5.0 answers both name pairs and implements
-  // that `onSessionEnd` directly, so one injected copy serves both lines. 0.75
-  // also adds session-scoped tool stubs (a new
-  // `/eve/v1/session/:sessionId/stubs` route that the Agent Gateway does not
-  // classify and so refuses, and a creation option Eveland's authenticators
-  // never grant), moves the session checkpoint to 13, and at 0.75.1 moves the
-  // bundled Workflow set to the stable 5.2 family (core 5.2.0, world 5.0.3,
-  // world-local 5.1.0) with the same World calls and spec range. 0.76 moves
-  // eve's own tools into the `eve` namespace (`load_skill` became
-  // `eve__skill`, `task_wait`/`task_cancel` `eve__task_*`, `final_output`
-  // `eve__reply`, and `connection_search`/`connection_execute` became
-  // `eve__search`/`eve__tool`, with connection tools named
-  // `<connection>__<tool>`), drops `parentCallId` from tool-call actions
-  // (the `session.started` one Eveland's observer reads is unchanged), and
-  // reserves `eve__*` names; nothing Eveland injects uses them. Between 0.74
-  // and 0.76 the discovery manifest (v15), the message stream (v26), the
-  // session checkpoint (13 since 0.75), the observer's instrumentation pin,
-  // the sandbox provider API (since 0.75), and every route Eveland forwards
-  // are byte-identical.
-  //
-  // 0.79 leaves the message stream (v26), the discovery (v15) and compiled
-  // (54) manifests, the `eve/client` types, hooks, every route Eveland
-  // forwards, the sandbox provider API, and the bundled Workflow set (the
-  // stable 5.2 family since 0.75.1) byte-identical to 0.76.0; the extension
-  // contracts only gain versions, and the session checkpoint moves to 14 with
-  // an identity upgrade from 13. Events gain `session.started.predecessor`
-  // and `turn.failed.terminal`, and `message.received` file parts stop
-  // echoing `data:` URLs. Approved calls now run as the principal whose turn
-  // requested them, eve downloads attachment links itself, and eve requires
-  // `ai` 7.0.137. From 0.76.1 eve treats a World that does not declare
-  // `capabilities.deploymentAffinity` as running one eve version at a time:
-  // it parks or cancels deliveries for runs another eve version created and
-  // ends a session such a run owns (`session_stranded`) instead of resuming
-  // it. `@evelandhq/workflow-world` 0.25.0 declares the capability, so a
-  // session keeps its Deployment across an eve-version promote as it always
-  // has. The observer's instrumentation pin moved with 0.79's shared tracing
-  // library, but its pinned expression is unchanged. 0.79.2 moves the session
-  // checkpoint to 15 (a real upgrade from 14, not an identity one) and adds an
-  // optional `error.name` to `action.result`; a session stays on its
-  // Deployment, so neither reaches Eveland.
-  //
-  // 0.80 and 0.81 again leave the message stream (v26), the discovery (v15)
-  // and compiled (54) manifests, hooks, `eve/channels/auth`, the sandbox
-  // provider API, and the bundled Workflow set byte-identical to 0.79.0; the
-  // extension contracts only gain versions, and the observer's pinned
-  // instrumentation expression survives 0.80.1's move of eve's tracing to the
-  // bundled `@vercel/agent-runs`. `authorization.required`/`completed` gain
-  // `grant` and the connection principal, a failed `completed` gains
-  // `retryable`, and `eve/client` gains `closeStream()` and `followIdle`; all
-  // optional. 0.80 asks the World to delete a run's data when it ends if its
-  // trace was not recorded in full (`$retention: "0"` on the run); the shared
-  // World does not read that attribute and keeps its own retention classes.
-  // A connection with `experimental_events` gets a public
-  // `POST /eve/v1/hooks/:connection` receiver, which the Agent Gateway
-  // forwards like any other unpinned public request. 0.81.1 rebuilds session
-  // handoff on hook force-claim: a session moves to a fresh run -- after a
-  // compaction, or onto another Deployment -- only when the World declares
-  // `capabilities.hookForceClaim` (with active `hookRetention`). Without it a
-  // session stays in its first run for life, so its event log grows until
-  // the World's per-run event cap fails it. `@evelandhq/workflow-world`
-  // 0.27.0 declares the capability and stamps spec 8, its reader contract,
-  // which both lines read.
-  //
-  // 0.82 and 0.83 leave the message stream (v26, so one Dashboard client
-  // still serves both lines), the discovery (v15) and compiled (54)
-  // manifests, the routes the Agent Gateway forwards, the hook entry point,
-  // the observer's pinned instrumentation expression, and the handoff's
-  // force-claim and deployment-affinity gates byte-identical to 0.81.1; World
-  // spec 6 through 8 is still what every line reads. Events gain only
-  // `history.imported` (0.82: prior messages a channel adds as real turns),
-  // which no projection reads, and the session checkpoint moves to 16 (0.82)
-  // and 17 (0.83); a session stays on its Deployment, so neither reaches
-  // Eveland. 0.82 replaces the per-session token limits with one
-  // `limits.sessionUsage` function and makes `sessionTimeoutMs` an idle
-  // timeout; Eveland sets neither. 0.83 bundles the Workflow 5.2 patch set
-  // (core 5.2.3, world 5.0.5, world-local 5.1.2), whose World interface only
-  // gains optional members; `@evelandhq/workflow-world` 0.28.0 pins it, and eve
-  // compares only the World's major line, so that one World serves 0.81 too.
-  // 0.83's rejection of unauthenticated `/.well-known/workflow/v1/flow`
-  // deliveries is wired only into eve's own local World, never a custom one,
-  // so the dispatcher's deliveries are unaffected. The sandbox provider API
-  // is the one surface that broke: 0.83 replaced the provider's session
-  // handle with a byte-level connection eve derives the session from, removed
-  // the microsandbox provider and `eve/sandbox/microsandbox`, and stopped
-  // falling back to just-bash in production builds. `@evelandhq/sandbox-bwrap`
-  // 0.6.0 answers both contracts from one definition and records the same
-  // session state under both, so one injected copy serves the window and a
-  // rollback across 0.83 still opens its sessions; Eveland's `DefaultSandbox`
-  // shim selects it on every line, so sessions record `bwrap`, never 0.83's
-  // `default`. 0.83 also lets `prewarm()` prepare an idle owner on the
-  // Deployment that accepts `POST /eve/v1/session/:id` with no body; the
-  // Agent Gateway classifies that as a continuation and forwards it to the
-  // session's bound Deployment, so prewarming never moves a session. The range
-  // is the union of the two contiguous runs, never the hull, which would admit
-  // 0.82.
-  peerDependencyRange: ">=0.83.0 <0.84.0 || >=1.0.0-0 <1.1.0",
+  // - The sandbox provider contract names the abort signal `signal` and has
+  //   optional spawn `stdin`; `@evelandhq/sandbox-bwrap` reads both.
+  // - The bundled Workflow set is core 5.2.3, world 5.0.5, spec 6-8, which
+  //   `@evelandhq/workflow-world` 0.28.0 pins. From 0.76.1 eve treats a World
+  //   that does not declare `capabilities.deploymentAffinity` as running one
+  //   eve version at a time, and from 0.81.1 a session moves to a fresh run
+  //   only when the World declares `capabilities.hookForceClaim`; the shared
+  //   World declares both.
+  peerDependencyRange: ">=1.0.0-0 <1.1.0",
 } as const;
 
 export type SupportedEveVersionRange =
@@ -237,9 +79,11 @@ export const OLDEST_VERIFIED_EVE_VERSION = VERIFIED_EVE_VERSIONS[0]!;
 export const LATEST_VERIFIED_EVE_VERSION = VERIFIED_EVE_VERSIONS[VERIFIED_EVE_VERSIONS.length - 1]!;
 
 export const SUPPORTED_EVE_VERSION_RANGE =
-  SUPPORTED_EVE_VERSION_RANGES.length === 2
-    ? `${SUPPORTED_EVE_VERSION_RANGES[0]} or ${SUPPORTED_EVE_VERSION_RANGES[1]}`
-    : `${SUPPORTED_EVE_VERSION_RANGES.slice(0, -1).join(", ")}, or ${SUPPORTED_EVE_VERSION_RANGES.at(-1)}`;
+  SUPPORTED_EVE_VERSION_RANGES.length === 1
+    ? SUPPORTED_EVE_VERSION_RANGES[0]!
+    : SUPPORTED_EVE_VERSION_RANGES.length === 2
+      ? `${SUPPORTED_EVE_VERSION_RANGES[0]} or ${SUPPORTED_EVE_VERSION_RANGES[1]}`
+      : `${SUPPORTED_EVE_VERSION_RANGES.slice(0, -1).join(", ")}, or ${SUPPORTED_EVE_VERSION_RANGES.at(-1)}`;
 
 export type EveVersionInfo = {
   version: string | null;
@@ -276,23 +120,6 @@ export function isSupportedEveDependency(specifier: string | null): boolean {
   return (
     line !== null && SUPPORTED_EVE_VERSION_RANGES.includes(`${line}.x` as SupportedEveVersionRange)
   );
-}
-
-/**
- * The session protocol an installed Eve version speaks: v26 through 0.83, v27
- * from 0.84 (every 1.x included). Null when the version cannot be read. The
- * protocol, not the line, is what decides which Dashboard client, stream
- * vocabulary, and session routes a Deployment needs.
- */
-export type EveSessionProtocol = "v26" | "v27";
-
-export function eveSessionProtocolOfVersion(
-  version: string | null | undefined,
-): EveSessionProtocol | null {
-  const line = eveLineOfSpecifier(version ?? null);
-  if (line === null) return null;
-  const [major, minor] = line.split(".").map(Number) as [number, number];
-  return major > 0 || minor >= 84 ? "v27" : "v26";
 }
 
 export function unsupportedEveVersionMessage(specifier: string | null): string {

@@ -350,13 +350,10 @@ export function registerCanonicalPlaygroundRoute(input: {
     }
     if (isReset && upstream.ok && platformSession) {
       const parsed = await parsePlaygroundResponse(upstream.clone());
-      // v26 answers a reset with `{ status: "reset", previousSessionId }`; v27
-      // (eve 0.87+, where `reset` is an alias of `end`) keeps the retired id
-      // and answers `{ ok: true, sessionId, deliveryId }`.
+      // `reset` is an alias of `end`: eve keeps the retired id and answers
+      // `{ ok: true, sessionId, deliveryId }`.
       const retired =
-        (getEveString(parsed, "status") === "reset" &&
-          getEveString(parsed, "previousSessionId") === platformSession.eveSessionId) ||
-        (parsed?.ok === true && getEveString(parsed, "sessionId") === platformSession.eveSessionId);
+        parsed?.ok === true && getEveString(parsed, "sessionId") === platformSession.eveSessionId;
       if (retired) {
         await store.completeSession(platformSession.id, {
           status: "completed",

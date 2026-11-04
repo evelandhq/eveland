@@ -40,8 +40,8 @@ type ModelGatewayRouteStore = Pick<
  * environment change does.
  *
  * A restart can only reconfigure the provider a Release already carries. A
- * Deployment whose Release has none (built before the provider existed, or on
- * eve 0.83) is not restarted. While its project is set to use the gateway,
+ * Deployment whose Release has none (built before the provider existed) is
+ * not restarted. While its project is set to use the gateway,
  * every save and every read of the project's setting reports it in
  * `rebuildRequired` -- a stopped one too, since it wakes on that same Release
  * -- because only a redeploy applies the gateway to it.

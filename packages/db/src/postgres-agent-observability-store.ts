@@ -1,6 +1,5 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { createId } from "@evelandhq/core/ids";
-import { eveSessionProtocolOfVersion } from "@evelandhq/core/eve-compatibility";
 import {
   parseStepUsageEvent,
   parseUnreportedModelRun,
@@ -32,7 +31,6 @@ import {
   deployments,
   modelUsageEvents,
   projects,
-  releases,
   runtimeInstances,
   scheduleRunSessions,
   scheduleRuns,
@@ -103,7 +101,7 @@ async function ingestPostgresAgentEventOnce(
         );
       }
     }
-    let [binding] = await tx
+    const [binding] = await tx
       .select()
       .from(sessionBindings)
       .where(
@@ -113,10 +111,6 @@ async function ingestPostgresAgentEventOnce(
         ),
       )
       .limit(1);
-    if (binding && binding.deploymentId !== observation.deploymentId) {
-      binding =
-        (await followCrossProtocolHandoff(tx, binding, observation.deploymentId)) ?? binding;
-    }
 
     let [node] = await tx
       .select()
@@ -667,80 +661,6 @@ async function ingestPostgresAgentEventOnce(
       duplicate: false,
     };
   });
-}
-
-/**
- * Re-points a SessionBinding at the Deployment a session now runs on, when
- * eve moved it across the session-protocol boundary.
- *
- * A session stays on the Deployment that created it, and the Agent Gateway
- * pins its continuations and streams there -- with one exception eve 0.85
- * introduced: a v26 (eve 0.69-0.83) owner run that receives a delivery a v27
- * Deployment accepted, while idle, moves the session onto that Deployment
- * through the shared World (`execution/session/handoff.js`). The Gateway never
- * causes that itself -- the bound Deployment accepts every pinned request --
- * but unpinned channel ingress, `ctx.to()`, and schedules can. The move is
- * one-way (a v26 runtime cannot read a v27 checkpoint, so nothing moves it
- * back), and afterwards only the v27 Deployment reports the session: the old
- * runtime can no longer serve its stream, and the v26 Dashboard client cannot
- * read the v27 lines eve now writes. So the first observation of a bound
- * session from a v27 Deployment, while its binding still names a v26 one, is
- * proof of the move, and the binding (and the Session's Deployment) follows
- * it. Any other mismatch -- the same protocol on both sides, or a stale event
- * from the old Deployment -- leaves the binding alone.
- */
-async function followCrossProtocolHandoff(
-  tx: StoreDatabase["db"],
-  binding: typeof sessionBindings.$inferSelect,
-  observedDeploymentId: string,
-): Promise<typeof sessionBindings.$inferSelect | null> {
-  const [boundVersion, observedVersion] = await Promise.all([
-    resolvedDeploymentEveVersion(tx, binding.deploymentId),
-    resolvedDeploymentEveVersion(tx, observedDeploymentId),
-  ]);
-  if (
-    eveSessionProtocolOfVersion(boundVersion) !== "v26" ||
-    eveSessionProtocolOfVersion(observedVersion) !== "v27"
-  ) {
-    return null;
-  }
-  const now = new Date();
-  const [moved] = await tx
-    .update(sessionBindings)
-    .set({ deploymentId: observedDeploymentId, updatedAt: now })
-    .where(
-      and(
-        eq(sessionBindings.id, binding.id),
-        eq(sessionBindings.deploymentId, binding.deploymentId),
-      ),
-    )
-    .returning();
-  if (!moved) return null;
-  await tx
-    .update(sessions)
-    .set({ deploymentId: observedDeploymentId })
-    .where(
-      and(
-        eq(sessions.projectId, binding.projectId),
-        eq(sessions.eveSessionId, binding.eveSessionId),
-      ),
-    );
-  return moved;
-}
-
-/** The eve version the Deployment's Release build installed, if it recorded one. */
-async function resolvedDeploymentEveVersion(
-  tx: StoreDatabase["db"],
-  deploymentId: string,
-): Promise<string | null> {
-  const [row] = await tx
-    .select({ summary: releases.summary })
-    .from(deployments)
-    .innerJoin(releases, eq(releases.id, deployments.releaseId))
-    .where(eq(deployments.id, deploymentId))
-    .limit(1);
-  const summary = recordValue(row?.summary);
-  return stringValue(summary?.eveVersionResolved);
 }
 
 function triggerFromAgentChannel(channelKind: string | null): SessionTrigger {

@@ -18,7 +18,7 @@ test("copies source into a prepared release and injects observers without modify
   await mkdir(path.join(sourcePath, "agent", "subagents", "child"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.83.3" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -54,7 +54,7 @@ test("injects the Extension integrator only when the source declares an Extensio
   await mkdir(path.join(sourcePath, "agent", "extensions"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.83.3" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -78,7 +78,7 @@ test("injects the scheduler adapter only into the disposable release", async () 
   await mkdir(path.join(sourcePath, "agent", "schedules"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.83.3" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -93,7 +93,7 @@ test("injects the scheduler adapter only into the disposable release", async () 
   ]);
   await expect(
     readFile(path.join(buildDir, "agent/channels/eveland-scheduler.ts"), "utf8"),
-  ).resolves.toContain('kindHint: "schedule"');
+  ).resolves.toContain("export default defineChannel(");
   await expect(
     readFile(path.join(sourcePath, "agent/channels/eveland-scheduler.ts"), "utf8"),
   ).rejects.toMatchObject({
@@ -116,7 +116,7 @@ export default {
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.83.3" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(path.join(sourcePath, "agent", "agent.ts"), authoredConfig);
@@ -161,7 +161,7 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "0.83.3" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
 
@@ -192,7 +192,7 @@ test("wraps every Eve-supported authored agent module extension", async () => {
     await mkdir(sourcePath, { recursive: true });
     await writeFile(
       path.join(sourcePath, "package.json"),
-      JSON.stringify({ dependencies: { eve: "0.83.3" } }),
+      JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
     );
     await writeFile(path.join(sourcePath, "instructions.md"), "root");
     await writeFile(
@@ -244,15 +244,6 @@ test("injects the Model Gateway provider into an eve 1.0 release and logs it", a
     "Injected Eveland Model Gateway provider: agent/instrumentation/eveland-model-gateway.js",
   );
   await expect(access(path.join(sourcePath, "agent", "instrumentation"))).rejects.toThrow();
-});
-
-test("leaves an eve 0.83 release's model calls as authored, and says so", async () => {
-  const { sourcePath, buildDir } = await eveProject("0.83.3");
-
-  const result = await prepareReleaseTree({ sourcePath, buildDir });
-
-  expect(result.modelGateway).toEqual({ status: "skipped", reason: "eve-version" });
-  expect(preparedReleaseLogLines(result).join("\n")).toMatch(/WARNING: .*Model Gateway.* eve 1\.0/);
 });
 
 test("seeds the cached model catalog into the release before the build", async () => {

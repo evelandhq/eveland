@@ -7,7 +7,7 @@
 // Open access (the fresh-install default seeded by migration 0048):
 //   - a public request carrying no Authorization gets a Caller Token injected
 //     by the Gateway, which the Agent verifies against the platform JWKS and
-//     admits: the turn is accepted and streams to turn.completed;
+//     admits: the turn is accepted and streams to a completed turn.settled;
 //   - a caller-supplied bad token is forwarded untouched and the Agent 401s
 //     ("a bad token is worse than none", docs/zh/reference/design/identity.md);
 //   - the Agent itself is the enforcement point: bypassing the Gateway and
@@ -1014,8 +1014,8 @@ function request(
   });
 }
 
-// v26 ends a turn with `turn.completed`; v27 (eve 0.84+) with a `turn.settled`
-// fact inside a commit line, whose outcome must be `completed`.
+// eve ends a turn with a `turn.settled` fact inside a commit line, whose
+// outcome must be `completed`.
 function sawCompletedTurn(raw: string): boolean {
   return raw.split("\n").some((line) => {
     try {

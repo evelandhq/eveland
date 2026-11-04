@@ -211,16 +211,14 @@ async function main(): Promise<void> {
       assert.equal(cancelled.statusCode, 202, `bound cancel failed: ${cancelled.body}`);
       const cancelledBody = JSON.parse(cancelled.body) as {
         sessionId?: string;
-        status?: string;
         ok?: boolean;
         deliveryId?: string;
       };
       assert.equal(cancelledBody.sessionId, cancellableSessionId);
-      // v26 answers with a status; v27 (eve 0.84+) admits the cancel as a
-      // delivery and answers `{ ok: true, sessionId, deliveryId }`.
+      // eve admits the cancel as a delivery and answers
+      // `{ ok: true, sessionId, deliveryId }`.
       assert.ok(
-        ["accepted", "no_active_turn"].includes(cancelledBody.status ?? "") ||
-          (cancelledBody.ok === true && typeof cancelledBody.deliveryId === "string"),
+        cancelledBody.ok === true && typeof cancelledBody.deliveryId === "string",
         `unexpected cancel answer: ${cancelled.body}`,
       );
       await expectBinding(
@@ -297,7 +295,7 @@ async function main(): Promise<void> {
       assert.equal(production.statusCode, 202, `production Host did not route: ${production.body}`);
 
       console.log(
-        `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 cancel=${cancelledBody.status ?? (cancelledBody.ok ? "delivered" : "unknown")} promoted=1 rolledBack=1 preview=200 create=202 production=202 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
+        `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 cancel=delivered promoted=1 rolledBack=1 preview=200 create=202 production=202 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
       );
     } finally {
       if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
@@ -415,9 +413,8 @@ function gatewayWaitForEvent(
   });
 }
 
-// v26 ends a turn with `turn.completed`; v27 (eve 0.84+) with one
-// `turn.settled` fact inside a commit line.
-const turnSettled = /"type":"turn\.(?:completed|settled)"/;
+// eve ends a turn with one `turn.settled` fact inside a commit line.
+const turnSettled = /"type":"turn\.settled"/;
 
 function gatewayStream(
   port: number,

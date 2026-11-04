@@ -1,6 +1,6 @@
 "use client";
 
-// Composer pieces both Playground clients (v26 and v27) share.
+// Composer pieces the Playground panel is built from.
 
 import type { FileUIPart } from "ai";
 import { BrainIcon, PlusIcon, SquareIcon } from "lucide-react";

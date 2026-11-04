@@ -14,7 +14,7 @@ const json = (body: unknown) => ({
 async function projectWithLiveDeployment(
   store: ReturnType<typeof createTestStore>,
   name: string,
-  // false: a Release built before the provider existed, or on eve 0.83.
+  // false: a Release built before the provider existed.
   modelGatewayProvider = true,
 ) {
   const project = await store.createProject({

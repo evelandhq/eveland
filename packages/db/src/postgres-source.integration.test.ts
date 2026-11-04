@@ -68,8 +68,8 @@ describe.skipIf(!database)("Postgres source revisions", () => {
       );
       await expect(store.getDeploymentEveVersion(deployment.id)).resolves.toEqual({
         version: "0.22.6",
-        expected: "0.83.x or 1.0.x",
-        supportedRanges: ["0.83.x", "1.0.x"],
+        expected: "1.0.x",
+        supportedRanges: ["1.0.x"],
         supported: false,
         sourceRevisionId: initialRevision.id,
       });

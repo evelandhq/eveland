@@ -600,10 +600,8 @@ The stable route can atomically point at one or at most two weighted targets;
 session bindings beat route weights — while a SessionBinding/OperationBinding is
 unexpired, continuation, cancel, stream, reset, and durable routes always return to
 the original deployment, and an expired binding returns the stable `410`
-`session_expired`, never re-running weights or landing on another deployment. The
-only binding that ever moves is one whose session Eve itself handed across the
-session-protocol boundary, which is one-way; the binding then follows the session to
-the Deployment that owns it (see the routing reference). When
+`session_expired`, never re-running weights or landing on another deployment. A
+binding never moves (see the routing reference). When
 one of two targets is unavailable, new sessions degrade to the sole healthy target;
 only when both are unavailable does it return 503.
 

@@ -32,8 +32,8 @@ Once an agent outputs a `sessionId`, the gateway records a durable `SessionBindi
 
 - **Affinity enforcement**: Follow-up turns (Continue), cancellations (Cancel), and streaming requests (Stream) are **always forwarded to the originally bound deployment**, even across promotions, rollbacks, or when traffic weight is dropped to zero.
 - **Expiration policy**: Playground bindings expire after 24 hours of inactivity; public API bindings expire after 7 days idle. Inactive expired sessions return `410 session_expired`.
-- **Bound routes**: continuation, cancel, clear, compact, reset (and its Eve 1.0 name, `end`), the session stream, a remote child's stream through its parent, and Eve 1.0's followed-descendants stream (`GET /eve/v1/session/:sessionId/descendants/stream`) are all pinned by the session id in the path.
-- **Cross-protocol handoff (Eve 0.85+)**: the one way a session leaves its Deployment. An idle Eve 0.83 (v26) session whose owner receives a delivery that an Eve 1.0 (v27) Deployment accepted — unpinned channel ingress, `ctx.to()`, or a schedule after a 1.0 Release is promoted, never the gateway's own pinned traffic — moves onto that Deployment through the shared Workflow World. The move is one-way, so when the 1.0 Deployment first reports the session, the Session projection re-points the `SessionBinding` at it; later pinned requests, the Playground client choice, and retention follow the session. No other mismatch moves a binding.
+- **Bound routes**: continuation, cancel, clear, compact, reset (and its newer name, `end`), the session stream, a remote child's stream through its parent, and the followed-descendants stream (`GET /eve/v1/session/:sessionId/descendants/stream`) are all pinned by the session id in the path.
+- **No migration**: a binding never moves to another Deployment; the bound Deployment answers every pinned request until the binding expires.
 
 ---
 
