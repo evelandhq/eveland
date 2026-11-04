@@ -4,8 +4,6 @@ packages:
 catalog:
   eve: 1.0.0-rc.2
 catalogs:
-  eve-matrix:
-    eve-previous: npm:eve@0.83.3
   # The published SDK's contract is narrower than the platform's. It imports
   # four primitives from eve/channels/auth, stable across 0.27-0.40, while the
   # policy's peerDependencyRange tracks what Eveland can actually host and
@@ -22,7 +20,7 @@ catalogs:
   # deliberately wider peer range. The platform's hosting window survives as
   # EVE_COMPATIBILITY_POLICY.peerDependencyRange, which still pins this floor.
   eve-sdk-peer:
-    eve: ">=0.83.0 <1.0.0 || >=1.0.0-0 <2.0.0"
+    eve: ">=1.0.0-0 <2.0.0"
 allowBuilds:
   cbor-extract: true
   esbuild: true
@@ -53,21 +51,11 @@ peerDependencyRules:
     "@pierre/theming@1.0.0>@pierre/theme": "2"
 # The Eve catalogs are a package-manager projection of the browser-safe policy
 # in packages/core/src/eve-compatibility.ts. Imported Agents may use any
-# verified minor in the current window (0.81.x and 0.83.x -- a gapped window:
-# 0.83.3 entered on 2026-10-27 and 0.79 retired with it, Eveland v0.64.0
-# having carried 0.81 since 2026-10-21; 0.82 sits inside the hull and is
-# rejected; 0.81.1 had entered on 2026-10-21 and 0.76 retired with it,
-# Eveland v0.63.0 having carried 0.79 since 2026-10-14; 0.80 sits inside the
-# hull and is rejected; 0.79.0 had entered on 2026-10-14 and 0.74 retired with it, Eveland v0.62.0
-# having carried 0.76 since 2026-10-10; 0.77 and 0.78 sit inside the hull and
-# are rejected; 0.76.0 had entered on 2026-10-10 and 0.75 retired with it, one day after it had
-# entered and before any Eveland release carried it; 0.75.1 had entered on
-# 2026-10-09 and 0.68 retired with it, Eveland v0.61.0 having carried 0.74
-# since 2026-10-08; 0.75 sits inside the hull and is rejected; 0.73 had entered on 2026-10-08
-# and 0.74.0 replaced it the same day, before any Eveland release carried it,
-# as 0.73 had replaced 0.72, 0.72 had replaced 0.70 and 0.70 had replaced
-# 0.69; 0.68 and every earlier line are below the floor). eve-matrix names
-# every line but the newest, which is the plain `eve` catalog entry.
+# verified minor in the current window, which is the single line 1.0.x since
+# 0.83 retired on 2026-11-04 (Eveland v0.66.0 had carried 1.0 since
+# 2026-11-02; 0.84 through 0.91 sit below it and are rejected). The newest line
+# is the plain `eve` catalog entry; while a newer line overlaps the one it
+# replaces, an `eve-matrix` catalog names the previous one as `eve-previous`.
 #
 # The release-age cooldown is waived only for explicitly reviewed packages.
 # `eve`, `@evelandhq/sandbox-bwrap`, and `@evelandhq/workflow-world` are
@@ -83,8 +71,8 @@ peerDependencyRules:
 # what `@evelandhq/workflow-world` 0.28.0 pins -- the set eve moved to at
 # 0.83.0 (core 5.2.3). 0.25.0 through 0.27.0 pinned the earlier patches
 # (world/errors 5.0.3, world-local 5.1.0, utils 5.0.1), the set eve moved to
-# at 0.75.1 and 0.76.0 through 0.82.0 bundle (core 5.2.0), which 0.81.x still
-# runs on, with the same World calls; before it, 0.70.2 moved
+# at 0.75.1 and 0.76.0 through 0.82.0 bundle (core 5.2.0), with the same World
+# calls; before it, 0.70.2 moved
 # to the stable 5.0.1 release (which 0.24.0 pinned) and 0.73.0 to core 5.1.0
 # with world/world-local/errors 5.0.2 -- the same World calls and spec
 # constants throughout, only optional members added. eve compares only the
@@ -98,8 +86,8 @@ peerDependencyRules:
 # `Math.min(mintedSpecVersion(), 7)`, because 0.62.0's runtime read spec 6
 # through 7 only and would have refused a World declaring 8 at startup (0.18.0
 # through 0.22.0 declared `mintedSpecVersion()`, which was 7 on their
-# @workflow/world; 0.5.0 through 0.17.0 always declared 6); 0.81.1 and 0.83.3
-# read 6 through 8. eve gates on the declared number, which the contract
+# @workflow/world; 0.5.0 through 0.17.0 always declared 6); 1.0 reads 6
+# through 8. eve gates on the declared number, which the contract
 # ratchet reads out of the World's dist and asserts per line; the platform
 # admits 6, 7, and 8 (SUPPORTED_WORKFLOW_STORAGE_SPECS).
 minimumReleaseAgeExclude:

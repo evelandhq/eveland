@@ -278,15 +278,11 @@ function transformModuleSchedule(
   }
   const definition = resolveDefinitionExpression(sourceFile, defaultExport.expression);
   const cron = readStringProperty(definition, "cron", sourcePath);
-  // Eve 0.91 renamed the fire-and-forget prompt from `markdown` to
-  // `content`; each line validates its own spelling at build, so the adapter
-  // accepts either and the generated channel reads whichever is present.
-  const promptProperties = ["content", "markdown"].filter(
-    (name) => findProperty(definition, name) !== undefined,
-  );
-  const hasMarkdown = promptProperties.length > 0;
+  // A fire-and-forget prompt (`content`) keeps the platform's "markdown"
+  // definition kind, the same kind a `.md` schedule has.
+  const hasMarkdown = findProperty(definition, "content") !== undefined;
   const hasRun = findProperty(definition, "run") !== undefined;
-  if (promptProperties.length > 1 || hasMarkdown === hasRun) {
+  if (hasMarkdown === hasRun) {
     throw new Error(`Schedule ${sourcePath} must define exactly one of content or run.`);
   }
 
@@ -418,13 +414,9 @@ function findConcreteDefaultExport(sourceFile: ts.SourceFile):
 // replaces a turn already running on the target session. A schedule is a
 // background actor, so every supported Eve line explicitly asks for `"queue"`.
 // An authored handler still wins because its own options are spread last.
-// (Eve 0.64 through 0.68 also read a `taskDeliveryPolicy`, which this channel
-// set to `"cohort"` so a schedule reported like Eve's own; 0.69 removed
-// background tasks together with the option, and the branch that emitted it
-// left with 0.68 on 2026-10-09.) What 0.69 keys a schedule's final-reply-only
-// turn on is Eve's own schedule dispatcher, which this channel is not: text
-// the model writes before it waits on a task completes as its own message
-// here.
+// What Eve keys a schedule's final-reply-only turn on is its own schedule
+// dispatcher, which this channel is not: text the model writes before it
+// waits on a task completes as its own message here.
 function fixedSessionDispatchBlock(): string {
   return `        const sessionIds: string[] = [];
         if (entry.kind === "markdown") {
@@ -502,9 +494,8 @@ ${entries.join("\n")}
 } as const;
 
 export default defineChannel({
-  // Read by eve 0.83 only; eve 0.84+ derives the kind from the file
-  // (channel:eveland-scheduler), which the session projection maps the same way.
-  kindHint: "schedule",
+  // eve derives the channel kind from the file (channel:eveland-scheduler),
+  // which the session projection maps to a schedule.
   routes: [
     POST("/eveland/scheduler/:scheduleRunId", async (request, ${routeArgs}) => {
       const runtimeSecret = process.env.EVELAND_SCHEDULER_RUNTIME_SECRET;
@@ -602,18 +593,15 @@ function describeScheduleFailure(error: unknown): string {
   return message.length > 2000 ? message.slice(0, 2000) : message;
 }
 
-// A send resolves the Session it reached on eve 0.83 (\`id\`) and a Delivery
-// receipt naming it on eve 0.84+ (\`sessionId\`).
+// A send resolves a Delivery receipt naming the Session it reached.
 function sessionIdOf(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null) return undefined;
-  const { sessionId, id } = value as { sessionId?: unknown; id?: unknown };
-  if (typeof sessionId === "string" && sessionId.length > 0) return sessionId;
-  return typeof id === "string" && id.length > 0 ? id : undefined;
+  const { sessionId } = value as { sessionId?: unknown };
+  return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : undefined;
 }
 
-// Eve 0.91 renamed a schedule's prompt from \`markdown\` to \`content\`.
-function scheduledPrompt(definition: { content?: unknown; markdown?: unknown }): string {
-  const prompt = definition.content ?? definition.markdown;
+function scheduledPrompt(definition: { content?: unknown }): string {
+  const prompt = definition.content;
   if (typeof prompt !== "string") throw new Error("Schedule definition lost its prompt.");
   return prompt;
 }

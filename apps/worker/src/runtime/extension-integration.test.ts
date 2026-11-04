@@ -17,11 +17,6 @@ const evePackageRoot = path.resolve(
   "../../../../packages/agent-scheduler/node_modules/eve",
 );
 const eveBin = path.join(evePackageRoot, "bin/eve.js");
-const oldestEvePackageRoot = path.resolve(
-  import.meta.dirname,
-  "../../../../packages/agent-scheduler/node_modules/eve-previous",
-);
-const oldestEveBin = path.join(oldestEvePackageRoot, "bin/eve.js");
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -200,39 +195,10 @@ async function stopEveStart(child: ReturnType<typeof spawn>): Promise<void> {
   if (timedOut) await exited;
 }
 
-test("keeps the Extension integrator compatible with the oldest supported Eve line", async () => {
-  const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-oldest-"));
-  roots.push(releaseDir);
-  const extensionPackageRoot = path.join(releaseDir, "packages/crm");
-  await writeFixtureExtension(extensionPackageRoot, oldestEvePackageRoot, "0.83.3", false);
-  await execFileAsync(process.execPath, [oldestEveBin, "extension", "build"], {
-    cwd: extensionPackageRoot,
-  });
-  await writeConsumer(releaseDir, extensionPackageRoot, oldestEvePackageRoot, "0.83.3");
-
-  await injectObserverHooks({ releaseDir });
-  await injectSchedulerAdapter({ releaseDir });
-  const integratorPath = await injectExtensionIntegrator(releaseDir);
-  await execFileAsync(process.execPath, [oldestEveBin, "info", "--json"], { cwd: releaseDir });
-  await execFileAsync(process.execPath, [integratorPath], { cwd: releaseDir });
-  await execFileAsync(process.execPath, [oldestEveBin, "build", "--skip-sandbox-prewarm"], {
-    cwd: releaseDir,
-  });
-  await execFileAsync(process.execPath, [oldestEveBin, "info", "--json"], { cwd: releaseDir });
-
-  await expect(readSchedulerDefinitions(releaseDir)).resolves.toEqual([]);
-  await expect(
-    readFile(
-      path.join(releaseDir, ".eveland/observability/extension-coverage-gaps.json"),
-      "utf8",
-    ).then((value) => JSON.parse(value)),
-  ).resolves.toEqual([]);
-}, 120_000);
-
 async function writeFixtureExtension(
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.83.3",
+  eveVersion = "1.0.0-rc.2",
   includeScheduleSubagents = true,
 ): Promise<void> {
   await write(
@@ -286,7 +252,7 @@ async function writeConsumer(
   releaseDir: string,
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "0.83.3",
+  eveVersion = "1.0.0-rc.2",
 ): Promise<void> {
   await write(
     releaseDir,

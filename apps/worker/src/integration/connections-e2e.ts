@@ -318,10 +318,9 @@ async function verifySubagentConnection(
   const session = await startSession(
     port,
     'delegate to a subagent: Search connection "research" for "connection record".',
-    // The read settles once the session is idle after the child was reported
-    // (`child.opened` on v27, `agent.started` on eve 0.69, `subagent.called`
-    // before), by which time
-    // the child's Connection calls this check counts have happened.
+    // The read settles once the root turn settles after the child was
+    // reported (`child.opened`), by which time the child's Connection calls
+    // this check counts have happened.
     { subagentName: "researcher" },
   );
   assert.ok(
@@ -343,9 +342,9 @@ async function verifySubagentConnection(
 
 async function runConnectionFlow(input: { port: number; message: string }): Promise<void> {
   const session = await startSession(input.port, input.message);
-  // A tool result: v26 `action.result`, v27 (eve 0.84+) `call.settled`.
+  // A tool result settles its call.
   assert.ok(
-    session.events.some((event) => event.type === "action.result" || event.type === "call.settled"),
+    session.events.some((event) => event.type === "call.settled"),
     `Connection tool produced no tool result: ${input.message}; events=${JSON.stringify(session.events)}`,
   );
 }
@@ -383,13 +382,9 @@ async function startSession(
 }
 
 /**
- * Reads to `session.waiting`, and — when a delegated subagent is expected —
- * past it when needed: eve 0.51 through 0.68 handed the root turn a
- * background-task handle, so the child run only started after the root
- * session was already waiting. eve 0.69 holds the turn for the agent task, so
- * the first `session.waiting` after `agent.started` already settles it. v27
- * (eve 0.84+) runs the child inside the root turn, so its `turn.settled` after
- * `child.opened` does.
+ * Reads until the turn settles. eve runs a delegated child inside the root
+ * turn, so when a subagent is expected, the root `turn.settled` after
+ * `child.opened` settles the delegation too.
  */
 async function readUntilWaiting(
   port: number,
@@ -412,8 +407,7 @@ async function readUntilWaiting(
   let buffer = "";
   let lines = 0;
   let waiting = false;
-  // A delegating session is read until the delegation settles, which on eve
-  // 0.51 through 0.68 is past its first `session.waiting`.
+  // A delegating session is read until the delegation settles.
   const done = () => (options.subagentName === undefined ? waiting : watch.settled);
   try {
     while (!done() && Date.now() < deadline) {
@@ -426,21 +420,17 @@ async function readUntilWaiting(
         buffer = buffer.slice(newline + 1);
         if (!line) continue;
         const parsed = JSON.parse(line) as { $eve?: unknown };
-        // `startIndex` counts every stream line except v27 transport
-        // heartbeats (`$eve`); v27 progress lines hold an index too.
+        // `startIndex` counts every stream line except transport heartbeats
+        // (`$eve`); progress lines hold an index too.
         if (parsed.$eve === undefined) lines += 1;
         for (const event of sessionStreamLineEvents(parsed) as SessionEvent[]) {
           events.push(event);
           watch.observe(event);
-          if (
-            event.type === "turn.failed" ||
-            event.type === "session.failed" ||
-            (event.type === "turn.settled" && !isCompletedTurnEvent(event))
-          ) {
+          if (event.type === "turn.settled" && !isCompletedTurnEvent(event)) {
             throw new Error(`managed Connection turn failed: ${line}`);
           }
-          // v26 idles with `session.waiting`; v27 settles the turn.
-          if (event.type === "session.waiting" || event.type === "turn.settled") waiting = true;
+          // A settled turn leaves the session idle.
+          if (event.type === "turn.settled") waiting = true;
         }
       }
     }
@@ -450,10 +440,7 @@ async function readUntilWaiting(
     });
   }
   await reader.cancel().catch(() => undefined);
-  assert.ok(
-    waiting,
-    `session ${sessionId} never reached session.waiting: ${JSON.stringify(events)}`,
-  );
+  assert.ok(waiting, `session ${sessionId} never settled its turn: ${JSON.stringify(events)}`);
   assert.ok(events.some(isCompletedTurnEvent), `session ${sessionId} never completed its turn`);
   return { nextIndex: startIndex + lines, events, subagentCalled: watch.subagentCalled };
 }

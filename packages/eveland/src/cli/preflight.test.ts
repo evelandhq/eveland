@@ -12,6 +12,9 @@ import {
 import { createZipArchive } from "./zip.ts";
 
 const execFileAsync = promisify(execFile);
+// The window an instance reports. The CLI judges specifiers against whatever
+// window the instance it talks to carries, so this fixture keeps a 0.x line to
+// exercise the `0.x` caret grammar an older instance still accepts.
 const WINDOW = ["0.83.x", "1.0.x"];
 
 async function makeProject(): Promise<string> {

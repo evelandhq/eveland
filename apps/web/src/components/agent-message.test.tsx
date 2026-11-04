@@ -4,17 +4,10 @@ import type { EveMessage, EveMessagePart, EveToolPart, Interaction } from "eve/r
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SessionStore } from "eve/client";
 import { openInteractions } from "eve/events";
-import type { EveVersionInfo } from "@/lib/api";
 import { describe, expect, test, vi } from "vitest";
 
-import {
-  AgentMessageV27,
-  outcomeLabel,
-  questionsForCall,
-  toolHeaderState,
-} from "./agent-message-v27";
-import { playgroundProtocolFor } from "./playground-panel";
-import { canAnswerInteraction } from "./playground-panel-v27";
+import { AgentMessage, outcomeLabel, questionsForCall, toolHeaderState } from "./agent-message";
+import { canAnswerInteraction } from "./playground-panel";
 
 function approval(overrides: Partial<Interaction> = {}): Interaction {
   return {
@@ -63,7 +56,7 @@ function renderMessage(
   } = {},
 ) {
   return render(
-    <AgentMessageV27
+    <AgentMessage
       canRespond={options.canRespond ?? (() => true)}
       isStreaming={false}
       message={message(...parts)}
@@ -72,7 +65,7 @@ function renderMessage(
   );
 }
 
-describe("AgentMessageV27", () => {
+describe("AgentMessage", () => {
   test("answers a call's approval with the v27 interaction id", async () => {
     const onAnswers = vi.fn();
     const { rerender } = renderMessage([toolPart("running")]);
@@ -80,7 +73,7 @@ describe("AgentMessageV27", () => {
     expect(trigger().hasAttribute("data-panel-open")).toBe(false);
 
     rerender(
-      <AgentMessageV27
+      <AgentMessage
         canRespond={() => true}
         isStreaming={false}
         message={message(toolPart("approval", approval()))}
@@ -162,7 +155,7 @@ describe("AgentMessageV27", () => {
   });
 });
 
-describe("AgentMessageV27 with several questions from one call", () => {
+describe("AgentMessage with several questions from one call", () => {
   // Real eve 1.0 client snapshots: one call opens two questions, asked by the
   // call itself or relayed from a child session's call. The message part keeps
   // only the newest; the session view holds both. A relayed question's display
@@ -245,7 +238,7 @@ describe("AgentMessageV27 with several questions from one call", () => {
       expect(openInteractions(view)).toHaveLength(2);
       const onAnswers = vi.fn();
       render(
-        <AgentMessageV27
+        <AgentMessage
           canRespond={(interaction) => interaction.status === "open"}
           isStreaming
           message={message}
@@ -270,7 +263,7 @@ describe("AgentMessageV27 with several questions from one call", () => {
     test(`keeps an earlier open question ${asked} answerable after the newest was answered`, () => {
       const { message, view } = twoQuestionsFromOneCall({ relayed, newestAnswered: true });
       render(
-        <AgentMessageV27
+        <AgentMessage
           canRespond={(interaction) => interaction.status === "open"}
           isStreaming
           message={message}
@@ -438,9 +431,9 @@ describe("a question that settles while the page watches", () => {
       onAnswers: vi.fn(),
     };
     const { rerender } = render(
-      <AgentMessageV27 {...props} message={before.messages[0]!} view={before.view} />,
+      <AgentMessage {...props} message={before.messages[0]!} view={before.view} />,
     );
-    rerender(<AgentMessageV27 {...props} message={after.messages[0]!} view={after.view} />);
+    rerender(<AgentMessage {...props} message={after.messages[0]!} view={after.view} />);
 
     expect(screen.getByText("first question")).toBeTruthy();
     expect(screen.getByText("second question")).toBeTruthy();
@@ -449,7 +442,7 @@ describe("a question that settles while the page watches", () => {
   });
 });
 
-describe("v27 Playground helpers", () => {
+describe("Playground helpers", () => {
   test("maps every v27 call state onto a tool header state", () => {
     expect(toolHeaderState("streaming")).toBe("input-streaming");
     expect(toolHeaderState("approval")).toBe("approval-requested");
@@ -479,19 +472,5 @@ describe("v27 Playground helpers", () => {
         approval({ answer: { interactionId: "int-1", optionId: "approve" } }),
       ),
     ).toBe(false);
-  });
-
-  test("picks the Playground client by the deployed Eve's session protocol", () => {
-    const info = (version: string | null): EveVersionInfo => ({
-      version,
-      expected: "0.83.x or 1.0.x",
-      supportedRanges: ["0.83.x", "1.0.x"],
-      supported: true,
-      sourceRevisionId: null,
-    });
-    expect(playgroundProtocolFor(info("0.83.3"))).toBe("v26");
-    expect(playgroundProtocolFor(info("^0.83.3"))).toBe("v26");
-    expect(playgroundProtocolFor(info("1.0.0-rc.1"))).toBe("v27");
-    expect(playgroundProtocolFor(info(null))).toBe("v27");
   });
 });

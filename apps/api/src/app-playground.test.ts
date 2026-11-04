@@ -13,7 +13,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/dormant-playground",
-      summary: { eveVersion: "0.83.3" },
+      summary: { eveVersion: "1.0.0-rc.2" },
       envVars: [],
       files: [],
       schedules: [],
@@ -89,7 +89,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/routed-playground",
-      summary: { eveVersion: "0.83.3" },
+      summary: { eveVersion: "1.0.0-rc.2" },
       envVars: [],
       files: [],
       schedules: [],
@@ -179,7 +179,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/source",
-      summary: { eveVersion: "0.83.3" },
+      summary: { eveVersion: "1.0.0-rc.2" },
       envVars: [],
       files: [],
       schedules: [],
@@ -238,39 +238,41 @@ describe("api app", () => {
           return new Response(
             [
               {
-                type: "reasoning.appended",
-                data: {
-                  reasoningDelta: "Checking",
-                  reasoningSoFar: "Checking",
+                progress: {
+                  type: "reasoning.delta",
+                  scope: { turnId: "turn_1" },
+                  data: { partId: "reasoning_1", delta: "Checking" },
                 },
               },
               {
-                type: "input.requested",
-                data: {
-                  requests: [
-                    {
-                      requestId: "request_1",
-                      prompt: "Run the tool?",
-                      action: {
-                        kind: "tool-call",
+                at: "2026-11-02T00:00:00.000Z",
+                facts: [
+                  {
+                    type: "interaction.opened",
+                    scope: { turnId: "turn_1" },
+                    data: {
+                      interactionId: "int_1",
+                      request: {
+                        kind: "approval",
+                        prompt: "Run the tool?",
                         callId: "call_1",
-                        toolName: "deploy",
-                        input: { target: "preview" },
+                        options: [
+                          { id: "approve", label: "Approve" },
+                          { id: "reject", label: "Reject", style: "danger" },
+                        ],
                       },
-                      options: [
-                        { id: "approve", label: "Approve" },
-                        { id: "reject", label: "Reject", style: "danger" },
-                      ],
                     },
-                  ],
-                  sequence: 1,
-                  stepIndex: 0,
-                  turnId: "turn_1",
-                },
+                  },
+                  {
+                    type: "turn.paused",
+                    scope: { turnId: "turn_1" },
+                    data: { turnId: "turn_1", interactionIds: ["int_1"] },
+                  },
+                ],
               },
-              { type: "session.waiting", data: { wait: "next-user-message" } },
+              { $eve: "position", next: 2 },
             ]
-              .map((event) => JSON.stringify(event))
+              .map((line) => JSON.stringify(line))
               .join("\n") + "\n",
             {
               status: 200,
@@ -301,11 +303,7 @@ describe("api app", () => {
           return Response.json({ sessionId: "eve_chat", status: "accepted" }, { status: 202 });
         }
         if (input.method === "POST" && input.path === "/eve/v1/session/eve_chat/reset") {
-          return Response.json({
-            ok: true,
-            previousSessionId: "eve_chat",
-            status: "reset",
-          });
+          return Response.json({ ok: true, sessionId: "eve_chat", deliveryId: "dlv_reset" });
         }
         return new Response("not found", { status: 404 });
       },
@@ -341,7 +339,7 @@ describe("api app", () => {
     });
     expect(stream.status).toBe(200);
     expect(stream.headers.get("x-eve-stream-tail-index")).toBe("2");
-    await expect(stream.text()).resolves.toContain("input.requested");
+    await expect(stream.text()).resolves.toContain("interaction.opened");
     await expect(store.listSessions(project.id)).resolves.toEqual([
       expect.objectContaining({
         eveSessionId: "eve_chat",
@@ -355,7 +353,7 @@ describe("api app", () => {
     );
 
     const continuationBody = JSON.stringify({
-      inputResponses: [{ requestId: "request_1", optionId: "approve" }],
+      answers: [{ interactionId: "int_1", optionId: "approve" }],
     });
     const continuation = await app.request(
       `/api/projects/${project.id}/playground/eve/v1/session/eve_chat`,
@@ -399,8 +397,8 @@ describe("api app", () => {
     expect(reset.status).toBe(200);
     await expect(reset.json()).resolves.toEqual({
       ok: true,
-      previousSessionId: "eve_chat",
-      status: "reset",
+      sessionId: "eve_chat",
+      deliveryId: "dlv_reset",
     });
     await expect(store.listSessions(project.id)).resolves.toEqual([
       expect.objectContaining({
@@ -463,7 +461,7 @@ describe("api app", () => {
       Response.json(
         {
           error: "Unsupported Eve version",
-          detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.83.x or 1.0.x.',
+          detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 1.0.x.',
         },
         { status: 409 },
       ),
@@ -475,8 +473,8 @@ describe("api app", () => {
     await expect(version.json()).resolves.toEqual({
       eveVersion: {
         version: "0.22.6",
-        expected: "0.83.x or 1.0.x",
-        supportedRanges: ["0.83.x", "1.0.x"],
+        expected: "1.0.x",
+        supportedRanges: ["1.0.x"],
         supported: false,
         sourceRevisionId: revision.id,
       },
@@ -500,7 +498,7 @@ describe("api app", () => {
       projectId: project.id,
       kind: "zip",
       sourcePath: "/tmp/current-eve-playground-agent",
-      summary: { eveVersion: "0.83.3" },
+      summary: { eveVersion: "1.0.0-rc.2" },
       envVars: [],
       files: [],
       schedules: [],

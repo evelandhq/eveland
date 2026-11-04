@@ -91,23 +91,27 @@ describe("Eveland private telemetry providers", () => {
     await evelandRuntime.capture(
       {
         type: "turn.started",
-        data: { sequence: 1, turnId: "turn_1" },
+        scope: { turnId: "turn_1" },
+        data: { turnId: "turn_1", follows: null },
       },
       {
         session: { id: "eve_session_1" },
         agent: { name: "Researcher" },
-        channel: { kind: "http" },
+        channel: { kind: "channel:eve" },
+        position: { line: 0, index: 0 },
       },
     );
     await evelandRuntime.capture(
       {
-        type: "turn.completed",
-        data: { sequence: 2, turnId: "turn_1" },
+        type: "turn.settled",
+        scope: { turnId: "turn_1" },
+        data: { turnId: "turn_1", outcome: "completed" },
       },
       {
         session: { id: "eve_session_1" },
         agent: { name: "Researcher" },
-        channel: { kind: "http" },
+        channel: { kind: "channel:eve" },
+        position: { line: 1, index: 0 },
       },
     );
     userSpan.end();
@@ -134,7 +138,7 @@ describe("Eveland private telemetry providers", () => {
     ]);
     expect(evelandLogExporter.getFinishedLogRecords().map((record) => record.eventName)).toEqual([
       "eve.turn.started",
-      "eve.turn.completed",
+      "eve.turn.settled",
     ]);
     expect(
       evelandMetricExporter

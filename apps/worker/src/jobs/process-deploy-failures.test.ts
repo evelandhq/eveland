@@ -225,9 +225,9 @@ describe("processNextJob", () => {
   });
 
   test("does not check the Model Gateway for a Release built without its provider", async () => {
-    // eve 0.83: release preparation skips the provider, so the Agent's model
-    // calls never reach the gateway and nothing about the gateway may fail
-    // the deploy.
+    // A Release without the injected provider (one built before it existed)
+    // never sends the Agent's model calls to the gateway, so nothing about the
+    // gateway may fail the deploy.
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-no-provider-"));
     vi.stubEnv("EVELAND_DATA_DIR", dataDir);
     const store = createTestStore();

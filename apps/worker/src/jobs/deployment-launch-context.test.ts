@@ -31,7 +31,7 @@ describe("deployment launch context", () => {
       await mkdir(sourcePath, { recursive: true });
       await writeFile(
         path.join(sourcePath, "package.json"),
-        JSON.stringify({ dependencies: { eve: "^0.83.3" } }),
+        JSON.stringify({ dependencies: { eve: "~1.0.0-rc.2" } }),
       );
       await writeFile(path.join(sourcePath, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
       const project = await store.createProject({

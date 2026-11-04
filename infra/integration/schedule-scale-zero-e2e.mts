@@ -342,14 +342,13 @@ async function consumeTurn(
         if (!line) continue;
         let events: ReturnType<typeof sessionStreamLineEvents>;
         try {
-          // A v26 event, or a v27 (eve 0.84+) commit line's facts.
           events = sessionStreamLineEvents(JSON.parse(line));
         } catch {
           continue;
         }
         for (const event of events) {
-          if (isCompletedTurnEvent(event) || event.type === "session.waiting") return;
-          if (event.type === "turn.failed" || event.type === "turn.settled")
+          if (isCompletedTurnEvent(event)) return;
+          if (event.type === "turn.settled")
             throw new Error(`turn failed (${event.type}):\n${raw}`);
         }
       }

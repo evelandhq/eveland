@@ -183,9 +183,9 @@ export async function injectSandboxModules(
         `0.64 and later need. Install @evelandhq/sandbox-bwrap 0.4.0 or newer, then retry.`,
     );
   }
-  // One vendored copy serves every supported line, and eve 0.83 replaced the
-  // provider's session handle with a connection; a copy without it fails only
-  // later, inside `eve build`, with no hint at the fix.
+  // eve 0.83 replaced the provider's session handle with a connection, which
+  // every supported line calls; a copy without it fails only later, inside
+  // `eve build`, with no hint at the fix.
   if ((await pathKind(path.join(input.backendDistDir, "connection.js"))) === null) {
     throw new Error(
       `@evelandhq/sandbox-bwrap at ${input.backendDistDir} has no connection.js, the provider ` +

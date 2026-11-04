@@ -339,56 +339,26 @@ async function runHttpTurnOnce(input: {
         consumedUpTo = newlineIndex + 1;
         if (!line.trim()) continue;
         try {
-          // The deployed fixture's eve sits on either side of the v26/v27
-          // session-protocol boundary. A v26 line is one event; a v27 commit
-          // line is `{ at, facts: [...] }` (heartbeat and progress lines carry
-          // no facts and are skipped).
+          // A commit line is `{ at, facts: [...] }`; heartbeat and progress
+          // lines carry no facts and are skipped.
           const parsed = JSON.parse(line) as { facts?: unknown };
-          const events = (Array.isArray(parsed.facts) ? parsed.facts : [parsed]) as Array<{
+          const events = (Array.isArray(parsed.facts) ? parsed.facts : []) as Array<{
             type?: unknown;
             data?: {
               outcome?: unknown;
               capability?: { kind?: unknown; name?: unknown };
-              actions?: Array<{
-                kind?: unknown;
-                toolName?: unknown;
-                name?: unknown;
-                input?: { skill?: unknown; name?: unknown };
-              }>;
             };
           }>;
           for (const event of events) {
-            // This is a conversational (not task-mode) session: it never emits
-            // `session.completed` after a turn, only `turn.completed` followed
-            // by `session.waiting` for the next user message (confirmed live
-            // against a running deployment -- the docs' abbreviated event list
-            // is misleading here). Treat either turn-level signal as done.
-            // v27 settles every turn with one `turn.settled` whose outcome says
-            // how it ended.
-            if (event.type === "turn.completed" || event.type === "session.completed")
-              sawCompletion = true;
-            if (event.type === "turn.failed") sawFailure = true;
+            // A conversational session never ends after a turn; eve settles
+            // every turn with one `turn.settled` whose outcome says how it
+            // ended.
             if (event.type === "turn.settled") {
               if (event.data?.outcome === "completed") sawCompletion = true;
               else sawFailure = true;
             }
-            // A framework skill load is its own `load-skill` action kind with no
-            // `toolName`. Through eve 0.75 the model's `load_skill` call named
-            // the skill in `input.skill`; from 0.76 the call is `eve__skill` and
-            // the action carries the skill as `name` (and `input.name`). v27
-            // requests it as a call whose capability is `{ kind: "skill", name }`.
-            if (
-              event.type === "actions.requested" &&
-              event.data?.actions?.some(
-                (action) =>
-                  action.kind === "load-skill" &&
-                  (action.name === SKILL_NAME ||
-                    action.input?.name === SKILL_NAME ||
-                    action.input?.skill === SKILL_NAME),
-              )
-            ) {
-              sawSkillLoad = true;
-            }
+            // A framework skill load is a call whose capability is
+            // `{ kind: "skill", name }`.
             if (
               event.type === "call.requested" &&
               event.data?.capability?.kind === "skill" &&
@@ -410,7 +380,7 @@ async function runHttpTurnOnce(input: {
       // connection/timeout problem -- do not retry.
       return {
         kind: "fatal",
-        detail: `a failed turn (turn.failed, or turn.settled not completed) observed in the event stream:\n${raw}`,
+        detail: `a failed turn (turn.settled not completed) observed in the event stream:\n${raw}`,
       };
     }
     if (!sawCompletion) {
@@ -422,7 +392,7 @@ async function runHttpTurnOnce(input: {
     if (!sawSkillLoad) {
       return {
         kind: "fatal",
-        detail: `turn.completed observed without a skill load for ${SKILL_NAME}:\n${raw}`,
+        detail: `a completed turn observed without a skill load for ${SKILL_NAME}:\n${raw}`,
       };
     }
 
@@ -434,7 +404,7 @@ async function runHttpTurnOnce(input: {
       // timing. Retrying would only hide it.
       return {
         kind: "fatal",
-        detail: `turn.completed observed, but no new ${markerName} appeared under ${input.cacheDir}/sessions. Stream:\n${raw}`,
+        detail: `a completed turn observed, but no new ${markerName} appeared under ${input.cacheDir}/sessions. Stream:\n${raw}`,
       };
     }
 
@@ -461,10 +431,10 @@ async function runHttpTurnOnce(input: {
  *
  * The deploy unit may still be warming up when this runs, so a transient
  * failure (connection refused, a non-2xx response, or the stream ending
- * with neither turn.completed nor turn.failed) is retried up to
- * HTTP_TURN_MAX_ATTEMPTS times with a short backoff between attempts. A
- * turn that completes but writes no marker, or one that reports
- * turn.failed, is a real failure and is never retried.
+ * without a turn.settled) is retried up to HTTP_TURN_MAX_ATTEMPTS times with
+ * a short backoff between attempts. A turn that completes but writes no
+ * marker, or one that settles any other way, is a real failure and is never
+ * retried.
  */
 async function runLiveHttpTurn(input: {
   hostPort: number;

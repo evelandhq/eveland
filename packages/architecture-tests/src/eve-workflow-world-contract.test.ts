@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
+import { EVE_COMPATIBILITY_POLICY } from "@evelandhq/core/eve-compatibility";
 import { readSource, repoRoot } from "./scan-support.js";
 
 /**
@@ -37,7 +38,9 @@ const RESOLUTION_ANCHORS: Record<string, string> = {
 };
 
 /** The supported eve lines, newest first; alias names are pnpm catalog entries. */
-const EVE_LINES = ["eve", "eve-previous"] as const;
+const EVE_LINES = EVE_COMPATIBILITY_POLICY.supportedLines
+  .map(({ dependencyName }) => dependencyName)
+  .reverse();
 
 /**
  * Whether an installed eve release is at or past `floor`. A prerelease counts
@@ -219,7 +222,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     // differed before: the shared World's `@workflow/world` 5.0.3 can write
     // spec 8 (the hook force-claim reader contract eve 0.66.3 brought in), and
     // from 0.27.0 the World declares it too, which every line in the window
-    // reads (0.81.1 and 0.83.3 accept 6 through 8); 0.23.0 through 0.26.x
+    // reads (1.0 accepts 6 through 8); 0.23.0 through 0.26.x
     // declared 7. The legacy World stays on slot identity. Moving the declared
     // number is an eve-window decision, not a lockfile outcome — every line in
     // the window must read what new Releases stamp.

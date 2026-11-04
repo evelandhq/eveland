@@ -187,7 +187,8 @@ export async function handleBuildDeployJob(
   // Before anything is recorded or started: a key the gateway rejects, or a
   // model it explicitly does not offer this project's key, would fail every
   // turn. Only a Release carrying the injected provider calls the gateway at
-  // all (eve 0.83 Releases call models as authored), so only it is checked.
+  // all (a Release built before the provider existed calls models as
+  // authored), so only it is checked.
   const modelGatewayProvider = build.modelGatewayProvider === true;
   const modelValidation = await validateModelGatewayModels({
     env: launchPrerequisites.env,

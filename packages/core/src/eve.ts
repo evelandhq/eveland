@@ -76,15 +76,9 @@ export type EveSessionRequest = {
     | "stream"
     | "clear"
     | "compact"
-    | "task_input"
     | "mcp_start"
     | "mcp_invocation";
   sessionId: string | null;
-};
-
-export type EveTaskInputRequest = {
-  kind: "task_input";
-  token: string;
 };
 
 const defaultPlaygroundAttachmentLimits: PlaygroundAttachmentLimits = {
@@ -100,17 +94,12 @@ export function validatePlaygroundTurn(
   if (!isEveRecord(value)) throw new Error("Playground turn must be a JSON object.");
 
   const hasMessage = value.message !== undefined;
-  // v26 answers a pending request with `inputResponses` (`requestId`); v27
-  // (eve 0.84+) folds approvals, questions, and sign-ins into interactions and
-  // answers them with `answers` (`interactionId`). A turn speaks one protocol.
-  const responses = value.inputResponses;
+  // Eve folds approvals, questions, and sign-ins into interactions and answers
+  // them with `answers` (`interactionId`).
   const answers = value.answers;
-  if (responses !== undefined && answers !== undefined)
-    throw new Error("Playground turn must not mix input responses and answers.");
-  const hasInputResponses = Array.isArray(responses) && responses.length > 0;
   const hasAnswers = Array.isArray(answers) && answers.length > 0;
-  if (!hasMessage && !hasInputResponses && !hasAnswers)
-    throw new Error("Playground turn requires a message or input response.");
+  if (!hasMessage && !hasAnswers)
+    throw new Error("Playground turn requires a message or an answer.");
   if (answers !== undefined) validateAnswers(answers);
 
   if (
@@ -119,7 +108,6 @@ export function validatePlaygroundTurn(
   ) {
     throw new Error("Playground continuation token must be a non-empty string.");
   }
-  if (responses !== undefined) validateInputResponses(responses);
 
   if (typeof value.message === "string") {
     if (value.message.trim().length === 0) throw new Error("Playground message must not be empty.");
@@ -261,24 +249,6 @@ export function isEveSessionNamespace(pathname: string): boolean {
   return pathname === "/eve/v1/session" || pathname.startsWith("/eve/v1/session/");
 }
 
-export function classifyEveTaskInputRequest(
-  method: string,
-  pathname: string,
-): EveTaskInputRequest | null {
-  if (method !== "POST") return null;
-  const match = /^\/eve\/v1\/task-input\/([^/]+)$/.exec(pathname);
-  if (!match?.[1]) return null;
-  try {
-    return { kind: "task_input", token: decodeURIComponent(match[1]) };
-  } catch {
-    return null;
-  }
-}
-
-export function isEveTaskInputNamespace(pathname: string): boolean {
-  return pathname === "/eve/v1/task-input" || pathname.startsWith("/eve/v1/task-input/");
-}
-
 /**
  * The Workflow runtime's queue endpoints, mounted by eve inside every Agent.
  *
@@ -302,8 +272,7 @@ export function isWorkflowQueueNamespace(pathname: string): boolean {
  * `createWebhook()` URLs, and eve serves them at
  * `/.well-known/workflow/v1/webhook/:token` on every method (GET, POST, PUT,
  * PATCH, DELETE). The token is the only credential and an unknown or spent one
- * answers 404 — the same trust model as `POST /eve/v1/task-input/:token` — so
- * the Gateway forwards exactly this shape as an ordinary public request
+ * answers 404, so the Gateway forwards exactly this shape as an ordinary public request
  * (activating a dormant Deployment, window-gated) while `flow`, `step`, and
  * everything else in the namespace stay refused.
  */
@@ -445,25 +414,6 @@ function readNonNegativeInteger(value: unknown): number | null {
 
 function readNonNegativeNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
-}
-
-function validateInputResponses(value: unknown): void {
-  if (!Array.isArray(value) || value.length === 0)
-    throw new Error("Playground input responses must be a non-empty array.");
-  for (const response of value) {
-    if (
-      !isEveRecord(response) ||
-      typeof response.requestId !== "string" ||
-      response.requestId.length === 0
-    ) {
-      throw new Error("Each Playground input response requires a request ID.");
-    }
-    const hasOption = typeof response.optionId === "string" && response.optionId.trim().length > 0;
-    const hasText = typeof response.text === "string" && response.text.trim().length > 0;
-    if (!hasOption && !hasText) {
-      throw new Error("Each Playground input response requires an option or text value.");
-    }
-  }
 }
 
 function validateAnswers(value: unknown): void {

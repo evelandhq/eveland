@@ -185,8 +185,8 @@ async function assertRunSemantics(
 }
 
 /**
- * The replies streamed on a session run, in chunk order: v26 `message.completed`
- * messages, or the text of v27 (eve 0.84+) reply `content.completed` facts.
+ * The replies streamed on a session run, in chunk order: the text of reply
+ * `content.completed` facts.
  */
 async function sessionReplies(sessionRunId: string): Promise<string[]> {
   const { rows: chunks } = await worldPool.query<{ data: Buffer }>(
@@ -201,11 +201,8 @@ async function sessionReplies(sessionRunId: string): Promise<string[]> {
         const frame: unknown = JSON.parse(Buffer.from(match[1]!, "base64").toString("utf8"));
         for (const event of sessionStreamLineEvents(frame)) {
           const data = event.data as
-            | { message?: unknown; kind?: unknown; phase?: unknown; value?: unknown }
+            | { kind?: unknown; phase?: unknown; value?: unknown }
             | undefined;
-          if (event.type === "message.completed" && typeof data?.message === "string") {
-            replies.push(data.message);
-          }
           if (
             event.type === "content.completed" &&
             data?.kind === "text" &&

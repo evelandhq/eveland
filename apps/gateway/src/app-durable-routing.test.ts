@@ -15,8 +15,8 @@ registerGatewayTestCleanup();
 function version(version: string, deploymentId: string): EveVersionInfo {
   return {
     version,
-    expected: "0.83.x or 1.0.x",
-    supportedRanges: ["0.83.x", "1.0.x"],
+    expected: "1.0.x",
+    supportedRanges: ["1.0.x"],
     supported: true,
     sourceRevisionId: `src-${deploymentId}`,
   };
@@ -193,7 +193,9 @@ describe("Gateway durable Eve routes", () => {
       ],
     });
     const repo = repository([weighted]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.83.3", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) =>
+      version("1.0.0-rc.2", deploymentId),
+    );
     const activationClient = {
       activate: vi.fn(async ({ deploymentId }: { deploymentId: string }) => ({
         leaseId: `lease-${deploymentId}`,
@@ -253,14 +255,11 @@ describe("Gateway durable Eve routes", () => {
       activationClient,
     });
 
-    const response = await app.request(
-      "http://p-alpha.agent.localhost/eve/v1/task-input/eve%3Atask-input%3Acapability",
-      {
-        method: "POST",
-        headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
-        body: JSON.stringify({ inputResponses: [{ requestId: "request-1", text: "yes" }] }),
-      },
-    );
+    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/hooks/github", {
+      method: "POST",
+      headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
+      body: JSON.stringify({ action: "opened" }),
+    });
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({
@@ -319,7 +318,9 @@ describe("Gateway durable Eve routes", () => {
       ],
     });
     const repo = repository([weighted]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.83.3", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) =>
+      version("1.0.0-rc.2", deploymentId),
+    );
     const activationClient = {
       activate: vi.fn(async ({ deploymentId }: { deploymentId: string }) => ({
         leaseId: `lease-${deploymentId}`,
@@ -368,7 +369,9 @@ describe("Gateway durable Eve routes", () => {
   test("expires an idle create-once route instead of silently moving its retry", async () => {
     const stable = route();
     const repo = repository([stable]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => version("0.83.3", deploymentId));
+    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) =>
+      version("1.0.0-rc.2", deploymentId),
+    );
     repo.operationBindings.push({
       id: "opbind_expired",
       projectId: "proj_1",

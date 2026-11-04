@@ -12,7 +12,7 @@ describe("inspectEveProject", () => {
     const result = inspectEveProject([
       {
         path: "package.json",
-        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "0.83.3" } }),
+        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "1.0.0-rc.2" } }),
       },
       {
         path: "agent/agent.ts",
@@ -38,7 +38,7 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(true);
     expect(result.layout).toBe("nested");
     expect(result.projectName).toBe("weather-agent");
-    expect(result.eveVersion).toBe("0.83.3");
+    expect(result.eveVersion).toBe("1.0.0-rc.2");
     expect(result.capabilities).toEqual({ eveChat: true });
     expect(result.summary).toMatchObject({
       agents: ["agent/agent.ts"],
@@ -60,7 +60,7 @@ describe("inspectEveProject", () => {
 
   test("does not declare eveChat for a non-canonical or unrelated Eve channel", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.83.3" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       {
         path: "agent/channels/eve.ts",
@@ -73,7 +73,7 @@ describe("inspectEveProject", () => {
 
   test("uses Eve's authored skill extensions in the source summary", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.83.3" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       ...["md", "ts", "cts", "mts", "js", "cjs", "mjs"].map((extension) => ({
         path: `agent/skills/research.${extension}`,
@@ -116,18 +116,12 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(false);
     expect(result.eveVersion).toBe("0.22.6");
     expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 0.83.x or 1.0.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
+      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 1.0.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
     );
   });
 
-  test("accepts dependency declarations contained inside the 0.83/1.0 compatibility window", () => {
+  test("accepts dependency declarations contained inside the 1.0 compatibility window", () => {
     for (const version of [
-      "0.83.3",
-      "~0.83.3",
-      "^0.83.3",
-      "0.83",
-      "0.83.x",
-      "0.83.*",
       "1.0.0-rc.1",
       "~1.0.0-rc.1",
       "1.0.0",
@@ -158,8 +152,10 @@ describe("inspectEveProject", () => {
       expect(isSupportedEveDependency(version), version).toBe(false);
     }
     // The window is a set of verified lines, not "everything at or above the
-    // floor": 0.84.x through 0.91.x speak the same v27 protocol as 1.0 but
-    // were skipped on 2026-11-02 when 1.0 entered, and 0.81.x, the former
+    // floor": 0.83.x, the former floor and the last v26 line, retired on
+    // 2026-11-04 (v0.66.0 had carried 1.0 since 2026-11-02); 0.84.x through
+    // 0.91.x speak the same v27 protocol as 1.0 but were skipped on
+    // 2026-11-02 when 1.0 entered, and 0.81.x, the former
     // floor, retired that day (v0.65.0 had carried 0.83 since 2026-10-27);
     // 0.82.x sits inside the hull and was skipped on 2026-10-27 when
     // 0.83 entered, and 0.79.x, the former floor, retired that day (v0.64.0
@@ -236,6 +232,12 @@ describe("inspectEveProject", () => {
       "^0.81.1",
       "0.81",
       "0.81.x",
+      "0.83.3",
+      "~0.83.3",
+      "^0.83.3",
+      "0.83",
+      "0.83.x",
+      ">=0.83.0 <0.84.0",
       "0.84.0",
       "0.85.0",
       "0.87.0",
@@ -459,8 +461,8 @@ describe("inspectEveProject", () => {
   test("reports the sliding compatibility window as structured ranges", () => {
     expect(createEveVersionInfo("1.0.0-rc.1", "src_1")).toEqual({
       version: "1.0.0-rc.1",
-      expected: "0.83.x or 1.0.x",
-      supportedRanges: ["0.83.x", "1.0.x"],
+      expected: "1.0.x",
+      supportedRanges: ["1.0.x"],
       supported: true,
       sourceRevisionId: "src_1",
     });

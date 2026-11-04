@@ -79,10 +79,6 @@ export function preparedReleaseLogLines(result: PreparedReleaseResult): string[]
     lines.push(
       `Injected Eveland Model Gateway provider: ${result.modelGateway.injectedFiles.join(", ")}`,
     );
-  } else if (result.modelGateway.reason === "eve-version") {
-    lines.push(
-      "WARNING: the Model Gateway provider needs eve 1.0 or later, so this release calls models exactly as authored. Upgrade eve to route string model IDs through the platform Model Gateway.",
-    );
   }
   const catalog = result.modelCatalog;
   if (catalog?.source === "cache" || catalog?.source === "fetched") {

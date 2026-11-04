@@ -307,22 +307,6 @@ describe("Eve session request classification", () => {
     // Every webhook route is inside the namespace the Gateway would otherwise refuse.
     expect(Eve.isWorkflowQueueNamespace("/.well-known/workflow/v1/webhook/whk_1")).toBe(true);
   });
-
-  test("classifies only the canonical Eve task-input callback", () => {
-    const classify = (Eve as Record<string, unknown>).classifyEveTaskInputRequest;
-    expect(classify).toBeTypeOf("function");
-    if (typeof classify !== "function") return;
-
-    expect(classify("POST", "/eve/v1/task-input/eve%3Atask-input%3Aabc")).toEqual({
-      kind: "task_input",
-      token: "eve:task-input:abc",
-    });
-    expect(classify("GET", "/eve/v1/task-input/token")).toBeNull();
-    expect(classify("POST", "/eve/v1/task-input/%E0%A4%A")).toBeNull();
-    expect(classify("POST", "/eve/v1/task-input/token/nested")).toBeNull();
-    expect(Eve.isEveTaskInputNamespace("/eve/v1/task-input/token")).toBe(true);
-    expect(Eve.isEveTaskInputNamespace("/eve/v1/task-input-like/token")).toBe(false);
-  });
 });
 
 describe("Playground turn validation", () => {
@@ -389,29 +373,7 @@ describe("Playground turn validation", () => {
     ).toThrow(/not supported/i);
   });
 
-  test("accepts HITL-only continuations but rejects empty turns", () => {
-    const validate = (Eve as Record<string, unknown>).validatePlaygroundTurn;
-    expect(validate).toBeTypeOf("function");
-    if (typeof validate !== "function") return;
-
-    expect(
-      validate({
-        continuationToken: "continue_1",
-        inputResponses: [{ requestId: "request_1", optionId: "approve" }],
-      }),
-    ).toMatchObject({ inputResponses: [{ requestId: "request_1", optionId: "approve" }] });
-    expect(() => validate({ continuationToken: "continue_1" })).toThrow(
-      /message or input response/i,
-    );
-    expect(() => validate({ inputResponses: [{ requestId: "request_1", text: "" }] })).toThrow(
-      /option or text value/i,
-    );
-    expect(() => validate({ inputResponses: [{ requestId: "request_1", optionId: "" }] })).toThrow(
-      /option or text value/i,
-    );
-  });
-
-  test("accepts v27 answers in place of input responses, never both", () => {
+  test("accepts answer-only continuations but rejects empty turns", () => {
     const validate = Eve.validatePlaygroundTurn;
     expect(validate({ answers: [{ interactionId: "int_1", optionId: "approve" }] })).toMatchObject({
       answers: [{ interactionId: "int_1", optionId: "approve" }],
@@ -419,18 +381,13 @@ describe("Playground turn validation", () => {
     expect(
       validate({ message: "hi", answers: [{ interactionId: "int_1", text: "yes" }] }),
     ).toBeTruthy();
-    expect(() => validate({ answers: [] })).toThrow(/message or input response/i);
+    expect(() => validate({ continuationToken: "continue_1" })).toThrow(/message or an answer/i);
+    expect(() => validate({ answers: [] })).toThrow(/message or an answer/i);
     expect(() => validate({ message: "hi", answers: [] })).toThrow(/non-empty array/i);
     expect(() => validate({ answers: [{ optionId: "approve" }] })).toThrow(/interaction ID/i);
     expect(() => validate({ answers: [{ interactionId: "int_1", text: " " }] })).toThrow(
       /option or text value/i,
     );
-    expect(() =>
-      validate({
-        answers: [{ interactionId: "int_1", optionId: "approve" }],
-        inputResponses: [{ requestId: "request_1", optionId: "approve" }],
-      }),
-    ).toThrow(/must not mix/i);
   });
 });
 

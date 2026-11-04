@@ -27,20 +27,14 @@ const telemetry = createPolicyManagedAgentTelemetry({
  */
 export default {
   events: {
-    // From eve 0.84 an unhandled hook error fails the running turn, so this
-    // handler must never throw: telemetry failure may never fail an Agent
+    // An unhandled hook error fails the running turn, so this handler must
+    // never throw: telemetry failure may never fail an Agent
     // turn. `capture` and `forceFlush` already swallow their own errors; the
     // outer guard keeps that true for anything they might miss.
     async "*"(event: AgentTelemetryEvent, context: AgentTelemetryHookContext): Promise<void> {
       try {
         await telemetry.capture(event, context);
-        if (
-          event.type === "session.completed" ||
-          event.type === "session.failed" ||
-          event.type === "session.ended"
-        ) {
-          await telemetry.forceFlush();
-        }
+        if (event.type === "session.ended") await telemetry.forceFlush();
       } catch (error) {
         warnRateLimited(error);
       }

@@ -30,8 +30,8 @@ function project(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
     updatedAt: "2026-11-02T01:00:00.000Z",
     eveVersion: {
       version: "1.0.0-rc.1",
-      expected: "0.83.x or 1.0.x",
-      supportedRanges: ["0.83.x", "1.0.x"],
+      expected: "1.0.x",
+      supportedRanges: ["1.0.x"],
       supported: true,
       sourceRevisionId: null,
     },

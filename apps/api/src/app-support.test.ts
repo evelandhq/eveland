@@ -6,14 +6,19 @@ function recordingStore() {
   return { store: { completeSession } as PlaygroundStreamStore, completeSession };
 }
 
+function commitLine(...facts: Array<Record<string, unknown>>): string {
+  return JSON.stringify({ at: "2026-11-02T00:00:00.000Z", facts });
+}
+
 describe("projectPlaygroundStreamLine", () => {
-  test("takes an approval-parked session back to running once its answer is accepted", async () => {
-    // eve 0.69+ resumes an answered turn under the same turnId, with no new
-    // `turn.started`, so `input.resolved` is the only signal it runs again.
+  test("takes an approval-parked session back to running once its answer settles", async () => {
+    // An answered interaction resumes the same turn with no new
+    // `turn.started`, so `interaction.settled` is the only signal it runs again.
     const { store, completeSession } = recordingStore();
-    const line = JSON.stringify({
-      type: "input.resolved",
-      data: { turnId: "turn_1", resolutions: [{ requestId: "req_1", outcome: "approved" }] },
+    const line = commitLine({
+      type: "interaction.settled",
+      scope: { turnId: "turn_1" },
+      data: { interactionId: "int_1", outcome: "answered" },
     });
 
     await expect(
@@ -27,24 +32,31 @@ describe("projectPlaygroundStreamLine", () => {
 
   test("projects the same boundaries as the observed Session", async () => {
     const { store } = recordingStore();
-    const project = (type: string, current: Parameters<typeof projectPlaygroundStreamLine>[1]) =>
-      projectPlaygroundStreamLine(JSON.stringify({ type, data: {} }), current, store, "s", "e");
+    const project = (
+      type: string,
+      current: Parameters<typeof projectPlaygroundStreamLine>[1],
+      data: Record<string, unknown> = {},
+    ) => projectPlaygroundStreamLine(commitLine({ type, data }), current, store, "s", "e");
 
     await expect(project("turn.started", "waiting")).resolves.toBe("running");
-    await expect(project("input.requested", "running")).resolves.toBe("waiting_approval");
-    await expect(project("session.waiting", "waiting_approval")).resolves.toBe("waiting_approval");
-    await expect(project("session.waiting", "running")).resolves.toBe("waiting");
-    await expect(project("session.completed", "running")).resolves.toBe("completed");
-    await expect(project("step.completed", "running")).resolves.toBe("running");
+    await expect(project("interaction.opened", "running")).resolves.toBe("waiting_approval");
+    await expect(project("turn.settled", "running", { outcome: "completed" })).resolves.toBe(
+      "waiting",
+    );
+    await expect(project("session.ended", "running", { outcome: "completed" })).resolves.toBe(
+      "completed",
+    );
+    await expect(project("model.completed", "running")).resolves.toBe("running");
   });
 
-  test("parks a held turn again when it still waits on a person", async () => {
-    // A partial answer resolves one request, then eve re-parks the same turn
-    // with `turn.waiting { on: "input" }` while the others stay open.
+  test("parks a paused turn again when it still waits on a person", async () => {
+    // Answering one of several open interactions settles only that one, and
+    // eve pauses the same turn again while the others stay open.
     const { store, completeSession } = recordingStore();
-    const line = JSON.stringify({
-      type: "turn.waiting",
-      data: { on: "input", sequence: 7, turnId: "turn_1" },
+    const line = commitLine({
+      type: "turn.paused",
+      scope: { turnId: "turn_1" },
+      data: { turnId: "turn_1", interactionIds: ["int_2"] },
     });
 
     await expect(
@@ -57,7 +69,7 @@ describe("projectPlaygroundStreamLine", () => {
   });
 });
 
-describe("projectPlaygroundStreamLine on a v27 stream", () => {
+describe("projectPlaygroundStreamLine on commit lines", () => {
   test("folds every fact of a commit line in order", async () => {
     const { store, completeSession } = recordingStore();
     const line = JSON.stringify({
@@ -83,7 +95,7 @@ describe("projectPlaygroundStreamLine on a v27 stream", () => {
     });
   });
 
-  test("records the nested v27 error when the session ends failed", async () => {
+  test("records the nested error when the session ends failed", async () => {
     const { store, completeSession } = recordingStore();
     const line = JSON.stringify({
       at: "2026-11-02T00:00:00.000Z",

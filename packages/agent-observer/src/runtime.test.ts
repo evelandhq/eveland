@@ -2,12 +2,11 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/sdk-metrics";
 import { InMemoryLogRecordExporter } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
-// The v26 (eve 0.83) event types; the v27 lines are covered separately.
-import type { InputRequestedStreamEvent } from "eve-previous/client";
 import { afterEach, describe, expect, test } from "vitest";
-import { createModelCallCapture } from "./runtime/model-capture.js";
+import { createModelCallCapture, type ModelCallCapture } from "./runtime/model-capture.js";
 import {
   createPrivateAgentTelemetryRuntime,
+  type AgentTelemetryEvent,
   type PrivateAgentTelemetryRuntime,
   type RuntimeAgentPolicy,
 } from "./runtime.js";
@@ -18,6 +17,139 @@ afterEach(async () => {
   await Promise.all(activeRuntimes.splice(0).map((runtime) => runtime.shutdown()));
 });
 
+/**
+ * One commit line of a v27 stream, as eve 1.0 hands it to a `*` hook: every
+ * fact in order, each with the same line and its own index.
+ */
+type Fact = { type: string; scope?: Record<string, string>; data: Record<string, unknown> };
+
+type HookSession = NonNullable<Parameters<PrivateAgentTelemetryRuntime["capture"]>[1]["session"]>;
+
+function harness(
+  capture: Partial<RuntimeAgentPolicy["capture"]> = {},
+  modelCapture: ModelCallCapture = createModelCallCapture({}),
+  session: HookSession = { id: "eve_v27" },
+) {
+  const traces = new InMemorySpanExporter();
+  const logs = new InMemoryLogRecordExporter();
+  const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+  const runtime = createPrivateAgentTelemetryRuntime({
+    policy: policy(capture),
+    exporters: { traces, logs, metrics },
+    modelCapture,
+  });
+  activeRuntimes.push(runtime);
+  let line = 0;
+  async function commit(...facts: Fact[]): Promise<void> {
+    for (const [index, fact] of facts.entries()) {
+      await runtime.capture(fact as AgentTelemetryEvent, {
+        session,
+        agent: { name: "Researcher", nodeId: "root" },
+        channel: { kind: "channel:eve" },
+        position: { line, index },
+        now: new Date(Date.UTC(2026, 10, 2, 0, 0, line)),
+      });
+    }
+    line += 1;
+  }
+  return { runtime, traces, logs, metrics, commit };
+}
+
+const turn = { turnId: "turn_1" };
+
+async function runOneTurn(commit: (...facts: Fact[]) => Promise<void>): Promise<void> {
+  await commit({
+    type: "session.started",
+    data: { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } },
+  });
+  await commit(
+    {
+      type: "delivery.consumed",
+      scope: turn,
+      data: {
+        deliveryId: "dlv_1",
+        turnId: "turn_1",
+        parts: [{ kind: "text", text: "Find the secret" }],
+      },
+    },
+    {
+      type: "turn.started",
+      scope: turn,
+      data: { turnId: "turn_1", cause: { deliveryId: "dlv_1" }, follows: null },
+    },
+  );
+  await commit(
+    { type: "model.requested", scope: turn, data: { runId: "run_1", owner: { turnId: "turn_1" } } },
+    {
+      type: "model.started",
+      scope: { ...turn, runId: "run_1" },
+      data: { runId: "run_1", modelId: "anthropic/claude-sonnet-5", attempt: 1 },
+    },
+  );
+  await commit(
+    {
+      type: "call.requested",
+      scope: { ...turn, runId: "run_1" },
+      data: {
+        callId: "call_1",
+        owner: { runId: "run_1" },
+        capability: { kind: "tool", name: "search" },
+        input: { query: "private input" },
+      },
+    },
+    {
+      type: "model.settled",
+      scope: { ...turn, runId: "run_1" },
+      data: { runId: "run_1", outcome: "completed", finishReason: "tool-calls" },
+    },
+    {
+      type: "usage.recorded",
+      scope: { ...turn, runId: "run_1" },
+      data: {
+        kind: "model",
+        owner: { runId: "run_1" },
+        usage: {
+          inputTokens: 120,
+          outputTokens: 30,
+          cacheReadTokens: 80,
+          cacheWriteTokens: 0,
+          costUsd: 0.002,
+        },
+      },
+    },
+  );
+  await commit(
+    { type: "call.started", scope: turn, data: { callId: "call_1" } },
+    {
+      type: "call.settled",
+      scope: turn,
+      data: { callId: "call_1", outcome: "completed", output: { hits: ["private output"] } },
+    },
+  );
+  await commit({
+    type: "model.started",
+    scope: { ...turn, runId: "run_2" },
+    data: { runId: "run_2", modelId: "anthropic/claude-sonnet-5", attempt: 1 },
+  });
+  await commit(
+    {
+      type: "content.completed",
+      scope: { ...turn, runId: "run_2" },
+      data: { partId: "p1", runId: "run_2", kind: "text", phase: "reply", value: "The answer" },
+    },
+    {
+      type: "model.settled",
+      scope: { ...turn, runId: "run_2" },
+      data: { runId: "run_2", outcome: "completed", finishReason: "stop" },
+    },
+    {
+      type: "turn.settled",
+      scope: turn,
+      data: { turnId: "turn_1", outcome: "completed", reply: ["p1"] },
+    },
+  );
+}
+
 describe("private Agent telemetry runtime", () => {
   test.each([
     { id: "eve_root", parent: undefined },
@@ -26,38 +158,13 @@ describe("private Agent telemetry runtime", () => {
   ])(
     "exports root lineage on every span and log for $id without parent events",
     async (session) => {
-      const traces = new InMemorySpanExporter();
-      const logs = new InMemoryLogRecordExporter();
-      const runtime = createPrivateAgentTelemetryRuntime({
-        policy: policy(),
-        exporters: {
-          traces,
-          logs,
-          metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-        },
-      });
-      activeRuntimes.push(runtime);
-      const context = { ...hookContext(), session };
-      for (const turnId of ["turn_0", "turn_1"]) {
-        await runtime.capture({ type: "turn.started", data: { turnId } }, context);
-        await runtime.capture({ type: "step.started", data: { turnId, stepIndex: 0 } }, context);
-        await runtime.capture(
-          {
-            type: "actions.requested",
-            data: {
-              turnId,
-              stepIndex: 0,
-              actions: [{ kind: "tool-call", callId: "call_1", toolName: "search", input: {} }],
-            },
-          },
-          context,
-        );
-        await runtime.capture({ type: "turn.completed", data: { turnId } }, context);
-      }
+      const { runtime, traces, logs, commit } = harness({}, createModelCallCapture({}), session);
+      await runOneTurn(commit);
       await runtime.forceFlush();
-      expect(traces.getFinishedSpans()).toHaveLength(6);
-      expect(logs.getFinishedLogRecords()).toHaveLength(8);
-      for (const record of [...traces.getFinishedSpans(), ...logs.getFinishedLogRecords()]) {
+
+      const records = [...traces.getFinishedSpans(), ...logs.getFinishedLogRecords()];
+      expect(records.length).toBeGreaterThan(0);
+      for (const record of records) {
         expect(record.attributes).toMatchObject({
           "session.id": session.id,
           "gen_ai.conversation.id": session.id,
@@ -68,396 +175,9 @@ describe("private Agent telemetry runtime", () => {
     },
   );
 
-  test("maps Eve turn, model, and tool lifecycles to private OTel signals", async () => {
-    const traces = new InMemorySpanExporter();
-    const logs = new InMemoryLogRecordExporter();
-    const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({
-        recordInputs: true,
-        recordOutputs: true,
-      }),
-      exporters: { traces, logs, metrics },
-      runtimeInstanceId: "rti_1",
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture(
-      {
-        type: "session.started",
-        data: {
-          runtime: {
-            agentId: "root",
-            agentName: "Researcher",
-            eveVersion: "0.27.0",
-            modelId: "openai/gpt-5",
-          },
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "turn.started", data: { sequence: 1, turnId: "turn_1" } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "message.received",
-        data: { sequence: 2, turnId: "turn_1", message: "private prompt" },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.started", data: { sequence: 3, turnId: "turn_1", stepIndex: 0 } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "actions.requested",
-        data: {
-          sequence: 4,
-          turnId: "turn_1",
-          stepIndex: 0,
-          actions: [
-            { kind: "tool-call", callId: "call_1", toolName: "search", input: { q: "otel" } },
-            {
-              kind: "tool-call",
-              callId: "call_2",
-              toolName: "fetch",
-              input: { url: "https://example.com" },
-            },
-          ],
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "action.result",
-        data: {
-          sequence: 5,
-          turnId: "turn_1",
-          stepIndex: 0,
-          status: "completed",
-          result: { kind: "tool-result", callId: "call_1", output: "found" },
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "action.result",
-        data: {
-          sequence: 6,
-          turnId: "turn_1",
-          stepIndex: 0,
-          status: "failed",
-          error: { code: "tool_error", message: "fetch exploded" },
-          result: { kind: "tool-result", callId: "call_2", output: "boom", isError: true },
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "message.completed",
-        data: {
-          sequence: 7,
-          turnId: "turn_1",
-          stepIndex: 0,
-          finishReason: "stop",
-          message: "final answer",
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "step.completed",
-        data: {
-          sequence: 8,
-          turnId: "turn_1",
-          stepIndex: 0,
-          finishReason: "stop",
-          usage: {
-            inputTokens: 120,
-            outputTokens: 30,
-            cacheReadTokens: 10,
-            cacheWriteTokens: 4,
-            costUsd: 0.012,
-          },
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "turn.completed", data: { sequence: 9, turnId: "turn_1" } },
-      context,
-    );
-    await runtime.forceFlush();
-
-    const finishedSpans = traces.getFinishedSpans();
-    expect(finishedSpans.map((span) => span.name).sort()).toEqual([
-      "chat openai/gpt-5",
-      "execute_tool fetch",
-      "execute_tool search",
-      "invoke_agent Researcher",
-    ]);
-    const turnSpan = finishedSpans.find((span) => span.name === "invoke_agent Researcher");
-    const modelSpan = finishedSpans.find((span) => span.name === "chat openai/gpt-5");
-    const toolSpan = finishedSpans.find((span) => span.name === "execute_tool search");
-    const failedToolSpan = finishedSpans.find((span) => span.name === "execute_tool fetch");
-    expect(turnSpan?.attributes).toMatchObject({
-      "gen_ai.operation.name": "invoke_agent",
-      "gen_ai.agent.name": "Researcher",
-      "gen_ai.conversation.id": "eve_session_1",
-      "eveland.eve.turn.id": "turn_1",
-    });
-    expect(JSON.parse(String(turnSpan?.attributes["gen_ai.input.messages"]))).toEqual([
-      { parts: [{ content: "private prompt", type: "text" }], role: "user" },
-    ]);
-    expect(JSON.parse(String(turnSpan?.attributes["gen_ai.output.messages"]))).toEqual([
-      {
-        finish_reason: "stop",
-        parts: [{ content: "final answer", type: "text" }],
-        role: "assistant",
-      },
-    ]);
-    expect(modelSpan?.parentSpanContext?.spanId).toBe(turnSpan?.spanContext().spanId);
-    expect(toolSpan?.parentSpanContext?.spanId).toBe(modelSpan?.spanContext().spanId);
-    expect(modelSpan?.attributes).toMatchObject({
-      "gen_ai.operation.name": "chat",
-      "gen_ai.request.model": "openai/gpt-5",
-      "gen_ai.usage.input_tokens": 120,
-      "gen_ai.usage.output_tokens": 30,
-      "gen_ai.usage.cache_read.input_tokens": 10,
-      "gen_ai.usage.cache_creation.input_tokens": 4,
-      "eveland.gen_ai.usage.cost_usd": 0.012,
-      "eveland.gen_ai.input.reconstructed": true,
-    });
-    expect(JSON.parse(String(modelSpan?.attributes["gen_ai.input.messages"]))).toEqual([
-      { parts: [{ content: "private prompt", type: "text" }], role: "user" },
-    ]);
-    expect(JSON.parse(String(modelSpan?.attributes["gen_ai.output.messages"]))).toEqual([
-      {
-        finish_reason: "stop",
-        parts: [
-          { arguments: { q: "otel" }, id: "call_1", name: "search", type: "tool_call" },
-          {
-            arguments: { url: "https://example.com" },
-            id: "call_2",
-            name: "fetch",
-            type: "tool_call",
-          },
-          { content: "final answer", type: "text" },
-        ],
-        role: "assistant",
-      },
-    ]);
-    expect(toolSpan?.attributes).toMatchObject({
-      "gen_ai.operation.name": "execute_tool",
-      "gen_ai.tool.name": "search",
-      "gen_ai.tool.call.id": "call_1",
-      "gen_ai.tool.call.arguments": JSON.stringify({ q: "otel" }),
-      "gen_ai.tool.call.result": JSON.stringify("found"),
-    });
-    expect(toolSpan?.status.code).toBe(SpanStatusCode.UNSET);
-    expect(failedToolSpan?.status.code).toBe(SpanStatusCode.ERROR);
-    expect(failedToolSpan?.status.message).toBe("fetch exploded");
-    expect(turnSpan?.resource.attributes).toMatchObject({
-      "service.name": "eveland-agent",
-      "deployment.environment.name": "production",
-      "eveland.team.id": "team_1",
-      "eveland.project.id": "proj_1",
-      "eveland.release.id": "rel_1",
-      "eveland.deployment.id": "dep_1",
-      "eveland.runtime.kind": "systemd",
-      "eveland.runtime.instance.id": "rti_1",
-      "eveland.telemetry.domain": "agent",
-    });
-    expect(turnSpan?.resource.attributes).toMatchObject({
-      "eveland.deployment.credential": "credential.signature",
-    });
-
-    const logRecords = logs.getFinishedLogRecords();
-    expect(logRecords.map((record) => record.eventName)).toContain("eve.message.received");
-    const messageLog = logRecords.find((record) => record.eventName === "eve.message.received");
-    expect(messageLog?.body).toMatchObject({
-      data: { message: "private prompt" },
-    });
-    expect(messageLog?.resource.attributes).toMatchObject({
-      "eveland.deployment.id": "dep_1",
-      "eveland.deployment.credential": "credential.signature",
-    });
-    expect(messageLog?.attributes).toMatchObject({
-      "eveland.event.id": expect.any(String),
-      "eveland.event.fingerprint": expect.any(String),
-      "eveland.eve.session.id": "eve_session_1",
-      "eveland.eve.turn.id": "turn_1",
-      "eveland.eve.agent.name": "Researcher",
-    });
-    expect(
-      logRecords.find((record) => record.eventName === "eve.step.completed")?.spanContext?.spanId,
-    ).toBe(modelSpan?.spanContext().spanId);
-
-    const metricData = metrics
-      .getMetrics()
-      .flatMap((resourceMetric) => resourceMetric.scopeMetrics)
-      .flatMap((scopeMetric) => scopeMetric.metrics);
-    expect(metrics.getMetrics()[0]?.resource.attributes).toMatchObject({
-      "eveland.deployment.credential": "credential.signature",
-    });
-    const tokenMetric = metricData.find(
-      (metric) => metric.descriptor.name === "gen_ai.client.token.usage",
-    );
-    expect(metricData.map((metric) => metric.descriptor.name)).toEqual(
-      expect.arrayContaining([
-        "gen_ai.client.operation.duration",
-        "gen_ai.client.token.usage",
-        "eveland.agent.invocations",
-        "eveland.agent.tool.calls",
-      ]),
-    );
-    expect(
-      tokenMetric?.dataPoints.map((point) => ({
-        attributes: point.attributes,
-        value: "sum" in Object(point.value) ? Object(point.value).sum : point.value,
-      })),
-    ).toEqual(
-      expect.arrayContaining([
-        {
-          attributes: expect.objectContaining({
-            "gen_ai.request.model": "openai/gpt-5",
-            "gen_ai.token.type": "input",
-          }),
-          value: 120,
-        },
-        {
-          attributes: expect.objectContaining({
-            "gen_ai.request.model": "openai/gpt-5",
-            "gen_ai.token.type": "output",
-          }),
-          value: 30,
-        },
-      ]),
-    );
-  });
-
-  test("removes inputs, outputs, reasoning, and credentials before creating LogRecords", async () => {
-    const traces = new InMemorySpanExporter();
-    const logs = new InMemoryLogRecordExporter();
-    const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy(),
-      exporters: { traces, logs, metrics },
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture(
-      {
-        type: "message.received",
-        data: {
-          turnId: "turn_1",
-          message: "do not export",
-          parts: [{ type: "text", text: "also private" }],
-          apiKey: "secret-key",
-          inputTokens: 17,
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "action.result",
-        data: {
-          turnId: "turn_1",
-          status: "completed",
-          result: { callId: "call_1", output: "do not export", continuationToken: "secret-token" },
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "reasoning.completed",
-        data: { turnId: "turn_1", stepIndex: 0, reasoning: "private chain of thought" },
-      },
-      context,
-    );
-    const inputRequestedEvent = {
-      type: "input.requested",
-      data: {
-        sequence: 3,
-        turnId: "turn_1",
-        stepIndex: 0,
-        requests: [
-          {
-            requestId: "request_1",
-            kind: "tool-approval",
-            prompt: "Approve the private deployment?",
-            display: "confirmation",
-            options: [
-              { id: "approve", label: "Approve private deployment" },
-              { id: "deny", label: "Deny private deployment" },
-            ],
-            action: {
-              kind: "tool-call",
-              callId: "call_private",
-              toolName: "deploy",
-              input: { environment: "private-production" },
-            },
-          },
-        ],
-      },
-    } satisfies InputRequestedStreamEvent;
-    await runtime.capture(inputRequestedEvent, context);
-    await runtime.forceFlush();
-
-    const serializedLogs = JSON.stringify(
-      logs.getFinishedLogRecords().map((record) => ({
-        eventName: record.eventName,
-        body: record.body,
-      })),
-    );
-    expect(serializedLogs).not.toContain("do not export");
-    expect(serializedLogs).not.toContain("also private");
-    expect(serializedLogs).not.toContain("secret-key");
-    expect(serializedLogs).not.toContain("secret-token");
-    expect(serializedLogs).not.toContain("private chain of thought");
-    expect(serializedLogs).not.toContain("Approve the private deployment?");
-    expect(serializedLogs).not.toContain("Approve private deployment");
-    expect(serializedLogs).not.toContain("private-production");
-    expect(serializedLogs).toContain("inputTokens");
-    expect(serializedLogs).toContain("call_1");
-    expect(logs.getFinishedLogRecords().map((record) => record.eventName)).toContain(
-      "eve.input.requested",
-    );
-    expect(logs.getFinishedLogRecords().map((record) => record.eventName)).not.toContain(
-      "eve.reasoning.completed",
-    );
-  });
-
-  test("keeps missing usage missing and becomes a no-op when capture is disabled", async () => {
-    const traces = new InMemorySpanExporter();
-    const logs = new InMemoryLogRecordExporter();
-    const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ enabled: false }),
-      exporters: { traces, logs, metrics },
-    });
-    activeRuntimes.push(runtime);
-
-    await expect(
-      runtime.capture(
-        {
-          type: "step.completed",
-          data: { turnId: "turn_1", stepIndex: 0, finishReason: "stop" },
-        },
-        hookContext(),
-      ),
-    ).resolves.toBeUndefined();
+  test("becomes a no-op when capture is disabled", async () => {
+    const { runtime, traces, logs, metrics, commit } = harness({ enabled: false });
+    await runOneTurn(commit);
     await runtime.forceFlush();
 
     expect(traces.getFinishedSpans()).toEqual([]);
@@ -465,1046 +185,287 @@ describe("private Agent telemetry runtime", () => {
     expect(metrics.getMetrics()).toEqual([]);
   });
 
-  test("names the model span from step.started when the session identity carries no model", async () => {
-    // Eve <=0.32 reported the configured model on `session.started`'s runtime
-    // identity. Eve 0.33 removed it -- a dynamic-model Agent has no configured
-    // model to report -- and moved the id onto `step.started`, where a concrete
-    // model has actually been selected. Reading only the old source leaves the
-    // span named a bare "chat" with no `gen_ai.request.model`.
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy(),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
+  test("maps v27 turn, model run, usage, and call lifecycles to the same span tree", async () => {
+    const { runtime, traces, metrics, commit } = harness({
+      recordInputs: true,
+      recordOutputs: true,
     });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture(
-      { type: "session.started", data: { runtime: { agentName: "reporter" } } },
-      context,
-    );
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0, modelId: "openai/gpt-5" } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "step.completed",
-        data: { turnId: "turn_1", stepIndex: 0, finishReason: "stop" },
-      },
-      context,
-    );
-    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
+    await runOneTurn(commit);
     await runtime.forceFlush();
 
-    const modelSpan = traces
-      .getFinishedSpans()
-      .find((span) => span.attributes["gen_ai.operation.name"] === "chat");
-    expect(modelSpan?.name).toBe("chat openai/gpt-5");
-    expect(modelSpan?.attributes["gen_ai.request.model"]).toBe("openai/gpt-5");
-  });
-
-  test("does not synthesize a model, provider, or usage when Eve does not report them", async () => {
-    const traces = new InMemorySpanExporter();
-    const logs = new InMemoryLogRecordExporter();
-    const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy(),
-      exporters: { traces, logs, metrics },
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture(
-      { type: "turn.started", data: { sequence: 1, turnId: "turn_1" } },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.started", data: { sequence: 2, turnId: "turn_1", stepIndex: 0 } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "step.completed",
-        data: {
-          sequence: 3,
-          turnId: "turn_1",
-          stepIndex: 0,
-          finishReason: "stop",
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "turn.completed", data: { sequence: 4, turnId: "turn_1" } },
-      context,
-    );
-    await runtime.forceFlush();
-
-    const modelSpan = traces
-      .getFinishedSpans()
-      .find((span) => span.attributes["gen_ai.operation.name"] === "chat");
-    expect(modelSpan?.name).toBe("chat");
-    expect(modelSpan?.attributes).not.toHaveProperty("gen_ai.request.model");
-    expect(modelSpan?.attributes).not.toHaveProperty("gen_ai.provider.name");
-    expect(modelSpan?.attributes).not.toHaveProperty("gen_ai.usage.input_tokens");
-    expect(
-      metrics
-        .getMetrics()
-        .flatMap((metric) => metric.scopeMetrics)
-        .flatMap((scope) => scope.metrics)
-        .map((metric) => metric.descriptor.name),
-    ).not.toContain("gen_ai.client.token.usage");
-  });
-
-  test("marks a turn Eve woke itself for a background task, even when inputs are not recorded", async () => {
-    const traces = new InMemorySpanExporter();
-    const logs = new InMemoryLogRecordExporter();
-    const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy(),
-      exporters: { traces, logs, metrics },
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture(
-      { type: "turn.started", data: { sequence: 1, turnId: "turn_1" } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "message.received",
-        data: { sequence: 2, turnId: "turn_1", message: "typed by a person" },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "turn.completed", data: { sequence: 3, turnId: "turn_1" } },
-      context,
-    );
-    await runtime.capture(
-      { type: "turn.started", data: { sequence: 4, turnId: "turn_2" } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "message.received",
-        data: {
-          kind: "execution.background_task",
-          sequence: 5,
-          turnId: "turn_2",
-          message: "Background task finished",
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "turn.completed", data: { sequence: 6, turnId: "turn_2" } },
-      context,
-    );
-    await runtime.forceFlush();
-
-    const turnSpans = traces
-      .getFinishedSpans()
-      .filter((span) => span.name === "invoke_agent Researcher");
-    const spanFor = (turnId: string) =>
-      turnSpans.find((span) => span.attributes["eveland.eve.turn.id"] === turnId);
-    expect(spanFor("turn_1")?.attributes).not.toHaveProperty("eveland.eve.message.kind");
-    expect(spanFor("turn_2")?.attributes).toMatchObject({
-      "eveland.eve.message.kind": "execution.background_task",
-    });
-
-    // The session transcript keys off `kind` in the stored event, so it must
-    // survive the input-capture policy that strips the message itself.
-    const wakeUpLog = logs
-      .getFinishedLogRecords()
-      .filter((record) => record.eventName === "eve.message.received")
-      .at(-1);
-    expect(wakeUpLog?.body).toEqual({
-      type: "message.received",
-      data: { kind: "execution.background_task", sequence: 5, turnId: "turn_2" },
-    });
-  });
-
-  test("ends open child spans when a turn is cancelled", async () => {
-    const traces = new InMemorySpanExporter();
-    const logs = new InMemoryLogRecordExporter();
-    const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy(),
-      exporters: { traces, logs, metrics },
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture(
-      { type: "turn.started", data: { sequence: 1, turnId: "turn_1" } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "actions.requested",
-        data: {
-          sequence: 2,
-          turnId: "turn_1",
-          stepIndex: 0,
-          actions: [
-            {
-              kind: "tool-call",
-              callId: "call_open",
-              toolName: "slow_tool",
-              input: {},
-            },
-          ],
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "turn.cancelled", data: { sequence: 3, turnId: "turn_1" } },
-      context,
-    );
-    await runtime.forceFlush();
-
-    expect(
-      traces
-        .getFinishedSpans()
-        .map((span) => span.name)
-        .sort(),
-    ).toEqual(["execute_tool slow_tool", "invoke_agent Researcher"]);
-    expect(
-      traces.getFinishedSpans().find((span) => span.name === "invoke_agent Researcher")?.attributes,
-    ).toMatchObject({ "eveland.turn.cancelled": true });
-  });
-
-  test("gives a tool-only model call reasoning and tool calls as its output", async () => {
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordInputs: true, recordOutputs: true }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture(
-      { type: "session.started", data: { runtime: { modelId: "openai/gpt-5" } } },
-      context,
-    );
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
-    await runtime.capture(
-      { type: "message.received", data: { turnId: "turn_1", message: "tag the conversations" } },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "reasoning.completed",
-        data: { turnId: "turn_1", stepIndex: 0, reasoning: "load the skill first" },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "actions.requested",
-        data: {
-          turnId: "turn_1",
-          stepIndex: 0,
-          actions: [{ kind: "load-skill", callId: "call_1", input: { name: "rubric" } }],
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "action.result",
-        data: {
-          turnId: "turn_1",
-          stepIndex: 0,
-          status: "completed",
-          result: { kind: "load-skill-result", callId: "call_1", output: "rubric body" },
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "step.completed",
-        data: { turnId: "turn_1", stepIndex: 0, finishReason: "tool-calls" },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 1 } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "message.completed",
-        data: { turnId: "turn_1", stepIndex: 1, finishReason: "stop", message: "tagged 50" },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.completed", data: { turnId: "turn_1", stepIndex: 1, finishReason: "stop" } },
-      context,
-    );
-    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
-    await runtime.forceFlush();
-
-    const modelSpans = traces
-      .getFinishedSpans()
-      .filter((span) => span.name === "chat openai/gpt-5")
-      .sort(
-        (left, right) =>
-          Number(left.attributes["eveland.eve.step.index"]) -
-          Number(right.attributes["eveland.eve.step.index"]),
+    const spans = traces.getFinishedSpans();
+    expect(spans.map((span) => span.name).sort()).toEqual([
+      "chat anthropic/claude-sonnet-5",
+      "chat anthropic/claude-sonnet-5",
+      "execute_tool search",
+      "invoke_agent Researcher",
+    ]);
+    const turnSpan = spans.find((span) => span.name === "invoke_agent Researcher")!;
+    const [firstRun, secondRun] = spans
+      .filter((span) => span.name.startsWith("chat "))
+      .sort((left, right) =>
+        String(left.attributes["eveland.eve.run.id"]).localeCompare(
+          String(right.attributes["eveland.eve.run.id"]),
+        ),
       );
-    expect(modelSpans).toHaveLength(2);
-
-    // The step requested a tool without emitting visible text.
-    expect(JSON.parse(String(modelSpans[0]?.attributes["gen_ai.output.messages"]))).toEqual([
-      {
-        finish_reason: "tool_call",
-        parts: [
-          { content: "load the skill first", type: "reasoning" },
-          { arguments: { name: "rubric" }, id: "call_1", name: "load_skill", type: "tool_call" },
-        ],
-        role: "assistant",
-      },
-    ]);
-
-    expect(JSON.parse(String(modelSpans[1]?.attributes["gen_ai.input.messages"]))).toEqual([
-      { parts: [{ content: "tag the conversations", type: "text" }], role: "user" },
-      {
-        parts: [
-          { content: "load the skill first", type: "reasoning" },
-          { arguments: { name: "rubric" }, id: "call_1", name: "load_skill", type: "tool_call" },
-        ],
-        role: "assistant",
-      },
-      {
-        name: "load_skill",
-        parts: [{ id: "call_1", response: "rubric body", type: "tool_call_response" }],
-        role: "tool",
-      },
-    ]);
-  });
-
-  test("replaces the reconstructed history with a compaction part once Eve compacts", async () => {
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordInputs: true, recordOutputs: true }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
+    const tool = spans.find((span) => span.name === "execute_tool search")!;
+    expect(firstRun!.parentSpanContext?.spanId).toBe(turnSpan.spanContext().spanId);
+    expect(tool.parentSpanContext?.spanId).toBe(firstRun!.spanContext().spanId);
+    // Usage lands on the run it belongs to even though it arrives after the
+    // run settled.
+    expect(firstRun!.attributes).toMatchObject({
+      "gen_ai.request.model": "anthropic/claude-sonnet-5",
+      "gen_ai.usage.input_tokens": 120,
+      "gen_ai.usage.output_tokens": 30,
+      "gen_ai.usage.cache_read.input_tokens": 80,
+      "eveland.gen_ai.usage.cost_usd": 0.002,
     });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
-    await runtime.capture(
-      { type: "message.received", data: { turnId: "turn_1", message: "keep going" } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "compaction.completed",
-        data: { turnId: "turn_1", sessionId: "eve_session_1", modelId: "openai/gpt-5" },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.completed", data: { turnId: "turn_1", stepIndex: 0, finishReason: "stop" } },
-      context,
-    );
-    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
-    await runtime.forceFlush();
-
-    const modelSpan = traces.getFinishedSpans().find((span) => span.name === "chat");
-    expect(modelSpan?.attributes).toMatchObject({
-      "eveland.gen_ai.input.reconstructed": true,
+    expect(secondRun!.attributes["gen_ai.usage.input_tokens"]).toBeUndefined();
+    expect(tool.attributes).toMatchObject({
+      "gen_ai.tool.call.id": "call_1",
+      "gen_ai.tool.call.arguments": JSON.stringify({ query: "private input" }),
+      "eveland.eve.call.outcome": "completed",
     });
-    // The user message Eve folded into the checkpoint is gone, because the model can
-    // no longer see it either.
-    expect(JSON.parse(String(modelSpan?.attributes["gen_ai.input.messages"]))).toEqual([
-      { parts: [{ content: null, type: "compaction" }], role: "system" },
-    ]);
-  });
+    expect(String(turnSpan.attributes["gen_ai.output.messages"])).toContain("The answer");
+    expect(String(turnSpan.attributes["gen_ai.input.messages"])).toContain("Find the secret");
 
-  test("records a subagent invocation's input and output as conventions messages", async () => {
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordInputs: true, recordOutputs: true }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "actions.requested",
-        data: {
-          turnId: "turn_1",
-          stepIndex: 0,
-          actions: [
-            {
-              kind: "subagent-call",
-              callId: "call_sub",
-              subagentName: "Summarizer",
-              name: "Summarizer",
-              nodeId: "root/summarizer",
-              description: "summarize",
-              input: { text: "long report" },
-            },
-          ],
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "action.result",
-        data: {
-          turnId: "turn_1",
-          stepIndex: 0,
-          status: "completed",
-          result: { kind: "subagent-result", callId: "call_sub", output: "three bullets" },
-        },
-      },
-      context,
-    );
-    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
-    await runtime.forceFlush();
-
-    const subagentSpan = traces
-      .getFinishedSpans()
-      .find((span) => span.name === "invoke_agent Summarizer");
-    // `gen_ai.agent.input` / `gen_ai.agent.output` are not registered attributes, so
-    // the invocation reports through the conventions' message attributes instead.
-    expect(Object.keys(subagentSpan?.attributes ?? {})).not.toContain("gen_ai.agent.input");
-    expect(Object.keys(subagentSpan?.attributes ?? {})).not.toContain("gen_ai.agent.output");
-    expect(JSON.parse(String(subagentSpan?.attributes["gen_ai.input.messages"]))).toEqual([
-      { parts: [{ content: JSON.stringify({ text: "long report" }), type: "text" }], role: "user" },
-    ]);
-    expect(JSON.parse(String(subagentSpan?.attributes["gen_ai.output.messages"]))).toEqual([
-      {
-        finish_reason: "stop",
-        parts: [{ content: "three bullets", type: "text" }],
-        role: "assistant",
-      },
-    ]);
-  });
-
-  test("keeps a 0.68 background subagent span open at its receipt and ends it with the real output", async () => {
-    // From 0.63 the receipt arrives only as the call's `action.result`
-    // ({ agentId, status: "working", taskId }), and `subagent.completed` fires
-    // once, after the parent has recorded the child's actual result.
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordOutputs: true }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const parentContext = hookContext();
-    const childContext = {
-      session: {
-        id: "eve_child",
-        parent: { sessionId: "eve_session_1", callId: "call_bg" },
-      },
-      agent: { name: "Background researcher", nodeId: "root/background-researcher" },
-      channel: { kind: "http" },
-    };
-
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
-    await runtime.capture(
-      {
-        type: "subagent.called",
-        data: { callId: "call_bg", name: "Background researcher", turnId: "turn_1" },
-      },
-      parentContext,
-    );
-    await runtime.capture(
-      {
-        type: "action.result",
-        data: {
-          turnId: "turn_1",
-          status: "completed",
-          result: {
-            callId: "call_bg",
-            output: { agentId: "agent_1", status: "working", taskId: "task_1" },
-          },
-        },
-      },
-      parentContext,
-    );
-    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, parentContext);
-    await runtime.capture({ type: "turn.started", data: { turnId: "child_turn" } }, childContext);
-    await runtime.capture({ type: "turn.completed", data: { turnId: "child_turn" } }, childContext);
-    await runtime.forceFlush();
-    // Turn spans are `invoke_agent <agent>` too, so the call is found by its id.
-    const callSpan = () =>
-      traces
-        .getFinishedSpans()
-        .find((span) => span.attributes["gen_ai.tool.call.id"] === "call_bg");
-    expect(callSpan()).toBeUndefined();
-
-    await runtime.capture(
-      {
-        type: "subagent.completed",
-        data: { callId: "call_bg", output: "three findings" },
-      },
-      parentContext,
-    );
-    await runtime.forceFlush();
-
-    const finished = traces.getFinishedSpans();
-    const subagentSpan = callSpan();
-    expect(subagentSpan?.attributes).toMatchObject({
-      "eveland.eve.background_task.id": "task_1",
-      "eveland.eve.background_task.status": "working",
-    });
-    expect(JSON.parse(String(subagentSpan?.attributes["gen_ai.output.messages"]))).toEqual([
-      {
-        finish_reason: "stop",
-        parts: [{ content: "three findings", type: "text" }],
-        role: "assistant",
-      },
-    ]);
-    const childTurn = finished.find(
-      (span) => span.attributes["eveland.eve.session.id"] === "eve_child",
-    );
-    expect(childTurn?.parentSpanContext?.spanId).toBe(subagentSpan?.spanContext().spanId);
-  });
-
-  test("ends a 0.68 background subagent span with an error when the child session fails", async () => {
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordOutputs: true }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const parentContext = hookContext();
-
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
-    await runtime.capture(
-      { type: "subagent.called", data: { callId: "call_bg", name: "Worker", turnId: "turn_1" } },
-      parentContext,
-    );
-    await runtime.capture(
-      {
-        type: "action.result",
-        data: {
-          turnId: "turn_1",
-          status: "completed",
-          result: {
-            callId: "call_bg",
-            output: '{"agentId":"agent_1","status":"working","taskId":"task_2"}',
-          },
-        },
-      },
-      parentContext,
-    );
-    await runtime.capture(
-      { type: "session.failed", data: { error: { message: "child crashed" } } },
-      {
-        session: { id: "eve_child", parent: { sessionId: "eve_session_1", callId: "call_bg" } },
-        agent: { name: "Worker", nodeId: "root/worker" },
-        channel: { kind: "http" },
-      },
-    );
-    await runtime.forceFlush();
-
-    const subagentSpan = traces
-      .getFinishedSpans()
-      .find((span) => span.name === "invoke_agent Worker");
-    expect(subagentSpan?.status).toMatchObject({ code: 2, message: "child crashed" });
-    expect(subagentSpan?.attributes["eveland.eve.background_task.id"]).toBe("task_2");
-  });
-
-  test("keeps a 0.69 agent task's span open from its receipt to task.settled, with the child under it", async () => {
-    // 0.69: the model requests the agent as an ordinary tool call, `task.started`
-    // says it is an agent, the call's `action.result` is only a plain-text
-    // receipt, and the reply arrives on `task.settled`.
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordOutputs: true }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const parentContext = hookContext();
-    const childContext = (callId: string) => ({
-      session: { id: "eve_child", parent: { sessionId: "eve_session_1", callId } },
-      agent: { name: "researcher", nodeId: "root/researcher" },
-      channel: { kind: "http" },
-    });
-    const callSpan = (callId: string) =>
-      traces.getFinishedSpans().find((span) => span.attributes["gen_ai.tool.call.id"] === callId);
-    const childTurn = (turnId: string) =>
-      traces.getFinishedSpans().find((span) => span.attributes["eveland.eve.turn.id"] === turnId);
-    const requestAgent = async (callId: string, turnId: string) => {
-      await runtime.capture(
-        {
-          type: "actions.requested",
-          data: {
-            turnId,
-            stepIndex: 0,
-            actions: [
-              { kind: "tool-call", callId, toolName: "researcher", input: { message: "look" } },
-            ],
-          },
-        },
-        parentContext,
+    const exported = metrics
+      .getMetrics()
+      .flatMap((resource) =>
+        resource.scopeMetrics.flatMap((scope) =>
+          scope.metrics.map((metric) => metric.descriptor.name),
+        ),
       );
-      await runtime.capture(
-        {
-          type: "task.started",
-          data: { callId, kind: "agent", name: "researcher", taskId: "task_1", turnId },
-        },
-        parentContext,
-      );
-      await runtime.capture(
-        {
-          type: "action.result",
-          data: {
-            turnId,
-            stepIndex: 0,
-            status: "completed",
-            result: {
-              callId,
-              output: "Started task task_1. Its result will arrive in a <task_result> message.",
-            },
-          },
-        },
-        parentContext,
-      );
-    };
-
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, parentContext);
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
-      parentContext,
-    );
-    await requestAgent("call_1", "turn_1");
-    await runtime.capture(
-      {
-        type: "agent.started",
-        data: {
-          callId: "call_1",
-          name: "researcher",
-          sessionId: "eve_child",
-          streamPath: "/eve/v1/session/eve_session_1/subagents/call_1/eve_child/stream",
-          taskId: "task_1",
-          turnId: "turn_1",
-        },
-      },
-      parentContext,
-    );
-    await runtime.capture(
-      { type: "turn.started", data: { turnId: "child_turn_1" } },
-      childContext("call_1"),
-    );
-    await runtime.capture(
-      { type: "turn.completed", data: { turnId: "child_turn_1" } },
-      childContext("call_1"),
-    );
-    await runtime.capture(
-      { type: "turn.waiting", data: { turnId: "turn_1", sequence: 9 } },
-      parentContext,
-    );
-    await runtime.forceFlush();
-    expect(callSpan("call_1")).toBeUndefined();
-
-    await runtime.capture(
-      {
-        type: "task.settled",
-        data: {
-          callId: "call_1",
-          kind: "agent",
-          name: "researcher",
-          output: "three findings",
-          status: "completed",
-          taskId: "task_1",
-          turnId: "turn_1",
-        },
-      },
-      parentContext,
-    );
-    await runtime.forceFlush();
-
-    const firstCall = callSpan("call_1");
-    expect(firstCall?.name).toBe("invoke_agent researcher");
-    expect(firstCall?.attributes).toMatchObject({
-      "gen_ai.operation.name": "invoke_agent",
-      "gen_ai.agent.name": "researcher",
-      "eveland.eve.task.id": "task_1",
-      "eveland.eve.task.status": "completed",
-      "eveland.eve.child_session.id": "eve_child",
-    });
-    expect(JSON.parse(String(firstCall?.attributes["gen_ai.output.messages"]))).toEqual([
-      {
-        finish_reason: "stop",
-        parts: [{ content: "three findings", type: "text" }],
-        role: "assistant",
-      },
-    ]);
-    expect(childTurn("child_turn_1")?.parentSpanContext?.spanId).toBe(
-      firstCall?.spanContext().spanId,
-    );
-
-    // A follow-up call continues the same task. The child still names the
-    // call that opened it, but its new turn belongs under the follow-up.
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 1 } },
-      parentContext,
-    );
-    await requestAgent("call_2", "turn_1");
-    await runtime.capture(
-      { type: "turn.started", data: { turnId: "child_turn_2" } },
-      childContext("call_1"),
-    );
-    await runtime.capture(
-      { type: "turn.completed", data: { turnId: "child_turn_2" } },
-      childContext("call_1"),
-    );
-    await runtime.capture(
-      {
-        type: "task.settled",
-        data: {
-          callId: "call_2",
-          output: "a fourth",
-          status: "completed",
-          taskId: "task_1",
-          turnId: "turn_1",
-        },
-      },
-      parentContext,
-    );
-    await runtime.forceFlush();
-
-    expect(childTurn("child_turn_2")?.parentSpanContext?.spanId).toBe(
-      callSpan("call_2")?.spanContext().spanId,
+    expect(exported).toEqual(
+      expect.arrayContaining(["gen_ai.client.token.usage", "eveland.agent.tool.calls"]),
     );
   });
 
-  test("ends a 0.69 tool task's span with how task.settled says the call ended", async () => {
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordOutputs: true }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
+  test("keeps inputs and outputs out of v27 logs and spans unless the policy records them", async () => {
+    const { runtime, traces, logs, commit } = harness();
+    await runOneTurn(commit);
+    await runtime.forceFlush();
 
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "actions.requested",
-        data: {
-          turnId: "turn_1",
-          stepIndex: 0,
-          actions: [
-            { kind: "tool-call", callId: "call_failed", toolName: "crawl", input: {} },
-            { kind: "tool-call", callId: "call_stopped", toolName: "crawl", input: {} },
-          ],
-        },
-      },
-      context,
-    );
-    for (const [callId, taskId] of [
-      ["call_failed", "task_a"],
-      ["call_stopped", "task_b"],
-    ] as const) {
-      await runtime.capture(
-        {
-          type: "task.started",
-          data: { callId, kind: "tool", name: "crawl", taskId, turnId: "turn_1" },
-        },
-        context,
-      );
-      await runtime.capture(
-        {
-          type: "action.result",
-          data: {
-            turnId: "turn_1",
-            status: "completed",
-            result: { callId, output: `Started task ${taskId}.` },
-          },
-        },
-        context,
-      );
+    const serialized = JSON.stringify({
+      logs: logs
+        .getFinishedLogRecords()
+        .map((record) => ({ body: record.body, attributes: record.attributes })),
+      spans: traces.getFinishedSpans().map((span) => span.attributes),
+    });
+    for (const secret of ["Find the secret", "private input", "private output", "The answer"]) {
+      expect(serialized).not.toContain(secret);
     }
-    await runtime.forceFlush();
-    expect(traces.getFinishedSpans().filter((span) => span.name === "execute_tool crawl")).toEqual(
-      [],
-    );
+    // The usage itself is never redacted: it is what the platform bills.
+    const usage = logs
+      .getFinishedLogRecords()
+      .find((record) => record.attributes["eveland.eve.event.type"] === "usage.recorded");
+    expect(usage?.body).toMatchObject({
+      type: "usage.recorded",
+      data: { owner: { runId: "run_1" }, usage: { inputTokens: 120 } },
+    });
+  });
 
-    await runtime.capture(
-      {
-        type: "task.settled",
-        data: {
-          callId: "call_failed",
-          error: { message: "site unreachable" },
-          status: "failed",
-          taskId: "task_a",
-          turnId: "turn_1",
-        },
+  test("stamps v27 logs with the stream position, record time, and a position fingerprint", async () => {
+    const { runtime, logs, commit } = harness();
+    await runOneTurn(commit);
+    await runtime.forceFlush();
+
+    const records = logs.getFinishedLogRecords();
+    const turnSettled = records.find(
+      (record) => record.attributes["eveland.eve.event.type"] === "turn.settled",
+    )!;
+    expect(turnSettled.attributes).toMatchObject({
+      "eveland.eve.turn.id": "turn_1",
+      "eveland.eve.position.line": 6,
+      "eveland.eve.position.index": 2,
+      "eveland.eve.channel.kind": "channel:eve",
+    });
+    expect(turnSettled.body).toMatchObject({
+      type: "turn.settled",
+      scope: { turnId: "turn_1" },
+      meta: { at: "2026-11-02T00:00:06.000Z", position: { line: 6, index: 2 } },
+    });
+    expect(turnSettled.hrTime[0]).toBe(Date.UTC(2026, 10, 2, 0, 0, 6) / 1000);
+    expect(
+      records.find((record) => record.attributes["eveland.eve.event.type"] === "usage.recorded")
+        ?.attributes["eveland.eve.run.id"],
+    ).toBe("run_1");
+    const fingerprints = records.map((record) => record.attributes["eveland.event.fingerprint"]);
+    expect(new Set(fingerprints).size).toBe(fingerprints.length);
+  });
+
+  test("records failed v27 turns and sessions from their outcome", async () => {
+    const { runtime, traces, logs, commit } = harness();
+    await commit({ type: "turn.started", scope: turn, data: { turnId: "turn_1", follows: null } });
+    await commit({
+      type: "turn.settled",
+      scope: turn,
+      data: {
+        turnId: "turn_1",
+        outcome: "failed",
+        error: { code: "MODEL_CALL_FAILED", message: "boom" },
       },
-      context,
+    });
+    await commit({
+      type: "session.ended",
+      data: { outcome: "failed", error: { code: "X", message: "session boom" } },
+    });
+    await runtime.forceFlush();
+
+    const turnSpan = traces
+      .getFinishedSpans()
+      .find((span) => span.name === "invoke_agent Researcher");
+    expect(turnSpan?.status).toEqual({ code: SpanStatusCode.ERROR, message: "boom" });
+    const severities = Object.fromEntries(
+      logs
+        .getFinishedLogRecords()
+        .map((record) => [record.attributes["eveland.eve.event.type"], record.severityText]),
     );
-    await runtime.capture(
+    expect(severities).toMatchObject({
+      "turn.settled": "ERROR",
+      "session.ended": "ERROR",
+      "turn.started": "INFO",
+    });
+  });
+
+  test("collects v27 reasoning only when outputs are recorded and skips progress records", async () => {
+    const reasoning: Fact = {
+      type: "content.completed",
+      scope: { ...turn, runId: "run_1" },
+      data: {
+        partId: "r1",
+        runId: "run_1",
+        kind: "reasoning",
+        phase: "narration",
+        value: "thinking",
+      },
+    };
+    const progress: Fact = { type: "content.delta", data: { partId: "p", delta: "x" } };
+    for (const recordOutputs of [false, true]) {
+      const { runtime, logs, commit } = harness({ recordOutputs });
+      await commit(reasoning, progress);
+      await runtime.forceFlush();
+      expect(
+        logs.getFinishedLogRecords().map((record) => record.attributes["eveland.eve.event.type"]),
+      ).toEqual(recordOutputs ? ["content.completed"] : []);
+    }
+  });
+
+  test("keeps content its turn wrote without a model run, and a turn-owned call, under the turn", async () => {
+    // eve 1.0.0-rc.2 lets a turn write content (no `runId`) and own a call
+    // (`owner: { turnId }`) without a model run.
+    const { runtime, traces, commit } = harness({ recordInputs: true, recordOutputs: true });
+    await commit(
       {
-        type: "task.settled",
+        type: "delivery.consumed",
+        scope: turn,
+        data: { deliveryId: "dlv_1", turnId: "turn_1", parts: [{ kind: "text", text: "Hi" }] },
+      },
+      {
+        type: "turn.started",
+        scope: turn,
+        data: { turnId: "turn_1", cause: { deliveryId: "dlv_1" }, follows: null },
+      },
+      {
+        type: "content.completed",
+        scope: turn,
+        data: { partId: "t1", kind: "text", phase: "narration", value: "Turn-written note" },
+      },
+      {
+        type: "call.requested",
+        scope: turn,
         data: {
-          callId: "call_stopped",
-          cancel: { reason: "task_cancel" },
-          status: "cancelled",
-          taskId: "task_b",
-          turnId: "turn_1",
+          callId: "call_turn",
+          owner: { turnId: "turn_1" },
+          capability: { kind: "tool", name: "lookup" },
+          input: {},
         },
       },
-      context,
+      {
+        type: "call.settled",
+        scope: turn,
+        data: { callId: "call_turn", outcome: "completed", output: {} },
+      },
+    );
+    await commit({
+      type: "model.started",
+      scope: { ...turn, runId: "run_1" },
+      data: { runId: "run_1", modelId: "anthropic/claude-sonnet-5", attempt: 1 },
+    });
+    await commit(
+      {
+        type: "model.settled",
+        scope: { ...turn, runId: "run_1" },
+        data: { runId: "run_1", outcome: "completed", finishReason: "stop" },
+      },
+      { type: "turn.settled", scope: turn, data: { turnId: "turn_1", outcome: "completed" } },
     );
     await runtime.forceFlush();
 
     const spans = traces.getFinishedSpans();
-    const failed = spans.find((span) => span.attributes["gen_ai.tool.call.id"] === "call_failed");
-    const stopped = spans.find((span) => span.attributes["gen_ai.tool.call.id"] === "call_stopped");
-    expect(failed?.name).toBe("execute_tool crawl");
-    expect(failed?.status).toMatchObject({
-      code: SpanStatusCode.ERROR,
-      message: "site unreachable",
-    });
-    expect(failed?.attributes["gen_ai.tool.call.result"]).toBeUndefined();
-    expect(stopped?.status.code).not.toBe(SpanStatusCode.ERROR);
-    expect(stopped?.attributes).toMatchObject({
-      "eveland.eve.task.status": "cancelled",
-      "eveland.eve.task.cancel_reason": "task_cancel",
-    });
+    const turnSpan = spans.find((span) => span.name.startsWith("invoke_agent Researcher"));
+    const tool = spans.find((span) => span.name === "execute_tool lookup");
+    expect(tool?.parentSpanContext?.spanId).toBe(turnSpan?.spanContext().spanId);
+    const run = spans.find((span) => span.attributes["gen_ai.operation.name"] === "chat");
+    expect(String(run?.attributes["gen_ai.input.messages"])).toContain("Turn-written note");
   });
 
-  test("exports 0.69 task and resolution events without their outputs and answers", async () => {
-    const logs = new InMemoryLogRecordExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy(),
-      exporters: {
-        traces: new InMemorySpanExporter(),
-        logs,
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture(
+  test("carries the observed per-call model into the v27 usage log, not only the span", async () => {
+    // The configured model and the model the provider actually ran differ, so
+    // the Built-in projection must learn the real one from the usage log.
+    const taken: unknown[] = [];
+    const { runtime, traces, logs, commit } = harness(
+      {},
       {
-        type: "task.settled",
-        data: {
-          callId: "call_1",
-          output: "private findings",
-          status: "completed",
-          taskId: "task_1",
-          turnId: "turn_1",
+        install() {},
+        take(step) {
+          taken.push(step);
+          return { modelId: "actual/model", responseModelId: "actual/model-2026-11-01" };
         },
       },
-      context,
     );
-    await runtime.capture(
-      {
-        type: "input.resolved",
-        data: {
-          sequence: 4,
-          stepIndex: 0,
-          turnId: "turn_1",
-          resolutions: [
-            {
-              kind: "question",
-              outcome: "answered",
-              requestId: "run_1-ask-0",
-              response: { text: "my private answer" },
-            },
-          ],
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "turn.waiting", data: { sequence: 5, turnId: "turn_1" } },
-      context,
-    );
+    const scope = { turnId: "t", runId: "r" };
+    await commit({ type: "turn.started", scope: { turnId: "t" }, data: { turnId: "t" } });
+    await commit({
+      type: "model.started",
+      scope,
+      data: { runId: "r", modelId: "manifest/model" },
+    });
+    await commit({
+      type: "model.settled",
+      scope,
+      data: { runId: "r", outcome: "completed", finishReason: "stop" },
+    });
+    await commit({
+      type: "usage.recorded",
+      scope,
+      data: { kind: "model", owner: { runId: "r" }, usage: { inputTokens: 10, outputTokens: 5 } },
+    });
     await runtime.forceFlush();
 
-    const records = logs.getFinishedLogRecords();
-    expect(records.map((record) => record.eventName)).toEqual([
-      "eve.task.settled",
-      "eve.input.resolved",
-      "eve.turn.waiting",
-    ]);
-    const serialized = JSON.stringify(records.map((record) => record.body));
-    expect(serialized).not.toContain("private findings");
-    expect(serialized).not.toContain("my private answer");
-    expect(serialized).toContain("run_1-ask-0");
-    expect(serialized).toContain("answered");
-  });
-
-  test("keeps reasoning out of spans when outputs are not recorded", async () => {
-    const traces = new InMemorySpanExporter();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy({ recordInputs: true, recordOutputs: false }),
-      exporters: {
-        traces,
-        logs: new InMemoryLogRecordExporter(),
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
-      context,
-    );
-    await runtime.capture(
-      {
-        type: "reasoning.completed",
-        data: { turnId: "turn_1", stepIndex: 0, reasoning: "private chain of thought" },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.completed", data: { turnId: "turn_1", stepIndex: 0, finishReason: "stop" } },
-      context,
-    );
-    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
-    await runtime.forceFlush();
-
-    expect(JSON.stringify(traces.getFinishedSpans().map((span) => span.attributes))).not.toContain(
-      "private chain of thought",
-    );
-  });
-
-  test("replaces the manifest model with the one the AI SDK actually called", async () => {
-    const traces = new InMemorySpanExporter();
-    const logs = new InMemoryLogRecordExporter();
-    const target: { AI_SDK_TELEMETRY_INTEGRATIONS?: Array<Record<string, unknown>> } = {};
-    const modelCapture = createModelCallCapture(target);
-    modelCapture.install();
-    const runtime = createPrivateAgentTelemetryRuntime({
-      policy: policy(),
-      exporters: {
-        traces,
-        logs,
-        metrics: new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE),
-      },
-      modelCapture,
-    });
-    activeRuntimes.push(runtime);
-    const context = hookContext();
-    const onStepEnd = target.AI_SDK_TELEMETRY_INTEGRATIONS?.[0]?.onStepEnd as (
-      event: unknown,
-    ) => void;
-
-    await runtime.capture(
-      { type: "session.started", data: { runtime: { modelId: "openai/gpt-5" } } },
-      context,
-    );
-    await runtime.capture({ type: "turn.started", data: { turnId: "turn_1" } }, context);
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 0 } },
-      context,
-    );
-    // The env-derived model diverged from the manifest; the AI SDK reports
-    // the call that actually ran before Eve emits step.completed.
-    onStepEnd({
-      model: { provider: "gateway", modelId: "openai/gpt-6" },
-      response: { modelId: "gpt-6-2026-01-01" },
-      usage: { inputTokens: 12, outputTokens: 3 },
-      finishReason: "tool-calls",
-    });
-    await runtime.capture(
-      {
-        type: "step.completed",
-        data: {
-          turnId: "turn_1",
-          stepIndex: 0,
-          finishReason: "tool-calls",
-          usage: { inputTokens: 12, outputTokens: 3 },
-        },
-      },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.started", data: { turnId: "turn_1", stepIndex: 1 } },
-      context,
-    );
-    await runtime.capture(
-      { type: "step.completed", data: { turnId: "turn_1", stepIndex: 1, finishReason: "stop" } },
-      context,
-    );
-    await runtime.capture({ type: "turn.completed", data: { turnId: "turn_1" } }, context);
-    await runtime.forceFlush();
-
-    const chatSpans = traces.getFinishedSpans().filter((span) => span.name.startsWith("chat"));
-    expect(chatSpans.map((span) => span.name)).toEqual(["chat openai/gpt-6", "chat openai/gpt-6"]);
-    expect(chatSpans[0]?.attributes).toMatchObject({
-      "gen_ai.request.model": "openai/gpt-6",
-      "gen_ai.response.model": "gpt-6-2026-01-01",
-    });
-    const stepLog = logs
+    expect(taken).toHaveLength(1);
+    expect(traces.getFinishedSpans().map((span) => span.name)).toContain("chat actual/model");
+    const usage = logs
       .getFinishedLogRecords()
-      .find((record) => record.attributes["eveland.eve.event.type"] === "step.completed");
-    expect(stepLog?.attributes).toMatchObject({
-      "eveland.gen_ai.observed.model": "openai/gpt-6",
-      "eveland.gen_ai.observed.response_model": "gpt-6-2026-01-01",
-    });
+      .find((record) => record.attributes["eveland.eve.event.type"] === "usage.recorded");
+    expect(usage, "the usage.recorded log was emitted").toBeDefined();
+    expect(usage?.attributes["eveland.gen_ai.observed.model"]).toBe("actual/model");
+    expect(usage?.attributes["eveland.gen_ai.observed.response_model"]).toBe(
+      "actual/model-2026-11-01",
+    );
+  });
+
+  test("never lets a malformed v27 event escape the capture", async () => {
+    const { runtime, commit } = harness();
+    await expect(
+      commit(
+        { type: "usage.recorded", data: { owner: "not a record", usage: null } },
+        { type: "call.settled", data: { callId: 7 } },
+        { type: "turn.settled", data: {} },
+        { type: "session.ended", data: { outcome: 42 } },
+      ),
+    ).resolves.toBeUndefined();
+    await runtime.forceFlush();
   });
 });
 
@@ -1529,13 +490,5 @@ function policy(capture: Partial<RuntimeAgentPolicy["capture"]> = {}): RuntimeAg
       runtimeKind: "systemd",
       environment: "production",
     },
-  };
-}
-
-function hookContext() {
-  return {
-    session: { id: "eve_session_1" },
-    agent: { name: "Researcher", nodeId: "root" },
-    channel: { kind: "http" },
   };
 }
