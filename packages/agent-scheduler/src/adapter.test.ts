@@ -807,6 +807,64 @@ describe("injectExtensionSchedules", () => {
     expect(channel).toContain("../../node_modules/@acme/crm/dist/extension/schedules/report");
   });
 
+  test("reads Extension schedules from v16 mount manifests' sources", async () => {
+    const releaseDir = await fixture({
+      eveVersion: "1.0.0-rc.5",
+      files: {
+        "node_modules/@acme/crm/package.json": JSON.stringify({
+          name: "@acme/crm",
+          type: "module",
+        }),
+        "node_modules/@acme/crm/dist/extension/schedules/sync.mjs":
+          'export default { cron: "0 2 * * *", async run() {} };',
+        "node_modules/@acme/crm/dist/extension/schedules/report.md":
+          '---\ncron: "0 3 * * *"\n---\nProduce the extension report.\n',
+        "agent/extensions/crm/schedules/sync.ts":
+          'export default { cron: "30 2 * * *", async run() {} };',
+      },
+    });
+    await injectSchedulerAdapter({ releaseDir });
+    const extensionRoot = path.join(releaseDir, "node_modules/@acme/crm/dist/extension");
+    const v15 = extensionDiscoveryManifest({
+      releaseDir,
+      extensionRoot,
+      schedules: ["schedules/sync.mjs", "schedules/report.md"],
+      overrideSchedules: ["schedules/sync.ts"],
+    });
+    // v16 lists every authored source in one `sources` array instead of one
+    // array per kind; a mount's tools sit beside its schedules there.
+    const toSources = ({
+      schedules,
+      ...manifest
+    }: {
+      schedules: Array<{ logicalPath: string }>;
+    }) => ({
+      ...manifest,
+      version: 16,
+      sources: [{ logicalPath: "tools/lookup.ts" }, ...schedules],
+    });
+    const [mount] = v15.resolvedExtensions;
+
+    const result = await injectExtensionSchedules({
+      releaseDir,
+      manifest: {
+        ...toSources(v15),
+        resolvedExtensions: [
+          {
+            ...mount!,
+            manifest: toSources(mount!.manifest),
+            overrides: toSources(mount!.overrides!),
+          },
+        ],
+      },
+    });
+
+    expect(result.definitions.map(({ key, cron }) => ({ key, cron }))).toEqual([
+      { key: "crm__report", cron: "0 3 * * *" },
+      { key: "crm__sync", cron: "30 2 * * *" },
+    ]);
+  });
+
   test("rejects Extension source paths outside the disposable Release", async () => {
     const releaseDir = await fixture({ eveVersion: "1.0.0-rc.2", files: {} });
     await injectSchedulerAdapter({ releaseDir });

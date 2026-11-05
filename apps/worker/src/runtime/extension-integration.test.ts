@@ -22,7 +22,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-test("builds Extension schedules and observed Extension subagents with the real Eve 0.44 compiler", async () => {
+test("builds Extension schedules and observed Extension subagents with the real Eve compiler", async () => {
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-release-"));
   roots.push(releaseDir);
   const extensionPackageRoot = path.join(releaseDir, "packages/crm");
@@ -93,7 +93,8 @@ test("builds Extension schedules and observed Extension subagents with the real 
       manifest: {
         subagents: Array<{
           subagentId: string;
-          manifest: { hooks: Array<{ logicalPath: string }> };
+          // Discovery manifest v16 lists hooks among every authored source.
+          manifest: { sources: Array<{ logicalPath: string }> };
         }>;
       };
     }>;
@@ -101,7 +102,7 @@ test("builds Extension schedules and observed Extension subagents with the real 
   expect(
     finalManifest.resolvedExtensions[0]?.manifest.subagents
       .find((subagent) => subagent.subagentId === "reviewer")
-      ?.manifest.hooks.map((hook) => hook.logicalPath),
+      ?.manifest.sources.map((source) => source.logicalPath),
   ).toContain("hooks/eveland-observer.js");
 
   const runtimePort = await availablePort();

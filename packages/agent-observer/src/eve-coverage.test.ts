@@ -107,27 +107,28 @@ describe("Eve observer hook compatibility matrix", () => {
         const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
           artifacts: { discoveryManifest: string };
         };
+        // v16 (eve 1.0.0-rc.3+) lists every authored source in one `sources`
+        // array; a source's slot is the first segment of its logical path.
+        type Source = { logicalPath: string; [field: string]: unknown };
         const manifest = JSON.parse(await readFile(info.artifacts.discoveryManifest, "utf8")) as {
-          connections: Array<{ connectionName: string; logicalPath: string }>;
-          hooks: Array<{ logicalPath: string }>;
-          skills: Array<{ name: string; logicalPath: string; sourceKind: string }>;
-          subagents: Array<{
-            subagentId: string;
-            manifest: {
-              connections: Array<{ connectionName: string; logicalPath: string }>;
-              hooks: Array<{ logicalPath: string }>;
-            };
-          }>;
+          version: number;
+          sources: Source[];
+          subagents: Array<{ subagentId: string; manifest: { sources: Source[] } }>;
         };
+        expect(manifest.version).toBe(16);
+        const inSlot = (sources: Source[] | undefined, slot: string) =>
+          (sources ?? []).filter((source) => source.logicalPath.split("/", 1)[0] === slot);
 
-        expect(manifest.connections).toContainEqual(
+        expect(inSlot(manifest.sources, "connections")).toContainEqual(
           expect.objectContaining({
             connectionName: "warehouse",
             logicalPath: "connections/warehouse.ts",
           }),
         );
-        expect(manifest.hooks.map((hook) => hook.logicalPath)).toContain("hooks/root-observer.ts");
-        expect(manifest.skills).toContainEqual(
+        expect(inSlot(manifest.sources, "hooks").map((hook) => hook.logicalPath)).toContain(
+          "hooks/root-observer.ts",
+        );
+        expect(inSlot(manifest.sources, "skills")).toContainEqual(
           expect.objectContaining({
             name: "compatibility",
             logicalPath: "skills/compatibility/SKILL.md",
@@ -139,28 +140,19 @@ describe("Eve observer hook compatibility matrix", () => {
           "file-child",
           "remote-child",
         ]);
-        expect(
-          manifest.subagents
-            .find((subagent) => subagent.subagentId === "directory-child")
-            ?.manifest.hooks.map((hook) => hook.logicalPath),
-        ).toContain("hooks/child-observer.ts");
-        expect(
-          manifest.subagents.find((subagent) => subagent.subagentId === "directory-child")?.manifest
-            .connections,
-        ).toContainEqual(
+        const child = (id: string) =>
+          manifest.subagents.find((subagent) => subagent.subagentId === id)?.manifest.sources;
+        expect(inSlot(child("directory-child"), "hooks").map((hook) => hook.logicalPath)).toContain(
+          "hooks/child-observer.ts",
+        );
+        expect(inSlot(child("directory-child"), "connections")).toContainEqual(
           expect.objectContaining({
             connectionName: "research",
             logicalPath: "connections/research.ts",
           }),
         );
-        expect(
-          manifest.subagents.find((subagent) => subagent.subagentId === "file-child")?.manifest
-            .hooks ?? [],
-        ).toEqual([]);
-        expect(
-          manifest.subagents.find((subagent) => subagent.subagentId === "remote-child")?.manifest
-            .hooks ?? [],
-        ).toEqual([]);
+        expect(inSlot(child("file-child"), "hooks")).toEqual([]);
+        expect(inSlot(child("remote-child"), "hooks")).toEqual([]);
 
         // The platform's build-time summary projection must understand every
         // matrix version's real manifest -- this is the drift guard for
