@@ -4,6 +4,19 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.68.0](https://github.com/evelandhq/eveland/compare/v0.67.0...v0.68.0) (2026-11-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* Agents built against eve 0.83.x are no longer supported; upgrade them to eve 1.0.x and rebuild.
+
+### Features
+
+* move the verified eve 1.0 patch to 1.0.0-rc.5 and workflow-world 0.29.0 ([#627](https://github.com/evelandhq/eveland/issues/627)) ([0f86312](https://github.com/evelandhq/eveland/commit/0f86312aed502cf50d52d27ef43ecd2068ff3186))
+* retire eve 0.83 and the v26 session protocol, narrowing the window to 1.0.x ([#624](https://github.com/evelandhq/eveland/issues/624)) ([2e2f6af](https://github.com/evelandhq/eveland/commit/2e2f6afc70a635007bae7ea424d65d707b3edbdc))
+* run eve sessions on spec 9 with workflow-world 0.30.0 ([#628](https://github.com/evelandhq/eveland/issues/628)) ([777a40a](https://github.com/evelandhq/eveland/commit/777a40a365574b87538dd5028babcc51d6d69877))
+
 ## [0.67.0](https://github.com/evelandhq/eveland/compare/v0.66.2...v0.67.0) (2026-11-03)
 
 
