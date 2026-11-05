@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.0](https://github.com/evelandhq/eveland/compare/eveland-v0.22.0...eveland-v0.23.0) (2026-11-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* Agents built against eve 0.83.x are no longer supported; upgrade them to eve 1.0.x and rebuild.
+
+### Features
+
+* move the verified eve 1.0 patch to 1.0.0-rc.5 and workflow-world 0.29.0 ([#627](https://github.com/evelandhq/eveland/issues/627)) ([0f86312](https://github.com/evelandhq/eveland/commit/0f86312aed502cf50d52d27ef43ecd2068ff3186))
+* retire eve 0.83 and the v26 session protocol, narrowing the window to 1.0.x ([#624](https://github.com/evelandhq/eveland/issues/624)) ([2e2f6af](https://github.com/evelandhq/eveland/commit/2e2f6afc70a635007bae7ea424d65d707b3edbdc))
+
 ## [0.22.0](https://github.com/evelandhq/eveland/compare/eveland-v0.21.0...eveland-v0.22.0) (2026-11-03)
 
 
