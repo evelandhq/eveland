@@ -26,7 +26,7 @@ export const PLATFORM_WORKFLOW_WORLD = {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "0.29.0",
+  packageVersion: "0.30.0",
 } as const;
 
 export type WorkflowWorldBuildConfig = {
@@ -41,9 +41,15 @@ export type WorkflowWorldBuildConfig = {
  * contract suite asserts the spec against what the installed package's dist
  * actually declares.
  *
- * Since 0.27.0 the World declares `mintedSpecVersion()` outright: hook
- * force-claim (8) by default, or slot identity (6) for a Deployment that opts
- * out with `WORKFLOW_SEALED_LOG=0`. 8 is the reader contract for another run's
+ * From 0.30.0 the World declares `mintedSpecVersion(env, { inBandFence: true })`:
+ * the single orchestrator (9) under eve 1.0, which sets
+ * `WORKFLOW_SPEC_VERSION=9` unless the Deployment sets it or
+ * `WORKFLOW_SEALED_LOG` itself; the World implements the in-band writer fence
+ * spec 9 runs need. 0.27.0 through 0.29.0 declared `mintedSpecVersion()`
+ * outright: hook force-claim (8) by default, or slot identity (6) for a
+ * Deployment that opts out with `WORKFLOW_SEALED_LOG=0`. A 0.30.0 Release on
+ * eve 1.0.0-rc.1 or rc.2, which do not ask for spec 9, mints 8 under an
+ * attestation of 9; both are admitted, so the gate is unaffected. 8 is the reader contract for another run's
  * `createHook({ experimental_force: true })` taking a token over, which the
  * World implements from 0.27.0 (`capabilities.hookForceClaim`) and eve 0.81.1
  * and later need before they move a session to a fresh run. 0.18.0 through 0.26.x
@@ -55,7 +61,8 @@ export type WorkflowWorldBuildConfig = {
  * `SUPPORTED_WORKFLOW_STORAGE_SPECS`; the attestation records the default the
  * Release's World mints.
  */
-const EVELAND_WORKFLOW_WORLD_STORAGE_SPEC = 8;
+const EVELAND_WORKFLOW_WORLD_STORAGE_SPEC = 9;
+const HOOK_FORCE_CLAIM_WORKFLOW_STORAGE_SPEC = 8;
 const SEALED_LOG_WORKFLOW_STORAGE_SPEC = 7;
 const SLOT_IDENTITY_WORKFLOW_STORAGE_SPEC = 6;
 const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = 1;
@@ -70,7 +77,8 @@ const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = 1;
  * `wfrun:<tenant>:<run>` queue since 0.5.0 (3f0f483), so an earlier shared
  * artifact attests `unscoped` and is managed-terminated rather than resumed.
  * The legacy world never scoped its jobs. The storage spec is a version fact
- * too: shared builds declare hook force-claim (8) from 0.27.0, the sealed log
+ * too: shared builds declare the single orchestrator (9) from 0.30.0, hook
+ * force-claim (8) from 0.27.0, the sealed log
  * (7) from 0.18.0, and slot identity (6) from 0.5.0, while the legacy world is
  * 6 throughout.
  */
@@ -81,17 +89,20 @@ export function deriveWorkflowWorldAttestation(
     const perRunQueue = sharedWorldVersionAtLeast(config.packageVersion, 0, 5);
     const sealedLog = sharedWorldVersionAtLeast(config.packageVersion, 0, 18);
     const hookForceClaim = sharedWorldVersionAtLeast(config.packageVersion, 0, 27);
+    const singleOrchestrator = sharedWorldVersionAtLeast(config.packageVersion, 0, 30);
     return {
       worldKind: "shared",
       worldPackage: config.packageName,
       worldVersion: config.packageVersion,
-      storageSpec: hookForceClaim
+      storageSpec: singleOrchestrator
         ? EVELAND_WORKFLOW_WORLD_STORAGE_SPEC
-        : sealedLog
-          ? SEALED_LOG_WORKFLOW_STORAGE_SPEC
-          : perRunQueue
-            ? SLOT_IDENTITY_WORKFLOW_STORAGE_SPEC
-            : 5,
+        : hookForceClaim
+          ? HOOK_FORCE_CLAIM_WORKFLOW_STORAGE_SPEC
+          : sealedLog
+            ? SEALED_LOG_WORKFLOW_STORAGE_SPEC
+            : perRunQueue
+              ? SLOT_IDENTITY_WORKFLOW_STORAGE_SPEC
+              : 5,
       dispatchProtocol: perRunQueue ? EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL : null,
       enqueueCapability: perRunQueue ? "per_run_queue_v1" : "unscoped",
     };

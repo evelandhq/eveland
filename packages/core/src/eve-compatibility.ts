@@ -47,9 +47,10 @@ export const EVE_COMPATIBILITY_POLICY = {
   // 1.0.8, whose graceful-shutdown plugin keeps 1.0.3's behavior); `eve start`
   // SIGKILLs its server 25 seconds after SIGTERM instead of 20, which the
   // Deployment stop timeout now clears; and the bundled Workflow runtime, core
-  // 5.4.0 / world 5.1.0, which `@evelandhq/workflow-world` 0.29.0 pins. eve
-  // 1.0 asks for spec 9 runs, which need an in-band writer fence the World does
-  // not declare yet, so new runs stay on spec 8. Agent-facing only: the code
+  // 5.4.0 / world 5.1.0, which `@evelandhq/workflow-world` 0.29.0 pinned
+  // first. From rc.3 eve asks for spec 9 (single-orchestrator) runs, which
+  // the World serves from 0.30.0 with an in-band writer fence; 0.29.0 kept
+  // them on spec 8. Agent-facing only: the code
   // extension drops `code__grep`, `code__worker` (rc.3) and
   // `code__apply_patch` (rc.4), every agent gets a default `edit_file`, and a
   // failed `bash` result ends with `[exit code: N]`.
@@ -75,8 +76,9 @@ export const EVE_COMPATIBILITY_POLICY = {
   // - The sandbox provider contract names the abort signal `signal` and has
   //   optional spawn `stdin`; `@evelandhq/sandbox-bwrap` reads both.
   // - The bundled Workflow set is core 5.4.0, world 5.1.0 (core 5.2.3, world
-  //   5.0.5 on rc.1 and rc.2), spec 6-8 as the World declares it, which
-  //   `@evelandhq/workflow-world` 0.29.0 pins. From 0.76.1 eve treats a World
+  //   5.0.5 on rc.1 and rc.2), spec 9 as the World declares it under rc.3+
+  //   (8 on rc.1 and rc.2), which `@evelandhq/workflow-world` 0.30.0 pins and
+  //   serves with an in-band writer fence. From 0.76.1 eve treats a World
   //   that does not declare `capabilities.deploymentAffinity` as running one
   //   eve version at a time, and from 0.81.1 a session moves to a fresh run
   //   only when the World declares `capabilities.hookForceClaim`; the shared

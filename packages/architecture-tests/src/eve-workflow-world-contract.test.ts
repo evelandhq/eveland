@@ -165,41 +165,53 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
  * force-claim reader contract, and eve 0.62.0's runtime refused a World above
  * 7 at startup. 0.27.0 implements force-claim (`capabilities.hookForceClaim`,
  * which eve 0.81.1's session handoff needs) and declares `mintedSpecVersion()`
- * outright again -- 8 -- which every line in the window reads. eve gates on
- * the declared number, so every range check below has to use this one.
+ * outright again -- 8. 0.30.0 implements the in-band writer fence spec 9
+ * (single-orchestrator) runs need and declares
+ * `mintedSpecVersion(env, { inBandFence: true })` through `worldSpecVersion`,
+ * which is 9 under eve 1.0: eve sets `WORKFLOW_SPEC_VERSION=9` in every
+ * Deployment that sets neither it nor `WORKFLOW_SEALED_LOG`. eve gates on the
+ * declared number, so every range check below has to use this one.
  *
- * The wiring is verified in the dist — one `mintedSpecVersion()` call bound to
- * the `specVersion` the World object carries, and nothing else naming it — and
- * the value comes from the `@workflow/world` the World itself resolves, called
- * with an empty environment so the host running these tests cannot opt out on
- * the World's behalf.
+ * The wiring is verified in the dist — one `worldSpecVersion()` call bound to
+ * the `specVersion` the World object carries, which calls `mintedSpecVersion`
+ * with the fence declared — and the value comes from the `@workflow/world` the
+ * World itself resolves, called with the environment eve gives a Deployment
+ * (only its `WORKFLOW_SPEC_VERSION=9` default) so the host running these
+ * tests cannot change the answer on the World's behalf.
  */
 function declaredWorldSpecVersion(): number {
   const source = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
-  const bound = [...source.matchAll(/const specVersion = mintedSpecVersion\(\);/g)];
+  const storage = readFileSync(path.join(worldRoot, "dist/storage.js"), "utf8");
+  const bound = [...source.matchAll(/const specVersion = worldSpecVersion\(\);/g)];
   const carried = [...source.matchAll(/^\s*specVersion,$/gm)];
+  const minted = [
+    ...storage.matchAll(/return mintedSpecVersion\(env, \{ inBandFence: true \}\);/g),
+  ];
   // Exactly one of each, or this is reading the wrong site: a second binding
   // or carrier would make "the first match" an arbitrary choice, and silently
   // answering for the wrong one is worse than failing here.
-  if (bound.length !== 1 || carried.length !== 1) {
+  if (bound.length !== 1 || carried.length !== 1 || minted.length !== 1) {
     throw new Error(
-      `expected the World's dist to bind specVersion to mintedSpecVersion() once and carry it once, found ${String(bound.length)} binding(s) and ${String(carried.length)} carrier(s)`,
+      `expected the World's dist to bind specVersion to worldSpecVersion() once, carry it once, and mint with the in-band fence once, found ${String(bound.length)} binding(s), ${String(carried.length)} carrier(s) and ${String(minted.length)} mint(s)`,
     );
   }
   const { mintedSpecVersion } = require(
     require.resolve("@workflow/world", { paths: [worldRoot] }),
   ) as {
-    mintedSpecVersion?: (env?: Record<string, string | undefined>) => number;
+    mintedSpecVersion?: (
+      env?: Record<string, string | undefined>,
+      options?: { inBandFence?: boolean },
+    ) => number;
   };
   if (typeof mintedSpecVersion !== "function") {
     throw new Error("@workflow/world does not export mintedSpecVersion()");
   }
-  return mintedSpecVersion({});
+  return mintedSpecVersion({ WORKFLOW_SPEC_VERSION: "9" }, { inBandFence: true });
 }
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.29.0");
+    expect(worldManifest.version).toBe("0.30.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and
@@ -225,9 +237,10 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     // reads (1.0 accepts 6 through 8); 0.23.0 through 0.26.x
     // declared 7. The legacy World stays on slot identity. Moving the declared
     // number is an eve-window decision, not a lockfile outcome — every line in
-    // the window must read what new Releases stamp.
+    // the window must read what new Releases stamp. 0.30.0 stamps 9 under eve
+    // 1.0, whose runtime reads 6 through 9 from 1.0.0-rc.3.
     expect(sharedSpecVersion).toBe(8);
-    expect(declaredWorldSpecVersion()).toBe(8);
+    expect(declaredWorldSpecVersion()).toBe(9);
     expect(postgresSpecVersion).toBe(6);
   });
 
@@ -459,7 +472,12 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     const worldSource = walkJsFiles(path.join(worldRoot, "dist"))
       .map((file) => readFileSync(file, "utf8"))
       .join("\n");
-    for (const header of ["x-vqs-queue-name", "x-vqs-message-id", "x-vqs-message-attempt"]) {
+    for (const header of [
+      "x-vqs-queue-name",
+      "x-vqs-message-id",
+      "x-vqs-message-attempt",
+      "x-vqs-message-delivery-count",
+    ]) {
       expect(parserSource, `world-local no longer parses ${header}`).toContain(header);
       expect(worldSource, `the world no longer names ${header}`).toContain(header);
     }
