@@ -769,28 +769,47 @@ async function atomicWriteFile(target: string, content: string): Promise<void> {
 function readResolvedExtensionMounts(manifest: unknown): ResolvedExtensionScheduleMount[] {
   if (!isRecord(manifest)) throw new Error("Expected an Eve discovery manifest object.");
   if (manifest.resolvedExtensions === undefined) return [];
-  if (
-    !Array.isArray(manifest.resolvedExtensions) ||
-    !manifest.resolvedExtensions.every(isResolvedExtensionScheduleMount)
-  ) {
+  const mounts = Array.isArray(manifest.resolvedExtensions)
+    ? manifest.resolvedExtensions.map(readResolvedExtensionScheduleMount)
+    : [];
+  if (!Array.isArray(manifest.resolvedExtensions) || mounts.includes(undefined)) {
     throw new Error("Expected well-formed resolvedExtensions in the Eve discovery manifest.");
   }
-  return manifest.resolvedExtensions;
+  return mounts as ResolvedExtensionScheduleMount[];
 }
 
-function isResolvedExtensionScheduleMount(value: unknown): value is ResolvedExtensionScheduleMount {
-  if (!isRecord(value) || typeof value.namespace !== "string" || !value.namespace) return false;
-  if (!isExtensionScheduleManifest(value.manifest)) return false;
-  return value.overrides === undefined || isExtensionScheduleManifest(value.overrides);
+function readResolvedExtensionScheduleMount(
+  value: unknown,
+): ResolvedExtensionScheduleMount | undefined {
+  if (!isRecord(value) || typeof value.namespace !== "string" || !value.namespace) return undefined;
+  const manifest = readExtensionScheduleManifest(value.manifest);
+  if (!manifest) return undefined;
+  if (value.overrides === undefined) return { namespace: value.namespace, manifest };
+  const overrides = readExtensionScheduleManifest(value.overrides);
+  return overrides ? { namespace: value.namespace, manifest, overrides } : undefined;
 }
 
-function isExtensionScheduleManifest(value: unknown): value is ExtensionScheduleManifest {
-  return (
-    isRecord(value) &&
-    typeof value.agentRoot === "string" &&
-    Array.isArray(value.schedules) &&
-    value.schedules.every((entry) => isRecord(entry) && typeof entry.logicalPath === "string")
+/**
+ * A mount manifest's schedules. Discovery manifest v16 (eve 1.0.0-rc.3+) lists
+ * every authored source in one `sources` array, whose slot is the first
+ * segment of its logical path, where v15 had a `schedules` array; the other
+ * sources (a mount's tools, connections and so on) are not this adapter's.
+ */
+function readExtensionScheduleManifest(value: unknown): ExtensionScheduleManifest | undefined {
+  if (!isRecord(value) || typeof value.agentRoot !== "string") return undefined;
+  const entries = Array.isArray(value.sources) ? value.sources : value.schedules;
+  if (
+    !Array.isArray(entries) ||
+    !entries.every((entry) => isRecord(entry) && typeof entry.logicalPath === "string")
+  ) {
+    return undefined;
+  }
+  const schedules = (entries as Array<{ logicalPath: string }>).filter(
+    (entry) =>
+      !Array.isArray(value.sources) ||
+      entry.logicalPath.replaceAll("\\", "/").split("/", 1)[0] === "schedules",
   );
+  return { agentRoot: value.agentRoot, schedules };
 }
 
 function mergeExtensionScheduleSources(mount: ResolvedExtensionScheduleMount): Array<{

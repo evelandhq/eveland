@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const eveLines = [{ name: "eve (1.0.x)", root: "packages/agent-scheduler/node_modules/eve" }];
 const worldPackageRoot = path.join(repoRoot, "apps/worker/node_modules/@evelandhq/workflow-world");
-const worldConfig = { packageName: "@evelandhq/workflow-world", packageVersion: "0.28.0" };
+const worldConfig = { packageName: "@evelandhq/workflow-world", packageVersion: "0.29.0" };
 const roots: string[] = [];
 
 afterEach(async () => {

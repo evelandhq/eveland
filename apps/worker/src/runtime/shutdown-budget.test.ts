@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   DEPLOYMENT_STOP_TIMEOUT_SECONDS,
   EVE_START_FORCED_KILL_SECONDS,
+  EVE_START_LONGEST_FORCED_KILL_SECONDS,
   resolveDeploymentShutdownTimeoutSeconds,
 } from "./shutdown-budget.js";
 
@@ -40,8 +41,12 @@ describe("resolveDeploymentShutdownTimeoutSeconds", () => {
     ).toThrow(/positive safe integer/);
   });
 
-  test("the unit's stop timeout outlasts every inner layer", () => {
-    // Otherwise systemd, not the drain, decides when a Deployment dies.
-    expect(DEPLOYMENT_STOP_TIMEOUT_SECONDS).toBeGreaterThan(EVE_START_FORCED_KILL_SECONDS);
+  test("the unit's stop timeout outlasts every inner layer of every release in the window", () => {
+    // Otherwise systemd, not the drain, decides when a Deployment dies. eve
+    // 1.0.0-rc.3 raised `eve start`'s forced kill from 20 to 25 seconds, and
+    // the window still holds releases on both.
+    expect(EVE_START_LONGEST_FORCED_KILL_SECONDS).toBe(25);
+    expect(EVE_START_FORCED_KILL_SECONDS).toBe(20);
+    expect(DEPLOYMENT_STOP_TIMEOUT_SECONDS).toBeGreaterThan(EVE_START_LONGEST_FORCED_KILL_SECONDS);
   });
 });

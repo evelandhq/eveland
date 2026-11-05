@@ -10,7 +10,12 @@
  * 0.55.0 on 2026-09-15, for 0.56.0 on 2026-09-16, and again for 0.57.0 and
  * 0.58.0 and 0.58.1 on 2026-09-17, for 0.62.0 on 2026-09-19, and for 0.64.1
  * and 0.65.0 on 2026-09-23, for 0.66.0 and 0.66.1 on 2026-09-24, for 0.67.0 on 2026-09-26, for 0.68.0 on 2026-09-29, for 0.69.0 on 2026-10-02, for 0.70.0 the same day, for 0.72.1 on 2026-10-07, for 0.73.0 and 0.74.0 on 2026-10-08, for 0.75.0 and 0.75.1 on 2026-10-09, for 0.76.0 on 2026-10-10, for 0.79.0 on 2026-10-14, for 0.81.1 on 2026-10-21, for 0.83.3 on 2026-10-27, for 1.0.0-rc.1 on 2026-11-02, and for 1.0.0-rc.2 on 2026-11-03 (the nitro and srvx pins did not move, and `eve start` still
- * SIGKILLs its child after 20 seconds), so every number below still holds:
+ * SIGKILLs its child after 20 seconds), and for 1.0.0-rc.5 on 2026-11-05:
+ * from 1.0.0-rc.3, `eve start` waits 25 seconds before its SIGKILL, and
+ * nitro 3.0.261103-rc pulls in srvx 1.0.8, whose graceful-shutdown plugin
+ * keeps 1.0.3's behavior (only its error-handler wrapper changed). The
+ * window holds releases on both forced-kill delays, so the drain budget stays
+ * below the shorter one and the stop timeout clears the longer one:
  *
  * 1. The systemd unit. SIGTERM reaches the whole cgroup, so the
  *    `sh -lc` -> `npx` -> node wrapper chain does not swallow it, and the unit
@@ -42,13 +47,17 @@
  */
 
 /**
- * `eve start` SIGKILLs the built server this long after passing SIGTERM on.
- * A drain budget at or above it would never be reached.
+ * The shortest delay after which `eve start` SIGKILLs the built server once it
+ * has passed SIGTERM on, across the window: 1.0.0-rc.1 and rc.2 wait 20
+ * seconds. A drain budget at or above it would never be reached on those.
  */
 export const EVE_START_FORCED_KILL_SECONDS = 20;
 
+/** The longest such delay across the window: 25 seconds from 1.0.0-rc.3. */
+export const EVE_START_LONGEST_FORCED_KILL_SECONDS = 25;
+
 /** Comfortably past the point where every inner layer has given up. */
-export const DEPLOYMENT_STOP_TIMEOUT_SECONDS = EVE_START_FORCED_KILL_SECONDS + 10;
+export const DEPLOYMENT_STOP_TIMEOUT_SECONDS = EVE_START_LONGEST_FORCED_KILL_SECONDS + 10;
 
 const defaultShutdownTimeoutSeconds = 15;
 

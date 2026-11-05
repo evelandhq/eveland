@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 1.0.0-rc.2
+  eve: 1.0.0-rc.5
 catalogs:
   # The published SDK's contract is narrower than the platform's. It imports
   # four primitives from eve/channels/auth, stable across 0.27-0.40, while the
@@ -66,10 +66,14 @@ peerDependencyRules:
 # The @workflow/* entries are TWO reviewed graphs that coexist on purpose.
 # `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
-# before the shared World and never selected for a new build. The 5.2
-# family's patch set (world/errors 5.0.5, world-local 5.1.2, utils 5.0.2) is
-# what `@evelandhq/workflow-world` 0.28.0 pins -- the set eve moved to at
-# 0.83.0 (core 5.2.3). 0.25.0 through 0.27.0 pinned the earlier patches
+# before the shared World and never selected for a new build. The Workflow
+# 5.4 set (world/errors 5.1.0, world-local 5.2.1, utils 5.0.2) is what
+# `@evelandhq/workflow-world` 0.29.0 pins -- the set eve 1.0.0-rc.5 bundles
+# (core 5.4.0; rc.3 had moved to world 5.1.0). World 5.1.0 adds only optional
+# capabilities, none of which 0.29.0 declares, so its runs stay on spec 8.
+# 0.28.0 pinned the 5.2 family's patch set (world/errors 5.0.5, world-local
+# 5.1.2), the set eve moved to at 0.83.0 (core 5.2.3) and 1.0.0-rc.1 and rc.2
+# bundle. 0.25.0 through 0.27.0 pinned the earlier patches
 # (world/errors 5.0.3, world-local 5.1.0, utils 5.0.1), the set eve moved to
 # at 0.75.1 and 0.76.0 through 0.82.0 bundle (core 5.2.0), with the same World
 # calls; before it, 0.70.2 moved
@@ -100,8 +104,8 @@ minimumReleaseAgeExclude:
   - ai@7.0.105
   # pnpm applies only the FIRST entry whose name matches a package, so a
   # package needed at several versions takes one entry with a version union.
-  - "@workflow/errors@5.0.0-beta.17 || 5.0.3 || 5.0.5"
+  - "@workflow/errors@5.0.0-beta.17 || 5.0.3 || 5.0.5 || 5.1.0"
   - "@workflow/utils@5.0.0-beta.8 || 5.0.1 || 5.0.2"
-  - "@workflow/world-local@5.0.0-beta.36 || 5.1.0 || 5.1.2"
+  - "@workflow/world-local@5.0.0-beta.36 || 5.1.0 || 5.1.2 || 5.2.1"
   - "@workflow/world-postgres@5.0.0-beta.34"
-  - "@workflow/world@5.0.0-beta.27 || 5.0.3 || 5.0.5"
+  - "@workflow/world@5.0.0-beta.27 || 5.0.3 || 5.0.5 || 5.1.0"

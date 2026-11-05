@@ -37,6 +37,31 @@ const nestedManifest = {
   resolvedExtensions: [],
 };
 
+/**
+ * The same agent as `nestedManifest`, as eve 1.0.0-rc.3 and later write it
+ * (v16): every authored source in one `sources` list, in slot order, whose
+ * kind is the first segment of its logical path.
+ */
+function toV16<T extends Record<string, unknown>>(manifest: T) {
+  const { channels, connections, hooks, instructions, sandbox, schedules, skills, tools, ...rest } =
+    manifest as Record<string, unknown>;
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  return {
+    ...rest,
+    version: 16,
+    sources: [
+      ...list(channels),
+      ...list(connections),
+      ...list(hooks),
+      ...(sandbox ? [sandbox] : []),
+      ...list(tools),
+      ...list(instructions),
+      ...list(schedules),
+      ...list(skills),
+    ],
+  };
+}
+
 describe("projectDiscoveryManifest", () => {
   test("projects a nested-layout eve discovery manifest onto the platform summary shape", () => {
     const projection = projectDiscoveryManifest(nestedManifest);
@@ -272,6 +297,88 @@ describe("projectDiscoveryManifest", () => {
     ).toBeNull();
     expect(
       projectDiscoveryManifest({ ...nestedManifest, hooks: ["hooks/observer.ts"] }),
+    ).toBeNull();
+  });
+  test("projects a v16 manifest (eve 1.0.0-rc.3+) from its single sources list", () => {
+    const v16 = toV16({
+      ...nestedManifest,
+      connections: [{ sourceKind: "module", logicalPath: "connections/warehouse.ts" }],
+      sandbox: { sourceKind: "module", logicalPath: "sandbox.ts" },
+      tools: [{ sourceKind: "module", logicalPath: "tools/lookup.ts" }],
+      schedules: [{ sourceKind: "markdown", logicalPath: "schedules/daily.md" }],
+      skills: [{ sourceKind: "skill-package", logicalPath: "skills/research/SKILL.md" }],
+      channels: [{ sourceKind: "module", logicalPath: "channels/slack.ts" }],
+    });
+    const memory = { sourceKind: "module", logicalPath: "memory/notes.ts", slot: "notes" };
+
+    expect(projectDiscoveryManifest({ ...v16, sources: [...v16.sources, memory] })).toMatchObject({
+      manifestVersion: 16,
+      instructions: ["agent/instructions.md"],
+      hooks: ["agent/hooks/root-observer.ts"],
+      connections: ["agent/connections/warehouse.ts"],
+      sandbox: ["agent/sandbox.ts"],
+      tools: ["agent/tools/lookup.ts"],
+      schedules: ["agent/schedules/daily.md"],
+      skills: ["agent/skills/research/SKILL.md"],
+      channels: ["agent/channels/slack.ts"],
+      subagentIds: ["directory-child", "file-child", "remote-child"],
+    });
+  });
+
+  test("projects v16 Extension schedules from each mount's sources", () => {
+    const extensionManifest = toV16({
+      ...nestedManifest,
+      agentRoot: "/srv/app/node_modules/@acme/crm/dist/extension",
+      appRoot: "/srv/app/node_modules/@acme/crm",
+      hooks: [],
+      instructions: [],
+      schedules: [{ logicalPath: "schedules/sync.mjs" }, { logicalPath: "schedules/report.md" }],
+      tools: [{ logicalPath: "tools/lookup.ts" }],
+      subagents: [],
+    });
+    const overrideManifest = toV16({
+      ...nestedManifest,
+      agentRoot: "/srv/app/agent/extensions/crm",
+      hooks: [],
+      instructions: [],
+      schedules: [{ logicalPath: "schedules/sync.ts" }],
+      subagents: [],
+    });
+
+    expect(
+      projectDiscoveryManifest({
+        ...toV16(nestedManifest),
+        extensions: [{ logicalPath: "extensions/crm/extension.ts" }],
+        resolvedExtensions: [
+          { namespace: "crm", manifest: extensionManifest, overrides: overrideManifest },
+        ],
+      }),
+    ).toMatchObject({
+      schedules: [
+        "agent/extensions/crm/schedules/sync.ts",
+        "agent/extensions/crm/schedules/report.md",
+      ],
+    });
+  });
+
+  test("fails closed on a v16 manifest without its sources list or with an unplaceable source", () => {
+    const v16 = toV16(nestedManifest);
+    const { sources: _sources, ...withoutSources } = v16;
+    expect(projectDiscoveryManifest(withoutSources)).toBeNull();
+    // The per-kind lists are v15's shape; a v16 manifest carrying only them is unrecognized.
+    expect(projectDiscoveryManifest({ ...nestedManifest, version: 16 })).toBeNull();
+    expect(
+      projectDiscoveryManifest({
+        ...v16,
+        sources: [...v16.sources, { logicalPath: "lib/util.ts" }],
+      }),
+    ).toBeNull();
+    expect(projectDiscoveryManifest({ ...v16, sources: [{ path: "tools/lookup.ts" }] })).toBeNull();
+    expect(
+      projectDiscoveryManifest({
+        ...v16,
+        sources: [{ logicalPath: "sandbox.ts" }, { logicalPath: "sandbox/sandbox.ts" }],
+      }),
     ).toBeNull();
   });
 });

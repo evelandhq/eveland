@@ -2,7 +2,7 @@ export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
       range: "1.0.x",
-      verifiedVersion: "1.0.0-rc.2",
+      verifiedVersion: "1.0.0-rc.5",
       dependencyName: "eve",
     },
   ],
@@ -34,6 +34,26 @@ export const EVE_COMPATIBILITY_POLICY = {
   // `globalThis.AI_SDK_DEFAULT_PROVIDER` from rc.2 (vercel/eve#5789), as
   // `eve start` already did.
   //
+  // 1.0.0-rc.5 (published 2026-11-05) became the verified 1.0 patch the same
+  // day; rc.3 and rc.4 were reviewed on the way and never verified. Stream 27
+  // and the v27 vocabulary are unchanged: against rc.2, eve's protocol module
+  // only adds a checker rule (`cleared-before-start`, on the `clearedBy` that
+  // `call.started` already carried) and restructures its fold without
+  // changing it, and it is byte-identical from rc.3. What moved: discovery manifest 16 lists every
+  // authored source in one `sources` array (an Extension mount's manifest
+  // too), which `@evelandhq/core/discovery` and the injected scheduler read
+  // beside v15, since the window holds releases built on both; compiled
+  // manifest 56 and checkpoint 19; Nitro 3.0.261103-rc (Rolldown 1.2.16, srvx
+  // 1.0.8, whose graceful-shutdown plugin keeps 1.0.3's behavior); `eve start`
+  // SIGKILLs its server 25 seconds after SIGTERM instead of 20, which the
+  // Deployment stop timeout now clears; and the bundled Workflow runtime, core
+  // 5.4.0 / world 5.1.0, which `@evelandhq/workflow-world` 0.29.0 pins. eve
+  // 1.0 asks for spec 9 runs, which need an in-band writer fence the World does
+  // not declare yet, so new runs stay on spec 8. Agent-facing only: the code
+  // extension drops `code__grep`, `code__worker` (rc.3) and
+  // `code__apply_patch` (rc.4), every agent gets a default `edit_file`, and a
+  // failed `bash` result ends with `[exit code: N]`.
+  //
   // What the v27 protocol (introduced by 0.84) means for Eveland:
   // - Session events are `{ type, scope?, data }` facts, positioned by
   //   `(line, index)` instead of an event id, with one settled event per item
@@ -54,8 +74,9 @@ export const EVE_COMPATIBILITY_POLICY = {
   //   channel's kind is `channel:<name>` (the HTTP channel is `channel:eve`).
   // - The sandbox provider contract names the abort signal `signal` and has
   //   optional spawn `stdin`; `@evelandhq/sandbox-bwrap` reads both.
-  // - The bundled Workflow set is core 5.2.3, world 5.0.5, spec 6-8, which
-  //   `@evelandhq/workflow-world` 0.28.0 pins. From 0.76.1 eve treats a World
+  // - The bundled Workflow set is core 5.4.0, world 5.1.0 (core 5.2.3, world
+  //   5.0.5 on rc.1 and rc.2), spec 6-8 as the World declares it, which
+  //   `@evelandhq/workflow-world` 0.29.0 pins. From 0.76.1 eve treats a World
   //   that does not declare `capabilities.deploymentAffinity` as running one
   //   eve version at a time, and from 0.81.1 a session moves to a fresh run
   //   only when the World declares `capabilities.hookForceClaim`; the shared
