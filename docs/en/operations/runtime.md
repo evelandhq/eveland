@@ -73,8 +73,10 @@ Durable workflows ensure timers and asynchronous callbacks resume accurately eve
 
 - **Singleton external dispatcher**: Driven by a single [Workflow Dispatcher](/docs/production/workflow-dispatcher) holding a PostgreSQL advisory lock across the cluster.
 - **Tenant isolation**: All agents share a single workflow database (`EVELAND_WORKFLOW_WORLD_URL`), partitioned logically by `tenant_id` (project ID).
-- **Engine injection**: During release compilation, Eveland automatically injects `@evelandhq/workflow-world@0.31.0` (superseding legacy `@workflow/world-postgres@5.0.0-beta.34`), delegating execution states strictly to the external dispatcher.
+- **Engine injection**: During release compilation, Eveland automatically injects `@evelandhq/workflow-world@0.31.1` (superseding legacy `@workflow/world-postgres@5.0.0-beta.34`), delegating execution states strictly to the external dispatcher.
 - **Automated migrations**: Worker startup and project provisioning automatically apply schema migrations safely.
+
+World 0.31.1 fixes a session-start race where an event read sees a newly created run's events without its in-band fence snapshot. It re-reads the snapshot, then the event page, preserving storage spec 9 and dispatch protocol 1. Rebuild and deploy a new Release to receive the fix: the World is bundled into each immutable Release, so restarting an existing deployment keeps its original version.
 
 ### Workflow retention classes
 

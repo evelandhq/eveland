@@ -68,7 +68,7 @@ peerDependencyRules:
 # it are the legacy World, spec-v6 throughout, kept only for Releases built
 # before the shared World and never selected for a new build. The Workflow
 # 5.4 set (world/errors 5.1.0, world-local 5.2.1, utils 5.0.2) is what
-# `@evelandhq/workflow-world` 0.29.0 through 0.31.0 pin -- the set eve
+# `@evelandhq/workflow-world` 0.29.0 through 0.31.1 pin -- the set eve
 # 1.0.0-rc.5 and rc.6 bundle (core 5.4.0; rc.3 had moved to world 5.1.0).
 # World 5.1.0 adds only optional capabilities; 0.30.0 declares the in-band
 # writer fence and serves spec 9 runs, which 0.29.0 kept on spec 8, and 0.31.0
