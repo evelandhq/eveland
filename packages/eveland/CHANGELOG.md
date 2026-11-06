@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/evelandhq/eveland/compare/eveland-v0.23.0...eveland-v0.24.0) (2026-11-06)
+
+
+### Features
+
+* move the verified eve 1.0 patch to 1.0.0-rc.6 and workflow-world 0.31.0 ([#629](https://github.com/evelandhq/eveland/issues/629)) ([8e27755](https://github.com/evelandhq/eveland/commit/8e2775578fa98573daa4596b70df60c334409698))
+
 ## [0.23.0](https://github.com/evelandhq/eveland/compare/eveland-v0.22.0...eveland-v0.23.0) (2026-11-05)
 
 
