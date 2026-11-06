@@ -38,6 +38,7 @@ describe("deriveWorkflowWorldAttestation", () => {
     const attest = (packageVersion: string) =>
       deriveWorkflowWorldAttestation({ packageName: "@evelandhq/workflow-world", packageVersion })
         .storageSpec;
+    expect(attest("0.31.1")).toBe(9);
     expect(attest("0.31.0")).toBe(9);
     expect(attest("0.30.0")).toBe(9);
     expect(attest("1.0.0")).toBe(9);
