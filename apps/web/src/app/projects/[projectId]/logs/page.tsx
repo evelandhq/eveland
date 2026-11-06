@@ -1,5 +1,5 @@
 import { ProjectLogViewer } from "@/components/project-log-viewer";
-import { getLogs } from "@/lib/server-api";
+import { getLogsPage } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -8,7 +8,7 @@ export const metadata = {
 
 export default async function LogsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const logs = await getLogs(projectId);
+  const page = await getLogsPage(projectId);
 
   return (
     <div className="mx-auto flex min-h-0 flex-1 w-full max-w-4xl flex-col gap-4">
@@ -18,7 +18,7 @@ export default async function LogsPage({ params }: { params: Promise<{ projectId
           Build, deployment, and runtime activity for this project.
         </p>
       </header>
-      <ProjectLogViewer logs={logs} />
+      <ProjectLogViewer projectId={projectId} initialPage={page} />
     </div>
   );
 }

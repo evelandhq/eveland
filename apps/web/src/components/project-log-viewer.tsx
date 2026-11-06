@@ -1,9 +1,10 @@
 "use client";
 
 import { ChevronDownIcon, SearchIcon, TerminalIcon, XIcon } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import { useDisplayTimezone } from "@/components/time-zone-provider";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Empty,
@@ -19,8 +20,17 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { selectProjectLogs, type LogLine, type ProjectLogFilter } from "@/lib/api";
+import {
+  mergeOlderProjectLogs,
+  projectLogsPagePath,
+  selectProjectLogs,
+  type LogLine,
+  type ProjectLogFilter,
+  type ProjectLogPage,
+} from "@/lib/api";
+import { apiRequest } from "@/lib/api-transport";
 import { formatDateTime } from "@/lib/date-time";
 
 const LOG_FILTERS = [
@@ -30,25 +40,59 @@ const LOG_FILTERS = [
   { value: "runtime", label: "Runtime" },
 ] as const;
 
-export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
+type LoadedLogs = { filter: ProjectLogFilter; logs: LogLine[]; olderCursor: string | null };
+
+// The project's log history is unbounded, so the viewer holds a window: the
+// newest page for the selected type (fetched server-side per tab), extended
+// backwards one bounded page at a time. Search filters the loaded window.
+export function ProjectLogViewer({
+  projectId,
+  initialPage,
+}: {
+  projectId: string;
+  initialPage: ProjectLogPage;
+}) {
+  const [loaded, setLoaded] = useState<LoadedLogs>({
+    filter: "all",
+    logs: initialPage.logs,
+    olderCursor: initialPage.olderCursor,
+  });
   const [filter, setFilter] = useState<ProjectLogFilter>("all");
+  const [loading, setLoading] = useState<"tab" | "older" | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const requestId = useRef(0);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
-  const counts = useMemo(
-    () => ({
-      all: logs.length,
-      build: logs.filter((log) => log.type === "build").length,
-      deploy: logs.filter((log) => log.type === "deploy").length,
-      runtime: logs.filter((log) => log.type === "runtime").length,
-    }),
-    [logs],
-  );
+  const logs = loaded.logs;
   const visibleLogs = useMemo(
     () => selectProjectLogs(logs, { type: filter, query: deferredQuery, order: "desc" }),
     [deferredQuery, filter, logs],
   );
 
-  if (logs.length === 0) {
+  async function loadPage(nextFilter: ProjectLogFilter, before: string | null) {
+    const id = ++requestId.current;
+    setLoading(before ? "older" : "tab");
+    setLoadError(null);
+    try {
+      const page = await apiRequest<ProjectLogPage>(
+        projectLogsPagePath(projectId, { type: nextFilter, before }),
+        { cache: "no-store" },
+      );
+      if (id !== requestId.current) return;
+      setLoaded((current) => ({
+        filter: nextFilter,
+        logs: before ? mergeOlderProjectLogs(current.logs, page.logs) : page.logs,
+        olderCursor: page.olderCursor,
+      }));
+    } catch (error) {
+      if (id !== requestId.current) return;
+      setLoadError(error instanceof Error ? error.message : "Could not load logs.");
+    } finally {
+      if (id === requestId.current) setLoading(null);
+    }
+  }
+
+  if (initialPage.logs.length === 0) {
     return (
       <Empty className="min-h-96 flex-1 rounded-xl border bg-card">
         <EmptyHeader>
@@ -71,7 +115,9 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
           value={filter}
           onValueChange={(value) => {
             if (LOG_FILTERS.some((option) => option.value === value)) {
-              setFilter(value as ProjectLogFilter);
+              const next = value as ProjectLogFilter;
+              setFilter(next);
+              void loadPage(next, null);
             }
           }}
           className="min-w-0 overflow-x-auto overflow-y-hidden"
@@ -79,7 +125,7 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
           <TabsList className="h-7!" aria-label="Filter project logs">
             {LOG_FILTERS.map((option) => (
               <TabsTrigger key={option.value} value={option.value} className="text-xs">
-                {option.label} <span className="tabular-nums">{counts[option.value]}</span>
+                {option.label}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -91,7 +137,7 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
           </InputGroupAddon>
           <InputGroupInput
             aria-label="Search logs"
-            placeholder="Search logs..."
+            placeholder="Search loaded logs..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -118,18 +164,31 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
           <span>Type</span>
           <span className="flex items-center justify-between gap-3">
             Message
-            <Badge variant="outline">{visibleLogs.length} shown</Badge>
+            <span className="flex items-center gap-2">
+              {loading === "tab" ? <Spinner /> : null}
+              <Badge variant="outline">
+                {visibleLogs.length} of {logs.length} loaded
+              </Badge>
+            </span>
           </span>
         </header>
 
-        {visibleLogs.length === 0 ? (
+        {loadError ? (
+          <p role="alert" className="border-b px-4 py-2 text-xs text-destructive">
+            {loadError}
+          </p>
+        ) : null}
+
+        {visibleLogs.length === 0 && !loaded.olderCursor ? (
           <Empty className="min-h-0 flex-1">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <SearchIcon />
               </EmptyMedia>
               <EmptyTitle>No matching logs</EmptyTitle>
-              <EmptyDescription>Try another search or log type.</EmptyDescription>
+              <EmptyDescription>
+                {query ? "Try another search or log type." : "No logs of this type yet."}
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
@@ -139,6 +198,21 @@ export function ProjectLogViewer({ logs }: { logs: LogLine[] }) {
                 <ProjectLogRow key={log.id} log={log} />
               ))}
             </ol>
+            <div className="flex items-center justify-center gap-2 border-t px-4 py-3 text-xs text-muted-foreground">
+              {loaded.olderCursor ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={loading !== null}
+                  onClick={() => void loadPage(loaded.filter, loaded.olderCursor)}
+                >
+                  {loading === "older" ? <Spinner data-icon="inline-start" /> : null}
+                  Load older logs
+                </Button>
+              ) : (
+                <span>Beginning of log history</span>
+              )}
+            </div>
           </ScrollArea>
         )}
       </section>

@@ -12,6 +12,8 @@ describe("project logs surface", () => {
     const viewer = source("../components/project-log-viewer.tsx");
 
     expect(logs).toContain("ProjectLogViewer");
+    expect(logs).toContain("getLogsPage");
+    expect(viewer).toContain("Load older logs");
     expect(logs).not.toContain("searchParams");
     expect(logs).toContain("max-w-4xl");
     expect(logs).toContain(">Logs</h2>");

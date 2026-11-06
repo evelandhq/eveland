@@ -767,6 +767,60 @@ describe("SQL Store jobs", () => {
     expect(sinceEmpty.logs).toEqual([later]);
   });
 
+  test("pages log history backwards from the tail with an older cursor", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "History Agent", importKind: "zip" });
+    const lines = [];
+    for (let index = 0; index < 5; index += 1) {
+      lines.push(
+        await store.appendLog({
+          projectId: project.id,
+          type: index % 2 === 0 ? "build" : "runtime",
+          line: `line ${index}`,
+        }),
+      );
+    }
+
+    // The tail names where older history continues; walking `before` pages
+    // reaches the first line exactly once, then reports the beginning.
+    const tail = await store.listLogsPage(project.id, undefined, { limit: 2 });
+    expect(tail.logs).toEqual([lines[3], lines[4]]);
+    expect(tail.olderCursor).toEqual(expect.any(String));
+    const middle = await store.listLogsPage(project.id, undefined, {
+      limit: 2,
+      before: tail.olderCursor!,
+    });
+    expect(middle.logs).toEqual([lines[1], lines[2]]);
+    const first = await store.listLogsPage(project.id, undefined, {
+      limit: 2,
+      before: middle.olderCursor!,
+    });
+    expect(first.logs).toEqual([lines[0]]);
+    expect(first.olderCursor).toBeNull();
+
+    // An exactly-full last page still knows it reached the beginning.
+    const exact = await store.listLogsPage(project.id, undefined, { limit: 5 });
+    expect(exact.logs).toEqual(lines);
+    expect(exact.olderCursor).toBeNull();
+
+    // Backward pages respect the type scope.
+    const buildTail = await store.listLogsPage(project.id, "build", { limit: 1 });
+    expect(buildTail.logs).toEqual([lines[4]]);
+    const olderBuild = await store.listLogsPage(project.id, "build", {
+      limit: 5,
+      before: buildTail.olderCursor!,
+    });
+    expect(olderBuild.logs).toEqual([lines[0], lines[2]]);
+    expect(olderBuild.olderCursor).toBeNull();
+
+    // A forward cursor from a backward page never skips the lines after it.
+    const resumed = await store.listLogsPage(project.id, undefined, {
+      limit: 10,
+      after: middle.cursor,
+    });
+    expect(resumed.logs).toEqual([lines[3], lines[4]]);
+  });
+
   test("records current source revision, source files, and schedules", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Source Agent", importKind: "git" });
