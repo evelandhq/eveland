@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.69.2](https://github.com/evelandhq/eveland/compare/v0.69.1...v0.69.2) (2026-11-06)
+
+
+### Bug Fixes
+
+* page the Dashboard Logs view instead of loading the full history ([#634](https://github.com/evelandhq/eveland/issues/634)) ([29699ad](https://github.com/evelandhq/eveland/commit/29699ade485cc5605d5512e6626fa3e521971ca7))
+
 ## [0.69.1](https://github.com/evelandhq/eveland/compare/v0.69.0...v0.69.1) (2026-11-06)
 
 
