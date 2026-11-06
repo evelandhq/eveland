@@ -947,17 +947,21 @@ export interface LogStore {
   }): Promise<LogRecord>;
   listLogs(projectId: string, type?: LogRecord["type"]): Promise<LogRecord[]>;
   /**
-   * Bounded log reads. Without `after`, returns the LAST `limit` rows (a
+   * Bounded log reads. Without a cursor, returns the LAST `limit` rows (a
    * tail); with `after` (an opaque cursor from a previous page), rows
-   * strictly past that position, capped by `limit`. Results are ascending in
-   * insertion order. The returned cursor is always usable — including on an
+   * strictly past that position, capped by `limit`; with `before` (an
+   * `olderCursor`), the last `limit` rows strictly older than it. `after`
+   * and `before` are mutually exclusive. Results are ascending in insertion
+   * order. The returned forward `cursor` is always usable — including on an
    * empty page — so a follower never has to fall back to unbounded reads.
+   * Tail and `before` reads also return `olderCursor`: where older history
+   * continues, or null once the page reaches the beginning of the scope.
    */
   listLogsPage(
     projectId: string,
     type: LogRecord["type"] | undefined,
-    options: { limit: number; after?: string },
-  ): Promise<{ logs: LogRecord[]; cursor: string }>;
+    options: { limit: number; after?: string; before?: string },
+  ): Promise<{ logs: LogRecord[]; cursor: string; olderCursor?: string | null }>;
 }
 
 export interface WorkflowDispatcherStore {

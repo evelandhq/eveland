@@ -165,11 +165,14 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     const type = c.req.query("type") as LogRecord["type"] | undefined;
     const rawLimit = c.req.query("limit");
     const after = c.req.query("after")?.trim();
-    // Without paging params the full history is returned — the Dashboard's
-    // original contract. With them, reads are bounded and the response
-    // carries an opaque `cursor` (usable even when the page is empty) for
-    // the CLI's tail/follow protocol.
-    if (rawLimit === undefined && after === undefined) {
+    const before = c.req.query("before")?.trim();
+    // Without paging params the full history is returned (kept for older
+    // clients; the history is unbounded, so current callers always page).
+    // With them, reads are bounded and the response carries an opaque
+    // `cursor` (usable even when the page is empty) for the CLI's
+    // tail/follow protocol, plus `olderCursor` on tail and `before` reads so
+    // the Dashboard can walk history backwards one bounded page at a time.
+    if (rawLimit === undefined && after === undefined && before === undefined) {
       return c.json({
         logs: await store.listLogs(c.req.param("projectId"), type),
       });
@@ -181,7 +184,17 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     if (after !== undefined && !/^\d+$/.test(after)) {
       return c.json({ error: "Invalid log cursor." }, 400);
     }
-    const page = await store.listLogsPage(c.req.param("projectId"), type, { limit, after });
-    return c.json({ logs: page.logs, cursor: page.cursor });
+    if (before !== undefined && !/^\d+$/.test(before)) {
+      return c.json({ error: "Invalid log cursor." }, 400);
+    }
+    if (after !== undefined && before !== undefined) {
+      return c.json({ error: "Use either after or before, not both." }, 400);
+    }
+    const page = await store.listLogsPage(c.req.param("projectId"), type, {
+      limit,
+      after,
+      before,
+    });
+    return c.json({ logs: page.logs, cursor: page.cursor, olderCursor: page.olderCursor });
   });
 }

@@ -147,10 +147,13 @@ export function createPostgresSessionQueryStore({
     async listLogsPage(
       projectId,
       type: LogRecord["type"] | undefined,
-      options: { limit: number; after?: string },
+      options: { limit: number; after?: string; before?: string },
     ) {
       const scope = logScope(projectId, type);
       const limit = Math.min(Math.max(1, Math.floor(options.limit)), 1_000);
+      if (options.after !== undefined && options.before !== undefined) {
+        throw new Error("listLogsPage accepts either after or before, not both.");
+      }
       if (options.after !== undefined) {
         const after = Number(options.after);
         const rows = await db
@@ -162,15 +165,31 @@ export function createPostgresSessionQueryStore({
         const cursor = rows.at(-1)?.seq ?? after;
         return { logs: rows.map(logRowToLog), cursor: String(cursor) };
       }
-      const rows = await db.select().from(logs).where(scope).orderBy(desc(logs.seq)).limit(limit);
+      // Backward reads (the tail, and `before` pages walking history) fetch
+      // one extra row so an exactly-full page still knows whether older
+      // history exists; the olderCursor is the oldest returned seq, and rows
+      // strictly older than it are the next page back.
+      const backwardScope =
+        options.before === undefined ? scope : and(scope, lt(logs.seq, Number(options.before)));
+      const rows = await db
+        .select()
+        .from(logs)
+        .where(backwardScope)
+        .orderBy(desc(logs.seq))
+        .limit(limit + 1);
+      const hasOlder = rows.length > limit;
+      if (hasOlder) rows.pop();
       rows.reverse();
+      const olderCursor = hasOlder ? String(rows[0]!.seq) : null;
       const last = rows.at(-1)?.seq;
       // An empty scope pins the cursor at 0: logs are never deleted, so
       // "empty" means nothing committed in scope has ever existed and 0
       // skips nothing. Reading a separate max(seq) watermark here would race
       // — a row committing between the two queries would sit inside the
       // watermark yet never have been returned.
-      return { logs: rows.map(logRowToLog), cursor: String(last ?? 0) };
+      // An empty `before` page likewise means nothing in scope precedes it,
+      // so cursor 0 replays nothing that a follower has not already seen.
+      return { logs: rows.map(logRowToLog), cursor: String(last ?? 0), olderCursor };
     },
   };
 }

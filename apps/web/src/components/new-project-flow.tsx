@@ -69,6 +69,7 @@ import {
 } from "@/components/ui/table";
 import { getGitCredentials } from "@/lib/client-api";
 import type { AgentEndpoints, Job, LogLine, Project } from "@/lib/api";
+import { projectLogsPagePath } from "@/lib/api";
 import {
   getNewProjectProgress,
   mergeImportedEnvironmentVariables,
@@ -239,7 +240,7 @@ export function NewProjectFlow() {
         const [projectResult, jobsResult, logsResult, endpointsResult] = await Promise.all([
           browserGet<{ project: Project }>(`/projects/${project.id}`),
           browserGet<{ jobs: Job[] }>(`/projects/${project.id}/jobs?include=deployment`),
-          browserGet<{ logs: LogLine[] }>(`/projects/${project.id}/logs`),
+          browserGet<{ logs: LogLine[] }>(projectLogsPagePath(project.id, { type: "all" })),
           browserGetOptional<AgentEndpoints>(`/projects/${project.id}/endpoints`),
         ]);
         if (cancelled) return;

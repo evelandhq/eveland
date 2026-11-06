@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createProjectEnvironmentEntries, enqueueBuildDeploy, syncSource } from "./client-api";
-import { getProjectImportNotice, selectProjectLogs, type Job, type LogLine } from "./api";
+import {
+  getProjectImportNotice,
+  mergeOlderProjectLogs,
+  projectLogsPagePath,
+  selectProjectLogs,
+  type Job,
+  type LogLine,
+} from "./api";
 
 describe("web api helpers", () => {
   afterEach(() => {
@@ -112,6 +119,31 @@ describe("web api helpers", () => {
       selectProjectLogs(logs, { type: "all", query: "", order: "asc" }).map((log) => log.id),
     ).toEqual(["log_old", "log_middle", "log_new"]);
     expect(logs.map((log) => log.id)).toEqual(["log_old", "log_new", "log_middle"]);
+  });
+
+  test("builds bounded project log page paths", () => {
+    expect(projectLogsPagePath("proj_123", { type: "all" })).toBe(
+      "/projects/proj_123/logs?limit=200",
+    );
+    expect(projectLogsPagePath("proj_123", { type: "build", before: "42", limit: 50 })).toBe(
+      "/projects/proj_123/logs?limit=50&type=build&before=42",
+    );
+  });
+
+  test("prepends an older log page without duplicating loaded lines", () => {
+    const line = (id: string): LogLine => ({
+      id,
+      projectId: "proj_123",
+      deploymentId: null,
+      type: "runtime",
+      line: id,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(
+      mergeOlderProjectLogs([line("c"), line("d")], [line("a"), line("b"), line("c")]).map(
+        (log) => log.id,
+      ),
+    ).toEqual(["a", "b", "c", "d"]);
   });
 
   test("maps a queued import job to an active notice", () => {

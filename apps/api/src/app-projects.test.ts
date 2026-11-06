@@ -1412,4 +1412,35 @@ describe("promote failure handling", () => {
       expect.objectContaining({ deploymentId: deployment.id, weight: 10_000 }),
     ]);
   });
+  test("pages project logs backwards with a before cursor", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Log History Agent", importKind: "zip" });
+    for (let index = 0; index < 3; index += 1) {
+      await store.appendLog({ projectId: project.id, type: "build", line: `line ${index}` });
+    }
+    const app = createApp(store);
+
+    const tail = await app.request(`/api/projects/${project.id}/logs?limit=2`);
+    expect(tail.status).toBe(200);
+    const tailBody = (await tail.json()) as {
+      logs: Array<{ line: string }>;
+      olderCursor: string | null;
+    };
+    expect(tailBody.logs.map((log) => log.line)).toEqual(["line 1", "line 2"]);
+    expect(tailBody.olderCursor).toEqual(expect.any(String));
+
+    const older = await app.request(
+      `/api/projects/${project.id}/logs?limit=2&before=${tailBody.olderCursor}`,
+    );
+    expect(older.status).toBe(200);
+    await expect(older.json()).resolves.toMatchObject({
+      logs: [expect.objectContaining({ line: "line 0" })],
+      olderCursor: null,
+    });
+
+    const invalid = await app.request(`/api/projects/${project.id}/logs?before=abc`);
+    expect(invalid.status).toBe(400);
+    const both = await app.request(`/api/projects/${project.id}/logs?before=5&after=1`);
+    expect(both.status).toBe(400);
+  });
 });

@@ -22,7 +22,6 @@ import type {
   EveVersionInfo,
   HotfixDrift,
   Job,
-  LogLine,
   ModelUsageEvent,
   Project,
   PublicSecret,
@@ -35,6 +34,7 @@ import type {
   SourceFile,
   SourceRevision,
 } from "./api";
+import { projectLogsPagePath, type ProjectLogPage } from "./api";
 import type { PublicIdentityProvider } from "./api";
 import type {
   AuthPrincipal as CurrentMember,
@@ -126,8 +126,8 @@ export const getSessionUsage = (sessionId: string) =>
   apiGet<{ usage: ModelUsageEvent[] }>(`/sessions/${sessionId}/usage`).then((data) => data.usage);
 export const getSessionNodes = (sessionId: string) =>
   apiGet<{ nodes: SessionNode[] }>(`/sessions/${sessionId}/nodes`).then((data) => data.nodes);
-export const getLogs = (projectId: string) =>
-  apiGet<{ logs: LogLine[] }>(`/projects/${projectId}/logs`).then((data) => data.logs);
+export const getLogsPage = (projectId: string) =>
+  apiGet<ProjectLogPage>(projectLogsPagePath(projectId, { type: "all" }));
 export const getSourceRevision = (projectId: string) =>
   apiGet<{ revision: SourceRevision | null }>(`/projects/${projectId}/source/revision`).then(
     (data) => data.revision,

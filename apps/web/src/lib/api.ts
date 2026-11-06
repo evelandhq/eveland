@@ -108,6 +108,31 @@ export type LogLine = LogRecord;
 export type ProjectLogFilter = "all" | LogLine["type"];
 export type ProjectLogOrder = "asc" | "desc";
 
+/**
+ * One bounded page of project log history. The log record grows for the life
+ * of the project, so the Dashboard never reads it whole: it loads the newest
+ * page and walks backwards with `olderCursor` (null at the beginning).
+ */
+export type ProjectLogPage = { logs: LogLine[]; cursor: string; olderCursor: string | null };
+
+export const PROJECT_LOG_PAGE_SIZE = 200;
+
+export function projectLogsPagePath(
+  projectId: string,
+  options: { type: ProjectLogFilter; before?: string | null; limit?: number },
+): string {
+  const query = new URLSearchParams({ limit: String(options.limit ?? PROJECT_LOG_PAGE_SIZE) });
+  if (options.type !== "all") query.set("type", options.type);
+  if (options.before) query.set("before", options.before);
+  return `/projects/${encodeURIComponent(projectId)}/logs?${query}`;
+}
+
+/** Prepends an older page, dropping any line already loaded. */
+export function mergeOlderProjectLogs(current: LogLine[], older: LogLine[]): LogLine[] {
+  const loaded = new Set(current.map((log) => log.id));
+  return [...older.filter((log) => !loaded.has(log.id)), ...current];
+}
+
 export function selectProjectLogs(
   logs: LogLine[],
   options: { type: ProjectLogFilter; query: string; order: ProjectLogOrder },
