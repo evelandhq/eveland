@@ -2,7 +2,7 @@ export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
       range: "1.0.x",
-      verifiedVersion: "1.0.0-rc.5",
+      verifiedVersion: "1.0.0-rc.6",
       dependencyName: "eve",
     },
   ],
@@ -54,6 +54,22 @@ export const EVE_COMPATIBILITY_POLICY = {
   // extension drops `code__grep`, `code__worker` (rc.3) and
   // `code__apply_patch` (rc.4), every agent gets a default `edit_file`, and a
   // failed `bash` result ends with `[exit code: N]`.
+  //
+  // 1.0.0-rc.6 (published 2026-11-05) became the verified 1.0 patch on
+  // 2026-11-06. It bundles exactly rc.5's Workflow runtime and keeps every
+  // version Eveland pins -- discovery manifest 16, compiled manifest 56,
+  // checkpoint 19, stream 27 and the v27 vocabulary -- and only
+  // `@vercel/agent-runs` moves (rc.3). What moved for the platform: a session
+  // claims its channel address as it starts, with an atomic start Hook
+  // (`start({ experimental_hook })`), so racing first messages to one address
+  // reach one session and `create()` answers before the session boots; eve
+  // refuses to start a session on a World that does not declare
+  // `capabilities.atomicStartHook`, which `@evelandhq/workflow-world` 0.31.0
+  // implements. A send by session id to a session that is shutting down gets
+  // `409 session_not_active` at once instead of `session_not_ready` retries,
+  // which the Agent Gateway forwards untouched. Agent-facing only:
+  // `agentWithModel` became `agent({ models })`, and an `agent.approval` span
+  // now covers every wait on a person, sign-ins included.
   //
   // What the v27 protocol (introduced by 0.84) means for Eveland:
   // - Session events are `{ type, scope?, data }` facts, positioned by

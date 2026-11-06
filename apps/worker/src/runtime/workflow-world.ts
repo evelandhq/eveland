@@ -26,7 +26,7 @@ export const PLATFORM_WORKFLOW_WORLD = {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "0.30.0",
+  packageVersion: "0.31.0",
 } as const;
 
 export type WorkflowWorldBuildConfig = {
@@ -49,7 +49,10 @@ export type WorkflowWorldBuildConfig = {
  * outright: hook force-claim (8) by default, or slot identity (6) for a
  * Deployment that opts out with `WORKFLOW_SEALED_LOG=0`. A 0.30.0 Release on
  * eve 1.0.0-rc.1 or rc.2, which do not ask for spec 9, mints 8 under an
- * attestation of 9; both are admitted, so the gate is unaffected. 8 is the reader contract for another run's
+ * attestation of 9; both are admitted, so the gate is unaffected. 0.31.0 keeps
+ * spec 9 and adds the atomic start Hook (`capabilities.atomicStartHook`) eve
+ * 1.0.0-rc.6 starts every session with; it is a capability, not a storage
+ * generation, so the attestation does not record it. 8 is the reader contract for another run's
  * `createHook({ experimental_force: true })` taking a token over, which the
  * World implements from 0.27.0 (`capabilities.hookForceClaim`) and eve 0.81.1
  * and later need before they move a session to a fresh run. 0.18.0 through 0.26.x

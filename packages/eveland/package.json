@@ -47,7 +47,7 @@
     "@ai-sdk/provider": "4.0.35"
   },
   "devDependencies": {
-    "eve": "1.0.0-rc.5",
+    "eve": "1.0.0-rc.6",
     "vitest": "^5.0.3"
   },
   "peerDependencies": {
