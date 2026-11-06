@@ -211,7 +211,7 @@ function declaredWorldSpecVersion(): number {
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.30.0");
+    expect(worldManifest.version).toBe("0.31.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and
@@ -315,6 +315,35 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       expect(handoffSteps, `${line} (${version}) handoff hook-retention gate`).toContain(
         "hookRetention?.active!==!0",
       );
+      return [line];
+    });
+    // The newest line carries the gate; if it ever stops reading the
+    // capability, this suite must be revisited rather than pass vacuously.
+    expect(gatedLines).toContain("eve");
+  });
+
+  test("declares atomic start Hooks, which eve needs to start a session", () => {
+    // From 1.0.0-rc.6 eve starts every session with `start({ experimental_hook
+    // })`, claiming the session's channel address, and refuses to start one --
+    // every session, not a feature of some -- on a World that does not declare
+    // `capabilities.atomicStartHook` active. The injected World must declare
+    // it, and the newest line must still key its start on it.
+    const worldSource = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
+    expect([...worldSource.matchAll(/^\s*atomicStartHook: \{ active: true \},$/gm)]).toHaveLength(
+      1,
+    );
+
+    const gatedLines = EVE_LINES.flatMap((line) => {
+      const eveRoot = resolveInstalledPackageRoot(line, "eve");
+      const startClaim = path.join(eveRoot, "dist/src/internal/workflow/start-claim.js");
+      let source: string;
+      try {
+        source = readFileSync(startClaim, "utf8");
+      } catch {
+        // Before rc.6 a session start claimed nothing, so it had no gate.
+        return [];
+      }
+      expect(source, `${line} start-claim gate`).toContain("atomicStartHook?.active!==!0");
       return [line];
     });
     // The newest line carries the gate; if it ever stops reading the
