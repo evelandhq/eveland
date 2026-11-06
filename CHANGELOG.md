@@ -4,6 +4,13 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.69.0](https://github.com/evelandhq/eveland/compare/v0.68.0...v0.69.0) (2026-11-06)
+
+
+### Features
+
+* move the verified eve 1.0 patch to 1.0.0-rc.6 and workflow-world 0.31.0 ([#629](https://github.com/evelandhq/eveland/issues/629)) ([8e27755](https://github.com/evelandhq/eveland/commit/8e2775578fa98573daa4596b70df60c334409698))
+
 ## [0.68.0](https://github.com/evelandhq/eveland/compare/v0.67.0...v0.68.0) (2026-11-05)
 
 
