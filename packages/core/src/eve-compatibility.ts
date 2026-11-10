@@ -2,7 +2,7 @@ export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
       range: "1.0.x",
-      verifiedVersion: "1.0.0-rc.6",
+      verifiedVersion: "1.0.0-rc.8",
       dependencyName: "eve",
     },
   ],
@@ -70,6 +70,20 @@ export const EVE_COMPATIBILITY_POLICY = {
   // which the Agent Gateway forwards untouched. Agent-facing only:
   // `agentWithModel` became `agent({ models })`, and an `agent.approval` span
   // now covers every wait on a person, sign-ins included.
+  //
+  // 1.0.0-rc.8 (published 2026-11-10) became the verified 1.0 patch the same
+  // day; rc.7 was reviewed on the way and never verified. Against rc.6 it
+  // keeps every version Eveland pins and bundles the same Workflow runtime
+  // (only eve's own world-local, `@vercel/agent-runs` rc.5 and
+  // `@vercel/schedules` 0.0.3 move), makes the same World calls and gates on
+  // the same World capabilities, and leaves the sandbox provider contract
+  // alone, so nothing moves for the platform. Two v27 facts widen: a
+  // `label: false` tool marks its calls `hidden: true` on the call's
+  // `capability`, and an interaction may carry `waitsOn`; the observer, the
+  // trace and the transcript read neither and still list a hidden call. The
+  // git extension now serializes `gh` credential leases with a lock directory
+  // under the sandbox's `/tmp`; a lease needs a header-rewriting network
+  // policy, which `@evelandhq/sandbox-bwrap` refuses as before.
   //
   // What the v27 protocol (introduced by 0.84) means for Eveland:
   // - Session events are `{ type, scope?, data }` facts, positioned by
