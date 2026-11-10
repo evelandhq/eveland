@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/evelandhq/eveland/compare/eveland-v0.24.0...eveland-v0.25.0) (2026-11-10)
+
+
+### Features
+
+* move the verified eve 1.0 patch to 1.0.0-rc.8 ([#636](https://github.com/evelandhq/eveland/issues/636)) ([071f1f5](https://github.com/evelandhq/eveland/commit/071f1f53a84d87631c1369c9fc9b0b3ad12eff81))
+
 ## [0.24.0](https://github.com/evelandhq/eveland/compare/eveland-v0.23.0...eveland-v0.24.0) (2026-11-06)
 
 
