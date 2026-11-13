@@ -402,10 +402,16 @@ also builds no local view of the Collector's delivery volume or queue pressure.
   and step) and stay as they were. A v27 record owned
   by a call re-reports spend its child session already recorded, so only the child
   counts it; v27 fills a missing token count with zero, so missing usage is a
-  model run with no record at all. A completed model run counts as missing from its
-  `model.settled` until its record arrives; the record then fills that same `run_key`
-  row, whichever of the two is delivered first, so a run is never counted twice. A
-  failed or cancelled run is not counted.
+  model run with no record at all. A model run's `run_key` also names the commit
+  (stream line) the fact was written in. A completed model run counts as missing from
+  its `model.settled` until its record arrives; eve writes that record in the same
+  commit, so it fills that same `run_key` row, whichever of the two is delivered
+  first, and a run is never counted twice. From Eve 1.0.0-rc.11 an answer Eve
+  discards and asks for again records its usage in the `model.retried` commit; that
+  record keeps its own row and counts toward the Session's usage beside the run's
+  settled record. A failed or cancelled run is never counted as missing; a record
+  Eve writes for one counts. Rows projected before `run_key` named the commit keep
+  their bare `run:<id>` key, and a later record for such a run fills that row.
 - Every supported line speaks the v27 session protocol; session replay, traces, and
   the projection still read the v26 events stored from Eve 0.83 Sessions. An
   unhandled hook error fails the running turn; the injected hook catches every

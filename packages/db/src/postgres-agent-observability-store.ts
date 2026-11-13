@@ -7,6 +7,7 @@ import {
   scheduleExecutionStatusFromEveEvent,
   sessionErrorFromEveEvent,
   sessionStatusFromEveEvent,
+  unsegmentedRunKey,
 } from "@evelandhq/core/eve";
 import {
   UnmanagedTelemetryResourceError,
@@ -579,9 +580,28 @@ async function ingestPostgresAgentEventOnce(
     // v27, a completed model run that is owed a record. That run is projected
     // as missing usage under its run key, so a run that never reports counts
     // as missing, and its record reconciles the same row whichever arrives
-    // first; nothing is estimated.
+    // first; nothing is estimated. A run's key names the commit line (see
+    // `runUsageKey`), so an attempt eve discarded keeps its own row.
+    const position = recordValue(eventRecord?.meta)?.position;
     const usage =
-      parseStepUsageEvent(type, payload, scope) ?? parseUnreportedModelRun(type, payload, scope);
+      parseStepUsageEvent(type, payload, scope, position) ??
+      parseUnreportedModelRun(type, payload, scope, position);
+    const bareRunKey = usage?.runKey ? unsegmentedRunKey(usage.runKey) : null;
+    if (usage && bareRunKey) {
+      // A run projected before keys named the line holds its row under the
+      // bare key; it stays on that row instead of opening a second one.
+      const [bare] = await tx
+        .select({ id: modelUsageEvents.id })
+        .from(modelUsageEvents)
+        .where(
+          and(
+            eq(modelUsageEvents.sessionNodeId, node!.id),
+            eq(modelUsageEvents.runKey, bareRunKey),
+          ),
+        )
+        .limit(1);
+      if (bare) usage.runKey = bareRunKey;
+    }
     if (usage) {
       const [insertedUsage] = await tx
         .insert(modelUsageEvents)
