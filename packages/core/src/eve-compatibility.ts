@@ -2,7 +2,7 @@ export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
       range: "1.0.x",
-      verifiedVersion: "1.0.0-rc.8",
+      verifiedVersion: "1.0.0-rc.13",
       dependencyName: "eve",
     },
   ],
@@ -85,6 +85,42 @@ export const EVE_COMPATIBILITY_POLICY = {
   // under the sandbox's `/tmp`; a lease needs a header-rewriting network
   // policy, which `@evelandhq/sandbox-bwrap` refuses as before.
   //
+  // 1.0.0-rc.13 (published 2026-11-13) became the verified 1.0 patch the same
+  // day; rc.9 through rc.11 were reviewed on the way and never verified, and
+  // rc.12 was never published. It keeps every version Eveland pins --
+  // discovery manifest 16, compiled manifest 56, checkpoint 19, stream 27 and
+  // the v27 vocabulary -- and leaves the sandbox provider contract alone.
+  // What moved for the platform:
+  // - rc.10 bundles Workflow 5.5 (core 5.5.0, world 5.2.0, world-local
+  //   5.3.0). It gates on the same World capabilities and spec range (6
+  //   through 9) and only adds optional World members (`queueAuthMode`,
+  //   which a World that declares nothing is not checked against;
+  //   `isRunCreationEvent`, a reader allowance for a World that writes a
+  //   run's creation as its first `run_started`), so
+  //   `@evelandhq/workflow-world` 0.31.1, still on world 5.1.0, serves it.
+  //   Step values are now stored as references and changes inside the
+  //   payloads, which the World stores without reading. world 5.2.0 no
+  //   longer reads `WORKFLOW_SEALED_LOG`; the 0.31.1 World still does, so a
+  //   Deployment that sets `WORKFLOW_SEALED_LOG=0` keeps minting spec 6 until
+  //   the World moves to that set.
+  // - rc.11 records the usage of an answer eve discards and asks for again
+  //   (`usage.recorded` in the `model.retried` commit) and of a failed run (in
+  //   the `model.settled` commit). A retried run therefore owns more than one
+  //   record, so the Built-in projection keys a run's usage by run and commit
+  //   line: a settlement and the record it is owed share one commit, and each
+  //   discarded attempt keeps its own row.
+  // - rc.13 targets Node.js 26: `eve init` and its scaffold updates pin
+  //   `engines.node` to `26.x`. eve still supports Node.js 24 and later, and
+  //   an engines mismatch only warns under `pnpm install --frozen-lockfile`
+  //   and `npm ci`, so Releases on hosts still running Node.js 24 build as
+  //   before.
+  // The rest is Agent-facing: `ctx.conversation.space` (custom channels may
+  // report one through an optional `space` hook), a `TURN_FAILED` settlement
+  // with a fixed message for a turn whose step fails every retry, sandboxes
+  // resumed on first use instead of at turn start, and Vercel deployments
+  // running schedules on Vercel Schedules instead of the cron route, which
+  // Eveland's scheduler channel never used.
+  //
   // What the v27 protocol (introduced by 0.84) means for Eveland:
   // - Session events are `{ type, scope?, data }` facts, positioned by
   //   `(line, index)` instead of an event id, with one settled event per item
@@ -105,10 +141,12 @@ export const EVE_COMPATIBILITY_POLICY = {
   //   channel's kind is `channel:<name>` (the HTTP channel is `channel:eve`).
   // - The sandbox provider contract names the abort signal `signal` and has
   //   optional spawn `stdin`; `@evelandhq/sandbox-bwrap` reads both.
-  // - The bundled Workflow set is core 5.4.0, world 5.1.0 (core 5.2.3, world
+  // - The bundled Workflow set is core 5.5.0, world 5.2.0 from rc.10 (core
+  //   5.4.0, world 5.1.0 on rc.5 through rc.9; core 5.2.3, world
   //   5.0.5 on rc.1 and rc.2), spec 9 as the World declares it under rc.3+
-  //   (8 on rc.1 and rc.2), which `@evelandhq/workflow-world` 0.30.0 pins and
-  //   serves with an in-band writer fence. From 0.76.1 eve treats a World
+  //   (8 on rc.1 and rc.2), which `@evelandhq/workflow-world` 0.30.0 and later
+  //   serve with an in-band writer fence (the World pins world 5.1.0; eve
+  //   compares only the major line). From 0.76.1 eve treats a World
   //   that does not declare `capabilities.deploymentAffinity` as running one
   //   eve version at a time, and from 0.81.1 a session moves to a fresh run
   //   only when the World declares `capabilities.hookForceClaim`; the shared

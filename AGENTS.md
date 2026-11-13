@@ -111,7 +111,7 @@ do not merge it on your own.
 
 ## Repository map and dependency direction
 
-The workspace uses Node.js 24+, pnpm 11, TypeScript, and Vitest.
+The workspace targets Node.js 26 (24+ supported), pnpm 11, TypeScript, and Vitest.
 
 - `apps/web`: the Dashboard — authenticated Next.js App Router console.
 - `apps/docs`: bilingual public website and Fumadocs documentation, separate
@@ -325,6 +325,7 @@ corresponding tests and docs are updated.
 Install dependencies with:
 
 ```bash
+npm install --global corepack@0.36.0   # Node 25+ no longer bundles corepack
 corepack enable
 pnpm install --frozen-lockfile
 cp .env.example .env

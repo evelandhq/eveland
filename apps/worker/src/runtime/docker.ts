@@ -330,7 +330,7 @@ export async function writeGeneratedDockerfile(
     : "npx eve build && npx eve info --json > /dev/null";
   await writeFile(
     dockerfilePath,
-    `FROM node:24-alpine
+    `FROM node:26-alpine
 WORKDIR /app
 # Platform-owned command baseline for Eve's built-in tools and common skills.
 # bubblewrap provides isolation; socat bridges a local model port to the host.

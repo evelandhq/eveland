@@ -17,7 +17,7 @@ set -euo pipefail
 
 REPO_URL="${EVELAND_REPO_URL:-https://github.com/evelandhq/eveland.git}"
 NODE_DIST_BASE="${EVELAND_NODE_DIST:-https://nodejs.org/dist}"
-NODE_MAJOR=24
+NODE_MAJOR=26
 REQUESTED_VERSION="${EVELAND_VERSION:-}"
 PREFIX="${EVELAND_HOME:-}"
 NO_PROMPT=0
@@ -285,7 +285,7 @@ fi
 pnpm_version() { pnpm --version 2>/dev/null | sed 's/^v//' | head -1 || true; }
 if [ "$(pnpm_version)" != "$PNPM_PIN" ]; then
   # No pnpm, or a pnpm from the shell that is not the pinned one (Node 25+
-  # plans to drop corepack): install the pinned pnpm into the managed node
+  # no longer bundles corepack): install the pinned pnpm into the managed node
   # prefix, which leads PATH here and in the shims.
   note "pnpm@$PNPM_PIN not on PATH (found: $(pnpm_version | sed 's/^$/none/')) — installing it via npm"
   "$NODE_BIN_DIR/npm" install -g "pnpm@$PNPM_PIN"

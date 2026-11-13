@@ -64,13 +64,13 @@ describe("Eveland public website contract", () => {
     expect(workflow).toContain("key: ${{ runner.os }}-next-docs-");
   });
 
-  test("runs every workflow on the current Node 24 action runtime", () => {
+  test("runs every workflow on Node 26", () => {
     for (const workflow of ["ci.yml", "deploy-docs.yml", "systemd-smoke.yml"]) {
       const sourceText = source(`../../../.github/workflows/${workflow}`);
 
       expect(sourceText).toContain("actions/setup-node@v7");
       expect(sourceText).not.toContain("actions/setup-node@v6");
-      expect(sourceText).toContain("node-version: 24");
+      expect(sourceText).toContain("node-version: 26");
     }
   });
 

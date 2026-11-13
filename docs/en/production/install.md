@@ -28,7 +28,7 @@ curl -fsSL https://eveland.ai/install.sh.sha256 | sha256sum -c -
 less install.sh && sudo bash install.sh
 ```
 
-The installer stays deliberately small. It installs anything missing (`git`, `curl`, Docker and Compose v2, Node 24 — a private copy under the appliance root, leaving your `PATH` alone), clones the newest stable tag into `/opt/eveland/source`, adds the `eveland-ctl` and `eveland` commands to `/opt/eveland/bin`, and then hands over to `eveland-ctl start`, which does the actual install.
+The installer stays deliberately small. It installs anything missing (`git`, `curl`, Docker and Compose v2, Node 26 — a private copy under the appliance root, leaving your `PATH` alone), clones the newest stable tag into `/opt/eveland/source`, adds the `eveland-ctl` and `eveland` commands to `/opt/eveland/bin`, and then hands over to `eveland-ctl start`, which does the actual install.
 
 Run it as root. That is what makes the first boot land directly on the production form — platform processes as systemd units, Docker holding only the Collector and the optional bundled database.
 

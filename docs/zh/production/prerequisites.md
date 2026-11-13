@@ -11,9 +11,10 @@ description: 生产环境前置准备：Linux 基础依赖、bubblewrap 沙箱�
 
 ### Node.js 与包管理器
 
-安装 Node.js 24，并通过 Corepack 启用指定版本的 pnpm：
+安装 Node.js 26（仍支持 Node.js 24），并通过 Corepack 启用指定版本的 pnpm。Node.js 25 及之后不再自带 Corepack，因此先从 npm 安装它：
 
 ```bash
+sudo npm install --global corepack@0.36.0
 sudo corepack enable
 sudo corepack install --global pnpm@11.7.0
 ```

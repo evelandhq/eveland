@@ -61,13 +61,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
           registry-url: https://registry.npmjs.org
           cache: pnpm
 
-      # Trusted publishing needs npm >= 11.5.1, which is newer than what the
-      # Node 24 image happens to bundle. Pinning it here rather than trusting
-      # the runner image means a runner update cannot silently break publishing.
+      # Trusted publishing needs npm >= 11.5.1. Pinning it here rather than
+      # trusting whatever npm the runner's Node image bundles means a runner
+      # update cannot silently break publishing.
       - name: Use an npm that speaks OIDC
         run: |
           npm install -g npm@^11.5.1

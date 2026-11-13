@@ -156,7 +156,11 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
   if (pnpm.code === 0) {
     add("pnpm", "ok", `pnpm ${pnpm.output.trim()}`);
   } else {
-    add("pnpm", "fail", "pnpm is not runnable. Run `corepack enable` (Node ships corepack).");
+    add(
+      "pnpm",
+      "fail",
+      "pnpm is not runnable. Run `npm install --global corepack@0.36.0 && corepack enable` (Node 25+ no longer bundles corepack).",
+    );
   }
 
   // Docker.

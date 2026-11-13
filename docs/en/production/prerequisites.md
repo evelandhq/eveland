@@ -11,9 +11,10 @@ Production environments require a Linux host with systemd (Ubuntu 24.04 LTS reco
 
 ### Node.js and package manager
 
-Install Node.js 24 and enable the required pinned pnpm version via Corepack:
+Install Node.js 26 (Node.js 24 is still supported) and enable the required pinned pnpm version via Corepack. Node.js 25 and later no longer bundle Corepack, so install it from npm first:
 
 ```bash
+sudo npm install --global corepack@0.36.0
 sudo corepack enable
 sudo corepack install --global pnpm@11.7.0
 ```
