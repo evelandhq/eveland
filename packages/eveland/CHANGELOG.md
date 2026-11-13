@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/evelandhq/eveland/compare/eveland-v0.25.0...eveland-v0.26.0) (2026-11-13)
+
+
+### Features
+
+* verify eve 1.0.0-rc.13, target Node.js 26, and count retried model attempts in usage ([#639](https://github.com/evelandhq/eveland/issues/639)) ([b73b2be](https://github.com/evelandhq/eveland/commit/b73b2be4a44709210bcc43692ce65bc3d9dd6a0d))
+
 ## [0.25.0](https://github.com/evelandhq/eveland/compare/eveland-v0.24.0...eveland-v0.25.0) (2026-11-10)
 
 
