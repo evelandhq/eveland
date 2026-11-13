@@ -49,11 +49,11 @@ services:
       - eveland-otel-collector:/var/lib/otelcol
 
   api:
-    image: node:24-alpine
+    image: node:26-alpine
     working_dir: /workspace
-    # unzip (Info-ZIP): zip-upload extraction shells out to `unzip -Z1`; node:24-alpine only ships
+    # unzip (Info-ZIP): zip-upload extraction shells out to `unzip -Z1`; node:26-alpine only ships
     # BusyBox unzip, which lacks -Z. The apk `unzip` is Info-ZIP and shadows the BusyBox applet.
-    command: sh -lc "apk add --no-cache unzip && corepack enable && pnpm install && pnpm --filter @evelandhq/api dev"
+    command: sh -lc "apk add --no-cache unzip && npm install --global corepack@0.36.0 && corepack enable && pnpm install && pnpm --filter @evelandhq/api dev"
     depends_on:
       - gateway
       - postgres
@@ -99,9 +99,9 @@ services:
       - .:/workspace
 
   gateway:
-    image: node:24-alpine
+    image: node:26-alpine
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install && pnpm --filter @evelandhq/gateway dev"
+    command: sh -lc "npm install --global corepack@0.36.0 && corepack enable && pnpm install && pnpm --filter @evelandhq/gateway dev"
     depends_on:
       - postgres
     environment:
@@ -133,9 +133,9 @@ services:
       - eveland-gateway-data-mask:/workspace/.eveland-data
 
   workflow-dispatcher:
-    image: node:24-alpine
+    image: node:26-alpine
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install && pnpm --filter @evelandhq/workflow-dispatcher dev"
+    command: sh -lc "npm install --global corepack@0.36.0 && corepack enable && pnpm install && pnpm --filter @evelandhq/workflow-dispatcher dev"
     depends_on:
       - postgres
       - api
@@ -167,9 +167,9 @@ services:
       - eveland-workflow-dispatcher-data-mask:/workspace/.eveland-data
 
   web:
-    image: node:24-alpine
+    image: node:26-alpine
     working_dir: /workspace
-    command: sh -lc "corepack enable && pnpm install && pnpm --filter @evelandhq/web dev"
+    command: sh -lc "npm install --global corepack@0.36.0 && corepack enable && pnpm install && pnpm --filter @evelandhq/web dev"
     depends_on:
       - api
     environment:
@@ -185,11 +185,11 @@ services:
       - .:/workspace
 
   worker:
-    image: node:24-alpine
+    image: node:26-alpine
     working_dir: /workspace
     # git: import_source shells out to `git clone`. docker-cli: build_deploy shells out to
-    # `docker build`/`docker run` via the mounted docker.sock. node:24-alpine ships neither.
-    command: sh -lc "apk add --no-cache git docker-cli && corepack enable && pnpm install && pnpm --filter @evelandhq/worker dev"
+    # `docker build`/`docker run` via the mounted docker.sock. node:26-alpine ships neither.
+    command: sh -lc "apk add --no-cache git docker-cli && npm install --global corepack@0.36.0 && corepack enable && pnpm install && pnpm --filter @evelandhq/worker dev"
     depends_on:
       - api
       - postgres

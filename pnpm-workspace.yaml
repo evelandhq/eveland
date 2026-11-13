@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 1.0.0-rc.8
+  eve: 1.0.0-rc.13
 catalogs:
   # The published SDK's contract is narrower than the platform's. It imports
   # four primitives from eve/channels/auth, stable across 0.27-0.40, while the
@@ -69,7 +69,10 @@ peerDependencyRules:
 # before the shared World and never selected for a new build. The Workflow
 # 5.4 set (world/errors 5.1.0, world-local 5.2.1, utils 5.0.2) is what
 # `@evelandhq/workflow-world` 0.29.0 through 0.31.1 pin -- the set eve
-# 1.0.0-rc.5 through rc.8 bundle (core 5.4.0; rc.3 had moved to world 5.1.0).
+# 1.0.0-rc.5 through rc.9 bundle (core 5.4.0; rc.3 had moved to world 5.1.0).
+# rc.10 moved eve's own bundle to Workflow 5.5 (core 5.5.0, world 5.2.0,
+# world-local 5.3.0), which only adds optional World members; eve compares
+# only the major line, so the same World serves it.
 # World 5.1.0 adds only optional capabilities; 0.30.0 declares the in-band
 # writer fence and serves spec 9 runs, which 0.29.0 kept on spec 8, and 0.31.0
 # declares the atomic start Hook every rc.6 session starts with.

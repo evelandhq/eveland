@@ -19,7 +19,7 @@ detail (it is written for coding agents but applies equally to humans).
 ## Development setup
 
 Follow the [README Quickstart](README.md#quickstart-local-development):
-Node ≥ 24, pnpm 11 (via corepack), Docker for Postgres and the OTLP collector.
+Node 26 (≥ 24 supported), pnpm 11 (via corepack, which Node 25+ no longer bundles), Docker for Postgres and the OTLP collector.
 Production runtimes (bubblewrap, systemd) are Linux-only; day-to-day
 development works on macOS and Linux.
 

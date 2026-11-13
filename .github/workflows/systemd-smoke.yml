@@ -46,7 +46,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
           cache: pnpm
 
       - name: Install sandbox host dependencies
@@ -83,7 +83,8 @@ jobs:
           # Deployment units run with a plain system PATH, so the toolchain the
           # sandbox self-check probes must live there -- not in the runner's
           # per-user setup-pnpm/setup-node directories. Same corepack install
-          # the Lima guest performs.
+          # the Lima guest performs; Node 25+ no longer bundles corepack.
+          sudo npm install --global corepack@0.36.0
           sudo corepack enable
           sudo corepack install --global pnpm@11.7.0
           sudo ln -sf "$(command -v node)" /usr/local/bin/node

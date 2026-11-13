@@ -282,7 +282,7 @@ describe("writeGeneratedDockerfile", () => {
     const contents = await readFile(dockerfilePath, "utf8");
 
     expect(dockerfilePath).toBe(path.join(buildDir, "Dockerfile"));
-    expect(contents).toContain("FROM node:24-alpine");
+    expect(contents).toContain("FROM node:26-alpine");
     expect(contents).toContain(
       "apk add --no-cache bash bubblewrap ca-certificates curl findutils git grep jq py3-pip python3 ripgrep socat unzip zstd",
     );
@@ -439,7 +439,7 @@ describe("createDockerAdapter", () => {
 
     const dockerfilePath = path.join(buildDir, "Dockerfile");
     const contents = await readFile(dockerfilePath, "utf8");
-    expect(contents).toContain("FROM node:24-alpine");
+    expect(contents).toContain("FROM node:26-alpine");
     expect(contents).toContain("RUN npx eve build && npx eve info --json > /dev/null");
     // eve 0.52.0 CLI telemetry: off for the build RUN and for the deployed process.
     expect(contents).toContain("ENV EVE_TELEMETRY_DISABLED=1");

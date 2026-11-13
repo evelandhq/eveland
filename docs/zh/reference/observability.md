@@ -355,9 +355,13 @@ eve_session_id)` 与 SessionNode 的同名对一样是唯一索引，两条存�
   Model Run 或 Context Change 拥有的 `usage.recorded`（按 `run_key` 去重）；从 Eve 0.83 Session
   记录的行各对应一个 `step.completed`（按 Turn 与 Step 去重），保持原样。由 Call 拥有的 v27 记录
   是在重报子 Session 已记录的花费，因此只由子 Session 计入；v27 会把缺失的 Token 数填为零，
-  所以用量缺失表现为某个 Model Run 完全没有记录。已完成的 Model Run 自其
-  `model.settled` 起计为缺失，直到其记录到达；记录随后填充同一 `run_key` 行，无论两者谁先送达，
-  一次 Run 都不会被重复计数。失败或被取消的 Run 不计入。
+  所以用量缺失表现为某个 Model Run 完全没有记录。Model Run 的 `run_key` 同时标明事实所在的
+  commit（stream line）。已完成的 Model Run 自其 `model.settled` 起计为缺失，直到其记录到达；Eve
+  把该记录写在同一个 commit 里，所以它填充同一 `run_key` 行，无论两者谁先送达，一次 Run 都不会被
+  重复计数。从 Eve 1.0.0-rc.11 起，Eve 丢弃并重新请求的回答会在 `model.retried` 的 commit 里记录
+  用量；这条记录单独成行，与该 Run 结算时的记录一起计入 Session 用量。失败或被取消的 Run 从不计为
+  缺失；Eve 为它写下的记录会计入。在 `run_key` 标明 commit 之前投影的行保留裸 `run:<id>` 键，
+  该 Run 之后的记录会填充那一行。
 - 每条受支持的线都说 v27 Session 协议；Session 回放、Trace 与投影仍读取从 Eve 0.83 Session
   存储的 v26 事件。未处理的 Hook 错误会让正在运行的 Turn 失败；注入的 Hook 会捕获每个
   遥测失败，因此对 Eveland 没有影响。

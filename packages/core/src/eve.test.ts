@@ -6,6 +6,7 @@ import {
   parseEveJsonObject,
   parseStepUsageEvent,
   parseUnreportedModelRun,
+  unsegmentedRunKey,
 } from "./eve.js";
 
 test("Eve wire helpers parse object payloads", () => {
@@ -47,6 +48,17 @@ describe("parseUnreportedModelRun", () => {
         { turnId: "t", runId: "r" },
       )?.runKey,
     ).toBe("run:r");
+  });
+
+  test("keys a positioned run under the commit line it settled on", () => {
+    expect(
+      parseUnreportedModelRun(
+        "model.settled",
+        { runId: "r", outcome: "completed" },
+        { turnId: "t", runId: "r" },
+        { line: 12, index: 3 },
+      )?.runKey,
+    ).toBe("run:r@line:12");
   });
 
   test("ignores runs that did not complete, other facts, and runs without an id", () => {
@@ -172,6 +184,36 @@ describe("parseStepUsageEvent", () => {
         { changeId: "chg_1" },
       ),
     ).toMatchObject({ turnId: "chg_1", runKey: "change:chg_1", costUsd: null });
+  });
+
+  test("keys a positioned run's record under its commit line, so a retried attempt's record stays apart", () => {
+    const usage = { inputTokens: 5, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const recorded = { kind: "model", owner: { runId: "r" }, usage };
+    const scope = { turnId: "t", runId: "r" };
+    // eve 1.0.0-rc.11+ commits a retried attempt's record with `model.retried`
+    // and the final one with `model.settled`: same run, different lines.
+    expect(
+      parseStepUsageEvent("usage.recorded", recorded, scope, { line: 4, index: 1 })?.runKey,
+    ).toBe("run:r@line:4");
+    expect(
+      parseStepUsageEvent("usage.recorded", recorded, scope, { line: 9, index: 1 })?.runKey,
+    ).toBe("run:r@line:9");
+    // An unpositioned record, and a context change's record, keep their owner key.
+    expect(parseStepUsageEvent("usage.recorded", recorded, scope)?.runKey).toBe("run:r");
+    expect(
+      parseStepUsageEvent(
+        "usage.recorded",
+        { kind: "model", owner: { changeId: "c" }, usage },
+        { changeId: "c" },
+        { line: 4, index: 0 },
+      )?.runKey,
+    ).toBe("change:c");
+  });
+
+  test("names the owner key a commit-line run key replaced", () => {
+    expect(unsegmentedRunKey("run:r@line:12")).toBe("run:r");
+    expect(unsegmentedRunKey("run:r")).toBeNull();
+    expect(unsegmentedRunKey("change:c")).toBeNull();
   });
 
   test("leaves delegated v27 usage to the child session that recorded it", () => {

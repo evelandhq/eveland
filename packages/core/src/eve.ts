@@ -3,8 +3,10 @@ export type ModelStepUsage = {
   /** The v26 step index; null for a v27 record, which a model run owns. */
   stepIndex: number | null;
   /**
-   * The v27 owner of the record (`run:<runId>` or `change:<changeId>`), the
-   * idempotency key a v27 usage row is stored under; null for a v26 step.
+   * The idempotency key a v27 usage row is stored under; null for a v26 step.
+   * A model run's key names the commit line too (`run:<runId>@line:<line>`)
+   * when the fact carries its stream position, see {@link runUsageKey}; a
+   * context change's key is its owner (`change:<changeId>`).
    */
   runKey: string | null;
   finishReason: string | null;
@@ -297,8 +299,9 @@ export function parseStepUsageEvent(
   type: string,
   payload: unknown,
   scope?: unknown,
+  position?: unknown,
 ): ModelStepUsage | null {
-  if (type === "usage.recorded") return parseUsageRecorded(payload, scope);
+  if (type === "usage.recorded") return parseUsageRecorded(payload, scope, position);
   if (type !== "step.completed" || !isEveRecord(payload)) {
     return null;
   }
@@ -329,6 +332,7 @@ export function parseUnreportedModelRun(
   type: string,
   payload: unknown,
   scope?: unknown,
+  position?: unknown,
 ): ModelStepUsage | null {
   if (type !== "model.settled" || !isEveRecord(payload) || payload.outcome !== "completed") {
     return null;
@@ -341,7 +345,7 @@ export function parseUnreportedModelRun(
         ? scopeRecord.runId
         : null;
   if (runId === null) return null;
-  const runKey = `run:${runId}`;
+  const runKey = runUsageKey(runId, position);
   return {
     turnId:
       typeof scopeRecord?.turnId === "string" && scopeRecord.turnId.length > 0
@@ -354,12 +358,42 @@ export function parseUnreportedModelRun(
   };
 }
 
-function parseUsageRecorded(payload: unknown, scope: unknown): ModelStepUsage | null {
+/**
+ * The usage key of a model run's record or settlement. A run can carry more
+ * than one record: from eve 1.0.0-rc.11 an answer eve discards (an empty
+ * answer it asks for again) records its usage in the `model.retried` commit,
+ * and the answer that stands records its own in the `model.settled` commit,
+ * both owned by the same run. A settlement and the record it is owed always
+ * share one commit, which is one stream line, so the line keeps those two on
+ * one row and every discarded attempt on a row of its own; a redelivery
+ * carries the same position and lands on the same row. A fact without a
+ * position keeps the bare owner key.
+ */
+function runUsageKey(runId: string, position: unknown): string {
+  const line = isEveRecord(position) ? readNonNegativeInteger(position.line) : null;
+  return line === null ? `run:${runId}` : `run:${runId}@line:${String(line)}`;
+}
+
+/**
+ * The bare owner key (`run:<runId>`) a commit-line run key replaced, or null
+ * for a key that names no line. Rows projected before keys named the line
+ * hold the bare key, and a run that has one keeps using it.
+ */
+export function unsegmentedRunKey(runKey: string): string | null {
+  const match = /^(run:.+)@line:\d+$/.exec(runKey);
+  return match ? match[1]! : null;
+}
+
+function parseUsageRecorded(
+  payload: unknown,
+  scope: unknown,
+  position: unknown,
+): ModelStepUsage | null {
   if (!isEveRecord(payload)) return null;
   const owner = isEveRecord(payload.owner) ? payload.owner : null;
   const runKey =
     typeof owner?.runId === "string" && owner.runId.length > 0
-      ? `run:${owner.runId}`
+      ? runUsageKey(owner.runId, position)
       : typeof owner?.changeId === "string" && owner.changeId.length > 0
         ? `change:${owner.changeId}`
         : null;

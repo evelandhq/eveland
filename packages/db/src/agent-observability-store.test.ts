@@ -996,8 +996,8 @@ describe("v27 (eve 0.84+) observations", () => {
     const usageRows = await store.listModelUsageEvents(session!.id);
     expect(usageRows.map((row) => [row.turnId, row.stepIndex, row.runKey])).toEqual(
       expect.arrayContaining([
-        ["turn_1", null, "run:run_1"],
-        ["turn_1", null, "run:run_2"],
+        ["turn_1", null, "run:run_1@line:3"],
+        ["turn_1", null, "run:run_2@line:8"],
       ]),
     );
     expect(usageRows).toHaveLength(2);
@@ -1075,24 +1075,61 @@ describe("v27 (eve 0.84+) observations", () => {
   test("counts a v27 model run with no usage record as missing", async () => {
     const { store, projectId, deploymentId } = await createStore();
     const scope = (runId: string) => ({ turnId: "t", runId });
+    // A settlement and the record it is owed share one commit (line).
     const events = [
-      { type: "model.started", scope: scope("r1"), data: { runId: "r1", modelId: "openai/test" } },
-      { type: "model.settled", scope: scope("r1"), data: { runId: "r1", outcome: "completed" } },
-      {
-        type: "usage.recorded",
-        scope: scope("r1"),
-        data: {
-          kind: "model",
-          owner: { runId: "r1" },
-          usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      [
+        0,
+        0,
+        {
+          type: "model.started",
+          scope: scope("r1"),
+          data: { runId: "r1", modelId: "openai/test" },
         },
-      },
-      { type: "model.started", scope: scope("r2"), data: { runId: "r2", modelId: "openai/test" } },
-      { type: "model.settled", scope: scope("r2"), data: { runId: "r2", outcome: "completed" } },
-      { type: "turn.settled", scope: { turnId: "t" }, data: { turnId: "t", outcome: "completed" } },
-    ];
-    for (const [line, event] of events.entries()) {
-      await store.ingestAgentEvent(v27(deploymentId, line, 0, event));
+      ],
+      [
+        1,
+        0,
+        { type: "model.settled", scope: scope("r1"), data: { runId: "r1", outcome: "completed" } },
+      ],
+      [
+        1,
+        1,
+        {
+          type: "usage.recorded",
+          scope: scope("r1"),
+          data: {
+            kind: "model",
+            owner: { runId: "r1" },
+            usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          },
+        },
+      ],
+      [
+        2,
+        0,
+        {
+          type: "model.started",
+          scope: scope("r2"),
+          data: { runId: "r2", modelId: "openai/test" },
+        },
+      ],
+      [
+        3,
+        0,
+        { type: "model.settled", scope: scope("r2"), data: { runId: "r2", outcome: "completed" } },
+      ],
+      [
+        4,
+        0,
+        {
+          type: "turn.settled",
+          scope: { turnId: "t" },
+          data: { turnId: "t", outcome: "completed" },
+        },
+      ],
+    ] as const;
+    for (const [line, index, event] of events) {
+      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
     }
     const [session] = await store.listSessions(projectId);
     expect(session?.usage).toMatchObject({ status: "partial", reportedSteps: 1, missingSteps: 1 });
@@ -1117,11 +1154,13 @@ describe("v27 (eve 0.84+) observations", () => {
     });
     const usageOf = async () => (await store.listSessions(projectId))[0]?.usage;
 
+    // A settlement and the record it is owed share one commit (line); only
+    // their delivery order varies.
     // r1 settles and is counted missing until its record arrives late.
     await store.ingestAgentEvent(v27(deploymentId, 1, 0, settled("r1")));
     expect(await usageOf()).toMatchObject({ status: "missing", reportedSteps: 0, missingSteps: 1 });
     await store.ingestAgentEvent(
-      v27(deploymentId, 9, 0, recorded("r1", 10), {
+      v27(deploymentId, 1, 1, recorded("r1", 10), {
         observedModel: { modelId: "actual/model", responseModelId: null },
       }),
     );
@@ -1133,18 +1172,18 @@ describe("v27 (eve 0.84+) observations", () => {
     });
 
     // r2's record arrives before its settlement: the settlement adds nothing.
-    await store.ingestAgentEvent(v27(deploymentId, 10, 0, recorded("r2", 20)));
-    await store.ingestAgentEvent(v27(deploymentId, 11, 0, settled("r2")));
+    await store.ingestAgentEvent(v27(deploymentId, 2, 1, recorded("r2", 20)));
+    await store.ingestAgentEvent(v27(deploymentId, 2, 0, settled("r2")));
     expect(await usageOf()).toMatchObject({ reportedSteps: 2, missingSteps: 0, inputTokens: 30 });
 
     // Replays (new delivery ids for the same facts) change nothing.
-    for (const [line, event] of [
-      [1, settled("r1")],
-      [9, recorded("r1", 10)],
-      [11, settled("r2")],
+    for (const [line, index, event] of [
+      [1, 0, settled("r1")],
+      [1, 1, recorded("r1", 10)],
+      [2, 0, settled("r2")],
     ] as const) {
       await store.ingestAgentEvent(
-        v27(deploymentId, line, 0, event, { telemetryEventId: `replay_${line}` }),
+        v27(deploymentId, line, index, event, { telemetryEventId: `replay_${line}_${index}` }),
       );
     }
     expect(await usageOf()).toMatchObject({ reportedSteps: 2, missingSteps: 0, inputTokens: 30 });
@@ -1152,12 +1191,100 @@ describe("v27 (eve 0.84+) observations", () => {
     const [session] = await store.listSessions(projectId);
     const rows = await store.listModelUsageEvents(session!.id);
     expect(rows).toHaveLength(2);
-    expect(rows.find((row) => row.runKey === "run:r1")).toMatchObject({
+    expect(rows.find((row) => row.runKey === "run:r1@line:1")).toMatchObject({
       usageReported: true,
       modelId: "actual/model",
       finishReason: "stop",
       inputTokens: 10,
     });
+  });
+
+  test("counts a retried attempt's usage beside its run's settled usage, in any order and once", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    const scope = (runId: string) => ({ turnId: "t", runId });
+    const recorded = (runId: string, inputTokens: number) => ({
+      type: "usage.recorded",
+      scope: scope(runId),
+      data: {
+        kind: "model",
+        owner: { runId },
+        usage: { inputTokens, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      },
+    });
+    const retried = (runId: string) => ({
+      type: "model.retried",
+      scope: scope(runId),
+      data: { runId, attempt: 1, error: { code: "EMPTY_ANSWER", message: "empty" } },
+    });
+    const settled = (runId: string) => ({
+      type: "model.settled",
+      scope: scope(runId),
+      data: { runId, outcome: "completed", finishReason: "stop" },
+    });
+    const usageOf = async () => (await store.listSessions(projectId))[0]?.usage;
+
+    // eve 1.0.0-rc.11+: a discarded answer's record shares the `model.retried`
+    // commit, and the answer that stands shares the `model.settled` one.
+    // r1 arrives in order; r2's settled record arrives before its settlement
+    // and its retried record last.
+    const deliveries = [
+      [1, 0, retried("r1")],
+      [1, 1, recorded("r1", 100)],
+      [2, 0, settled("r1")],
+      [2, 1, recorded("r1", 300)],
+      [6, 1, recorded("r2", 30)],
+      [6, 0, settled("r2")],
+      [5, 1, recorded("r2", 10)],
+      [5, 0, retried("r2")],
+    ] as const;
+    for (const [line, index, event] of deliveries) {
+      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
+    }
+    const expected = { status: "reported", reportedSteps: 4, missingSteps: 0, inputTokens: 440 };
+    expect(await usageOf()).toMatchObject(expected);
+
+    for (const [line, index, event] of deliveries) {
+      await store.ingestAgentEvent(
+        v27(deploymentId, line, index, event, { telemetryEventId: `replay_${line}_${index}` }),
+      );
+    }
+    expect(await usageOf()).toMatchObject(expected);
+  });
+
+  test("a run first projected under its unpositioned key keeps that key", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    const scope = { turnId: "t", runId: "r1" };
+    // Projected before run keys carried the commit line: the settlement holds
+    // the run's missing row under `run:r1`.
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "legacy_settled",
+        eventFingerprint: "legacy:settled",
+        channelKind: "channel:eve",
+        event: {
+          type: "model.settled",
+          scope,
+          data: { runId: "r1", outcome: "completed" },
+          meta: {},
+        },
+      }),
+    );
+    await store.ingestAgentEvent(
+      v27(deploymentId, 2, 1, {
+        type: "usage.recorded",
+        scope,
+        data: {
+          kind: "model",
+          owner: { runId: "r1" },
+          usage: { inputTokens: 7, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        },
+      }),
+    );
+    const [session] = await store.listSessions(projectId);
+    expect(session?.usage).toMatchObject({ reportedSteps: 1, missingSteps: 0, inputTokens: 7 });
+    expect((await store.listModelUsageEvents(session!.id)).map((row) => row.runKey)).toEqual([
+      "run:r1",
+    ]);
   });
 
   test("classifies the v27 scheduler channel as a scheduled trigger", async () => {

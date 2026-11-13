@@ -28,7 +28,7 @@ curl -fsSL https://eveland.ai/install.sh.sha256 | sha256sum -c -
 less install.sh && sudo bash install.sh
 ```
 
-这个脚本刻意做得很薄：补齐缺失的依赖（`git`、`curl`、Docker 与 Compose v2、Node 24——装在安装目录内的私有副本，不动你的 `PATH`），把最新稳定版本的代码克隆到 `/opt/eveland/source`，在 `/opt/eveland/bin` 放好 `eveland-ctl` 与 `eveland` 两个命令，然后把真正的安装工作交给 `eveland-ctl start`。
+这个脚本刻意做得很薄：补齐缺失的依赖（`git`、`curl`、Docker 与 Compose v2、Node 26——装在安装目录内的私有副本，不动你的 `PATH`），把最新稳定版本的代码克隆到 `/opt/eveland/source`，在 `/opt/eveland/bin` 放好 `eveland-ctl` 与 `eveland` 两个命令，然后把真正的安装工作交给 `eveland-ctl start`。
 
 请以 root 身份运行：只有这样，首次启动才会直接落到生产形态——平台进程全部是 systemd unit，Docker 只保留 Collector 和可选的内置数据库。
 

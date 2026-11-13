@@ -21,7 +21,7 @@ schedules, and logs.
 > [`docs/en/operations/upgrades.md`](docs/en/operations/upgrades.md)). Production
 > deployments run on Linux with the systemd runtime (bubblewrap sandboxing);
 > the Docker runtime is for development, not production. Development works on
-> macOS and Linux with Node ≥ 24 and pnpm 11.
+> macOS and Linux with Node 26 (≥ 24 supported) and pnpm 11.
 
 Eveland is a pnpm monorepo. The authenticated Dashboard, platform API, Agent
 Gateway, worker, and workflow dispatcher ship together as one SemVer-versioned
@@ -41,6 +41,7 @@ the session mapping and compatibility behavior.
 ## Quickstart (local development)
 
 ```bash
+npm install --global corepack@0.36.0   # Node 25+ no longer bundles corepack
 corepack enable
 pnpm install --frozen-lockfile
 cp .env.example .env                  # set BETTER_AUTH_SECRET and EVELAND_ADMIN_PASSWORD
