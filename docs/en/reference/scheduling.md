@@ -9,7 +9,7 @@ This document defines the execution contract for Eveland as the sole production 
 
 ## 1. Schedule discovery and compiled artifacts
 
-- **Cron syntax**: Strictly adheres to 5-field, UTC, minute-resolution cron specifications (e.g. `0 8 * * *`).
+- **Cron syntax**: Strictly adheres to 5-field, UTC, minute-resolution cron specifications (e.g. `0 8 * * *`). A schedule that sets eve's `timezone` (TypeScript definition or Markdown frontmatter) fails the build, since the platform would otherwise fire it at the UTC hour.
 - **Discovery**: Automatically scans `agent/schedules/` during project import, alongside Extension Schedules declared in dependencies.
 - **Immutable compilation**: Emits a validated `.eveland/scheduler/definitions.json` artifact bundled inside the immutable release, assigned an immutable `ScheduleVersion`.
 

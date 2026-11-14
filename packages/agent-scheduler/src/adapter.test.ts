@@ -513,6 +513,22 @@ Produce the daily report.
     );
   });
 
+  // eve 1.0.0-rc.14 lets a fixed schedule name an IANA `timezone`. The
+  // platform scheduler fires every cron in UTC, so a schedule that asks for
+  // another zone would fire at the wrong hour; the build fails instead.
+  test.each([
+    `export default { cron: "0 9 * * *", timezone: "Asia/Shanghai", async run() {} };`,
+    `import { defineSchedule } from "eve/schedules";\nexport default defineSchedule({ cron: "0 9 * * *", "timezone": "UTC", content: "Morning." });`,
+  ])("rejects a module schedule that names a timezone: %s", async (source) => {
+    const releaseDir = await fixture({
+      eveVersion: "1.0.0-rc.17",
+      files: { "agent/schedules/morning.ts": source },
+    });
+    await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
+      /agent\/schedules\/morning\.ts sets timezone.*UTC/,
+    );
+  });
+
   test.each(compatibilityMatrix)(
     "builds the transformed overlay with the real Eve $version compiler",
     async ({ packageName, version }) => {
