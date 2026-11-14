@@ -2,7 +2,7 @@ export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
       range: "1.0.x",
-      verifiedVersion: "1.0.0-rc.13",
+      verifiedVersion: "1.0.0-rc.17",
       dependencyName: "eve",
     },
   ],
@@ -120,6 +120,25 @@ export const EVE_COMPATIBILITY_POLICY = {
   // resumed on first use instead of at turn start, and Vercel deployments
   // running schedules on Vercel Schedules instead of the cron route, which
   // Eveland's scheduler channel never used.
+  //
+  // 1.0.0-rc.17 (published 2026-11-13) became the verified 1.0 patch on
+  // 2026-11-15; rc.14 and rc.16 were reviewed on the way and never verified,
+  // rc.12 was published late with what rc.13 already carried, and rc.15 was
+  // never published. It keeps every version Eveland pins and the sandbox
+  // provider contract, bundles the same Workflow set as rc.13 (core 5.5.0),
+  // and declares the same World types. What moved for the platform:
+  // - rc.14 lets a fixed schedule name an IANA `timezone`, which the compiled
+  //   manifest carries without a version bump. The platform scheduler fires
+  //   every cron in UTC, so the injected scheduler rejects a schedule that
+  //   sets one instead of firing it at the wrong hour.
+  // - rc.16 makes a self-hosted server exit promptly on SIGTERM, which only
+  //   shortens a Deployment stop.
+  // - rc.17 raises eve's `ai` peer floor to 7.0.172.
+  // The rest is Agent-facing: `endsTurn` on workflow tools, decision spans
+  // that name their turn and purpose (the Built-in collector reads neither),
+  // YAML 1.2 frontmatter through js-yaml 5, MCP connections that fail when
+  // `server/discover` fails (`protocolVersionDiscovery: false` opts out), and
+  // dynamic schedule changes, which Eveland does not host.
   //
   // What the v27 protocol (introduced by 0.84) means for Eveland:
   // - Session events are `{ type, scope?, data }` facts, positioned by
