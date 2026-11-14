@@ -161,6 +161,11 @@ function parseStrictFrontmatter(sourcePath: string, input: string): { cron?: str
     const match = trimmed.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (!match) throw new Error(`Markdown schedule ${sourcePath} has invalid frontmatter.`);
     const [, key, rawValue = ""] = match;
+    if (key === "timezone") {
+      throw new Error(
+        `Markdown schedule ${sourcePath} only supports the cron frontmatter field; Eveland runs every schedule in UTC, so remove timezone and write the cron in UTC.`,
+      );
+    }
     if (key !== "cron") {
       throw new Error(`Markdown schedule ${sourcePath} only supports the cron frontmatter field.`);
     }
