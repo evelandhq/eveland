@@ -278,6 +278,13 @@ function transformModuleSchedule(
   }
   const definition = resolveDefinitionExpression(sourceFile, defaultExport.expression);
   const cron = readStringProperty(definition, "cron", sourcePath);
+  // eve 1.0.0-rc.14 added an optional IANA `timezone`; the platform fires
+  // every cron in UTC, so honoring the schedule means refusing the zone.
+  if (findProperty(definition, "timezone") !== undefined) {
+    throw new Error(
+      `Schedule ${sourcePath} sets timezone, but Eveland runs every schedule in UTC. Remove timezone and write the cron in UTC.`,
+    );
+  }
   // A fire-and-forget prompt (`content`) keeps the platform's "markdown"
   // definition kind, the same kind a `.md` schedule has.
   const hasMarkdown = findProperty(definition, "content") !== undefined;

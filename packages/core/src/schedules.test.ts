@@ -64,6 +64,15 @@ Run nightly.
     },
   );
 
+  test("names UTC when Markdown frontmatter asks for a timezone", () => {
+    expect(() =>
+      parseScheduleSource(
+        "agent/schedules/nightly.md",
+        `---\ncron: "0 8 * * *"\ntimezone: Asia/Shanghai\n---\nRun nightly.\n`,
+      ),
+    ).toThrow(/runs every schedule in UTC/);
+  });
+
   test.each(["0 8 * *", "0 0 8 * * *"])("rejects non-five-field cron: %s", (cron) => {
     expect(() =>
       parseScheduleSource(

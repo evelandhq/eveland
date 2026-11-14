@@ -9,7 +9,7 @@ description: Schedule 发现与编译产物、Planner 与 ScheduleRun 状态机�
 
 ## 1. Schedule 发现与构建产物
 
-- **语法支持**：仅接受五段式、UTC、分钟级的标准 Cron 语义（如 `0 8 * * *`）。
+- **语法支持**：仅接受五段式、UTC、分钟级的标准 Cron 语义（如 `0 8 * * *`）。设置了 eve `timezone` 的定时任务（TypeScript 定义或 Markdown frontmatter）会让构建失败，否则平台会按 UTC 的钟点触发它。
 - **来源解析**：代码导入时自动扫描 `agent/schedules/` 下的定义，以及依赖扩展声明的 Extension Schedules。
 - **构建产物固化**：编译阶段生成独立的 `.eveland/scheduler/definitions.json` 产物，随不可变 Release 打包。每次代码导入生成不可变的 `ScheduleVersion`。
 

@@ -11,7 +11,7 @@ Eveland **centralizes production schedule execution at the platform layer**: neu
 
 ## 1. Schedule definitions and versioning
 
-- **Cron syntax**: Supports standard five-field UTC cron expressions at minute resolution (e.g. `0 9 * * 1-5` for weekdays at 09:00 UTC).
+- **Cron syntax**: Supports standard five-field UTC cron expressions at minute resolution (e.g. `0 9 * * 1-5` for weekdays at 09:00 UTC). eve's `timezone` option is not supported: a schedule that sets it fails the build, so write the cron in UTC.
 - **Configuration as code**: Schedules defined in Eve projects via Markdown or TypeScript are parsed during source import and stored as versioned platform records.
 
 ---
