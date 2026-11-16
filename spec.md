@@ -404,11 +404,9 @@ the page display rules live in `docs/en/reference/scheduling.md`.
 A read-only code browser: the file tree, file contents, current Source Revision
 info, and the Eve project-structure summary. No online editing, no Git write-back;
 Connections appear only as part of the structure summary, with no separate
-Connections navigation or configuration UI. The built summary comes from the
-discovery manifest of the final `eve info` on the installed dependency tree; only
-versions produced by the current window are accepted, and unknown versions fail
-closed while keeping the static summary. Summary fields and Extension projection
-rules live in `docs/en/reference/source-import.md`.
+Connections navigation or configuration UI. A Release's built summary comes from
+the documented `eve info --json` output on the installed dependency tree; output
+the platform does not recognize fails closed and records no built summary.
 
 ---
 

@@ -12,13 +12,31 @@ import {
 } from "@evelandhq/agent-scheduler";
 
 /**
- * Eveland runs `eve info` after `eve build` to materialize the full discovery
- * manifest in the built app tree. Once a Release is built this artifact -- not
- * the platform's pre-install static file scan -- is the authority on what the
- * agent contains. The discovery summary is informational; scheduler definitions
+ * Where the build keeps the output of the `eve info --json` it runs after
+ * `eve build`, on the same installed tree. Once a Release is built this output
+ * -- not the platform's pre-install static file scan -- is the authority on
+ * what the agent contains. The summary is informational; scheduler definitions
  * are read separately below and are a required deployment artifact.
  */
-export const DISCOVERY_MANIFEST_RELEASE_PATH = ".eve/discovery/agent-discovery-manifest.json";
+export const EVE_INFO_RELEASE_PATH = ".eveland/eve-info.json";
+
+/** The build's `eve info --json` command, saving its output for the summary. */
+export const EVE_INFO_SAVE_COMMAND = `npx eve info --json > ${EVE_INFO_RELEASE_PATH}`;
+
+/**
+ * Parses saved `eve info --json` output. eve prints one JSON object, which a
+ * line of CLI output may precede, so parsing starts at the first `{`.
+ * Unparseable output is null: the summary is informational.
+ */
+export function parseEveInfoOutput(output: string): unknown {
+  const start = output.indexOf("{");
+  if (start < 0) return null;
+  try {
+    return JSON.parse(output.slice(start)) as unknown;
+  } catch {
+    return null;
+  }
+}
 
 /** eve's compiled agent manifest; read only for the static model IDs it names. */
 export const COMPILED_AGENT_MANIFEST_RELEASE_PATH =
@@ -52,15 +70,15 @@ export function assertHostedEveVersion(resolvedEveVersion: string | null): void 
 export async function readReleaseDiscovery(releaseDir: string): Promise<ReleaseDiscovery> {
   const resolvedEveVersion = await readResolvedEveVersion(releaseDir);
   assertHostedEveVersion(resolvedEveVersion);
-  let manifest: unknown = null;
+  let eveInfo: unknown = null;
   try {
-    manifest = JSON.parse(
-      await readFile(path.join(releaseDir, DISCOVERY_MANIFEST_RELEASE_PATH), "utf8"),
+    eveInfo = parseEveInfoOutput(
+      await readFile(path.join(releaseDir, EVE_INFO_RELEASE_PATH), "utf8"),
     );
   } catch {
-    // Informational: an absent or corrupt manifest records no build summary.
+    // Informational: absent output records no build summary.
   }
-  return { manifest, resolvedEveVersion };
+  return { eveInfo, resolvedEveVersion };
 }
 
 export async function readReleaseSchedulerDefinitions(

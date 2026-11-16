@@ -92,7 +92,7 @@ Source Revision 必须持久化启动既有 Release 所需的 `package.json` 与
 
 代码浏览器占满完整的 Project 内容画布，不显示外框，也不保留页面级 padding。文件搜索是树形面板的第一个控件；它所在的无边框工具栏与同等紧凑、只显示当前路径的预览 Header 对齐。文件树与 Header 保持固定，代码正文独立负责横纵两个方向的滚动，让横向滚动始终可在当前可视区域底部使用。代码使用 12px 字号、18px 行高和弱化后的行号颜色；浏览器框架中不显示文件类型、文件大小或 Eve 版本元数据。
 
-Source 页面只把 Connection 与其他 Eve 实体一起作为项目结构摘要展示，不提供独立的 Connections 导航或配置 UI。Release 的已构建摘要来自相同已安装依赖树上的最终 `eve info`；平台只接受当前窗口产出的 discovery manifest 版本，未知版本继续 fail closed 并保留静态摘要。摘要会把有效的 Extension Schedule 与直接贡献的 Extension Subagent 投影成稳定的 `agent/extensions/<namespace>/...` 路径，Subagent ID 使用 Eve 的 `<namespace>__<id>`；consumer override 与 Eve 编译器保持相同的优先级。只投影根 Agent 的 Connection path，Subagent-owned Connection 保持在自己的 manifest scope 内。
+Source 页面只把 Connection 与其他 Eve 实体一起作为项目结构摘要展示，不提供独立的 Connections 导航或配置 UI。Release 的已构建摘要来自相同已安装依赖树上 `eve build` 之后的 `eve info --json`（eve 文档化的输出）：编译状态、布局、诊断计数、根 Agent 模型、指令文件，以及 skills、tools、声明的 subagents、schedules 和 channels 的名称（Extension 贡献的名称带 `<namespace>__` 前缀）。`eve info` 不列出 hooks、connections、sandbox 和远程 Agent，所以已构建摘要里也没有这些。平台不认识的输出 fail closed，不记录已构建摘要。
 
 ## 深入参考
 

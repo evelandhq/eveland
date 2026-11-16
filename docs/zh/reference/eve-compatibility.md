@@ -35,7 +35,7 @@ Eveland 托管 Eve `>=1.0.0 <1.1.0`，已验证版本为 `1.0.0`。整个 1.x �
 | 表面                             | 值                                                                                                  |
 | -------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Session 流                       | v27（`x-eve-stream-version: 27`）；Playground 打包读取它的 `eve/client`，Agent Gateway 原样转发该流 |
-| Discovery Manifest               | 16，读取自每次构建最后一次 `eve info`                                                               |
+| Discovery Manifest               | 16，只在构建前为 Extension 挂载读取；构建摘要读 `eve info --json`                                   |
 | Workflow 存储                    | 默认 spec 9（单 Orchestrator）；Deployment 设置 `WORKFLOW_SEALED_LOG=0` 时为 6                      |
 | Eve 依赖的 Workflow World 能力   | `atomicStartHook`、`deploymentAffinity`、`hookForceClaim` 加上处于 active 的 `hookRetention`        |
 | OpenTelemetry Agent Trace Schema | 4                                                                                                   |
