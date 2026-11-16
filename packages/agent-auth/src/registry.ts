@@ -569,16 +569,9 @@ function normalizeOidcConfig(input: unknown, existing?: unknown): OidcAuthorizat
     ["eve-jwt", "userinfo"] as const,
     "Unsupported OIDC access-token verification mode.",
   );
-  const legacySecretKey =
-    typeof next.clientSecretKey === "string" && next.clientSecretKey.trim()
-      ? next.clientSecretKey.trim()
-      : undefined;
   const referenceInput =
     next.clientSecretRef ??
-    (legacySecretKey ? { kind: "project-secret", key: legacySecretKey } : undefined) ??
-    (next.clientSecretRef === undefined && next.clientSecretKey === undefined
-      ? previous?.clientSecretRef
-      : undefined);
+    (next.clientSecretRef === undefined ? previous?.clientSecretRef : undefined);
   const clientSecretRef =
     referenceInput === undefined ? undefined : secretReference(referenceInput);
   if (tokenEndpointAuthMethod !== "none" && !clientSecretRef) {

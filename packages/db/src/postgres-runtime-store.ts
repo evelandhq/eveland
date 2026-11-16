@@ -211,15 +211,6 @@ export function createPostgresRuntimeStore({ db }: PostgresStoreContext): Runtim
       }
     },
 
-    async getActivationLease(leaseId) {
-      const [row] = await db
-        .select()
-        .from(activationLeases)
-        .where(eq(activationLeases.id, leaseId))
-        .limit(1);
-      return row ? activationLeaseRowToActivationLease(row) : null;
-    },
-
     async renewActivationLease(leaseId, expiresAt, now = new Date()) {
       const [row] = await db
         .update(activationLeases)

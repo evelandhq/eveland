@@ -398,9 +398,14 @@ describe("Gateway", () => {
     expect(headers.forwarded).not.toContain("attacker");
     expect(headers["x-eveland-deployment-id"]).toBeUndefined();
     expect(headers["x-eveland-version-key"]).toBeUndefined();
+    // A reserved header selects nothing: the request gets a generated,
+    // signed affinity cookie alongside the Agent's own cookies.
     expect(response.headers.getSetCookie()).toEqual([
       "eve_session=abc; HttpOnly",
       "variant=v1; HttpOnly",
+      expect.stringMatching(
+        /^eveland_affinity=[^;]+; Domain=agent\.localhost; Path=\/; HttpOnly; SameSite=Lax$/,
+      ),
     ]);
   });
 

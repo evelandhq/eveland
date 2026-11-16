@@ -375,6 +375,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:rel_old",
+      observerContract: 3,
       containerName: "eveland-old-container",
       internalPort: 3000,
       hostPort: 41110,

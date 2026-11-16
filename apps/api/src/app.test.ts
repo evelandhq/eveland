@@ -25,6 +25,7 @@ describe("api app", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "fixture:wake-api",
+      observerContract: 3,
       containerName: "fixture-wake-api",
       internalPort: 3000,
       hostPort: 41991,
@@ -83,9 +84,10 @@ describe("api app", () => {
       headers: { authorization: "Bearer gateway-service-token" },
     });
     expect(release.status).toBe(204);
-    await expect(store.getActivationLease(body.lease.id)).resolves.toMatchObject({
-      releasedAt: expect.any(String),
-    });
+    // A released lease no longer renews.
+    await expect(
+      store.renewActivationLease(body.lease.id, new Date(Date.now() + 60_000)),
+    ).resolves.toBeNull();
   });
 
   test("refuses workflow_step activation for a Release outside the storage window", async () => {
@@ -111,6 +113,7 @@ describe("api app", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "fixture:stale-storage",
+      observerContract: 3,
       containerName: "fixture-stale-storage",
       internalPort: 3000,
       hostPort: 41989,
@@ -185,6 +188,7 @@ describe("api app", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "fixture:aborted-wake-api",
+      observerContract: 3,
       containerName: "fixture-aborted-wake-api",
       internalPort: 3000,
       hostPort: 41992,
@@ -229,9 +233,9 @@ describe("api app", () => {
 
     expect((await pending).status).toBe(499);
     expect(abortedLeaseId).not.toBeNull();
-    await expect(store.getActivationLease(abortedLeaseId!)).resolves.toMatchObject({
-      releasedAt: expect.any(String),
-    });
+    await expect(
+      store.renewActivationLease(abortedLeaseId!, new Date(Date.now() + 60_000)),
+    ).resolves.toBeNull();
   });
 
   test("redeems a schedule dispatch credential once and attaches running Sessions", async () => {

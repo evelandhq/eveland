@@ -30,7 +30,7 @@ import {
 } from "@evelandhq/core/workflow-world-url";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
 import { resolveWorkflowRunnerMode } from "../runtime/workflow-world.js";
-import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";
+import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-deployment-config.js";
 
 import {
   resolveModelGatewayEnvironment,
@@ -314,7 +314,6 @@ export async function composeDeploymentEnv(
   const schedulerRedeemUrl = options.schedulerRedeemUrl ?? workerEnv.EVELAND_SCHEDULER_REDEEM_URL;
   const appSecretKey = options.appSecretKey ?? workerEnv.APP_SECRET_KEY ?? devSecretKey;
   const identityConfiguration = resolveIdentityDeploymentConfiguration({
-    dataDir: options.dataDir ?? workerEnv.EVELAND_DATA_DIR ?? ".eveland-data",
     nodeEnv,
     issuer:
       options.identityIssuer ||

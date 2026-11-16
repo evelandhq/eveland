@@ -1,7 +1,7 @@
 import type { Job } from "@evelandhq/core/contracts";
 import type { Store } from "@evelandhq/db";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { RESERVED_RUNTIME_ENVIRONMENT_INPUTS } from "./reserved-environment.js";
@@ -27,20 +27,11 @@ import { RESERVED_RUNTIME_ENVIRONMENT_INPUTS } from "./reserved-environment.js";
  * layer's other half -- shared Agent environment and project secrets, which
  * live in the database -- is already restarted from its own write paths.
  *
- * This generalizes what Identity configuration alone used to do. Identity got
- * a reconciler when it shipped and nothing added since was ever folded in,
- * which is the whole of the bug: the asymmetry was an accident, not a
- * judgment that the other names did not need it.
+ * It covers every name the reserved layer reads, not a chosen few: a value
+ * left out here is a value a running Deployment silently keeps stale.
  */
 
 const stateFileName = "platform-runtime-configuration.sha256";
-
-/**
- * The Identity-only predecessor's state file. Removed when this reconciler
- * writes its own so a stale fingerprint of two variables does not sit next to
- * the real one looking authoritative.
- */
-const legacyIdentityStateFileName = "identity-configuration.sha256";
 
 /**
  * A stable digest of every worker-environment value the reserved layer reads.
@@ -110,6 +101,5 @@ export async function reconcilePlatformRuntimeConfiguration(
   const temporaryPath = `${statePath}.${process.pid}.tmp`;
   await writeFile(temporaryPath, `${fingerprint}\n`, { mode: 0o600 });
   await rename(temporaryPath, statePath);
-  await rm(path.join(stateDir, legacyIdentityStateFileName), { force: true });
   return jobs;
 }

@@ -1,5 +1,5 @@
 import { createTestStore } from "@evelandhq/db/vitest";
-import { access, mkdtemp, readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -37,6 +37,7 @@ async function storeWithLiveDeployment(status?: "draining") {
     projectId: project.id,
     sourceRevisionId: revision.id,
     imageTag: "eveland/drift:rel",
+    observerContract: 3,
     containerName: "eveland-drift",
     internalPort: 3000,
     hostPort: 41060,
@@ -133,13 +134,10 @@ describe("reconcilePlatformRuntimeConfiguration", () => {
     ).resolves.toEqual([]);
   });
 
-  test("records the fingerprint 0600 and retires the Identity-only predecessor", async () => {
+  test("records the fingerprint 0600", async () => {
     const { store } = await storeWithLiveDeployment();
     const dataDir = await temporaryDataDir();
     const stateDir = path.join(dataDir, "runtime-state");
-    await mkdir(stateDir, { recursive: true });
-    const legacyPath = path.join(stateDir, "identity-configuration.sha256");
-    await writeFile(legacyPath, "stale-identity-only-fingerprint\n");
 
     await reconcilePlatformRuntimeConfiguration(store, { dataDir, env: baseEnv });
 
@@ -150,7 +148,6 @@ describe("reconcilePlatformRuntimeConfiguration", () => {
     // A digest of a secret is still worth 0600.
     const { mode } = await import("node:fs/promises").then((fs) => fs.stat(statePath));
     expect(mode & 0o777).toBe(0o600);
-    await expect(access(legacyPath)).rejects.toThrow();
   });
 
   test("runs before the Worker accepts jobs", async () => {

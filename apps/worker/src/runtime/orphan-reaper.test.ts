@@ -38,6 +38,7 @@ async function deploymentFixture(
     projectId: project.id,
     sourceRevisionId: revision.id,
     imageTag: `fixture:${project.slug}`,
+    observerContract: 3,
     containerName,
     internalPort: 3000,
     hostPort,

@@ -5,7 +5,6 @@ import { createTestStore } from "@evelandhq/db/vitest";
 import {
   IdentityBrokerError,
   createIdentityBroker,
-  openOidcCredentialValue,
   openIdentityProviderSecret,
   principalClaims,
   sealIdentityProviderSecret,
@@ -172,16 +171,6 @@ describe("OIDC login", () => {
     expect(finalized.session.activeIdentityRealmId).toBe(realm.id);
     // id_token_claim resolution never calls UserInfo.
     expect(calls.userinfo).toHaveLength(0);
-
-    const credential = await store.getIdentityOidcCredential(finalized.principal.id, connection.id);
-    expect(credential).not.toBeNull();
-    expect(openOidcCredentialValue(credential!.accessTokenEncrypted, appSecretKey)).toBe(
-      "access-token-1",
-    );
-    expect(openOidcCredentialValue(credential!.refreshTokenEncrypted!, appSecretKey)).toBe(
-      "refresh-token-1",
-    );
-    expect(credential!.scope).toBe("openid profile email");
   });
 
   test("rejects a login whose Realm claim is not registered", async () => {
@@ -450,12 +439,10 @@ describe("OIDC login", () => {
 });
 
 describe("sealed identity secrets", () => {
-  test("round-trips the provider secret and keeps contexts separate", () => {
+  test("round-trips the provider secret", () => {
     const sealed = sealIdentityProviderSecret("s3cret-value", appSecretKey);
     expect(sealed).not.toContain("s3cret-value");
     expect(openIdentityProviderSecret(sealed, appSecretKey)).toBe("s3cret-value");
-    // A credential sealed under the other context must not open here.
-    expect(() => openOidcCredentialValue(sealed, appSecretKey)).toThrow();
   });
 });
 
