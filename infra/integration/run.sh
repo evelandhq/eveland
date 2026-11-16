@@ -103,11 +103,18 @@ limactl shell "$VM" -- sudo bash -c "
 
   # Official Eve Connections under the managed runtime: root OpenAPI + MCP,
   # a directory-form subagent MCP Connection, Project Secret Bearer auth,
-  # restart, a second immutable Release, and secret non-leakage.
+  # restart, a second immutable Release, and secret non-leakage. A
+  # self-hosted OAuth sign-in and a remote agent's result both return
+  # through the project's public origin and the Agent Gateway.
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data \
     corepack pnpm --filter @evelandhq/worker smoke:connections
 
+  # Weighted routing, session pinning, streaming, and cancel through the
+  # Agent Gateway; a custom-channel conversation under a two-target route that
+  # continues across both Releases, each turn on the Deployment that received
+  # its event; and an A2A context from a client without cookies that stays
+  # pinned after a promote.
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/gateway-e2e.mts
@@ -123,7 +130,8 @@ limactl shell "$VM" -- sudo bash -c "
 
   # Complete scheduler/scale-to-zero proof against the latest verified Eve and the real
   # systemd runtime: dormant cron wake, OTLP usage, native no-op, idle
-  # shutdown, and a bound public continuation wake.
+  # shutdown, a bound public continuation wake, and a schedule authored in an
+  # IANA timezone planned at its zone's instant.
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/schedule-scale-zero-e2e.mts

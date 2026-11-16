@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "ai": "^7.0.0",
-    "eve": "catalog:"
+    "eve": "catalog:",
+    "eveland": "file:./eveland-sdk"
   },
   "engines": {
     "node": "26.x"
