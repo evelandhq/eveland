@@ -588,64 +588,6 @@ describe("injectExtensionSchedules", () => {
     );
   });
 
-  test("reads Extension schedules from v16 mount manifests' sources", async () => {
-    const releaseDir = await fixture({
-      eveVersion: VERIFIED_EVE_VERSION,
-      files: {
-        "node_modules/@acme/crm/package.json": JSON.stringify({
-          name: "@acme/crm",
-          type: "module",
-        }),
-        "node_modules/@acme/crm/dist/extension/schedules/sync.mjs":
-          'export default { cron: "0 2 * * *", async run() {} };',
-        "node_modules/@acme/crm/dist/extension/schedules/report.md":
-          '---\ncron: "0 3 * * *"\n---\nProduce the extension report.\n',
-        "agent/extensions/crm/schedules/sync.ts":
-          'export default { cron: "30 2 * * *", async run() {} };',
-      },
-    });
-    await injectSchedulerAdapter({ releaseDir });
-    const extensionRoot = path.join(releaseDir, "node_modules/@acme/crm/dist/extension");
-    const v15 = extensionDiscoveryManifest({
-      releaseDir,
-      extensionRoot,
-      schedules: ["schedules/sync.mjs", "schedules/report.md"],
-      overrideSchedules: ["schedules/sync.ts"],
-    });
-    // v16 lists every authored source in one `sources` array instead of one
-    // array per kind; a mount's tools sit beside its schedules there.
-    const toSources = ({
-      schedules,
-      ...manifest
-    }: {
-      schedules: Array<{ logicalPath: string }>;
-    }) => ({
-      ...manifest,
-      version: 16,
-      sources: [{ logicalPath: "tools/lookup.ts" }, ...schedules],
-    });
-    const [mount] = v15.resolvedExtensions;
-
-    const result = await injectExtensionSchedules({
-      releaseDir,
-      manifest: {
-        ...toSources(v15),
-        resolvedExtensions: [
-          {
-            ...mount!,
-            manifest: toSources(mount!.manifest),
-            overrides: toSources(mount!.overrides!),
-          },
-        ],
-      },
-    });
-
-    expect(result.definitions.map(({ key, cron }) => ({ key, cron }))).toEqual([
-      { key: "crm__report", cron: "0 3 * * *" },
-      { key: "crm__sync", cron: "30 2 * * *" },
-    ]);
-  });
-
   test("rejects Extension source paths outside the disposable Release", async () => {
     const releaseDir = await fixture({ eveVersion: VERIFIED_EVE_VERSION, files: {} });
     await injectSchedulerAdapter({ releaseDir });
@@ -785,35 +727,32 @@ describe("parseSchedulerDefinitions", () => {
   });
 });
 
+/**
+ * A v16 discovery manifest with one Extension mount: every authored source in
+ * one `sources` array, so a mount's tool sits beside its schedules and must be
+ * ignored by the scheduler.
+ */
 function extensionDiscoveryManifest(input: {
   releaseDir: string;
   extensionRoot: string;
   schedules: string[];
   overrideSchedules?: string[];
 }) {
-  const emptyManifest = (agentRoot: string) => ({
+  const manifest = (agentRoot: string, sources: Array<{ logicalPath: string }> = []) => ({
     kind: "eve-agent-discovery-manifest",
-    version: 13,
+    version: 16,
     agentId: "fixture",
     agentRoot,
     appRoot: input.releaseDir,
-    channels: [],
-    connections: [],
     diagnosticsSummary: { errors: 0, warnings: 0 },
     extensions: [],
     resolvedExtensions: [],
-    hooks: [],
-    instructions: [],
-    lib: [],
-    sandbox: null,
-    sandboxWorkspaces: [],
-    schedules: [],
-    skills: [],
-    tools: [],
+    sources,
     subagents: [],
   });
+  const schedules = (paths: string[]) => paths.map((logicalPath) => ({ logicalPath }));
   return {
-    ...emptyManifest(path.join(input.releaseDir, "agent")),
+    ...manifest(path.join(input.releaseDir, "agent")),
     resolvedExtensions: [
       {
         namespace: "crm",
@@ -821,16 +760,16 @@ function extensionDiscoveryManifest(input: {
         packageName: "@acme/crm",
         packageRoot: path.dirname(path.dirname(input.extensionRoot)),
         sourceRoot: input.extensionRoot,
-        manifest: {
-          ...emptyManifest(input.extensionRoot),
-          schedules: input.schedules.map((logicalPath) => ({ logicalPath })),
-        },
+        manifest: manifest(input.extensionRoot, [
+          { logicalPath: "tools/lookup.ts" },
+          ...schedules(input.schedules),
+        ]),
         ...(input.overrideSchedules
           ? {
-              overrides: {
-                ...emptyManifest(path.join(input.releaseDir, "agent/extensions/crm")),
-                schedules: input.overrideSchedules.map((logicalPath) => ({ logicalPath })),
-              },
+              overrides: manifest(
+                path.join(input.releaseDir, "agent/extensions/crm"),
+                schedules(input.overrideSchedules),
+              ),
             }
           : {}),
       },

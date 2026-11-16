@@ -8,133 +8,97 @@ import { VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const compatibilityMatrix = [
-  { version: VERIFIED_EVE_VERSION, fixtureName: "matrix-schedules", packageName: "eve" },
-];
+const EVE_PACKAGE = path.resolve(import.meta.dirname, "../node_modules/eve");
+const EVE_BIN = path.join(EVE_PACKAGE, "bin/eve.js");
 
 // Every test here copies a fixture, symlinks a real Eve release into it, and
 // shells out to that Eve to compile the project. Vitest's 5s default is a
 // build budget, not a test budget: it passes on an idle machine and times out
 // when the whole repository suite runs in parallel, so each test states its
 // own.
-describe("Eve schedule compatibility matrix", () => {
-  test.each(compatibilityMatrix)(
-    "keeps Eve $version runtime state out of the checked-in fixture",
-    async (entry) => {
-      const { fixtureDir, sourceFixtureDir } = await prepareFixture(entry);
-      try {
-        await execFileAsync(process.execPath, [eveBin(entry.packageName), "info", "--json"], {
-          cwd: fixtureDir,
+describe("Eve schedule compatibility", () => {
+  test("keeps Eve runtime state out of the checked-in fixture", async () => {
+    const { fixtureDir, sourceFixtureDir } = await prepareFixture();
+    try {
+      await execFileAsync(process.execPath, [EVE_BIN, "info", "--json"], {
+        cwd: fixtureDir,
+      });
+
+      for (const runtimeDir of [".eve", ".workflow-data", "node_modules"]) {
+        await expect(access(path.join(sourceFixtureDir, runtimeDir))).rejects.toMatchObject({
+          code: "ENOENT",
         });
-
-        for (const runtimeDir of [".eve", ".workflow-data", "node_modules"]) {
-          await expect(access(path.join(sourceFixtureDir, runtimeDir))).rejects.toMatchObject({
-            code: "ENOENT",
-          });
-        }
-      } finally {
-        await rm(fixtureDir, { recursive: true, force: true });
       }
-    },
-    120_000,
-  );
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  }, 120_000);
 
-  test.each(compatibilityMatrix)(
-    "Eve $version discovers nested markdown, markdown definitions, and zero/multi-session handlers",
-    async (entry) => {
-      const { fixtureDir } = await prepareFixture(entry);
-      try {
-        const { stdout } = await execFileAsync(
-          process.execPath,
-          [eveBin(entry.packageName), "info", "--json"],
-          {
-            cwd: fixtureDir,
-          },
-        );
-        const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
-          artifacts: { compiledManifest: string };
-        };
-        const manifest = JSON.parse(await readFile(info.artifacts.compiledManifest, "utf8")) as {
-          schedules: Array<{ name: string }>;
-        };
-
-        expect(manifest.schedules.map((schedule) => schedule.name)).toEqual([
-          "billing/sweep",
-          "markdown-task",
-          "multi-session",
-          "zero-session",
-        ]);
-      } finally {
-        await rm(fixtureDir, { recursive: true, force: true });
-      }
-    },
-    120_000,
-  );
-
-  test.each(compatibilityMatrix)(
-    "Eve $version dev dispatch returns zero or multiple sessions",
-    async (entry) => {
-      const { fixtureDir } = await prepareFixture(entry);
-      const port = await getFreePort();
-      const child = spawn(
-        process.execPath,
-        [
-          eveBin(entry.packageName),
-          "dev",
-          "--no-ui",
-          "--host",
-          "127.0.0.1",
-          "--port",
-          String(port),
-        ],
-        {
-          cwd: fixtureDir,
-          env: process.env,
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
-      // Captured so a readiness timeout reports what the dev server actually
-      // said instead of leaving a bare failure to reproduce by hand.
-      let output = "";
-      const capture = (chunk: unknown) => {
-        output = `${output}${String(chunk)}`.slice(-4_000);
+  test("Eve discovers nested markdown, markdown definitions, and zero/multi-session handlers", async () => {
+    const { fixtureDir } = await prepareFixture();
+    try {
+      const { stdout } = await execFileAsync(process.execPath, [EVE_BIN, "info", "--json"], {
+        cwd: fixtureDir,
+      });
+      const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
+        artifacts: { compiledManifest: string };
       };
-      child.stdout?.on("data", capture);
-      child.stderr?.on("data", capture);
+      const manifest = JSON.parse(await readFile(info.artifacts.compiledManifest, "utf8")) as {
+        schedules: Array<{ name: string }>;
+      };
 
-      try {
-        await waitForReady(port, () => output);
+      expect(manifest.schedules.map((schedule) => schedule.name)).toEqual([
+        "billing/sweep",
+        "markdown-task",
+        "multi-session",
+        "zero-session",
+      ]);
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  }, 120_000);
 
-        const zero = await dispatch(port, "zero-session", () => output);
-        expect(zero).toEqual({ scheduleId: "zero-session", sessionIds: [] });
+  test("Eve dev dispatch returns zero or multiple sessions", async () => {
+    const { fixtureDir } = await prepareFixture();
+    const port = await getFreePort();
+    const child = spawn(
+      process.execPath,
+      [EVE_BIN, "dev", "--no-ui", "--host", "127.0.0.1", "--port", String(port)],
+      {
+        cwd: fixtureDir,
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    // Captured so a readiness timeout reports what the dev server actually
+    // said instead of leaving a bare failure to reproduce by hand.
+    let output = "";
+    const capture = (chunk: unknown) => {
+      output = `${output}${String(chunk)}`.slice(-4_000);
+    };
+    child.stdout?.on("data", capture);
+    child.stderr?.on("data", capture);
 
-        const multiple = await dispatch(port, "multi-session", () => output);
-        expect(multiple.scheduleId).toBe("multi-session");
-        expect(multiple.sessionIds).toHaveLength(2);
-        expect(new Set(multiple.sessionIds).size).toBe(2);
-      } finally {
-        child.kill("SIGTERM");
-        await new Promise<void>((resolve) => child.once("close", () => resolve()));
-        await rm(fixtureDir, { recursive: true, force: true });
-      }
-    },
-    120_000,
-  );
+    try {
+      await waitForReady(port, () => output);
+
+      const zero = await dispatch(port, "zero-session", () => output);
+      expect(zero).toEqual({ scheduleId: "zero-session", sessionIds: [] });
+
+      const multiple = await dispatch(port, "multi-session", () => output);
+      expect(multiple.scheduleId).toBe("multi-session");
+      expect(multiple.sessionIds).toHaveLength(2);
+      expect(new Set(multiple.sessionIds).size).toBe(2);
+    } finally {
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => child.once("close", () => resolve()));
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
-function evePackage(packageName: string): string {
-  return path.resolve(import.meta.dirname, `../node_modules/${packageName}`);
-}
-
-function eveBin(packageName: string): string {
-  return path.join(evePackage(packageName), "bin/eve.js");
-}
-
-async function prepareFixture(entry: (typeof compatibilityMatrix)[number]): Promise<{
-  fixtureDir: string;
-  sourceFixtureDir: string;
-}> {
-  const sourceFixtureDir = path.resolve(import.meta.dirname, `../fixtures/${entry.fixtureName}`);
+async function prepareFixture(): Promise<{ fixtureDir: string; sourceFixtureDir: string }> {
+  const sourceFixtureDir = path.resolve(import.meta.dirname, "../fixtures/eve-schedules");
   const fixtureDir = await mkdtemp(path.join(os.tmpdir(), "eveland-eve-schedules-"));
   await cp(sourceFixtureDir, fixtureDir, {
     recursive: true,
@@ -145,10 +109,10 @@ async function prepareFixture(entry: (typeof compatibilityMatrix)[number]): Prom
   });
   await writeFile(
     path.join(fixtureDir, "package.json"),
-    `${JSON.stringify({ name: "eveland-eve-schedules-fixture", private: true, type: "module", dependencies: { eve: entry.version } }, null, 2)}\n`,
+    `${JSON.stringify({ name: "eveland-eve-schedules-fixture", private: true, type: "module", dependencies: { eve: VERIFIED_EVE_VERSION } }, null, 2)}\n`,
   );
   await mkdir(path.join(fixtureDir, "node_modules"));
-  await symlink(evePackage(entry.packageName), path.join(fixtureDir, "node_modules/eve"), "dir");
+  await symlink(EVE_PACKAGE, path.join(fixtureDir, "node_modules/eve"), "dir");
   return { fixtureDir, sourceFixtureDir };
 }
 
@@ -211,7 +175,7 @@ async function getFreePort(): Promise<number> {
  * 500, which is what made this test flaky on CI while passing locally, where
  * compilation finishes sooner. `/eve/v1/dev/runtime-artifacts` reports the
  * compiled snapshot revision and so is the signal the dispatch below actually
- * depends on. It exists in every version of the compatibility matrix.
+ * depends on.
  */
 async function waitForReady(port: number, serverOutput: () => string): Promise<void> {
   const deadline = Date.now() + 90_000;

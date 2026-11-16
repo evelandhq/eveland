@@ -1,70 +1,48 @@
 /**
  * How long a Deployment gets to finish in-flight HTTP work when the platform
- * stops it, and who actually enforces it.
+ * stops it, and who actually enforces it. Read from the installed eve (and
+ * the nitro and srvx it builds with); re-check it when raising the eve window.
  *
- * Four layers sit between `systemctl stop` and the agent's request handler, and
- * the innermost one wins. Verified against the pinned tree (eve 0.50.0 ->
- * nitro@3.0.260610-beta -> srvx@0.11.21), re-verified for eve 0.52.5
- * (nitro@3.0.260903-beta -> srvx@1.0.3: the graceful-shutdown plugin body is
- * byte-identical), again for 0.53.1 and 0.54.3 on 2026-09-12, for 0.54.5 and
- * 0.55.0 on 2026-09-15, for 0.56.0 on 2026-09-16, and again for 0.57.0 and
- * 0.58.0 and 0.58.1 on 2026-09-17, for 0.62.0 on 2026-09-19, and for 0.64.1
- * and 0.65.0 on 2026-09-23, for 0.66.0 and 0.66.1 on 2026-09-24, for 0.67.0 on 2026-09-26, for 0.68.0 on 2026-09-29, for 0.69.0 on 2026-10-02, for 0.70.0 the same day, for 0.72.1 on 2026-10-07, for 0.73.0 and 0.74.0 on 2026-10-08, for 0.75.0 and 0.75.1 on 2026-10-09, for 0.76.0 on 2026-10-10, for 0.79.0 on 2026-10-14, for 0.81.1 on 2026-10-21, for 0.83.3 on 2026-10-27, for 1.0.0-rc.1 on 2026-11-02, and for 1.0.0-rc.2 on 2026-11-03 (the nitro and srvx pins did not move, and `eve start` still
- * SIGKILLs its child after 20 seconds), and for 1.0.0-rc.5 on 2026-11-05:
- * from 1.0.0-rc.3, `eve start` waits 25 seconds before its SIGKILL, and
- * nitro 3.0.261103-rc pulls in srvx 1.0.8, whose graceful-shutdown plugin
- * keeps 1.0.3's behavior (only its error-handler wrapper changed). The
- * window holds releases on both forced-kill delays, so the drain budget stays
- * below the shorter one and the stop timeout clears the longer one:
+ * Five layers sit between the stop and the agent's request handler:
  *
- * 1. The systemd unit. SIGTERM reaches the whole cgroup, so the
- *    `sh -lc` -> `npx` -> node wrapper chain does not swallow it, and the unit
- *    is SIGKILLed at TimeoutStopSec. Set explicitly below rather than
- *    inherited from the distribution's DefaultTimeoutStopSec.
+ * 1. The runtime. systemd SIGTERMs the whole cgroup, so the `sh -lc` -> `npx`
+ *    -> node wrapper chain does not swallow it, and SIGKILLs the unit at
+ *    TimeoutStopSec (DEPLOYMENT_STOP_TIMEOUT_SECONDS, set explicitly rather
+ *    than inherited from the distribution's DefaultTimeoutStopSec). Docker
+ *    gets the same through `docker stop --time` with the drain budget.
  * 2. `eve start`, which is a supervisor rather than the server: it spawns
  *    `node .output/server/index.mjs`, SIGTERMs that child on its own SIGTERM,
- *    and SIGKILLs it after EVE_START_FORCED_KILL_SECONDS. That is a hard
- *    ceiling nothing downstream can raise.
- * 3. Nitro 3's node-server preset, which installs NO signal handler at all.
- *    The `NITRO_SHUTDOWN_TIMEOUT` / `NITRO_SHUTDOWN_SIGNALS` /
- *    `NITRO_SHUTDOWN_FORCE` variables documented in the nitro package's own
- *    shipped docs are a nitro 2 leftover and do nothing here -- do not reach
- *    for them.
- * 4. srvx's graceful-shutdown plugin, which is the only code that actually
- *    drains: it stops accepting, waits `SERVER_SHUTDOWN_TIMEOUT` **seconds**
- *    (default 5), then calls `closeAllConnections()` and cuts whatever is
- *    still running. It also declines to install itself when `CI` or `TEST` is
- *    present in the deployment's environment; `eve start` deletes `TEST` from
- *    the server's environment, and from eve 1.0 `CI` (and
- *    `NITRO_UNIX_SOCKET`) too, so on that line the plugin always installs.
+ *    and SIGKILLs it after EVE_START_FORCED_KILL_SECONDS -- a hard ceiling
+ *    nothing downstream can raise. It also removes `SERVER_SHUTDOWN_TIMEOUT`,
+ *    `CI`, `TEST`, and `NITRO_UNIX_SOCKET` from the server's environment.
+ * 3. Nitro 3's node-server preset, which installs no signal handler of its
+ *    own. The `NITRO_SHUTDOWN_*` variables in nitro's shipped docs are a
+ *    nitro 2 leftover and do nothing here.
+ * 4. srvx's graceful-shutdown plugin: it stops accepting, waits
+ *    `SERVER_SHUTDOWN_TIMEOUT` seconds, then cuts whatever is still running.
+ *    Because `eve start` removes that variable, the wait is srvx's 5-second
+ *    default whatever the platform injects.
+ * 5. eve's connection-drain plugin, which closes idle keep-alive connections
+ *    at SIGTERM and each busy one as its last response finishes, so the
+ *    server exits as soon as its in-flight requests are done.
  *
- * So the platform sets SERVER_SHUTDOWN_TIMEOUT deliberately instead of
- * inheriting srvx's 5s. No budget makes a mid-turn restart invisible -- an
- * agent turn outlives any of these numbers -- but durable workflow runs are
- * unaffected either way (the dispatcher wakes the Deployment again; see
- * ./workflow-run-reconciler.ts), so what this buys is the short interactive
- * requests, not the long ones.
+ * No budget makes a mid-turn restart invisible -- an agent turn outlives any
+ * of these numbers -- but durable workflow runs are unaffected either way (the
+ * dispatcher wakes the Deployment again; see ./workflow-run-reconciler.ts), so
+ * what this buys is the short interactive requests, not the long ones.
  */
 
-/**
- * The shortest delay after which `eve start` SIGKILLs the built server once it
- * has passed SIGTERM on, across the window: 1.0.0-rc.1 and rc.2 wait 20
- * seconds. A drain budget at or above it would never be reached on those.
- */
-export const EVE_START_FORCED_KILL_SECONDS = 20;
-
-/** The longest such delay across the window: 25 seconds from 1.0.0-rc.3. */
-export const EVE_START_LONGEST_FORCED_KILL_SECONDS = 25;
+/** When `eve start` SIGKILLs the built server after passing SIGTERM on. */
+export const EVE_START_FORCED_KILL_SECONDS = 25;
 
 /** Comfortably past the point where every inner layer has given up. */
-export const DEPLOYMENT_STOP_TIMEOUT_SECONDS = EVE_START_LONGEST_FORCED_KILL_SECONDS + 10;
+export const DEPLOYMENT_STOP_TIMEOUT_SECONDS = EVE_START_FORCED_KILL_SECONDS + 10;
 
 const defaultShutdownTimeoutSeconds = 15;
 
 /**
  * The drain budget injected as the deployment's `SERVER_SHUTDOWN_TIMEOUT` and
- * used as the stop timeout by the runtime adapters, so both ends of a restart
- * agree on the same number.
+ * used as the Docker runtime's stop grace period.
  */
 export function resolveDeploymentShutdownTimeoutSeconds(env: NodeJS.ProcessEnv): number {
   const configured = env.EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS;
