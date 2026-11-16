@@ -318,6 +318,162 @@ describe("Gateway durable Eve routes", () => {
     );
   });
 
+  test("pins an A2A context and its tasks to the deployment that started them across a promote", async () => {
+    const served = (deployment: string) =>
+      startUpstream(async (request, response) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+          id: number;
+          method: string;
+          params: { message?: { contextId?: string } };
+        };
+        const task = (id: string) => ({
+          id,
+          contextId: body.params.message?.contextId ?? "wrun_ctx",
+          status: { state: "TASK_STATE_WORKING" },
+        });
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: body.id,
+            result:
+              body.method === "SendMessage"
+                ? { task: task(body.params.message?.contextId ? "task_2" : "task_1") }
+                : { deployment },
+          }),
+        );
+      });
+    const first = await served("first");
+    const second = await served("second");
+    const weighted = route({
+      targets: [
+        {
+          routeId: "route_project",
+          deploymentId: "dep_first",
+          weight: 10_000,
+          variantName: "first",
+          hostPort: first.port,
+          status: "running",
+        },
+        {
+          routeId: "route_project",
+          deploymentId: "dep_second",
+          weight: 0,
+          variantName: "second",
+          hostPort: second.port,
+          status: "running",
+        },
+      ],
+    });
+    const repo = repository([weighted]);
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
+    // An A2A client keeps no cookies, so nothing but a binding can pin it.
+    const rpc = async (method: string, params: Record<string, unknown>) => {
+      const response = await app.request("http://p-alpha.agent.localhost/eve/v1/a2a", {
+        method: "POST",
+        headers: {
+          host: "p-alpha.agent.localhost",
+          "content-type": "application/json",
+          "a2a-version": "1.0",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      });
+      expect(response.status).toBe(200);
+      return (await response.json()) as { result: Record<string, unknown> };
+    };
+
+    await rpc("SendMessage", { message: { messageId: "m1", parts: [{ text: "work" }] } });
+    expect(repo.bindings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ eveSessionId: "wrun_ctx", deploymentId: "dep_first" }),
+        expect.objectContaining({ eveSessionId: "task_1", deploymentId: "dep_first" }),
+      ]),
+    );
+
+    // Promote the second deployment.
+    weighted.policyRevision = 2;
+    weighted.targets[0]!.weight = 0;
+    weighted.targets[1]!.weight = 10_000;
+
+    await expect(rpc("GetTask", { id: "task_1" })).resolves.toMatchObject({
+      result: { deployment: "first" },
+    });
+    await expect(rpc("ListTasks", { contextId: "wrun_ctx" })).resolves.toMatchObject({
+      result: { deployment: "first" },
+    });
+    await rpc("SendMessage", {
+      message: { messageId: "m2", contextId: "wrun_ctx", parts: [{ text: "more" }] },
+    });
+    // The new task in the pinned context is pinned with it.
+    expect(repo.bindings).toContainEqual(
+      expect.objectContaining({ eveSessionId: "task_2", deploymentId: "dep_first" }),
+    );
+    await expect(rpc("CancelTask", { id: "task_2" })).resolves.toMatchObject({
+      result: { deployment: "first" },
+    });
+    // A new context follows the promoted policy.
+    await expect(rpc("GetTask", { id: "task_unknown" })).resolves.toMatchObject({
+      result: { deployment: "second" },
+    });
+  });
+
+  test("binds a streamed A2A context from its first event without waiting for the stream to end", async () => {
+    let finish: () => void = () => {};
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const upstream = await startUpstream(async (_request, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(": keep-alive\n\n");
+      const event = {
+        jsonrpc: "2.0",
+        id: 1,
+        result: { task: { id: "task_s", contextId: "wrun_streamed", status: {} } },
+      };
+      response.write(`data: ${JSON.stringify(event)}\n\n`);
+      await finished;
+      response.end();
+    });
+    const repo = repository([route({ hostPort: upstream.port })]);
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+    });
+
+    try {
+      const response = await app.request("http://p-alpha.agent.localhost/eve/v1/a2a", {
+        method: "POST",
+        headers: {
+          host: "p-alpha.agent.localhost",
+          "content-type": "application/json",
+          "a2a-version": "1.0",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "SendStreamingMessage",
+          params: { message: { messageId: "m", parts: [{ text: "go" }] } },
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(repo.bindings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ eveSessionId: "wrun_streamed" }),
+          expect.objectContaining({ eveSessionId: "task_s" }),
+        ]),
+      );
+      finish();
+      await expect(response.text()).resolves.toContain("wrun_streamed");
+    } finally {
+      finish();
+    }
+  });
+
   test("expires an idle create-once route instead of silently moving its retry", async () => {
     const stable = route();
     const repo = repository([stable]);
