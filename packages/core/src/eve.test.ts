@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import * as Eve from "./eve.js";
 import {
   getEveString,
+  isDelegatedUsageRecord,
   isEveRecord,
   parseEveJsonObject,
   parseStepUsageEvent,
@@ -218,13 +219,58 @@ describe("parseStepUsageEvent", () => {
 
   test("leaves delegated v27 usage to the child session that recorded it", () => {
     const usage = { inputTokens: 5, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const position = { line: 6, index: 2 };
     expect(
-      parseStepUsageEvent("usage.recorded", { kind: "model", owner: { callId: "call_1" }, usage }),
+      parseStepUsageEvent(
+        "usage.recorded",
+        { kind: "model", owner: { callId: "call_1" }, usage },
+        { turnId: "t" },
+        position,
+      ),
     ).toBeNull();
-    expect(parseStepUsageEvent("usage.recorded", { kind: "delegated-late", usage })).toBeNull();
+    expect(
+      parseStepUsageEvent("usage.recorded", { kind: "delegated-late", usage }, {}, position),
+    ).toBeNull();
     expect(
       parseStepUsageEvent("model.settled", { runId: "run_1", outcome: "completed" }),
     ).toBeNull();
+    expect(isDelegatedUsageRecord({ kind: "model", owner: { callId: "call_1" }, usage })).toBe(
+      true,
+    );
+    expect(isDelegatedUsageRecord({ kind: "delegated-late", usage })).toBe(true);
+  });
+
+  test("counts a decision's and an auxiliary call's spend on the session that made it, keyed by stream position", () => {
+    const usage = { inputTokens: 40, outputTokens: 4, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    // `decide()` outside a tool records no owner; an auxiliary model call inside
+    // a tool is owned by that call, but it is this session's own spend.
+    const decision = { kind: "decision", usage: { ...usage, costUsd: 0.002 } };
+    const auxiliary = { kind: "auxiliary", owner: { callId: "call_9" }, usage };
+    expect(
+      parseStepUsageEvent("usage.recorded", decision, { turnId: "turn_4" }, { line: 7, index: 2 }),
+    ).toEqual({
+      turnId: "turn_4",
+      stepIndex: null,
+      runKey: "record@line:7:2",
+      finishReason: null,
+      inputTokens: 40,
+      outputTokens: 4,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd: 0.002,
+      usageReported: true,
+    });
+    expect(
+      parseStepUsageEvent("usage.recorded", auxiliary, { turnId: "turn_4" }, { line: 8, index: 0 }),
+    ).toMatchObject({ turnId: "turn_4", runKey: "record@line:8:0", inputTokens: 40 });
+    // Spend nothing owns (cache warming) is this session's own as well.
+    expect(
+      parseStepUsageEvent("usage.recorded", { kind: "model", usage }, {}, { line: 2, index: 0 }),
+    ).toMatchObject({ turnId: "record@line:2:0", runKey: "record@line:2:0" });
+    expect(isDelegatedUsageRecord(decision)).toBe(false);
+    expect(isDelegatedUsageRecord(auxiliary)).toBe(false);
+    // Without a stream position nothing makes the record idempotent.
+    expect(parseStepUsageEvent("usage.recorded", decision, { turnId: "turn_4" })).toBeNull();
   });
 
   test("ignores events that cannot identify a completed model step", () => {

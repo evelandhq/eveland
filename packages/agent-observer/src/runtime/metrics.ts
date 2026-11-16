@@ -51,17 +51,24 @@ export function createAgentTelemetryMetrics(meter: Meter) {
   };
 }
 
+/**
+ * Meters one `usage.recorded` and, for a model run's record, stamps it on the
+ * run's span. A record no run owns has no span of its own; its `attributes`
+ * say what spent it.
+ */
 export function recordUsage(input: {
   data: Record<string, unknown>;
   modelId: string | undefined;
-  span: Span;
+  span?: Span;
   metrics: AgentTelemetryMetrics;
+  attributes?: Attributes;
 }): void {
   const usage = asRecord(input.data.usage);
   if (!usage) return;
-  const modelAttributes: Attributes = input.modelId
-    ? { [ATTR_GEN_AI_REQUEST_MODEL]: input.modelId }
-    : {};
+  const modelAttributes: Attributes = {
+    ...input.attributes,
+    ...(input.modelId ? { [ATTR_GEN_AI_REQUEST_MODEL]: input.modelId } : {}),
+  };
   const inputTokens = asNonNegativeInteger(usage.inputTokens);
   const outputTokens = asNonNegativeInteger(usage.outputTokens);
   const cacheReadTokens = asNonNegativeInteger(usage.cacheReadTokens);
@@ -69,35 +76,35 @@ export function recordUsage(input: {
   const costUsd = asNonNegativeNumber(usage.costUsd);
 
   if (inputTokens !== undefined) {
-    input.span.setAttribute(ATTR_GEN_AI_USAGE_INPUT_TOKENS, inputTokens);
+    input.span?.setAttribute(ATTR_GEN_AI_USAGE_INPUT_TOKENS, inputTokens);
     input.metrics.tokenUsage.record(inputTokens, {
       ...modelAttributes,
       [ATTR_GEN_AI_TOKEN_TYPE]: GEN_AI_TOKEN_TYPE_VALUE_INPUT,
     });
   }
   if (outputTokens !== undefined) {
-    input.span.setAttribute(ATTR_GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens);
+    input.span?.setAttribute(ATTR_GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens);
     input.metrics.tokenUsage.record(outputTokens, {
       ...modelAttributes,
       [ATTR_GEN_AI_TOKEN_TYPE]: GEN_AI_TOKEN_TYPE_VALUE_OUTPUT,
     });
   }
   if (cacheReadTokens !== undefined) {
-    input.span.setAttribute(ATTR_GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, cacheReadTokens);
+    input.span?.setAttribute(ATTR_GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, cacheReadTokens);
     input.metrics.cacheTokenUsage.record(cacheReadTokens, {
       ...modelAttributes,
       "eveland.cache.operation": "read",
     });
   }
   if (cacheWriteTokens !== undefined) {
-    input.span.setAttribute(ATTR_GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS, cacheWriteTokens);
+    input.span?.setAttribute(ATTR_GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS, cacheWriteTokens);
     input.metrics.cacheTokenUsage.record(cacheWriteTokens, {
       ...modelAttributes,
       "eveland.cache.operation": "write",
     });
   }
   if (costUsd !== undefined) {
-    input.span.setAttribute("eveland.gen_ai.usage.cost_usd", costUsd);
+    input.span?.setAttribute("eveland.gen_ai.usage.cost_usd", costUsd);
     input.metrics.cost.add(costUsd, modelAttributes);
   }
 }

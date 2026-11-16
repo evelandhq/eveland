@@ -1251,6 +1251,60 @@ describe("v27 (eve 0.84+) observations", () => {
     expect(await usageOf()).toMatchObject(expected);
   });
 
+  test("counts decision and auxiliary spend on the session that made it, once per stream position", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    const recorded = (data: Record<string, unknown>, inputTokens: number) => ({
+      type: "usage.recorded",
+      scope: { turnId: "t" },
+      data: {
+        ...data,
+        usage: {
+          inputTokens,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsd: 0.25,
+        },
+      },
+    });
+    const deliveries = [
+      [1, 0, recorded({ kind: "decision" }, 100)],
+      [1, 1, recorded({ kind: "decision" }, 200)],
+      [2, 0, recorded({ kind: "auxiliary", owner: { callId: "call_1" } }, 10)],
+      // A child's spend, re-reported or late, stays with the child.
+      [3, 0, recorded({ kind: "model", owner: { callId: "call_1" } }, 9000)],
+      [3, 1, recorded({ kind: "delegated-late" }, 9000)],
+    ] as const;
+    for (const [line, index, event] of deliveries) {
+      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
+    }
+    const expected = {
+      status: "reported",
+      reportedSteps: 3,
+      missingSteps: 0,
+      inputTokens: 310,
+      costUsd: 0.75,
+    };
+    const usageOf = async () => (await store.listSessions(projectId))[0]?.usage;
+    expect(await usageOf()).toMatchObject(expected);
+
+    // A replay under new delivery ids lands on the same rows.
+    for (const [line, index, event] of deliveries) {
+      await store.ingestAgentEvent(
+        v27(deploymentId, line, index, event, { telemetryEventId: `replay_${line}_${index}` }),
+      );
+    }
+    expect(await usageOf()).toMatchObject(expected);
+    const [session] = await store.listSessions(projectId);
+    expect(
+      (await store.listModelUsageEvents(session!.id)).map((row) => [row.turnId, row.runKey]).sort(),
+    ).toEqual([
+      ["t", "record@line:1:0"],
+      ["t", "record@line:1:1"],
+      ["t", "record@line:2:0"],
+    ]);
+  });
+
   test("a run first projected under its unpositioned key keeps that key", async () => {
     const { store, projectId, deploymentId } = await createStore();
     const scope = { turnId: "t", runId: "r1" };

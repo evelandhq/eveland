@@ -455,6 +455,59 @@ describe("private Agent telemetry runtime", () => {
     );
   });
 
+  test("meters a decision's and an auxiliary call's spend, but not a child's re-reported spend", async () => {
+    const { runtime, metrics, commit } = harness();
+    const usage = (inputTokens: number, costUsd: number) => ({
+      inputTokens,
+      outputTokens: 1,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd,
+    });
+    await commit({ type: "turn.started", scope: turn, data: { turnId: "turn_1" } });
+    await commit(
+      { type: "usage.recorded", scope: turn, data: { kind: "decision", usage: usage(100, 0.25) } },
+      {
+        type: "usage.recorded",
+        scope: turn,
+        data: { kind: "auxiliary", owner: { callId: "call_1" }, usage: usage(10, 0.5) },
+      },
+      {
+        type: "usage.recorded",
+        scope: turn,
+        data: { kind: "model", owner: { callId: "call_2" }, usage: usage(7000, 4) },
+      },
+      {
+        type: "usage.recorded",
+        scope: turn,
+        data: { kind: "delegated-late", usage: usage(7000, 4) },
+      },
+    );
+    await runtime.forceFlush();
+
+    const exported = metrics
+      .getMetrics()
+      .flatMap((resource) => resource.scopeMetrics.flatMap((scope) => scope.metrics));
+    const inputTokens = exported
+      .find((metric) => metric.descriptor.name === "gen_ai.client.token.usage")!
+      .dataPoints.filter((point) => point.attributes["gen_ai.token.type"] === "input")
+      .map((point) => ({
+        kind: point.attributes["eveland.gen_ai.usage.kind"],
+        sum: (point.value as { sum: number }).sum,
+      }));
+    expect(inputTokens).toEqual(
+      expect.arrayContaining([
+        { kind: "decision", sum: 100 },
+        { kind: "auxiliary", sum: 10 },
+      ]),
+    );
+    expect(inputTokens).toHaveLength(2);
+    const cost = exported
+      .find((metric) => metric.descriptor.name === "eveland.gen_ai.cost")!
+      .dataPoints.reduce((total, point) => total + (point.value as number), 0);
+    expect(cost).toBe(0.75);
+  });
+
   test("never lets a malformed v27 event escape the capture", async () => {
     const { runtime, commit } = harness();
     await expect(

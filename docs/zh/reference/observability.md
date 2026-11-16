@@ -351,10 +351,12 @@ eve_session_id)` 与 SessionNode 的同名对一样是唯一索引，两条存�
 - Collector 没有 Docker socket、source、release、deployment environment、
   sandbox、Secret store 或 host root mount。
 - Collector 缺失只使 telemetry 降级，不阻止 Agent 启动、重启或 cold activation。
-- Observability 不是计费账本；usage 只采用 Eve/provider 实际报告的值，缺失保持缺失。一行用量对应一个由
-  Model Run 或 Context Change 拥有的 `usage.recorded`（按 `run_key` 去重）；从 Eve 0.83 Session
-  记录的行各对应一个 `step.completed`（按 Turn 与 Step 去重），保持原样。由 Call 拥有的 v27 记录
-  是在重报子 Session 已记录的花费，因此只由子 Session 计入；v27 会把缺失的 Token 数填为零，
+- Observability 不是计费账本；usage 只采用 Eve/provider 实际报告的值，缺失保持缺失。一行用量对应一个
+  `usage.recorded`，按 `run_key` 去重：Model Run 或 Context Change 的记录以其 Owner 为键，Eve 在自身
+  Model Step 之外的花费——`decision`（`decide()`、自动选模型、工具审批）与 `auxiliary`（工具发起的
+  模型调用）——以其 Stream 位置为键；从 Eve 0.83 Session
+  记录的行各对应一个 `step.completed`（按 Turn 与 Step 去重），保持原样。由 Call 拥有的 `model`
+  记录和 `delegated-late` 记录是在重报子 Session 已记录的花费，因此只由子 Session 计入；v27 会把缺失的 Token 数填为零，
   所以用量缺失表现为某个 Model Run 完全没有记录。Model Run 的 `run_key` 同时标明事实所在的
   commit（stream line）。已完成的 Model Run 自其 `model.settled` 起计为缺失，直到其记录到达；Eve
   把该记录写在同一个 commit 里，所以它填充同一 `run_key` 行，无论两者谁先送达，一次 Run 都不会被
