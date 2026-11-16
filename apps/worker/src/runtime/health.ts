@@ -68,8 +68,8 @@ export async function waitForHttpHealth(input: HttpHealthInput): Promise<void> {
   let lastAnswer: string | undefined;
 
   while (Date.now() < deadline) {
+    const attemptTimeoutMs = Math.max(1, Math.min(PROBE_TIMEOUT_MS, deadline - Date.now()));
     try {
-      const attemptTimeoutMs = Math.max(1, Math.min(1000, deadline - Date.now()));
       const response = await fetch(url, { signal: AbortSignal.timeout(attemptTimeoutMs) });
       if (response.status === 200 && (await reportsOk(response))) return;
       await response.body?.cancel().catch(() => undefined);
@@ -79,7 +79,15 @@ export async function waitForHttpHealth(input: HttpHealthInput): Promise<void> {
           : `last answered HTTP ${response.status}`;
       lastError = undefined;
     } catch (error) {
-      lastError = error;
+      // A probe whose window the deadline cut short was aborted by the
+      // deadline, not by the process: keep what the process last answered.
+      const cutByDeadline =
+        attemptTimeoutMs < PROBE_TIMEOUT_MS &&
+        error instanceof DOMException &&
+        error.name === "TimeoutError";
+      if (!(cutByDeadline && lastAnswer !== undefined)) {
+        lastError = error;
+      }
     }
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
@@ -106,6 +114,7 @@ export async function waitForHttpHealth(input: HttpHealthInput): Promise<void> {
 }
 
 const EVE_HEALTH_PATH = "/eve/v1/health";
+const PROBE_TIMEOUT_MS = 1000;
 
 async function reportsOk(response: Response): Promise<boolean> {
   try {
