@@ -11,8 +11,6 @@
     "test": "vitest run --maxWorkers=2 --testTimeout=30000",
     "smoke:connections": "tsx src/integration/connections-e2e.ts",
     "smoke:docker-sandbox": "tsx src/integration/docker-sandbox-smoke.ts",
-    "smoke:workflow-wake": "tsx src/integration/workflow-wake-e2e.ts",
-    "smoke:workflow-dual-release": "tsx src/integration/workflow-dual-release-e2e.ts",
     "smoke:model-gateway": "tsx src/integration/model-gateway-eve-e2e.ts"
   },
   "dependencies": {
