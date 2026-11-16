@@ -51,19 +51,6 @@ export type TranscriptItem =
   | { kind: "tool"; call: TranscriptToolCall }
   | { kind: "system"; label: string; text: string | null; eventAt: string };
 
-export type TranscriptActivityItem = Extract<
-  TranscriptItem,
-  { kind: "reasoning" | "tool" | "system" }
->;
-
-export type TranscriptDisplayItem =
-  | Extract<TranscriptItem, { kind: "user" | "assistant" }>
-  | {
-      kind: "activity";
-      status: "completed" | "failed" | "cancelled" | "running";
-      items: TranscriptActivityItem[];
-    };
-
 export type TranscriptTurn = {
   turnId: string | null;
   startedAt: string;
@@ -361,65 +348,6 @@ function contentText(payload: Record<string, unknown> | null): string | null {
   if (typeof payload.value === "string") return payload.value || null;
   if (payload.value !== undefined && payload.value !== null) return JSON.stringify(payload.value);
   return asString(payload.fallbackText);
-}
-
-export function groupTranscriptItems(turn: TranscriptTurn): TranscriptDisplayItem[] {
-  const displayItems: TranscriptDisplayItem[] = [];
-  let activityItems: TranscriptActivityItem[] = [];
-
-  const flushActivity = (trailing = false) => {
-    if (activityItems.length === 0) return;
-    displayItems.push({
-      kind: "activity",
-      status: activityStatus(activityItems, turn.status, trailing),
-      items: activityItems,
-    });
-    activityItems = [];
-  };
-
-  for (const item of turn.items) {
-    if (item.kind === "user" || item.kind === "assistant") {
-      flushActivity();
-      displayItems.push(item);
-    } else {
-      activityItems.push(item);
-    }
-  }
-  flushActivity(true);
-
-  return displayItems;
-}
-
-function activityStatus(
-  items: TranscriptActivityItem[],
-  turnStatus: TranscriptTurn["status"],
-  trailing: boolean,
-): Extract<TranscriptDisplayItem, { kind: "activity" }>["status"] {
-  if (
-    items.some(
-      (item) =>
-        (item.kind === "tool" && item.call.status === "failed") ||
-        (item.kind === "system" && item.label.toLowerCase().includes("failed")),
-    )
-  ) {
-    return "failed";
-  }
-  if (
-    items.some(
-      (item) =>
-        (item.kind === "tool" && item.call.status === "cancelled") ||
-        (item.kind === "system" && item.label.toLowerCase().includes("cancelled")),
-    )
-  ) {
-    return "cancelled";
-  }
-  if (items.some((item) => item.kind === "tool" && item.call.status === "pending")) {
-    return "running";
-  }
-  if (turnStatus === "incomplete" && trailing) {
-    return "running";
-  }
-  return "completed";
 }
 
 export function turnToolCalls(turn: TranscriptTurn): TranscriptToolCall[] {
