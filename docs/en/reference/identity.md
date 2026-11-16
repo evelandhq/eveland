@@ -57,7 +57,7 @@ _Note: The Agent Gateway transparently proxies Authorization headers and cookies
 
 The platform provides a public, unauthenticated endpoint at `GET /api/agent-catalog`:
 
-- **Eligibility**: Projects whose active production routes are healthy and whose source revisions explicitly declare `capabilities.eveChat=true` (standard export in `agent/channels/eve.ts`).
+- **Eligibility**: Projects whose active production routes are healthy and whose built Releases serve eve's chat channel, as `eve info --json` reports it after the build. eve supplies that channel by default, so an agent qualifies whether or not it authors `agent/channels/eve.ts`.
 - **Schema**: Returns `projectId`, `displayName`, `description`, stable endpoint URL, and declared capabilities.
 - **Neutrality**: The Catalog functions as an unopinionated discovery projection without realm-based filtering; authorization remains the sole responsibility of individual agents.
 

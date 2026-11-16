@@ -1,13 +1,6 @@
 import type { AgentCatalogRecord } from "@evelandhq/core/catalog";
 import { and, asc, eq, gt, isNull } from "drizzle-orm";
-import {
-  agentRoutes,
-  deployments,
-  projects,
-  releases,
-  routeTargets,
-  sourceRevisions,
-} from "./schema.js";
+import { agentRoutes, deployments, projects, releases, routeTargets } from "./schema.js";
 import type { CatalogStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 
@@ -21,7 +14,7 @@ export function createPostgresCatalogStore({ db }: PostgresStoreContext): Catalo
           description: projects.description,
           hostname: agentRoutes.hostname,
           deploymentStatus: deployments.status,
-          summary: sourceRevisions.summary,
+          releaseSummary: releases.summary,
         })
         .from(projects)
         .innerJoin(
@@ -38,7 +31,6 @@ export function createPostgresCatalogStore({ db }: PostgresStoreContext): Catalo
         )
         .innerJoin(deployments, eq(deployments.id, routeTargets.deploymentId))
         .innerJoin(releases, eq(releases.id, deployments.releaseId))
-        .innerJoin(sourceRevisions, eq(sourceRevisions.id, releases.sourceRevisionId))
         .where(isNull(projects.deletionStatus))
         .orderBy(asc(projects.name), asc(projects.id));
 
@@ -56,7 +48,7 @@ export function createPostgresCatalogStore({ db }: PostgresStoreContext): Catalo
         };
         current.eligible &&=
           isCatalogRoutableDeploymentStatus(row.deploymentStatus) &&
-          hasEveChatCapability(row.summary);
+          servesEveChannel(row.releaseSummary);
         grouped.set(row.projectId, current);
       }
 
@@ -74,15 +66,14 @@ function isCatalogRoutableDeploymentStatus(status: string): boolean {
   return status === "running" || status === "stopped";
 }
 
-function hasEveChatCapability(summary: unknown): boolean {
-  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
-    return false;
-  }
-  const capabilities = (summary as Record<string, unknown>).capabilities;
-  return (
-    Boolean(capabilities) &&
-    typeof capabilities === "object" &&
-    !Array.isArray(capabilities) &&
-    (capabilities as Record<string, unknown>).eveChat === true
-  );
+/**
+ * Whether the built Release serves eve's chat channel, as `eve info --json`
+ * reported it after the build: eve supplies that channel by default, so an
+ * agent qualifies whether or not it authors `agent/channels/eve.ts`. A
+ * Release recorded without a build summary does not qualify.
+ */
+function servesEveChannel(summary: unknown): boolean {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) return false;
+  const channels = (summary as Record<string, unknown>).channels;
+  return Array.isArray(channels) && channels.includes("eve");
 }
