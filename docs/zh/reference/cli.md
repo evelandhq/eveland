@@ -37,6 +37,9 @@ _注：在当前源码仓库内开发调试时，可通过根目录脚本 `pnpm 
 
 1. CLI 申请设备授权码并在终端打印 User Code，同时自动在浏览器中打开授权页（`/device`）；
 2. 团队成员在控制台确认授权后，CLI 兑换获取一枚具备 `deploy` 与 `observe` 权限的短期可撤销 Access Token；
+   - `deploy` 可以创建项目、上传与同步源码、构建、promote、重启，以及管理项目环境变量。
+   - `observe` 可以读取项目、端点、Deployment、Job、日志、用量、定时任务及其运行记录、会话列表，以及单个会话的 transcript、节点和用量。除此之外一律不可读：密钥、源码文件、Model Gateway 与 agent-auth 配置、Playground 都不在其中。
+   - 两种权限都无法进行成员管理或访问运维面，与授权成员的角色无关。
 3. 凭据加密保存在 `~/.config/eveland/credentials/` 下（文件权限 `0600`）。在 CI/CD 自动化流水线中，可通过设置环境变量 `EVELAND_TOKEN` 直接免登录。
 
 ---
