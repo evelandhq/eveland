@@ -66,6 +66,8 @@ Pin a specific release with `--version vX.Y.Z`. Re-running `curl -fsSL https://e
 
 Before it touches anything, `update` reads the target release's `CHANGELOG.md` and lists every BREAKING CHANGE between your version and the target, then asks you to confirm. If it cannot read that changelog (the installer's checkout is a blobless clone, so the read itself goes to your git remote), it prints the git error and asks whether to proceed without the summary. Either way, an unanswered question — no terminal, or `--no-prompt` — aborts before the backup. Re-run to retry the read, or check the release notes yourself and pass `--yes`.
 
+The target release's migrations start from a baseline. If the database still holds migrations from before that baseline (an installation older than 1.0), `update` stops before building, migrating, or starting anything. The database is left unchanged, the platform stays stopped, and the message lists how to return to the previous release. Such a database reaches 1.0 only through the one-off cutover in `scripts/cutover-1.0/README.md`. After the cutover, re-run `eveland-ctl update` and it resumes from where it stopped. `update` also refuses to migrate when it cannot read the database's migration journal at all.
+
 ---
 
 ## 3. Post-upgrade verification

@@ -29,7 +29,12 @@ export type PgReady = (databaseUrl: string) => Promise<boolean>;
 export type PgJournal =
   | { status: "unreachable"; detail: string }
   | { status: "unmigrated" }
-  | { status: "migrated"; count: number };
+  | {
+      status: "migrated";
+      count: number;
+      /** The journal `when` of the oldest applied migration; null for an empty journal. */
+      oldestAppliedAt: number | null;
+    };
 
 export type PgJournalProbe = (databaseUrl: string) => Promise<PgJournal>;
 
@@ -126,10 +131,16 @@ export function defaultPgJournalProbe(
   return async (databaseUrl) => {
     try {
       return await withClient(databaseUrl, connectTimeout, async (sql) => {
-        const rows = await sql<{ count: number }[]>`
-          select count(*)::int as count from drizzle.__drizzle_migrations
+        const rows = await sql<{ count: number; oldest: string | null }[]>`
+          select count(*)::int as count, min(created_at)::text as oldest
+          from drizzle.__drizzle_migrations
         `;
-        return { status: "migrated", count: rows[0]?.count ?? 0 } as const;
+        const oldest = rows[0]?.oldest;
+        return {
+          status: "migrated",
+          count: rows[0]?.count ?? 0,
+          oldestAppliedAt: oldest == null ? null : Number(oldest),
+        } as const;
       });
     } catch (error) {
       // 42P01 undefined_table / 3F000 invalid_schema_name: the connection

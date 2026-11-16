@@ -27,7 +27,7 @@ function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     },
     supervisorRunning: false,
     database: "bundled",
-    pgJournalProbe: async () => ({ status: "migrated", count: 42 }),
+    pgJournalProbe: async () => ({ status: "migrated", count: 42, oldestAppliedAt: 1 }),
     execCommand: async (argv) => {
       if (argv[0] === "pnpm") return { code: 0, output: "11.7.0\n" };
       if (argv[0] === "docker" && argv[1] === "info") return { code: 0, output: "27.0\n" };
@@ -366,7 +366,7 @@ describe("runDoctor rendering", () => {
       palette,
       doctorDeps: {
         execCommand: async () => ({ code: 0, output: "Info-ZIP\n" }),
-        pgJournalProbe: async () => ({ status: "migrated", count: 62 }),
+        pgJournalProbe: async () => ({ status: "migrated", count: 62, oldestAppliedAt: 1 }),
         tcpProbe: async () => false,
         nonLoopbackAddresses: () => [],
         dockerBridgeHost: async () => null,

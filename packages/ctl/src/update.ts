@@ -7,7 +7,7 @@ import { defaultStreamCommand, pinReleaseIdentity } from "./bootstrap.ts";
 import { breakingChangesBetween } from "./changelog.ts";
 import { detectDockerBridgeHost } from "./docker-bridge.ts";
 import { newestStableTag, parseReleaseTag } from "./release-identity.ts";
-import { libpqEnvironment } from "./pg-probe.ts";
+import { defaultPgJournalProbe, libpqEnvironment, type PgJournalProbe } from "./pg-probe.ts";
 import { loadPlatformEnvFile } from "./env-file.ts";
 import { databaseMode, readInstallMetadata, type DatabaseMode } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
@@ -700,6 +700,63 @@ export async function pruneBackups(backupsDir: string, keep: number): Promise<st
 }
 
 /**
+ * The checkout's migrations restart from a baseline (its journal's first
+ * entry). A database holding a migration older than that baseline predates
+ * it — a 0.x installation — and the migrator would run the baseline over its
+ * existing tables. Such a database moves forward only through the one-off
+ * cutover kit, so the update stops here, before the new version builds,
+ * regenerates units, or touches the database. A journal that cannot be read
+ * is refused the same way: migrating blind is what this check exists to
+ * prevent. Returns the refusal text, or null when the update may proceed.
+ */
+async function baselineRefusal(options: {
+  repo: string;
+  databaseUrl: string;
+  probe: PgJournalProbe;
+  fromVersion: string;
+  runDir: string;
+}): Promise<string | null> {
+  const { repo, databaseUrl, probe, fromVersion, runDir } = options;
+  let baselineAt: number | undefined;
+  try {
+    const journal = JSON.parse(
+      await readFile(path.join(repo, "packages/db/drizzle/meta/_journal.json"), "utf8"),
+    ) as { entries?: Array<{ when?: unknown }> };
+    const when = journal.entries?.[0]?.when;
+    if (typeof when === "number") baselineAt = when;
+  } catch {
+    // reported below
+  }
+  if (baselineAt === undefined) {
+    return "The update cannot read this checkout's migration journal (packages/db/drizzle/meta/_journal.json); refusing to migrate.";
+  }
+  const applied = await probe(databaseUrl);
+  if (applied.status === "unreachable") {
+    return (
+      `The database's migration journal could not be read (${applied.detail}); refusing to migrate blind. ` +
+      "Make the configured PostgreSQL reachable (`eveland-ctl doctor`) and re-run `eveland-ctl update`, which resumes here."
+    );
+  }
+  if (
+    applied.status === "unmigrated" ||
+    applied.oldestAppliedAt === null ||
+    applied.oldestAppliedAt >= baselineAt
+  ) {
+    return null;
+  }
+  return [
+    `This installation (v${fromVersion}) runs on a database migrated before this release's baseline.`,
+    "Such a database moves forward only through the one-off cutover described in",
+    "scripts/cutover-1.0/README.md of this checkout. Nothing in the database was changed, and the",
+    "platform is left STOPPED.",
+    "To continue: run the cutover, then re-run `eveland-ctl update`, which resumes here.",
+    `To run v${fromVersion} again instead:`,
+    `  git -C ${repo} checkout v${fromVersion} && (cd ${repo} && SHARP_IGNORE_GLOBAL_LIBVIPS=1 pnpm install --frozen-lockfile)`,
+    `  rm ${pendingUpdatePath({ runDir })} && eveland-ctl start`,
+  ].join("\n");
+}
+
+/**
  * The hidden `_finish-update` command, executed from the NEW checkout by
  * phase 1: refresh release identity, regenerate the systemd form's
  * artifacts (units, env allowlists, Compose overlay — so permission and
@@ -727,6 +784,20 @@ export async function runFinishUpdate(args: string[], io: LifecycleIo): Promise<
   });
   if (!envFile) {
     io.stderr(recovery(`No configuration found at ${resolved.layout.envFilePath}`));
+    return 1;
+  }
+
+  // Before anything of the new version is put in place: its migrations must
+  // be able to run on this database at all.
+  const refusal = await baselineRefusal({
+    repo,
+    databaseUrl: envFile.values.DATABASE_URL ?? "",
+    probe: io.pgJournalProbe ?? defaultPgJournalProbe(),
+    fromVersion,
+    runDir: resolved.layout.runDir,
+  });
+  if (refusal) {
+    io.stderr(refusal);
     return 1;
   }
 
