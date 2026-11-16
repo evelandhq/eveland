@@ -29,7 +29,7 @@ Eveland's production architecture is engineered to maximize host agent density w
 
 ### 2. Unified data root
 
-The API and Worker are host-native processes that share a single absolute filesystem root (defaulting to `/var/lib/eveland`). All imported source trees, compiled releases, sandbox caches, and telemetry policies reside under this directory.
+The API and Worker are host-native processes that share a single absolute filesystem root (`/opt/eveland/data` on an installed host). All imported source trees, compiled releases, sandbox caches, and telemetry policies reside under this directory.
 
 ### 3. On-demand cold starts and scale-to-zero
 
@@ -38,4 +38,4 @@ Deployments are permanent entities, but running processes are ephemeral:
 - When a public request, cron schedule, or workflow step arrives, Eveland activates the target release in milliseconds via an ActivationLease.
 - When all leases expire and the idle window lapses (default: 5 minutes), the Worker gracefully terminates the process, reclaiming system memory while leaving routes and session states intact.
 
-Next: [Install Eveland](/docs/production/install) — one command, or the manual path if your host needs it.
+Next: [Install Eveland](/docs/production/install) — one command.

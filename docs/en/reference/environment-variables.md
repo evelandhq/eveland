@@ -219,8 +219,7 @@ build-sandbox settings apply only to the Linux systemd runtime.
 
 > **`EVELAND_SANDBOX_CACHE_DIR` must live outside the release directory.** Since eve
 > 0.22 keys session sandboxes per durable session, a cache inside the release dir would
-> be discarded on redeploy — destroying each session's `/workspace`. See
-> [Prepare the host](/docs/production/prerequisites) for host provisioning.
+> be discarded on redeploy — destroying each session's `/workspace`.
 
 ## Agent Gateway (data plane)
 

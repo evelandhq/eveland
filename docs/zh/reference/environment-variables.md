@@ -201,8 +201,7 @@ Dispatcher（`apps/workflow-dispatcher`，`@evelandhq/workflow-world` 内 Dispat
 
 > **`EVELAND_SANDBOX_CACHE_DIR` 必须位于 Release 目录之外。** 自 eve 0.22 起 Session
 > Sandbox 按 Durable Session 建键，若缓存放在 Release 目录内会在重新部署时被丢弃——
-> 摧毁每个 Session 的 `/workspace`。宿主机准备见
-> [准备宿主机](/zh/docs/production/prerequisites)。
+> 摧毁每个 Session 的 `/workspace`。
 
 ## Agent Gateway（数据平面）
 

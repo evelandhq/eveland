@@ -54,4 +54,3 @@ Eve projects statically resolve certain configuration during compilation (`npx e
 
 - [Secrets and Connections](/docs/agents/secrets-connections): developer guide to credentials and interactive auth
 - [Security model](/docs/operations/security): encryption at rest and process privilege models
-- [Install the host Worker](/docs/production/worker): build sandboxes and variable filtering allowlists

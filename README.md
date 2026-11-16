@@ -121,10 +121,10 @@ The installer prepares the host and hands off to `eveland-ctl`, which generates
 the configuration, applies migrations, and registers the systemd units for all
 five services (Docker is left holding only the OTLP Collector and, optionally,
 the bundled Postgres). The walkthrough is
-[eveland.ai/docs/production/install](https://eveland.ai/docs/production/install);
-the manual, step-by-step path is kept alongside it for hosts that need it. Both
-are sourced from [`docs/en/production/`](docs/en/production/) — the in-repo
-Markdown is readable standalone if the site is unavailable.
+[eveland.ai/docs/production/install](https://eveland.ai/docs/production/install).
+The installer and `eveland-ctl` are the only supported installation path. The
+pages are sourced from [`docs/en/production/`](docs/en/production/) — the
+in-repo Markdown is readable standalone if the site is unavailable.
 
 ## Getting help
 
