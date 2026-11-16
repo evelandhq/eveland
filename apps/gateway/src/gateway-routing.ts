@@ -85,7 +85,7 @@ export function affinityKey(
   return affinityResult(key, "generated", signAffinityCookie(key, secret));
 }
 
-export function safeDecodeURIComponent(value: string): string | null {
+function safeDecodeURIComponent(value: string): string | null {
   try {
     return decodeURIComponent(value);
   } catch {
@@ -93,11 +93,7 @@ export function safeDecodeURIComponent(value: string): string | null {
   }
 }
 
-export function affinityResult(
-  key: string,
-  source: "cookie" | "generated",
-  cookieValue: string | null,
-) {
+function affinityResult(key: string, source: "cookie" | "generated", cookieValue: string | null) {
   return {
     key,
     source,
@@ -114,7 +110,7 @@ export function signAffinityCookie(key: string, secret: string): string {
   return `${key}.${createHmac("sha256", secret).update(key).digest("base64url")}`;
 }
 
-export function verifyAffinityCookie(value: string, secret: string): string | null {
+function verifyAffinityCookie(value: string, secret: string): string | null {
   const separator = value.lastIndexOf(".");
   if (separator <= 0) return null;
   const key = value.slice(0, separator);
@@ -250,6 +246,6 @@ export function requestHasBody(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
 }
 
-export function quoteForwarded(value: string): string {
+function quoteForwarded(value: string): string {
   return `"${value.replace(/["\\]/g, "")}"`;
 }

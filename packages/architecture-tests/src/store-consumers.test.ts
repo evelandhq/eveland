@@ -1,19 +1,17 @@
 import { describe, expect, test } from "vitest";
 import { listSourceFiles, listWorkspaces, readSource } from "./scan-support.js";
 
-// Ratchet, not aspiration: production modules that consume the full 173-member
+// Ratchet, not aspiration: production modules that consume the full
 // Store instead of a narrow domain port. The assertion is set EQUALITY --
 // adding a file fails, and narrowing a listed file forces its removal, so the
 // list can only shrink. New code takes the narrowest domain interface (or
 // Pick<>) that covers what it actually calls; the providers in packages/db
 // already implement per-domain interfaces.
 const FULL_STORE_ALLOWLIST: string[] = [
-  "apps/api/src/app-agent-catalog-routes.ts",
   "apps/api/src/app-identity-routes.ts",
   "apps/api/src/app-internal-routes.ts",
   "apps/api/src/app-observability-proxy-routes.ts",
   "apps/api/src/app-observability-routes.ts",
-  "apps/api/src/app-otel-routes.ts",
   "apps/api/src/app-query-routes.ts",
   "apps/api/src/app-secret-routes.ts",
   "apps/api/src/app-support.ts",
