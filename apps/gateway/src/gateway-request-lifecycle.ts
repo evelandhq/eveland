@@ -241,6 +241,7 @@ export async function executeGatewaySessionProxy(input: {
       repository,
       projectId: route.projectId,
       request: eveRequest,
+      bound: binding !== null,
       upstream,
       target: {
         routeId: effectiveOperationBinding?.routeId ?? route.id,

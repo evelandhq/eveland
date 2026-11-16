@@ -39,10 +39,11 @@ Once an agent outputs a `sessionId`, the gateway records a durable `SessionBindi
 
 ## 4. Durable routes and OperationBinding
 
-Eve durable routes (create-once, task-input, MCP invocation) follow strict binding rules:
+Eve durable routes (create-once, task-input, MCP invocation, A2A) follow strict binding rules:
 
 - **First-write-wins**: Create requests bearing an `operationId` compute an HMAC operation key using an internal gateway secret, persisting an `OperationBinding` per `(projectId, operationKey)`. Plaintext IDs are never stored.
 - **MCP task tracking**: The `invocationId` returned by MCP `agent_start` is bound to the target deployment, ensuring subsequent `agent_get`, `agent_update`, and `agent_cancel` requests return to the same agent.
+- **A2A contexts and tasks**: eve's A2A channel runs each A2A context as one eve session (the `contextId` is the session id). When a `SendMessage` or `SendStreamingMessage` that names no context answers, its `contextId` and task id are bound to the Deployment that answered (a streamed send from its first event). A send that names a context or a task, and `GetTask`, `CancelTask`, `SubscribeToTask` (by task id) and `ListTasks` (by context), are pinned by that binding, and a new task a pinned send starts is bound to the same Deployment. The Agent Gateway recognizes A2A by its JSON-RPC body, whatever route the channel is served at. A context that was never bound (for example one an earlier Gateway forwarded) follows the route's weights, as an unbound session continuation does.
 - **Callback routing**: Reverse proxies must forward both `/eve/*` and `/.well-known/workflow/*` to permit workflow callback delivery.
 
 ---

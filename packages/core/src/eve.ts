@@ -81,7 +81,9 @@ export type EveSessionRequest = {
     | "compact"
     | "session_route"
     | "mcp_start"
-    | "mcp_invocation";
+    | "mcp_invocation"
+    | "a2a_send"
+    | "a2a_task";
   sessionId: string | null;
 };
 
