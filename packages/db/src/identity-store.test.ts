@@ -274,66 +274,8 @@ describe("Identity store", () => {
     ).resolves.toBe(1);
   });
 
-  test("fences OIDC credential refresh and rotates signing keys", async () => {
+  test("rotates signing keys", async () => {
     const store = createTestStore();
-    await disableSeededOpenIdentityProvider(store);
-    const connection = await store.createIdentityProviderConnection({
-      type: "oidc",
-      displayName: "OIDC",
-      issuer: "https://id.example",
-      clientId: "chat",
-      clientSecretEncrypted: "encrypted-secret",
-      scopes: ["openid"],
-      authorizationParameters: {},
-      tokenEndpointAuthMethod: "client_secret_basic",
-      externalRealmResolution: "id_token_claim",
-      externalRealmClaim: "account_id",
-      enabled: true,
-    });
-    const realm = await store.createIdentityRealm({
-      providerConnectionId: connection.id,
-      externalRealmId: "account-1",
-      externalRealmKind: "account",
-      displayName: "Account 1",
-      enabled: true,
-    });
-    const principal = await store.upsertIdentityPrincipal({
-      identityRealmId: realm.id,
-      externalSubject: "user-1",
-      displayName: "User",
-      email: null,
-      claims: {},
-    });
-    const credential = await store.putIdentityOidcCredential({
-      identityPrincipalId: principal.id,
-      providerConnectionId: connection.id,
-      accessTokenEncrypted: "access-v1",
-      refreshTokenEncrypted: "refresh-v1",
-      scope: "openid",
-      accessTokenExpiresAt: new Date("2029-01-01T00:00:00.000Z"),
-    });
-    const rotated = await store.rotateIdentityOidcCredential({
-      identityPrincipalId: principal.id,
-      providerConnectionId: connection.id,
-      expectedRotationSeq: credential.rotationSeq,
-      accessTokenEncrypted: "access-v2",
-      refreshTokenEncrypted: "refresh-v2",
-      scope: "openid profile",
-      accessTokenExpiresAt: new Date("2030-01-01T00:00:00.000Z"),
-    });
-    const stale = await store.rotateIdentityOidcCredential({
-      identityPrincipalId: principal.id,
-      providerConnectionId: connection.id,
-      expectedRotationSeq: credential.rotationSeq,
-      accessTokenEncrypted: "stale",
-      refreshTokenEncrypted: null,
-      scope: "openid",
-      accessTokenExpiresAt: null,
-    });
-
-    expect(rotated).toMatchObject({ accessTokenEncrypted: "access-v2", rotationSeq: 1 });
-    expect(stale).toBeNull();
-
     const firstKey = await store.createIdentitySigningKey({
       algorithm: "ES256",
       publicJwk: { kty: "EC", kid: "key-1" },

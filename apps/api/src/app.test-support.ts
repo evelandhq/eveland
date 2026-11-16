@@ -69,6 +69,7 @@ export async function createScheduleRunFixture(store: Store, createRun = true) {
     projectId: project.id,
     sourceRevisionId: revision.id,
     imageTag: "fixture:scheduler",
+    observerContract: 3,
     containerName: "fixture-scheduler",
     internalPort: 3000,
     hostPort: 41993,

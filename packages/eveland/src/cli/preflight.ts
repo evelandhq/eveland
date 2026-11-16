@@ -25,6 +25,9 @@ import { intersects, validRange } from "semver";
 const EXCLUDED_DIRECTORIES = new Set([".git", "node_modules"]);
 const ENV_FILE_EXEMPT = new Set([".env.example", ".env.sample", ".env.template"]);
 const NPMRC_CREDENTIAL_PATTERN = /(^|:)_(auth|authToken|password)\s*=/m;
+const LAYOUT_HINT =
+  "Eveland deploys one agent per repository, with its files in agent/ at the repository root " +
+  "(agent/instructions.md, agent/agent.ts, agent/tools/, ...).";
 /** Mirrors the server's default EVELAND_MAX_UPLOAD_BYTES. */
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 /** Files above this are kept in the build but invisible in the Source page. */
@@ -84,13 +87,18 @@ export async function collectProjectFiles(root: string): Promise<PreflightResult
     }
   }
 
-  const hasInstructions = files.some(
-    (file) =>
-      /^(agent\/)?instructions\.(md|ts)$/.test(file.name) ||
-      /^(agent\/)?instructions\//.test(file.name),
-  );
-  if (!hasInstructions) {
-    problems.push("Missing instructions.md, instructions.ts, or instructions/ (root or agent/).");
+  // The same layout rule the server's preflight applies: one agent, in agent/.
+  const instructionsUnder = (root: string) =>
+    files.some((file) =>
+      new RegExp(`^${root}instructions(?:\\.(?:md|[cm]?[jt]s)$|/)`).test(file.name),
+    );
+  if (!instructionsUnder("agent/")) {
+    problems.push(
+      instructionsUnder("")
+        ? "The agent's files are at the project root (eve's flat layout), which Eveland does not " +
+            `deploy. Move instructions, agent.ts, and the agent's directories into agent/. ${LAYOUT_HINT}`
+        : `Missing agent/instructions.md, agent/instructions.ts, or agent/instructions/. ${LAYOUT_HINT}`,
+    );
   }
 
   for (const file of files) {

@@ -27,21 +27,21 @@ _注：预览地址中的 `--` 分隔符保持在单级子域名内，因此单�
 
 ## 3. 配置反向代理 (以 Traefik 为例)
 
-反向代理负责终止公网 TLS，并将流量转发至宿主机 `127.0.0.1:17300`。参考 `infra/traefik/agents.yml`：
+反向代理负责终止公网 TLS，并将流量转发至宿主机 `127.0.0.1:17300`。规则使用 Traefik v3 语法，与 `infra/traefik/agents.yml` 一致：
 
 ```yaml
 http:
   routers:
     # 平台控制台与 API
     eveland-console:
-      rule: "Host(`console.example.com`)"
+      rule: "Host(`console.example.com`) && !PathPrefix(`/internal`)"
       entryPoints: ["websecure"]
       service: "eveland-gateway"
       tls: {}
 
     # Agent 泛域名流量
     eveland-agents:
-      rule: "HostRegexp(`{sub:[a-z0-9-]+}.agents.example.com`) && !PathPrefix(`/internal`)"
+      rule: 'HostRegexp(`^[a-z0-9-]+\.agents\.example\.com$`) && !PathPrefix(`/internal`)'
       entryPoints: ["websecure"]
       service: "eveland-gateway"
       tls: {}

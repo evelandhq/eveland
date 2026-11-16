@@ -17,7 +17,7 @@ A consistent backup requires the following three components captured from the **
 | :--------------------------- | :---------------------------------------- | :----------------------------------------------------------------------------------------------------------- |
 | **Control Plane Database**   | PostgreSQL (`DATABASE_URL`)               | Project metadata, releases, deployment history, routes, team auth, and AES-256 encrypted secrets.            |
 | **Shared Workflow Database** | PostgreSQL (`EVELAND_WORKFLOW_WORLD_URL`) | Durable workflow execution states, timers, and step queues.                                                  |
-| **Persistent Data Root**     | Host filesystem (`/var/lib/eveland`)      | Source archives, immutable releases (`builds/`), telemetry configs, and persistent `/workspace` directories. |
+| **Persistent Data Root**     | Host filesystem (`/opt/eveland/data`)     | Source archives, immutable releases (`builds/`), telemetry configs, and persistent `/workspace` directories. |
 
 _Security Warning: Decrypting stored secrets requires the host `APP_SECRET_KEY`. Ensure this master key is safely backed up in an external secret manager (KMS / Vault)._
 
@@ -28,7 +28,7 @@ _Security Warning: Decrypting stored secrets requires the host `APP_SECRET_KEY`.
 When creating filesystem snapshots, exclude these temporary caches:
 
 - **npm cache directory** (`EVELAND_DATA_DIR/npm-cache/`): Rebuilt on demand. It also holds the shared pnpm store and cache (`_pnpm-store/`, `_pnpm-cache/`) every Release build draws from, so a Release never carries its own copy; the store only grows, and `pnpm store prune --store-dir EVELAND_DATA_DIR/npm-cache/_pnpm-store` reclaims packages no build references any more;
-- **Platform checkout and dependencies** (`/opt/eveland` & `node_modules`): Fully reproducible via git tag and `pnpm install --frozen-lockfile`;
+- **Platform checkout and dependencies** (`/opt/eveland/source` & `node_modules`): Fully reproducible via git tag and `pnpm install --frozen-lockfile`;
 - **OTel Collector exporter queues** (`EVELAND_DATA_DIR/otel/`): Transient telemetry buffers.
 
 _Note: Compiled releases in `builds/` **must be backed up**. Cold starts execute the exact build artifact from disk. If missing, all deployments must be manually rebuilt and promoted._
@@ -41,20 +41,20 @@ When restoring onto a new host or recovering from a hardware failure:
 
 ```bash
 # Step 1: Stop all Eveland platform units
-sudo systemctl stop eveland-api eveland-gateway eveland-web eveland-worker eveland-workflow-dispatcher
+sudo eveland-ctl stop
 
 # Step 2: Restore PostgreSQL databases (control plane and workflow databases)
 # Example: pg_restore from backup dump
 
-# Step 3: Restore the data root onto the identical absolute path (e.g. /var/lib/eveland)
+# Step 3: Restore the data root onto the identical absolute path (e.g. /opt/eveland/data)
 
 # Step 4: Checkout the recorded release tag and install dependencies
-cd /opt/eveland
+cd /opt/eveland/source
 git checkout vX.Y.Z
 pnpm install --frozen-lockfile
 
 # Step 5: Start Postgres and core services
-sudo systemctl start eveland-api eveland-gateway eveland-web eveland-worker eveland-workflow-dispatcher
+sudo eveland-ctl start
 
 # Step 6: Verify platform health
 # Open Settings → About in the dashboard to confirm aligned versions, then send a test request

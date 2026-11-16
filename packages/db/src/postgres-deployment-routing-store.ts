@@ -221,7 +221,7 @@ export function createPostgresDeploymentRoutingStore({
             projectId: input.projectId,
             sourceRevisionId: input.sourceRevisionId,
             imageTag: input.imageTag,
-            observerContract: input.observerContract ?? null,
+            observerContract: input.observerContract,
             summary: input.summary ?? null,
             // No attestation means "unknown", never a guessed topology.
             workflowWorldKind: attestation?.worldKind ?? "unknown",

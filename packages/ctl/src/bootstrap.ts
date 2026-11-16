@@ -11,7 +11,6 @@ import { parseEnvFile, upsertEnvFileValue, type PlatformEnvFile } from "./env-fi
 import { describeDatabaseAddress, type PgEnsureDatabase, type PgReady } from "./pg-probe.ts";
 import { deriveReleaseIdentity } from "./release-identity.ts";
 import {
-  databaseMode,
   readInstallMetadata,
   type ApplianceLayout,
   type DatabaseMode,
@@ -232,13 +231,12 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<Bootstrap
       );
       // A resumed bootstrap already answered the question, and the answer was
       // recorded BEFORE this file was written (see below), so a record is
-      // guaranteed here for anything this code path created. A completed
-      // install from before the question existed runs the bundled database.
-      // Anything else is a half-finished bootstrap whose answer is gone, and
-      // guessing "bundled" there starts a second cluster next to the
-      // operator's own and makes every later `update` back up the wrong one.
+      // guaranteed here for anything this code path created. Without one the
+      // answer is gone, and guessing "bundled" would start a second cluster
+      // next to the operator's own and make every later `update` back up the
+      // wrong one.
       const metadata = await readInstallMetadata(layout);
-      if (!metadata?.database && metadata?.bootstrapCompleted !== true) {
+      if (!metadata?.database) {
         throw new Error(
           `${layout.envFilePath} exists but ${layout.installJsonPath} does not record which ` +
             "database this installation uses, so its first boot did not finish. Re-run the " +
@@ -249,7 +247,7 @@ export async function runBootstrapConfig(deps: BootstrapDeps): Promise<Bootstrap
       }
       return {
         envFile: { path: layout.envFilePath, values: existing },
-        database: databaseMode(metadata),
+        database: metadata.database,
       };
     }
     preSeeded = existing;

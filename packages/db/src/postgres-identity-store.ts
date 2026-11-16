@@ -3,7 +3,6 @@ import { createId } from "@evelandhq/core/ids";
 import type {
   ExternalRealmKind,
   IdentityLoginTransaction,
-  IdentityOidcCredential,
   IdentityPrincipal,
   IdentityProviderConnection,
   IdentityRealm,
@@ -14,7 +13,6 @@ import type {
 } from "@evelandhq/core/identity";
 import {
   identityLoginTransactions,
-  identityOidcCredentials,
   identityPrincipals,
   identityProviderConnections,
   identityRealms,
@@ -31,7 +29,6 @@ type PrincipalRow = typeof identityPrincipals.$inferSelect;
 type SessionRow = typeof identitySessions.$inferSelect;
 type TransactionRow = typeof identityLoginTransactions.$inferSelect;
 type ReturnTargetRow = typeof identityReturnTargets.$inferSelect;
-type OidcCredentialRow = typeof identityOidcCredentials.$inferSelect;
 type SigningKeyRow = typeof identitySigningKeys.$inferSelect;
 
 export function createPostgresIdentityStore(context: PostgresStoreContext): IdentityStore {
@@ -154,9 +151,6 @@ export function createPostgresIdentityStore(context: PostgresStoreContext): Iden
           await tx
             .delete(identityLoginTransactions)
             .where(eq(identityLoginTransactions.providerConnectionId, input.id));
-          await tx
-            .delete(identityOidcCredentials)
-            .where(eq(identityOidcCredentials.providerConnectionId, input.id));
         }
         return providerRow(updated);
       });
@@ -402,65 +396,6 @@ export function createPostgresIdentityStore(context: PostgresStoreContext): Iden
       return row ? returnTargetRow(row) : null;
     },
 
-    async putIdentityOidcCredential(input) {
-      const [row] = await db
-        .insert(identityOidcCredentials)
-        .values(input)
-        .onConflictDoUpdate({
-          target: [
-            identityOidcCredentials.identityPrincipalId,
-            identityOidcCredentials.providerConnectionId,
-          ],
-          set: {
-            accessTokenEncrypted: input.accessTokenEncrypted,
-            refreshTokenEncrypted: input.refreshTokenEncrypted,
-            scope: input.scope,
-            accessTokenExpiresAt: input.accessTokenExpiresAt,
-            rotationSeq: 0,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
-      if (!row) throw new Error("Failed to save OIDC credential.");
-      return oidcCredentialRow(row);
-    },
-
-    async getIdentityOidcCredential(identityPrincipalId, providerConnectionId) {
-      const [row] = await db
-        .select()
-        .from(identityOidcCredentials)
-        .where(
-          and(
-            eq(identityOidcCredentials.identityPrincipalId, identityPrincipalId),
-            eq(identityOidcCredentials.providerConnectionId, providerConnectionId),
-          ),
-        )
-        .limit(1);
-      return row ? oidcCredentialRow(row) : null;
-    },
-
-    async rotateIdentityOidcCredential(input) {
-      const [row] = await db
-        .update(identityOidcCredentials)
-        .set({
-          accessTokenEncrypted: input.accessTokenEncrypted,
-          refreshTokenEncrypted: input.refreshTokenEncrypted,
-          scope: input.scope,
-          accessTokenExpiresAt: input.accessTokenExpiresAt,
-          rotationSeq: input.expectedRotationSeq + 1,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(identityOidcCredentials.identityPrincipalId, input.identityPrincipalId),
-            eq(identityOidcCredentials.providerConnectionId, input.providerConnectionId),
-            eq(identityOidcCredentials.rotationSeq, input.expectedRotationSeq),
-          ),
-        )
-        .returning();
-      return row ? oidcCredentialRow(row) : null;
-    },
-
     async createIdentitySigningKey(input) {
       return db.transaction(async (tx) => {
         if (input.status === "active") {
@@ -648,19 +583,6 @@ function returnTargetRow(row: ReturnTargetRow): IdentityReturnTarget {
     origin: row.origin,
     enabled: row.enabled,
     createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-function oidcCredentialRow(row: OidcCredentialRow): IdentityOidcCredential {
-  return {
-    identityPrincipalId: row.identityPrincipalId,
-    providerConnectionId: row.providerConnectionId,
-    accessTokenEncrypted: row.accessTokenEncrypted,
-    refreshTokenEncrypted: row.refreshTokenEncrypted,
-    scope: row.scope,
-    accessTokenExpiresAt: row.accessTokenExpiresAt?.toISOString() ?? null,
-    rotationSeq: row.rotationSeq,
     updatedAt: row.updatedAt.toISOString(),
   };
 }

@@ -26,6 +26,55 @@ describe("isRequestAllowedForScopes", () => {
     expect(isRequestAllowedForScopes("GET", "/api/projects/proj_1/schedule-runs", OBSERVE)).toBe(
       true,
     );
+    for (const read of [
+      "endpoints",
+      "jobs",
+      "usage",
+      "eve-version",
+      "schedules",
+      "schedule-attention",
+      "sessions",
+    ]) {
+      expect(isRequestAllowedForScopes("GET", `/api/projects/proj_1/${read}`, OBSERVE), read).toBe(
+        true,
+      );
+    }
+  });
+
+  test("observe reads a single session by id", () => {
+    for (const path of [
+      "/api/sessions/sess_1",
+      "/api/sessions/sess_1/events",
+      "/api/sessions/sess_1/nodes",
+      "/api/sessions/sess_1/usage",
+    ]) {
+      expect(isRequestAllowedForScopes("GET", path, OBSERVE), path).toBe(true);
+      expect(isRequestAllowedForScopes("GET", path, DEPLOY), path).toBe(false);
+    }
+    expect(isRequestAllowedForScopes("GET", "/api/sessions", OBSERVE)).toBe(false);
+    expect(isRequestAllowedForScopes("GET", "/api/sessions/sess_1/other", OBSERVE)).toBe(false);
+    expect(isRequestAllowedForScopes("DELETE", "/api/sessions/sess_1", BOTH)).toBe(false);
+  });
+
+  // An allowlist: a project route observe does not name is out of reach,
+  // including one added later.
+  test("observe reaches only the project reads it names", () => {
+    for (const path of [
+      "/api/projects/proj_1/source/files",
+      "/api/projects/proj_1/source/file",
+      "/api/projects/proj_1/source/revision",
+      "/api/projects/proj_1/model-gateway",
+      "/api/projects/proj_1/routes",
+      "/api/projects/proj_1/some-future-route",
+      "/api/projects/proj_1/logs/extra",
+      "/api/projects/proj_1/schedule-runs/acknowledge",
+      "/api/projects/name-availability/extra",
+    ]) {
+      expect(isRequestAllowedForScopes("GET", path, OBSERVE), path).toBe(false);
+    }
+    expect(isRequestAllowedForScopes("POST", "/api/projects/proj_1/schedule-runs", OBSERVE)).toBe(
+      false,
+    );
   });
 
   test("observe never reaches secrets, the playground, or agent-auth", () => {

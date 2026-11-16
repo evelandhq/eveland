@@ -434,29 +434,24 @@ async function ingestPostgresAgentEventOnce(
               scheduleExecutionStatusFromEveEvent(type, projectedStatus ?? node.status, payload),
             )
           : null;
-      await tx
-        .update(scheduleRunSessions)
-        .set({
-          lastObservedAt: now,
-          ...(executionStatus
-            ? {
-                status: executionStatus,
-                completedAt: now,
-                error:
-                  executionStatus === "failed"
-                    ? sanitizeStoredErrorText(scheduleExecutionErrorFromEveEvent(type, payload))
-                    : null,
-              }
-            : {}),
-        })
-        .where(
-          and(
-            eq(scheduleRunSessions.scheduleRunId, sessionRow.scheduleRunId),
-            eq(scheduleRunSessions.sessionId, sessionRow.id),
-            ...(executionStatus ? [eq(scheduleRunSessions.status, "running")] : []),
-          ),
-        );
       if (executionStatus) {
+        await tx
+          .update(scheduleRunSessions)
+          .set({
+            status: executionStatus,
+            completedAt: now,
+            error:
+              executionStatus === "failed"
+                ? sanitizeStoredErrorText(scheduleExecutionErrorFromEveEvent(type, payload))
+                : null,
+          })
+          .where(
+            and(
+              eq(scheduleRunSessions.scheduleRunId, sessionRow.scheduleRunId),
+              eq(scheduleRunSessions.sessionId, sessionRow.id),
+              eq(scheduleRunSessions.status, "running"),
+            ),
+          );
         const executions = await tx
           .select({
             status: scheduleRunSessions.status,

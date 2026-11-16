@@ -161,7 +161,7 @@ describe("Gateway SessionBinding lifecycle", () => {
         remoteIp: "203.0.113.7",
         affinity: {
           fingerprint: "sha256-affinity",
-          source: "version_key",
+          source: "cookie",
         },
       },
     });
@@ -178,7 +178,7 @@ describe("Gateway SessionBinding lifecycle", () => {
       requestId: "request_created",
       remoteIp: "203.0.113.7",
       affinityFingerprint: "sha256-affinity",
-      affinitySource: "version_key",
+      affinitySource: "cookie",
     });
   });
 

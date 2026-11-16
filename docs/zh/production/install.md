@@ -43,6 +43,8 @@ less install.sh && sudo bash install.sh
 | **数据库**       | 用内置的 Postgres 容器（单机足够），或填写你自己的集群连接串。 |
 | **模型 API Key** | 可选。填了会预置一个内置示例 Agent，装完就有东西可以部署。     |
 
+外部集群必须给平台会话级连接：不要在它前面放事务级连接池（例如事务模式的 PgBouncer），因为任务队列依赖 `LISTEN/NOTIFY` 和 Advisory Lock。安装程序会在同一台服务器上、平台库旁边创建共享 workflow 数据库。
+
 其余配置都会自动生成并写入 `/opt/eveland/etc/eveland.env`（权限 `0600`）——认证密钥、服务间令牌，以及管理员密码：
 
 ```bash
@@ -76,88 +78,6 @@ eveland-ctl doctor    # 一次性列出健康宿主机所缺的一切
 | `eveland-ctl update`  | 备份数据库、升级到最新版本、执行迁移并重启。            |
 
 在已安装 Eveland 的机器上重复执行安装脚本即为升级——它会自动转交给 `eveland-ctl update`。完整命令说明见 [eveland-ctl](/zh/docs/reference/ctl)。
-
-## 从旧版本迁移
-
-如果这台机器上已经跑着一套手工安装的 Eveland（自己 clone 的代码 + 自己写的 systemd unit），安装脚本可以就地接管它：数据库、发布产物、项目全部保留。能否成功只取决于一个值——**`APP_SECRET_KEY`**。数据库里所有项目密钥都用它加密，必须原样带过来；一旦重新生成，这些密钥就再也解不开了。
-
-**1. 先备份两个数据库和数据目录**——见[备份与恢复](/zh/docs/operations/backup-restore)。这一步不要跳过。
-
-**2. 停掉旧服务。**
-
-```bash
-sudo systemctl disable --now eveland-api eveland-gateway eveland-web eveland-worker eveland-workflow-dispatcher
-```
-
-**3. 把旧代码目录挪开。** 新的安装目录要占用 `/opt/eveland`，而你的旧检出多半就在那里：
-
-```bash
-sudo mv /opt/eveland /opt/eveland-old
-```
-
-**4. 安装，但先别启动。**
-
-```bash
-curl -fsSL https://eveland.ai/install.sh -o install.sh
-sudo bash install.sh --no-start
-```
-
-**5. 把旧配置搬过去。** 将旧 `.env` 里的值写入 `/opt/eveland/etc/eveland.env`，保留脚本刚写进去的 `EVELAND_NODE` 那一行。至少需要这些：
-
-```ini
-EVELAND_PUBLIC_ORIGIN=https://console.example.com
-EVELAND_AGENT_BASE_DOMAINS=agents.example.com
-DATABASE_URL=postgres://…
-EVELAND_WORKFLOW_WORLD_URL=postgres://…
-EVELAND_DATA_DIR=/var/lib/eveland   # 继续指向原来的数据目录
-EVELAND_RUNTIME=systemd
-APP_SECRET_KEY=…                    # 必须是旧的那一个，否则已存密钥全部作废
-BETTER_AUTH_SECRET=…                # 保留，否则所有人被登出
-EVELAND_GATEWAY_SERVICE_TOKEN=…
-EVELAND_GATEWAY_AFFINITY_SECRET=…
-EVELAND_SCHEDULER_RUNTIME_SECRET=…
-EVELAND_SCHEDULER_DISPATCH_SECRET=…
-EVELAND_SCHEDULER_REDEEM_URL=http://127.0.0.1:17301/api/scheduler/redeem
-WORKFLOW_DISPATCHER_ACTIVATION_API_URL=http://127.0.0.1:17301
-WORKFLOW_DISPATCHER_ACTIVATION_TOKEN=…   # 与 EVELAND_GATEWAY_SERVICE_TOKEN 相同
-EVELAND_OTLP_SERVICE_TOKEN=…
-EVELAND_ADMIN_EMAIL=…
-```
-
-文件权限保持 `0600`。只要文件里已经有 `APP_SECRET_KEY`，首次启动就会原样采用这份配置：不再提问，也不会生成任何新密钥。
-
-**6. 声明这套安装用的是哪个数据库**，写入 `/opt/eveland/etc/install.json`：
-
-```json
-{
-  "version": 1,
-  "installedAt": "2026-09-04T00:00:00Z",
-  "method": "manual",
-  "osMode": "linux",
-  "bootstrapCompleted": false,
-  "database": "external"
-}
-```
-
-Postgres 是 `127.0.0.1:17310` 上的内置容器就填 `"bundled"`，是你自己的集群就填 `"external"`。没有这个文件时 ctl 拒绝猜测——猜错的结果是平台旁边多出一个空数据库。
-
-**7. 启动并检查。**
-
-```bash
-sudo /opt/eveland/bin/eveland-ctl doctor   # 启动前先看缺哪些配置、端口和数据库是否就绪
-sudo /opt/eveland/bin/eveland-ctl start    # 采用旧配置、安装 unit、执行迁移
-/opt/eveland/bin/eveland-ctl status
-```
-
-`start` 会用自己管理的 unit 覆盖 `/etc/systemd/system/eveland-*.service`，并改从 `/opt/eveland/etc/` 读取环境变量，旧的 `/etc/eveland/*.env` 从此不再被读取。等到 **Settings → About** 里各组件版本一致、且一个已有项目能正常构建部署（这才真正证明 `APP_SECRET_KEY` 迁移成功），再删除 `/etc/eveland` 与 `/opt/eveland-old`。
-
-此后升级就只是 `eveland-ctl update`。
-
-## 如果你想手工安装
-
-安装脚本是我们支持并持续测试的路径。只有当宿主机不允许时才建议手工安装——例如 `/opt` 没有 root 权限、镜像必须由配置管理工具生成、或每一步都要人工审核的加固环境。下面这条路径逐步做的，正是脚本自动完成的事：
-
-[准备宿主机](/zh/docs/production/prerequisites) → [安装核心服务](/zh/docs/production/core-services) → [安装 Worker](/zh/docs/production/worker) → [安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher) → [配置 Agent 流量](/zh/docs/production/networking) → [验证安装](/zh/docs/production/verify)。
 
 ## 延伸阅读
 

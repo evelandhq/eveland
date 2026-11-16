@@ -1,7 +1,6 @@
 // The starter template's "always green" proof: templates/starter-agent — the
-// exact tree `eveland init` copies to users and eveland-ctl seeds as an
-// instance's first agent — must import, build, and deploy through the real
-// worker pipeline against the current eve compatibility window. The
+// exact tree eveland-ctl seeds as an instance's first agent — must import,
+// build, and deploy through the real worker pipeline against the current eve compatibility window. The
 // architecture-tests ratchet pins the template's declared version to the
 // window; this script proves the declaration actually builds (real npm
 // install of eve + the published eveland SDK inside the release build).

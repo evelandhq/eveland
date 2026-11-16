@@ -10,7 +10,7 @@ Durable workflows ensure timers and asynchronous continuation steps fire accurat
 Embedded in-process runners live inside the agent process, terminating when the agent [scales to zero](/docs/reference/design/scale-to-zero). Eveland therefore strictly runs workflows in external mode:
 
 - **Decoupled execution**: Deployments never claim their own workflow jobs;
-- **Singleton guarantee**: Exactly one [Workflow Dispatcher](/docs/production/workflow-dispatcher) runs per installation, claiming due tasks from the database and waking target agents via internal activation endpoints to post execution steps;
+- **Singleton guarantee**: Exactly one Workflow Dispatcher runs per installation, claiming due tasks from the database and waking target agents via internal activation endpoints to post execution steps;
 - **Advisory locks**: Mutual exclusion is enforced via PostgreSQL advisory locks, strictly preventing concurrent replica execution.
 
 ---
@@ -29,6 +29,5 @@ In multi-tenant enterprise environments, upstream workflow implementations intro
 
 ## Deeper reference
 
-- [Install the workflow dispatcher](/docs/production/workflow-dispatcher): host dispatcher setup and registration gating
 - [Runtime and resources](/docs/operations/runtime): durable workflow world tenant partitioning and retention classes
 - [Schedules and automation](/docs/observe/schedules): developer guide to schedule execution and workflow models

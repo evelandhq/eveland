@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
+import { diagnosticCommandOutput } from "./diagnostic-output.js";
 import {
   EVE_INFO_SAVE_COMMAND,
   readReleaseDiscovery,
@@ -517,8 +518,8 @@ export function createSystemdAdapter(
         config.buildSandbox === "bwrap"
           ? // Running bwrap as the unprivileged build user relies on the same
             // AppArmor grant the deployed agent's own sandbox already requires
-            // (/etc/apparmor.d/bwrap, userns) -- see docs/en/production/prerequisites.md for
-            // the host provisioning that grants it; not re-documented here.
+            // (/etc/apparmor.d/bwrap, userns), which eveland-ctl's host
+            // provisioning (packages/ctl/src/linux-host.ts) grants.
             await execa(
               "runuser",
               buildRunAsUserArgs(config.buildUser, [
@@ -851,13 +852,4 @@ export function createSystemdAdapter(
     },
   };
   return adapter;
-}
-
-function diagnosticCommandOutput(
-  result: { failed?: boolean; all?: string; stdout?: string; stderr?: string },
-  command: string,
-): string {
-  const output = (result.all || result.stdout || result.stderr || "").trim();
-  if (result.failed) return output ? `${command} unavailable: ${output}` : `${command} unavailable`;
-  return output;
 }

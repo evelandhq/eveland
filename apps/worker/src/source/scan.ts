@@ -47,7 +47,6 @@ export async function scanEveSource(input: {
       layout: inspection.layout,
       projectName: inspection.projectName,
       eveVersion: inspection.eveVersion,
-      capabilities: inspection.capabilities,
       runtimeCommandContext,
       ...inspection.summary,
     },

@@ -34,7 +34,10 @@ const signalFields = {
 
 export function registerOtlpRoutes(input: {
   app: ApiApp;
-  store: Store;
+  store: Pick<
+    Store,
+    "ingestOtlpBatch" | "ingestAgentEvent" | "upsertWorkerHeartbeat" | "recordHostMetric"
+  >;
   options: AppOptions;
   appSecretKey: string;
 }): void {

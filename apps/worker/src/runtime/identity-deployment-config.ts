@@ -1,13 +1,12 @@
 import { IDENTITY_JWKS_URL_DOCKER_FALLBACK, PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
 
+/** The Identity issuer and JWKS URL every Deployment is launched with. */
 export type IdentityDeploymentConfiguration = {
-  dataDir: string;
   issuer: string;
   jwksUrl: string;
 };
 
 export function resolveIdentityDeploymentConfiguration(input: {
-  dataDir: string;
   nodeEnv?: string;
   issuer?: string;
   jwksUrl?: string;
@@ -22,7 +21,6 @@ export function resolveIdentityDeploymentConfiguration(input: {
       ? IDENTITY_JWKS_URL_DOCKER_FALLBACK
       : `${normalizedIssuer}/.well-known/jwks.json`);
   return {
-    dataDir: input.dataDir,
     issuer: normalizedIssuer,
     jwksUrl,
   };

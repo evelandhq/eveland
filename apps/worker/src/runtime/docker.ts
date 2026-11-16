@@ -4,6 +4,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseSchedulerDefinitions } from "@evelandhq/agent-scheduler";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
+import { diagnosticCommandOutput } from "./diagnostic-output.js";
 import {
   assertHostedEveVersion,
   collectStaticModelIds,
@@ -770,13 +771,4 @@ export function createDockerAdapter(
     },
   };
   return adapter;
-}
-
-function diagnosticCommandOutput(
-  result: { failed?: boolean; all?: string; stdout?: string; stderr?: string },
-  command: string,
-): string {
-  const output = (result.all || result.stdout || result.stderr || "").trim();
-  if (result.failed) return output ? `${command} unavailable: ${output}` : `${command} unavailable`;
-  return output;
 }

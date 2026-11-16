@@ -15,9 +15,18 @@ CLI 直接作为 [`eveland`](https://www.npmjs.com/package/eveland) npm 官方�
 | :--------------------- | :------------------------------------------- | :------------------------------------------------------------------------ |
 | **npm scripts** (推荐) | 常规项目工作流，版本随项目 lockfile 严格锁定 | 在 `package.json` 中配置 `"deploy": "eveland deploy"`，运行 `pnpm deploy` |
 | **临时执行**           | 交互式临时调试                               | `pnpm exec eveland <command>` 或 `npx eveland <command>`                  |
-| **脚手架初始化**       | 创建新项目前                                 | `pnpm dlx eveland@latest init <dir>`                                      |
 
 _注：在当前源码仓库内开发调试时，可通过根目录脚本 `pnpm eveland <command>` 直接执行。_
+
+新建 Agent 时，先用 eve 生成项目，再安装本包：
+
+```bash
+npx eve@latest init my-agent
+cd my-agent
+npm install eveland
+```
+
+本包提供 `eveland/auth`（`evelandIdentity()`）、`eveland/memory` 以及这个 CLI。Agent 文件保持在 `eve init` 生成的 `agent/` 目录中：Eveland 每个仓库只部署 `agent/` 下的一个 Agent（见[源码导入](/zh/docs/reference/source-import)）。
 
 ---
 
@@ -37,6 +46,9 @@ _注：在当前源码仓库内开发调试时，可通过根目录脚本 `pnpm 
 
 1. CLI 申请设备授权码并在终端打印 User Code，同时自动在浏览器中打开授权页（`/device`）；
 2. 团队成员在控制台确认授权后，CLI 兑换获取一枚具备 `deploy` 与 `observe` 权限的短期可撤销 Access Token；
+   - `deploy` 可以创建项目、上传与同步源码、构建、promote、重启，以及管理项目环境变量。
+   - `observe` 可以读取项目、端点、Deployment、Job、日志、用量、定时任务及其运行记录、会话列表，以及单个会话的 transcript、节点和用量。除此之外一律不可读：密钥、源码文件、Model Gateway 与 agent-auth 配置、Playground 都不在其中。
+   - 两种权限都无法进行成员管理或访问运维面，与授权成员的角色无关。
 3. 凭据加密保存在 `~/.config/eveland/credentials/` 下（文件权限 `0600`）。在 CI/CD 自动化流水线中，可通过设置环境变量 `EVELAND_TOKEN` 直接免登录。
 
 ---
@@ -45,7 +57,6 @@ _注：在当前源码仓库内开发调试时，可通过根目录脚本 `pnpm 
 
 | 命令                   | 参数与行为说明                                                                                                                                                                                       |
 | :--------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eveland init <dir>`   | 使用内置的优质模板初始化一个全新的 Eve Agent 项目。                                                                                                                                                  |
 | `eveland login`        | 发起设备流认证登录，凭据按 Origin 隔离持久化。                                                                                                                                                       |
 | `eveland logout`       | 清除本地存储的登录凭据。                                                                                                                                                                             |
 | `eveland whoami`       | 打印当前连接的 Origin、当前用户、角色与 Token 作用域。                                                                                                                                               |
