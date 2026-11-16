@@ -40,6 +40,5 @@ description: 生产环境采用 systemd 瞬态服务运行 Agent 的架构决策
 ## 相关参考
 
 - [生产架构概览](/zh/docs/production)：核心服务与宿主机 Worker 拓扑架构
-- [安装宿主机 Worker](/zh/docs/production/worker)：systemd Service 安装与配置
 - [为什么自研 bubblewrap 沙箱](/zh/docs/reference/design/sandbox)：构建与运行时沙箱隔离决策
 - [缩容到零设计决策](/zh/docs/reference/design/scale-to-zero)：休眠 Agent 零成本与冷激活机制

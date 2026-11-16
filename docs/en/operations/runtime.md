@@ -71,7 +71,7 @@ Built-in Eve tools for code execution and file inspection (`bash`, `read_file`, 
 
 Durable workflows ensure timers and asynchronous callbacks resume accurately even when the parent agent has scaled to zero:
 
-- **Singleton external dispatcher**: Driven by a single [Workflow Dispatcher](/docs/production/workflow-dispatcher) holding a PostgreSQL advisory lock across the cluster.
+- **Singleton external dispatcher**: Driven by a single Workflow Dispatcher holding a PostgreSQL advisory lock across the cluster.
 - **Tenant isolation**: All agents share a single workflow database (`EVELAND_WORKFLOW_WORLD_URL`), partitioned logically by `tenant_id` (project ID).
 - **Engine injection**: During release compilation, Eveland automatically injects `@evelandhq/workflow-world@0.31.1` (superseding legacy `@workflow/world-postgres@5.0.0-beta.34`), delegating execution states strictly to the external dispatcher.
 - **Automated migrations**: Worker startup and project provisioning automatically apply schema migrations safely.
