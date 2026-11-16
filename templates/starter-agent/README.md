@@ -46,13 +46,14 @@ Once the instance uses `Internal` or `OIDC` identity (Settings → Identity),
 add `agent/memory.ts`:
 
 ```ts
-import { defineMemory } from "eve/memory";
+import { defaultNamespace, defineMemory } from "eve/memory";
 import { fileMemory } from "eve/memory/file";
 import { byPrincipal } from "eve/memory/scope";
-import { evelandMemoryBackend } from "eveland/memory";
+import { evelandMemoryBackend, evelandMemoryNamespace } from "eveland/memory";
 
 export default defineMemory({
   scope: byPrincipal,
+  namespace: evelandMemoryNamespace(defaultNamespace),
   provider: fileMemory({ backend: evelandMemoryBackend() }),
 });
 ```
@@ -60,7 +61,9 @@ export default defineMemory({
 The explicit backend matters: bare `fileMemory()` only auto-resolves under
 `eve dev`; `evelandMemoryBackend()` reads the platform-injected
 `EVELAND_MEMORY_ROOT` and steps aside anywhere else, so the file works
-unchanged under `eve dev` too.
+unchanged under `eve dev` too. The namespace matters as much: Eve's default
+one changes with every Release's build directory, so without
+`evelandMemoryNamespace` each redeploy starts with empty memory.
 
 ## Ground rules baked into this template
 
