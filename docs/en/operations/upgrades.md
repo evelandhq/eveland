@@ -1,6 +1,6 @@
 ---
 title: Upgrades and rollbacks
-description: Standard platform upgrade procedures, backup requirements, rollback rules, and milestone migration notes.
+description: Standard platform upgrade procedures, backup requirements, and rollback rules.
 ---
 
 Eveland comprises five core service components (API, Agent Gateway, Dashboard, Worker, and Workflow Dispatcher). When upgrading, treat the platform as a **single coordinated system**, ensuring all services run the same release tag and git revision.
@@ -14,8 +14,8 @@ For release-specific compatibility notes and changelogs, consult [GitHub Release
 `eveland-ctl status` opens with the release this machine is on, and says so when a newer one exists:
 
 ```
-Release: v0.51.2 (stable) 6c1e3b8f2a91
-  ! v0.52.0 is available (crosses BREAKING CHANGES in v0.52.0) — run `eveland-ctl update`
+Release: v1.4.2 (stable) 6c1e3b8f2a91
+  ! v2.0.0 is available (crosses BREAKING CHANGES in v2.0.0) — run `eveland-ctl update`
 ```
 
 The same notice appears in the Dashboard under **Settings → About**.
@@ -29,7 +29,7 @@ Three things are worth knowing about it:
 The breaking-change list comes from the newer release's own `CHANGELOG.md`. The installer's checkout is a blobless clone, so reading that file is a fetch of its own and can fail even after the tags arrived. When it does, the notice says the breaking changes are unknown rather than implying there are none. `eveland-ctl update` reads the changelog again itself, and if that read fails too it stops and asks before going on without the summary (see the standard upgrade workflow below):
 
 ```
-  ! v0.52.0 is available (its changelog could not be read: breaking changes unknown) — run `eveland-ctl update`
+  ! v2.0.0 is available (its changelog could not be read: breaking changes unknown) — run `eveland-ctl update`
 ```
 
 Only `stable` installations are compared. An `edge` checkout sits on a commit no release tag names, so it is shown its revision and nothing more.
@@ -79,41 +79,6 @@ Before it touches anything, `update` reads the target release's `CHANGELOG.md` a
 
 - **Schema compatibility**: Rolling back to an older git tag is safe only if the older codebase is backward-compatible with the applied database migrations. PostgreSQL migrations do not automatically roll back.
 - **System-wide alignment**: Always roll back all five components together; never run mixed versions across services.
-
----
-
-## 5. Moving the workflow world out of the platform database
-
-Installations configured before the split — `eveland-ctl` rendered both DSNs against the same database until this release — have `WORKFLOW_WORLD_URL` naming the platform's own database. `eveland-ctl doctor` reports this as `workflow-world-database`. It matters because the world's DSN is injected into every agent deployment: agent code holds those credentials, and through them the accounts, sessions, and encrypted project secrets.
-
-Nothing repoints it for you: the runs, timers, and hooks already in flight live in the `workflow` schema of the database currently in use, and a silent switch would strand them. Move them deliberately, with the platform stopped:
-
-```bash
-eveland-ctl stop
-createdb -h 127.0.0.1 -p 17310 -U eveland eveland_workflow
-pg_dump -h 127.0.0.1 -p 17310 -U eveland -n workflow eveland \
-  | psql -h 127.0.0.1 -p 17310 -U eveland eveland_workflow
-```
-
-Then point every component at the new database — `WORKFLOW_WORLD_URL` (and `WORKFLOW_WORLD_BOOTSTRAP_URL` where it is set) in `etc/eveland.env` — and start again. Verify with `eveland-ctl doctor`, then drop the old schema once a deploy and a workflow run have both succeeded:
-
-```sql
-DROP SCHEMA workflow CASCADE;
-DROP SCHEMA graphile_worker CASCADE;
-```
-
-Deployments keep the old DSN until they are rebuilt, so rebuild each agent (**Build & Deploy**) after the move; until then their durable runs still write to the old database.
-
----
-
-## 6. Architectural milestone reference
-
-If you are upgrading across multiple major versions, note these architectural milestones:
-
-- **Single front door (Origin consolidation)**: All console and agent traffic converges onto the Agent Gateway (default: `17300`). Browsers reach the platform via `EVELAND_PUBLIC_ORIGIN`, eliminating frontend API baking.
-- **Dedicated port block**: Platform services moved to dedicated port ranges (API: `17301`, Gateway: `17300`, bundled Postgres: `17310`, dynamic agent ports: `18000–18999`).
-- **`/api` namespace alignment**: Identity and catalog endpoints reside under `/api/` (e.g. `/api/identity/*` and `/api/agent-catalog`).
-- **Shared Workflow World**: Deployments share a single `@evelandhq/workflow-world` database rather than physical per-project databases.
 
 ## Deeper reference
 

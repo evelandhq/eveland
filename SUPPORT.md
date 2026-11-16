@@ -1,6 +1,6 @@
 # Eveland support
 
-Eveland is a community-maintained, pre-1.0 project. Community support is
+Eveland is a community-maintained project. Community support is
 provided on a best-effort basis and does not include a response-time or uptime
 SLA.
 
