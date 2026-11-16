@@ -3,22 +3,22 @@ import { describe, expect, test } from "vitest";
 import {
   DEPLOYMENT_STOP_TIMEOUT_SECONDS,
   EVE_START_FORCED_KILL_SECONDS,
-  resolveDeploymentShutdownTimeoutSeconds,
+  resolveDockerStopGraceSeconds,
 } from "./shutdown-budget.js";
 
-describe("resolveDeploymentShutdownTimeoutSeconds", () => {
+describe("resolveDockerStopGraceSeconds", () => {
   test("defaults to a budget the inner layers can actually reach", () => {
-    expect(resolveDeploymentShutdownTimeoutSeconds({})).toBeLessThan(EVE_START_FORCED_KILL_SECONDS);
-    expect(resolveDeploymentShutdownTimeoutSeconds({})).toBeGreaterThan(0);
+    expect(resolveDockerStopGraceSeconds({})).toBeLessThan(EVE_START_FORCED_KILL_SECONDS);
+    expect(resolveDockerStopGraceSeconds({})).toBeGreaterThan(0);
     // An unset variable and an empty one are the same "operator said nothing".
-    expect(resolveDeploymentShutdownTimeoutSeconds({})).toBe(
-      resolveDeploymentShutdownTimeoutSeconds({ EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS: "" }),
+    expect(resolveDockerStopGraceSeconds({})).toBe(
+      resolveDockerStopGraceSeconds({ EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS: "" }),
     );
   });
 
   test("takes the operator's budget", () => {
     expect(
-      resolveDeploymentShutdownTimeoutSeconds({
+      resolveDockerStopGraceSeconds({
         EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS: "8",
       }),
     ).toBe(8);
@@ -26,7 +26,7 @@ describe("resolveDeploymentShutdownTimeoutSeconds", () => {
 
   test("rejects a budget `eve start` would SIGKILL through", () => {
     expect(() =>
-      resolveDeploymentShutdownTimeoutSeconds({
+      resolveDockerStopGraceSeconds({
         EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS: String(EVE_START_FORCED_KILL_SECONDS),
       }),
     ).toThrow(/must be below 25/);
@@ -34,7 +34,7 @@ describe("resolveDeploymentShutdownTimeoutSeconds", () => {
 
   test.each(["0", "-1", "1.5", "later"])("rejects %s", (value) => {
     expect(() =>
-      resolveDeploymentShutdownTimeoutSeconds({
+      resolveDockerStopGraceSeconds({
         EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS: value,
       }),
     ).toThrow(/positive safe integer/);
@@ -42,7 +42,7 @@ describe("resolveDeploymentShutdownTimeoutSeconds", () => {
 
   test("accepts a budget just under `eve start`'s forced kill", () => {
     expect(
-      resolveDeploymentShutdownTimeoutSeconds({
+      resolveDockerStopGraceSeconds({
         EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS: String(EVE_START_FORCED_KILL_SECONDS - 1),
       }),
     ).toBe(24);
