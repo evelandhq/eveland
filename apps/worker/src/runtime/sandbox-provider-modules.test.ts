@@ -26,6 +26,7 @@ describe("buildPlatformSandboxModule", () => {
       expect(source).toContain(`process.env.${variable}`);
     }
     expect(source).toContain("export function platformEnvironment(prepare)");
+    expect(source).toContain("export const platformOptions = {");
   });
 });
 
