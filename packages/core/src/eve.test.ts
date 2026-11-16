@@ -338,6 +338,28 @@ describe("Eve session request classification", () => {
     expect(classify("GET", "/eve/v1/session/%E0%A4%A/descendants/stream")).toBeNull();
   });
 
+  test("pins every other route under a session by that session", () => {
+    const classify = Eve.classifyEveSessionRequest;
+    // eve serves the session's tool stubs to `eve eval`; a route eve adds
+    // under a session later is pinned the same way.
+    expect(classify("GET", "/eve/v1/session/eve%2F1/stubs")).toEqual({
+      kind: "session_route",
+      sessionId: "eve/1",
+    });
+    expect(classify("POST", "/eve/v1/session/eve_1/unknown")).toEqual({
+      kind: "session_route",
+      sessionId: "eve_1",
+    });
+    expect(classify("GET", "/eve/v1/session/eve_parent/subagents/call_1/stream")).toEqual({
+      kind: "session_route",
+      sessionId: "eve_parent",
+    });
+    expect(classify("DELETE", "/eve/v1/session/eve_1/some/deeper/route")).toEqual({
+      kind: "session_route",
+      sessionId: "eve_1",
+    });
+  });
+
   test("rejects non-canonical methods, suffixes, queries, and malformed session identities", () => {
     const classify = (Eve as Record<string, unknown>).classifyEveSessionRequest;
     expect(classify).toBeTypeOf("function");
@@ -349,16 +371,16 @@ describe("Eve session request classification", () => {
     expect(classify("GET", "/eve/v1/session/eve_1/compact")).toBeNull();
     expect(classify("GET", "/eve/v1/session/eve_1/reset")).toBeNull();
     expect(classify("GET", "/eve/v1/session/eve_1/stream?startIndex=1")).toBeNull();
-    expect(classify("POST", "/eve/v1/session/eve_1/unknown")).toBeNull();
     expect(
       classify("POST", "/eve/v1/session/eve_parent/subagents/call_1/eve_child/stream"),
     ).toBeNull();
-    expect(classify("GET", "/eve/v1/session/eve_parent/subagents/call_1/stream")).toBeNull();
     expect(
       classify("GET", "/eve/v1/session/eve_parent/subagents/%E0%A4%A/eve_child/stream"),
     ).toBeNull();
     expect(classify("POST", "/eve/v1/session/%E0%A4%A")).toBeNull();
     expect(classify("POST", "/other")).toBeNull();
+    expect(classify("GET", "/eve/v1/session/eve_1/")).toBeNull();
+    expect(classify("GET", "/eve/v1/session/%E0%A4%A/stubs")).toBeNull();
 
     expect(Eve.isEveSessionNamespace("/eve/v1/session/eve_1/unknown")).toBe(true);
     expect(Eve.isEveSessionNamespace("/eve/v1/session-like/eve_1")).toBe(false);

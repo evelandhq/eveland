@@ -7,7 +7,7 @@ export type SessionBindingIdlePolicy = {
 };
 
 export const DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS = 86_400_000;
-export const DEFAULT_API_SESSION_IDLE_TTL_MS = 604_800_000;
+export const DEFAULT_API_SESSION_IDLE_TTL_MS = 2_592_000_000;
 
 export function validateRouteTargets(targets: RouteTargetInput[]): void {
   if (targets.length < 1 || targets.length > 2)

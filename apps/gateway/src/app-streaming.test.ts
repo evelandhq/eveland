@@ -155,7 +155,7 @@ describe("Gateway", () => {
       allowedBaseDomains: ["agent.localhost"],
       affinitySecret,
       // Pin the clock inside the binding's idle TTL; a wall clock here turns
-      // the fixture into a time bomb once real time drifts 7 days past it.
+      // the fixture into a time bomb once real time drifts past the idle TTL.
       now: () => new Date("2026-08-14T12:00:00.000Z"),
     });
 
@@ -169,6 +169,77 @@ describe("Gateway", () => {
       "/eve/v1/session/eve_parent/subagents/call_1/eve_child/stream?startIndex=4",
     );
     await expect(response.text()).resolves.toContain("session.waiting");
+  });
+
+  test("pins a session's tool stubs and any other route under it to the bound deployment", async () => {
+    const first = await startUpstream((_request, response) => response.end("wrong deployment"));
+    const seen: string[] = [];
+    const second = await startUpstream((request, response) => {
+      seen.push(`${request.method} ${request.url}`);
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ stubs: [] }));
+    });
+    const repo = repository([
+      route({
+        targets: [
+          {
+            routeId: "route_project",
+            deploymentId: "dep_a",
+            weight: 10_000,
+            variantName: "current",
+            hostPort: first.port,
+            status: "running",
+          },
+          {
+            routeId: "route_project",
+            deploymentId: "dep_b",
+            weight: 0,
+            variantName: "owner",
+            hostPort: second.port,
+            status: "running",
+          },
+        ],
+      }),
+    ]);
+    repo.bindings.push({
+      id: "bind_owner",
+      projectId: "proj_1",
+      eveSessionId: "eve_owned",
+      routeId: "route_project",
+      deploymentId: "dep_b",
+      trigger: "api",
+      variantName: "owner",
+      experimentId: "route_project:r1",
+      requestId: "request_owner",
+      remoteIp: null,
+      affinityFingerprint: null,
+      affinitySource: null,
+      createdAt: "2026-08-14T00:00:00.000Z",
+      updatedAt: "2026-08-14T00:00:00.000Z",
+    });
+    const app = createGatewayApp(repo, {
+      allowedBaseDomains: ["agent.localhost"],
+      affinitySecret,
+      now: () => new Date("2026-08-14T12:00:00.000Z"),
+    });
+
+    const stubs = await app.request(
+      "http://p-alpha.agent.localhost/eve/v1/session/eve_owned/stubs",
+      {
+        headers: { host: "p-alpha.agent.localhost" },
+      },
+    );
+    expect(stubs.status).toBe(200);
+    await expect(stubs.json()).resolves.toEqual({ stubs: [] });
+    const later = await app.request(
+      "http://p-alpha.agent.localhost/eve/v1/session/eve_owned/added/later?x=1",
+      { method: "POST", headers: { host: "p-alpha.agent.localhost" }, body: "{}" },
+    );
+    expect(later.status).toBe(200);
+    expect(seen).toEqual([
+      "GET /eve/v1/session/eve_owned/stubs",
+      "POST /eve/v1/session/eve_owned/added/later?x=1",
+    ]);
   });
 
   test("passes through a custom channel method, query, headers, and body", async () => {

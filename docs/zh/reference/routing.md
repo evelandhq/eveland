@@ -31,8 +31,8 @@ description: 详细规范：Host 模型、加权路由、SessionBinding、持久
 当 Agent 返回 `sessionId` 后，网关持久化生成 `SessionBinding`：
 
 - **亲和性锁定**：后续的继续（Continue）、取消（Cancel）及流式请求（Stream），即使经历 Promote、Rollback 或权重清零，**仍严格路由至最初绑定的 Deployment**。
-- **过期策略**：Playground 绑定默认在空闲 24 小时后过期；公开 API 绑定默认在空闲 7 天后过期。每次请求刷新期限；请求已知但过期的绑定返回 `410 session_expired`。
-- **受绑定的路由**：Continue、Cancel、Clear、Compact、Reset（及其新名称 `end`）、Session Stream、经由父 Session 的远端子 Session Stream，以及后代跟随 Stream（`GET /eve/v1/session/:sessionId/descendants/stream`）都按路径中的 Session ID 固定。
+- **过期策略**：Playground 绑定默认在空闲 24 小时后过期；公开 API 绑定默认在空闲 30 天后过期，与 Eve 自身的 Session 空闲超时一致。每次请求刷新期限；请求已知但过期的绑定返回 `410 session_expired`。
+- **受绑定的路由**：Continue、Cancel、Clear、Compact、Reset（及其新名称 `end`）、Session Stream、经由父 Session 的远端子 Session Stream，后代跟随 Stream（`GET /eve/v1/session/:sessionId/descendants/stream`），以及 Session 下的其他任何路由（例如 `eve eval` 读取的工具 Stub：`GET /eve/v1/session/:sessionId/stubs`）都按路径中的 Session ID 固定。只有路径段无法解码，或以错误方法调用规范路由时，才以 `404` 拒绝。
 - **不迁移**：绑定从不移到其他 Deployment；在绑定过期之前，所有固定的请求都由被绑定的 Deployment 应答。
 
 ---

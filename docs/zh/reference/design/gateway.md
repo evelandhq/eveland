@@ -29,7 +29,7 @@ Agent 对话通常是多轮长连接交互，后续轮次可能在数小时或�
 
 - **会话持久绑定**：在 Agent 创建会话并返回 Session ID 后，网关立即持久化 `SessionBinding`。后续对话、流式监听和取消请求严格路由至绑定的 Deployment。
 - **优雅排障 (Draining)**：调整灰度权重或回滚版本时，存量会话继续留在原部署上平稳执行，新策略仅对新创建的根会话生效。
-- **有界保留**：会话绑定受空闲 TTL 控制（Playground 默认 24 小时，公网 API 默认 7 天），过期会话返回明确的 `410 session_expired`。
+- **有界保留**：会话绑定受空闲 TTL 控制（Playground 默认 24 小时，公网 API 默认 30 天，与 Eve 的 Session 空闲超时一致），过期会话返回明确的 `410 session_expired`。
 
 ---
 
