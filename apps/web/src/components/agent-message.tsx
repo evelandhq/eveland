@@ -40,7 +40,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "@/components/ai-elements/tool";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type AgentAnswer = {
@@ -519,10 +519,15 @@ function SignInPrompt({ interaction }: { readonly interaction: Interaction }) {
             </div>
           ) : null}
           {isOpen && signIn?.url ? (
-            <Button render={<a href={signIn.url} rel="noreferrer" target="_blank" />} size="sm">
+            <a
+              className={buttonVariants({ size: "sm" })}
+              href={signIn.url}
+              rel="noreferrer"
+              target="_blank"
+            >
               <ExternalLinkIcon className="size-4" />
               Sign in with {name}
-            </Button>
+            </a>
           ) : null}
         </div>
       </div>
