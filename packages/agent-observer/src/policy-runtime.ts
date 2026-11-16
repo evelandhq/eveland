@@ -3,17 +3,12 @@ import {
   createPrivateAgentTelemetryRuntime,
   type AgentTelemetryEvent,
   type AgentTelemetryHookContext,
-  type ObserverHookOptions,
   type PrivateAgentTelemetryRuntime,
   type RuntimeAgentPolicy,
 } from "./runtime.js";
 
 export type PolicyManagedAgentTelemetry = {
-  capture(
-    event: AgentTelemetryEvent,
-    context: AgentTelemetryHookContext,
-    hook?: ObserverHookOptions,
-  ): Promise<void>;
+  capture(event: AgentTelemetryEvent, context: AgentTelemetryHookContext): Promise<void>;
   forceFlush(): Promise<void>;
   shutdown(): Promise<void>;
 };
@@ -49,12 +44,11 @@ export function createPolicyManagedAgentTelemetry(input: {
   async function capture(
     event: AgentTelemetryEvent,
     context: AgentTelemetryHookContext,
-    hook?: ObserverHookOptions,
   ): Promise<void> {
     if (stopped) return;
     try {
       await refreshIfDue();
-      await active?.runtime.capture(event, context, hook);
+      await active?.runtime.capture(event, context);
     } catch (error) {
       input.warn?.(error);
     }

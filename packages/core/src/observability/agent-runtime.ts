@@ -84,21 +84,6 @@ export const agentEventObservationSchema = z
       .strict()
       .nullable()
       .optional(),
-    /**
-     * On a `usage.recorded` that re-reports a child's spend: the child session
-     * that spent it, when the child runs without the observer hook (a
-     * file-form subagent) and so never reports the spend itself. The
-     * observer names it from the Release's hook layout and the parent's own
-     * facts; without it the record re-reports spend its child records.
-     */
-    unobservedChild: z
-      .object({
-        eveSessionId: z.string().min(1),
-        agentName: z.string().min(1).nullable(),
-      })
-      .strict()
-      .nullable()
-      .optional(),
     eventAt: z.iso.datetime(),
     event: z.unknown(),
   })

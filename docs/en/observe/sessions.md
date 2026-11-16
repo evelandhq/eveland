@@ -24,7 +24,6 @@ Eveland captures token usage directly from model provider responses: from the `u
 - **Input and Output Tokens**: Exact prompts and completion token counts.
 - **Cache Hit Tracking**: Tracks Cache Read and Cache Write tokens, allowing precise cost evaluation of context caching.
 - **Cost Aggregation**: When upstream AI gateways report financial charges, Eveland aggregates total expenditure per project and deployment.
-- **Subagent Spend**: Each subagent's spend counts once, on its own node. A file-form subagent, which Eve runs without hooks, is counted from the usage its parent reports for the call that opened it.
 - **No Synthetic Estimates**: If a provider omits usage metadata for a turn, Eveland records it as missing rather than fabricating guesses.
 
 ---
