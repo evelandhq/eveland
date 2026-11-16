@@ -412,7 +412,7 @@ describe("createDockerAdapter", () => {
       .mockResolvedValueOnce({
         exitCode: 0,
         stdout: JSON.stringify({
-          manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
+          eveInfo: 'eve: compiling\n{"status":"ready","tools":["bash"]}',
           resolvedEveVersion: "1.0.0",
           schedulerDefinitions: [
             {
@@ -441,7 +441,7 @@ describe("createDockerAdapter", () => {
     const dockerfilePath = path.join(buildDir, "Dockerfile");
     const contents = await readFile(dockerfilePath, "utf8");
     expect(contents).toContain("FROM node:26-alpine");
-    expect(contents).toContain("RUN npx eve build && npx eve info --json > /dev/null");
+    expect(contents).toContain("RUN npx eve build && npx eve info --json > .eveland/eve-info.json");
     // eve 0.52.0 CLI telemetry: off for the build RUN and for the deployed process.
     expect(contents).toContain("ENV EVE_TELEMETRY_DISABLED=1");
     await expect(
@@ -456,7 +456,7 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("Injected eve sandbox modules: agent/sandbox.js");
     expect(result.log).toContain("Docker sandbox self-check passed");
     expect(result.discovery).toEqual({
-      manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
+      eveInfo: { status: "ready", tools: ["bash"] },
       resolvedEveVersion: "1.0.0",
       schedulerDefinitions: [
         {
@@ -563,7 +563,7 @@ describe("createDockerAdapter", () => {
       .mockResolvedValueOnce({
         exitCode: 0,
         stdout: JSON.stringify({
-          manifest: null,
+          eveInfo: null,
           resolvedEveVersion: "1.0.0",
           schedulerDefinitions: [],
         }),
@@ -601,7 +601,7 @@ describe("createDockerAdapter", () => {
       .mockResolvedValueOnce({
         exitCode: 0,
         stdout: JSON.stringify({
-          manifest: null,
+          eveInfo: null,
           resolvedEveVersion: "1.0.0",
           schedulerDefinitions: [],
         }),
@@ -1050,7 +1050,7 @@ describe("readImageDiscovery", () => {
     vi.mocked(execa).mockResolvedValueOnce({
       exitCode: 0,
       stdout: JSON.stringify({
-        manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
+        eveInfo: '{"status":"ready"}',
         resolvedEveVersion: "1.0.0",
       }),
     } as never);

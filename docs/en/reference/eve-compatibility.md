@@ -35,7 +35,7 @@ These are the Eve surfaces Eveland reads. The architecture tests assert them aga
 | Surface                                 | Value                                                                                                                                       |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Session stream                          | v27 (`x-eve-stream-version: 27`); the Playground bundles the `eve/client` that reads it, and the Agent Gateway forwards the stream verbatim |
-| Discovery manifest                      | 16, read from the final `eve info` of each build                                                                                            |
+| Discovery manifest                      | 16, read only for Extension mounts before the build; the build summary reads `eve info --json`                                              |
 | Workflow storage                        | spec 9 (single orchestrator) by default; 6 when a Deployment sets `WORKFLOW_SEALED_LOG=0`                                                   |
 | Workflow World capabilities Eve keys on | `atomicStartHook`, `deploymentAffinity`, `hookForceClaim` with active `hookRetention`                                                       |
 | OpenTelemetry agent trace schema        | 4                                                                                                                                           |

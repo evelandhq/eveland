@@ -397,24 +397,21 @@ describe("processNextJob", () => {
                 },
               ],
               discovery: {
-                manifest: {
-                  kind: "eve-agent-discovery-manifest",
-                  version: 15,
-                  agentId: "fixture-agent",
-                  agentRoot: `${input.sourcePath}/agent`,
+                eveInfo: {
                   appRoot: input.sourcePath,
-                  instructions: [{ logicalPath: "instructions.md" }],
-                  tools: [],
+                  agentRoot: `${input.sourcePath}/agent`,
+                  layout: "nested",
+                  status: "ready",
+                  diagnostics: { errors: 0, warnings: 0 },
+                  model: "zai/glm-5.2",
+                  instructions: "instructions.md (system)",
                   skills: [],
+                  tools: ["bash"],
                   subagents: [],
-                  connections: [],
-                  schedules: [{ logicalPath: "schedules/daily.md" }],
-                  hooks: [],
-                  channels: [],
-                  extensions: [],
-                  resolvedExtensions: [],
-                  sandbox: null,
-                  diagnosticsSummary: { errors: 0, warnings: 0 },
+                  schedules: ["daily"],
+                  channels: [
+                    { name: "eve", kind: "http", method: "GET", urlPath: "/eve/v1/health" },
+                  ],
                 },
                 resolvedEveVersion: "1.0.0",
               },
@@ -468,18 +465,19 @@ describe("processNextJob", () => {
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
       expect.objectContaining({ line: "build ok" }),
     );
-    // The built release's eve discovery manifest is recorded on the release --
+    // The built release's `eve info --json` is recorded on the release --
     // never on the shared source revision, which stays the import-time preview.
     const recordedDeployment = await store.getCurrentDeployment(project.id);
     await expect(store.getRelease(recordedDeployment!.releaseId)).resolves.toMatchObject({
       summary: expect.objectContaining({
-        summarySource: "build-manifest",
-        manifestVersion: 15,
-        agentId: "fixture-agent",
+        summarySource: "eve-info",
+        status: "ready",
         layout: "nested",
         eveVersionResolved: "1.0.0",
-        instructions: ["agent/instructions.md"],
-        schedules: ["agent/schedules/daily.md"],
+        model: "zai/glm-5.2",
+        instructions: "instructions.md (system)",
+        schedules: ["daily"],
+        channels: ["eve"],
         diagnostics: { errors: 0, warnings: 0 },
       }),
     });
@@ -488,7 +486,7 @@ describe("processNextJob", () => {
     });
     await expect(store.listLogs(project.id, "build")).resolves.toContainEqual(
       expect.objectContaining({
-        line: expect.stringContaining("Recorded the release summary from eve's discovery manifest"),
+        line: expect.stringContaining("Recorded the release summary from `eve info --json`"),
       }),
     );
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(

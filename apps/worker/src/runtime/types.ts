@@ -55,8 +55,8 @@ export type ReleaseBuildResult = {
 };
 
 export type ReleaseDiscovery = {
-  /** Parsed .eve/discovery/agent-discovery-manifest.json, shape owned by eve. */
-  manifest: unknown;
+  /** Parsed output of the post-build `eve info --json`, shape documented by eve. */
+  eveInfo: unknown;
   /** The eve version actually installed into the release, from node_modules/eve. */
   resolvedEveVersion: string | null;
   /** Post-install definitions, including mounted Extension schedules. */

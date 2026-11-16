@@ -25,37 +25,35 @@ async function installEve(releaseDir: string, version: string): Promise<void> {
   );
 }
 
-test("reads the discovery manifest and the installed eve version from a built release", async () => {
+test("reads the saved eve info output and the installed eve version from a built release", async () => {
   const releaseDir = await makeRelease();
-  await mkdir(path.join(releaseDir, ".eve", "discovery"), { recursive: true });
+  await mkdir(path.join(releaseDir, ".eveland"), { recursive: true });
+  // eve prints one JSON object; a CLI line may come before it.
   await writeFile(
-    path.join(releaseDir, ".eve", "discovery", "agent-discovery-manifest.json"),
-    JSON.stringify({ kind: "eve-agent-discovery-manifest", version: 16 }),
+    path.join(releaseDir, ".eveland", "eve-info.json"),
+    'eve: compiling\n{"status":"ready","tools":["bash"]}\n',
   );
   await installEve(releaseDir, "1.0.0");
 
   await expect(readReleaseDiscovery(releaseDir)).resolves.toEqual({
-    manifest: { kind: "eve-agent-discovery-manifest", version: 16 },
+    eveInfo: { status: "ready", tools: ["bash"] },
     resolvedEveVersion: "1.0.0",
   });
 });
 
-test("an absent or corrupt manifest records no summary but still reports the installed eve", async () => {
+test("absent or unparseable eve info records no summary but still reports the installed eve", async () => {
   const bare = await makeRelease();
   await installEve(bare, "1.0.0");
   await expect(readReleaseDiscovery(bare)).resolves.toEqual({
-    manifest: null,
+    eveInfo: null,
     resolvedEveVersion: "1.0.0",
   });
 
   const corrupt = await makeRelease();
   await installEve(corrupt, "1.0.0");
-  await mkdir(path.join(corrupt, ".eve", "discovery"), { recursive: true });
-  await writeFile(
-    path.join(corrupt, ".eve", "discovery", "agent-discovery-manifest.json"),
-    "{not json",
-  );
-  await expect(readReleaseDiscovery(corrupt)).resolves.toMatchObject({ manifest: null });
+  await mkdir(path.join(corrupt, ".eveland"), { recursive: true });
+  await writeFile(path.join(corrupt, ".eveland", "eve-info.json"), "{not json");
+  await expect(readReleaseDiscovery(corrupt)).resolves.toMatchObject({ eveInfo: null });
 });
 
 test("refuses a build whose installed eve is outside the hosted window, or unreadable", async () => {

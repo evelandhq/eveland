@@ -4,6 +4,7 @@ import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
 import {
+  EVE_INFO_SAVE_COMMAND,
   readReleaseDiscovery,
   readReleaseSchedulerDefinitions,
   readReleaseStaticModelIds,
@@ -247,13 +248,14 @@ export function buildReleaseBuildCommand(
     ? ` && ${buildWorkflowWorldInstallCommand(workflowWorld, context.packageManager ?? "npm", pnpmStore)}`
     : "";
   // Extension packages can only be resolved after install. Materialize Eve's
-  // source manifest, let the bundled platform integrator adapt Extension
-  // schedules/subagents inside this disposable Release, then compile and write
-  // the final authoritative discovery manifest from the exact deployed tree.
+  // discovery manifest -- the only place eve lists resolved Extension mounts --
+  // let the bundled platform integrator adapt Extension schedules/subagents
+  // inside this disposable Release, then compile and save the documented
+  // `eve info --json` of the exact deployed tree for the build summary.
   const extensionIntegration = integrateExtensions
     ? `npx eve info --json >/dev/null && node ${EXTENSION_INTEGRATOR_RELEASE_PATH} && `
     : "";
-  return `${install}${worldInstall} && ${extensionIntegration}npx eve build && npx eve info --json >/dev/null`;
+  return `${install}${worldInstall} && ${extensionIntegration}npx eve build && ${EVE_INFO_SAVE_COMMAND}`;
 }
 
 /**

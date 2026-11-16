@@ -4,7 +4,13 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseSchedulerDefinitions } from "@evelandhq/agent-scheduler";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
-import { assertHostedEveVersion, collectStaticModelIds } from "./discovery-artifacts.js";
+import {
+  assertHostedEveVersion,
+  collectStaticModelIds,
+  EVE_INFO_RELEASE_PATH,
+  EVE_INFO_SAVE_COMMAND,
+  parseEveInfoOutput,
+} from "./discovery-artifacts.js";
 import { preparedReleaseLogLines, prepareReleaseTree } from "./prepare-release.js";
 import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
 import {
@@ -217,11 +223,11 @@ export function buildDockerSandboxVerifyArgs(imageTag: string): string[] {
 // snapshot.
 const readImageDiscoveryScript =
   'const fs=require("fs");let m=null,v=null,d=null;' +
-  'try{m=JSON.parse(fs.readFileSync("/app/.eve/discovery/agent-discovery-manifest.json","utf8"))}catch{}' +
+  `try{m=fs.readFileSync("/app/${EVE_INFO_RELEASE_PATH}","utf8")}catch{}` +
   'try{v=require("/app/node_modules/eve/package.json").version}catch{}' +
   'try{d=JSON.parse(fs.readFileSync("/app/.eveland/scheduler/definitions.json","utf8"))}catch{}' +
   'let c=null;try{c=JSON.parse(fs.readFileSync("/app/.output/.eve/compile/compiled-agent-manifest.json","utf8"))}catch{}' +
-  'process.stdout.write(JSON.stringify({manifest:m,resolvedEveVersion:typeof v==="string"?v:null,...Array.isArray(d)?{schedulerDefinitions:d}:{},compiledManifest:c}))';
+  'process.stdout.write(JSON.stringify({eveInfo:m,resolvedEveVersion:typeof v==="string"?v:null,...Array.isArray(d)?{schedulerDefinitions:d}:{},compiledManifest:c}))';
 
 export async function readImageDiscovery(imageTag: string): Promise<ReleaseDiscovery> {
   const result = await execa(
@@ -239,7 +245,7 @@ export async function readImageDiscovery(imageTag: string): Promise<ReleaseDisco
     );
   }
   let parsed: {
-    manifest: unknown;
+    eveInfo: string | null;
     resolvedEveVersion: string | null;
     schedulerDefinitions?: unknown;
     compiledManifest?: unknown;
@@ -260,7 +266,7 @@ export async function readImageDiscovery(imageTag: string): Promise<ReleaseDisco
     }
     const staticModelIds = collectStaticModelIds(parsed.compiledManifest);
     return {
-      manifest: parsed.manifest,
+      eveInfo: typeof parsed.eveInfo === "string" ? parseEveInfoOutput(parsed.eveInfo) : null,
       resolvedEveVersion: parsed.resolvedEveVersion,
       schedulerDefinitions,
       ...(staticModelIds.length > 0 ? { staticModelIds } : {}),
@@ -336,8 +342,8 @@ export async function writeGeneratedDockerfile(
     .map((key) => `ARG ${key}\n`)
     .join("");
   const buildCommand = integrateExtensions
-    ? `npx eve info --json > /dev/null && node ${EXTENSION_INTEGRATOR_RELEASE_PATH} && npx eve build && npx eve info --json > /dev/null`
-    : "npx eve build && npx eve info --json > /dev/null";
+    ? `npx eve info --json > /dev/null && node ${EXTENSION_INTEGRATOR_RELEASE_PATH} && npx eve build && ${EVE_INFO_SAVE_COMMAND}`
+    : `npx eve build && ${EVE_INFO_SAVE_COMMAND}`;
   await writeFile(
     dockerfilePath,
     `FROM node:26-alpine

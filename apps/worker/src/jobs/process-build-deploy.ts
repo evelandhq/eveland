@@ -4,7 +4,7 @@ import {
   assessDispatcherReadiness,
   resolveDispatcherHeartbeatTtlMs,
 } from "@evelandhq/core/workflow-dispatch";
-import { projectDiscoveryManifest } from "@evelandhq/core/discovery";
+import { projectEveInfo } from "@evelandhq/core/discovery";
 import { hotfixDriftWarning } from "@evelandhq/core/hotfix-drift";
 import { createId } from "@evelandhq/core/ids";
 import { maskKnownSecrets } from "@evelandhq/core/server/secrets";
@@ -221,27 +221,25 @@ export async function handleBuildDeployJob(
       ),
     });
   }
-  // eve's own discovery manifest is the authority on what was actually
-  // built; the import-time static scan stays as the pre-install preview.
-  // Release-scoped (the same revision can be rebuilt with different
+  // eve's own `eve info --json` on the built tree is the authority on what
+  // was actually built; the import-time static scan stays as the pre-install
+  // preview. Release-scoped (the same revision can be rebuilt with different
   // resolved dependencies) and persisted only below, with the release row,
   // so a failed start never leaves summary from a nonexistent release.
-  const discoveryProjection = build.discovery
-    ? projectDiscoveryManifest(build.discovery.manifest)
-    : null;
-  const releaseSummary = discoveryProjection
+  const eveInfoSummary = build.discovery ? projectEveInfo(build.discovery.eveInfo) : null;
+  const releaseSummary = eveInfoSummary
     ? {
-        ...discoveryProjection,
+        ...eveInfoSummary,
         ...(build.discovery?.resolvedEveVersion
           ? { eveVersionResolved: build.discovery.resolvedEveVersion }
           : {}),
       }
     : null;
-  if (build.discovery && !discoveryProjection) {
+  if (build.discovery && !eveInfoSummary) {
     await store.appendLog({
       projectId: job.projectId,
       type: "build",
-      line: "WARNING: the release's eve discovery manifest was not recognized; recording the release without a build summary.",
+      line: "WARNING: the release's `eve info --json` output was not recognized; recording the release without a build summary.",
     });
   }
 
@@ -327,7 +325,7 @@ export async function handleBuildDeployJob(
         projectId: job.projectId,
         type: "build",
         line:
-          `Recorded the release summary from eve's discovery manifest (v${discoveryProjection!.manifestVersion}` +
+          `Recorded the release summary from \`eve info --json\` (status ${releaseSummary.status}` +
           (build.discovery?.resolvedEveVersion
             ? `, eve ${build.discovery.resolvedEveVersion}`
             : "") +
