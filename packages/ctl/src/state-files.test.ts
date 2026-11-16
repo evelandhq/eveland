@@ -285,6 +285,40 @@ describe("claimSupervisorRecord", () => {
     expect(sleeps).toEqual([]);
   });
 
+  test("an EMPTY owner file is a holder mid-write, never a dead one: it is waited on, not broken", async () => {
+    const layout = await makeLayout();
+    const alive = new Set([100, 200]);
+    await mkdir(layout.runDir, { recursive: true });
+    const mutex = supervisorClaimMutexPath(layout);
+    // A live holder (pid 200) has created the mutex and its owner file, but
+    // the owner's bytes have not landed yet.
+    await mkdir(mutex);
+    await writeFile(path.join(mutex, "owner"), "", "utf8");
+    let waits = 0;
+    const result = await claimSupervisorRecord(
+      layout,
+      { pid: 100, identity: "id-100" },
+      identityOf(alive),
+      {
+        isAlive: (pid) => alive.has(pid),
+        ownerlessGraceMs: 60_000,
+        sleep: async () => {
+          waits += 1;
+          if (waits === 1) {
+            await writeFile(
+              path.join(mutex, "owner"),
+              `${JSON.stringify({ pid: 200, identity: "id-200", nonce: "1" })}\n`,
+              "utf8",
+            );
+          }
+          if (waits === 3) await rm(mutex, { recursive: true, force: true });
+        },
+      },
+    );
+    expect(waits).toBe(3);
+    expect(result).toEqual({ claimed: true });
+  });
+
   test("a live owner blocks a later claim; a stale (dead or recycled) record is replaced", async () => {
     const layout = await makeLayout();
     const alive = new Set([100]);
