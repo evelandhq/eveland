@@ -353,8 +353,8 @@ describe("runBootstrapPrepare", () => {
     // timers and hooks that live in that database's `workflow` schema.
     const { deps, createdDatabases } = await makeDeps({ webBuildExists: true });
     const { envFile } = await runBootstrapConfig(deps);
-    envFile.values.EVELAND_WORKFLOW_WORLD_URL = envFile.values.DATABASE_URL!;
-    delete envFile.values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL;
+    envFile.values.WORKFLOW_WORLD_URL = envFile.values.DATABASE_URL!;
+    delete envFile.values.WORKFLOW_WORLD_BOOTSTRAP_URL;
     await runBootstrapPrepare(deps, envFile, { buildWeb: true });
     expect(createdDatabases).toEqual([]);
   });

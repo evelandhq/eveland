@@ -34,7 +34,7 @@ async function harness(options: {
     path.join(repo, ".env"),
     world === null
       ? "DATABASE_URL=postgres://x@127.0.0.1:17310/eveland\n"
-      : `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL=${world}\n`,
+      : `WORKFLOW_WORLD_BOOTSTRAP_URL=${world}\n`,
   );
   const out: string[] = [];
   const err: string[] = [];

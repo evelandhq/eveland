@@ -11,7 +11,7 @@ import { assertWorkflowTopologyPreflight } from "./workflow-topology-preflight.j
 describe("assertWorkflowTopologyPreflight", () => {
   test("production without the shared world URL fails closed", () => {
     expect(() => assertWorkflowTopologyPreflight({ NODE_ENV: "production" })).toThrow(
-      /EVELAND_WORKFLOW_WORLD_URL/,
+      /WORKFLOW_WORLD_URL/,
     );
   });
 
@@ -21,14 +21,14 @@ describe("assertWorkflowTopologyPreflight", () => {
         NODE_ENV: "production",
         WORKFLOW_POSTGRES_URL: "postgres://legacy@host:5432/eveland",
       }),
-    ).toThrow(/EVELAND_WORKFLOW_WORLD_URL/);
+    ).toThrow(/WORKFLOW_WORLD_URL/);
   });
 
   test("production with the shared world URL passes without a legacy URL", () => {
     expect(() =>
       assertWorkflowTopologyPreflight({
         NODE_ENV: "production",
-        EVELAND_WORKFLOW_WORLD_URL: "postgres://world@host:5432/eveland_workflow",
+        WORKFLOW_WORLD_URL: "postgres://world@host:5432/eveland_workflow",
       }),
     ).not.toThrow();
   });
@@ -40,14 +40,14 @@ describe("assertWorkflowTopologyPreflight", () => {
   test("an embedded runner is a configuration error in any environment", () => {
     expect(() =>
       assertWorkflowTopologyPreflight({
-        EVELAND_WORKFLOW_WORLD_URL: "postgres://world@host:5432/eveland_workflow",
+        WORKFLOW_WORLD_URL: "postgres://world@host:5432/eveland_workflow",
         EVELAND_WORKFLOW_RUNNER: "embedded",
       }),
     ).toThrow(/embedded/i);
     expect(() =>
       assertWorkflowTopologyPreflight({
         NODE_ENV: "production",
-        EVELAND_WORKFLOW_WORLD_URL: "postgres://world@host:5432/eveland_workflow",
+        WORKFLOW_WORLD_URL: "postgres://world@host:5432/eveland_workflow",
         EVELAND_WORKFLOW_RUNNER: "embedded",
       }),
     ).toThrow(/embedded/i);

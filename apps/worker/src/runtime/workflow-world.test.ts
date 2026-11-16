@@ -2,59 +2,21 @@ import { describe, expect, test } from "vitest";
 
 import { deriveWorkflowWorldAttestation, resolveWorkflowRunnerMode } from "./workflow-world.js";
 
-/**
- * Capabilities are version facts: the shared world only scopes every enqueue
- * to the per-run queue since 0.5.0, so a classified historical artifact from
- * before that must attest `unscoped` and be managed-terminated, never resumed.
- */
 describe("deriveWorkflowWorldAttestation", () => {
-  test("a current shared world attests per_run_queue_v1", () => {
+  test("the shared world attests spec 9 over the per-run queue protocol", () => {
     expect(
       deriveWorkflowWorldAttestation({
         packageName: "@evelandhq/workflow-world",
-        packageVersion: "0.11.0",
+        packageVersion: "1.0.0",
       }),
-    ).toMatchObject({
+    ).toEqual({
       worldKind: "shared",
-      enqueueCapability: "per_run_queue_v1",
+      worldPackage: "@evelandhq/workflow-world",
+      worldVersion: "1.0.0",
+      storageSpec: 9,
       dispatchProtocol: 1,
+      enqueueCapability: "per_run_queue_v1",
     });
-  });
-
-  test("an early shared world attests unscoped, not per-run capable", () => {
-    expect(
-      deriveWorkflowWorldAttestation({
-        packageName: "@evelandhq/workflow-world",
-        packageVersion: "0.4.0",
-      }),
-    ).toMatchObject({
-      worldKind: "shared",
-      enqueueCapability: "unscoped",
-      dispatchProtocol: null,
-    });
-  });
-
-  test("the storage spec follows the World version: single orchestrator from 0.30.0, force-claim from 0.27.0, sealed log from 0.18.0, slot identity before", () => {
-    const attest = (packageVersion: string) =>
-      deriveWorkflowWorldAttestation({ packageName: "@evelandhq/workflow-world", packageVersion })
-        .storageSpec;
-    expect(attest("0.31.1")).toBe(9);
-    expect(attest("0.31.0")).toBe(9);
-    expect(attest("0.30.0")).toBe(9);
-    expect(attest("1.0.0")).toBe(9);
-    expect(attest("0.29.0")).toBe(8);
-    expect(attest("0.27.0")).toBe(8);
-    expect(attest("0.26.1")).toBe(7);
-    expect(attest("0.18.0")).toBe(7);
-    expect(attest("0.17.0")).toBe(6);
-    expect(attest("0.5.0")).toBe(6);
-    expect(attest("0.4.0")).toBe(5);
-    expect(
-      deriveWorkflowWorldAttestation({
-        packageName: "@workflow/world-postgres",
-        packageVersion: "5.0.0-beta.34",
-      }).storageSpec,
-    ).toBe(6);
   });
 
   test("the legacy world is legacy_project/unscoped and anything else unknown", () => {

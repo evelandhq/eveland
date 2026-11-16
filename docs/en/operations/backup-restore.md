@@ -13,11 +13,11 @@ For a consistent disaster recovery, you must know **what constitutes persistent 
 
 A consistent backup requires the following three components captured from the **exact same point in time**:
 
-| State Component              | Storage & Path                            | Core Content                                                                                                 |
-| :--------------------------- | :---------------------------------------- | :----------------------------------------------------------------------------------------------------------- |
-| **Control Plane Database**   | PostgreSQL (`DATABASE_URL`)               | Project metadata, releases, deployment history, routes, team auth, and AES-256 encrypted secrets.            |
-| **Shared Workflow Database** | PostgreSQL (`EVELAND_WORKFLOW_WORLD_URL`) | Durable workflow execution states, timers, and step queues.                                                  |
-| **Persistent Data Root**     | Host filesystem (`/opt/eveland/data`)     | Source archives, immutable releases (`builds/`), telemetry configs, and persistent `/workspace` directories. |
+| State Component              | Storage & Path                        | Core Content                                                                                                 |
+| :--------------------------- | :------------------------------------ | :----------------------------------------------------------------------------------------------------------- |
+| **Control Plane Database**   | PostgreSQL (`DATABASE_URL`)           | Project metadata, releases, deployment history, routes, team auth, and AES-256 encrypted secrets.            |
+| **Shared Workflow Database** | PostgreSQL (`WORKFLOW_WORLD_URL`)     | Durable workflow execution states, timers, and step queues.                                                  |
+| **Persistent Data Root**     | Host filesystem (`/opt/eveland/data`) | Source archives, immutable releases (`builds/`), telemetry configs, and persistent `/workspace` directories. |
 
 _Security Warning: Decrypting stored secrets requires the host `APP_SECRET_KEY`. Ensure this master key is safely backed up in an external secret manager (KMS / Vault)._
 

@@ -45,7 +45,7 @@ git -C "$REPO_DIR" ls-files --cached --others --exclude-standard -z |
   limactl shell "$VM" -- sudo tar -xzf - -C /opt/eveland --exclude='._*'
 
 # Every Release is a shared-World build: deployments need
-# EVELAND_WORKFLOW_WORLD_URL at runtime and turns execute only through the
+# WORKFLOW_WORLD_URL at runtime and turns execute only through the
 # external dispatcher, so the guest carries a real
 # Postgres; each turn-driving smoke provisions its own scratch database off
 # this server (see infra/integration/workflow-runtime.mts). Single-quoted on
@@ -78,7 +78,7 @@ limactl shell "$VM" -- sudo bash -c "
   # became a required preflight check would never pick it up otherwise.
   id -u eveland-build >/dev/null 2>&1 || useradd --system --home-dir /var/lib/eveland-build --create-home eveland-build
 
-  export EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow
+  export WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow
 
   # First, and cheap: the one fixed port a later stage must bind. Without this
   # a busy port surfaces in observer-e2e, half an hour in and behind every

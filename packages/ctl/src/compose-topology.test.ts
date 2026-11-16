@@ -38,7 +38,7 @@ const requiredEnv = {
   EVELAND_OTLP_SERVICE_TOKEN: "compose-topology-otlp",
   EVELAND_GATEWAY_SERVICE_TOKEN: "compose-topology-gateway",
   EVELAND_GATEWAY_AFFINITY_SECRET: "compose-topology-affinity",
-  EVELAND_SCHEDULER_RUNTIME_SECRET: "compose-topology-runtime",
+  WORKFLOW_WORLD_RUNTIME_SECRET: "compose-topology-runtime",
   EVELAND_SCHEDULER_DISPATCH_SECRET: "compose-topology-dispatch",
 };
 
@@ -177,7 +177,7 @@ describe.skipIf(!composeCliAvailable && !process.env.CI)(
         // readiness gate reads the World's cluster identity through. Inside a
         // container a loopback address is the container's own.
         const worldUrl = requiredService(resolve(), "api").environment
-          ?.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL;
+          ?.WORKFLOW_WORLD_BOOTSTRAP_URL;
 
         expect(worldUrl).toBeDefined();
         expect(["localhost", "127.0.0.1", "host.docker.internal"]).not.toContain(

@@ -51,15 +51,12 @@ peerDependencyRules:
 # first-party packages; the @ai-sdk and ai entries are pinned third-party
 # decisions.
 #
-# The @workflow/* entries are two reviewed graphs. `@workflow/world-postgres`
-# 5.0.0-beta.34 and the beta.17/8/36/27 line below it are the legacy
-# per-project World, spec 6 throughout, never selected for a new build. The
-# Workflow 5.4 set (world/errors 5.1.0, world-local 5.2.1, utils 5.0.2) is what
-# `@evelandhq/workflow-world` pins. eve bundles Workflow 5.5, which only adds
-# optional World members, and compares only the major line of the World's
-# declaration, so the same World serves it. eve gates on the storage spec the
-# World declares; the contract ratchet reads that number out of the World's
-# dist, and the platform admits SUPPORTED_WORKFLOW_STORAGE_SPECS.
+# The @workflow/* entries are TWO reviewed graphs that coexist on purpose.
+# `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
+# it are the legacy World, kept only for Releases built before the shared
+# World and never selected for a new build. The Workflow 5.5 set (world 5.2.0,
+# errors 5.1.1, world-local 5.3.0, utils 5.1.0) is what
+# `@evelandhq/workflow-world` 1.x pins -- the set eve 1.0.0 bundles.
 minimumReleaseAgeExclude:
   - eve
   - "@evelandhq/sandbox-bwrap"
@@ -70,8 +67,8 @@ minimumReleaseAgeExclude:
   - ai@7.0.105
   # pnpm applies only the FIRST entry whose name matches a package, so a
   # package needed at several versions takes one entry with a version union.
-  - "@workflow/errors@5.0.0-beta.17 || 5.0.3 || 5.0.5 || 5.1.0"
-  - "@workflow/utils@5.0.0-beta.8 || 5.0.1 || 5.0.2"
-  - "@workflow/world-local@5.0.0-beta.36 || 5.1.0 || 5.1.2 || 5.2.1"
+  - "@workflow/errors@5.0.0-beta.17 || 5.1.1"
+  - "@workflow/utils@5.0.0-beta.8 || 5.1.0"
+  - "@workflow/world-local@5.0.0-beta.36 || 5.3.0"
   - "@workflow/world-postgres@5.0.0-beta.34"
-  - "@workflow/world@5.0.0-beta.27 || 5.0.3 || 5.0.5 || 5.1.0"
+  - "@workflow/world@5.0.0-beta.27 || 5.2.0"

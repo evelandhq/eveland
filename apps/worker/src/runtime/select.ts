@@ -26,20 +26,20 @@ export function resolveDeploymentResourceLimits(env: NodeJS.ProcessEnv): Deploym
 /**
  * Locates @evelandhq/sandbox-bwrap's dist, which gets vendored into each release.
  * Passed to createSystemdAdapter as a provider and invoked inside buildRelease
- * (see systemd.ts) and by the startup preflight's built-backend check
+ * (see systemd.ts) and by the startup preflight's built-provider check
  * (runtime/preflight.ts) -- never at module load -- so constructing any
  * adapter, including the docker default, never touches the filesystem. A
  * successful `resolve()` already proves dist/index.js exists (the package's
  * "exports" map points at it, and Node's resolver checks the target file is
  * actually there), so no separate existsSync check is needed;
  * injectSandboxModules (sandbox-inject.ts) remains the validator of the
- * backend's contents.
+ * provider's contents.
  *
  * The package ships prebuilt from npm (it lives in its own repository), so
  * unlike the workspace package it replaced there is no build step to forget --
  * failure here means the dependency is missing, not unbuilt.
  */
-export function resolveBackendDistDir(): string {
+export function resolveProviderDistDir(): string {
   let entry: string;
   try {
     entry = createRequire(import.meta.url).resolve("@evelandhq/sandbox-bwrap");
@@ -62,7 +62,7 @@ export function createRuntimeAdapterForKind(
       internalPort: Number(env.EVELAND_INTERNAL_PORT ?? SANDBOX_INTERNAL_PORT),
       dataDir: path.resolve(env.EVELAND_DATA_DIR ?? ".eveland-data"),
       collectorContainerName: env.EVELAND_OTEL_COLLECTOR_CONTAINER ?? "eveland-otel-collector",
-      backendDistDir: resolveBackendDistDir,
+      providerDistDir: resolveProviderDistDir,
       ...limits,
     });
   }
@@ -77,7 +77,7 @@ export function createRuntimeAdapterForKind(
     // durable session and promises a redeploy preserves a session's /workspace
     // -- so the cache must live outside the release dir, stable per project.
     sandboxCacheDir: resolveSandboxCacheRoot(env),
-    backendDistDir: resolveBackendDistDir,
+    providerDistDir: resolveProviderDistDir,
   });
 }
 

@@ -13,7 +13,7 @@ This guide is organized by observed symptom. Before troubleshooting, inspect ove
 
 - Missing host dependencies (e.g. `bubblewrap`, `apparmor`, or unprivileged `bwrap` user namespace permissions);
 - Absent `/workspace` mount point or missing `eveland-app` / `eveland-build` system users;
-- Unset `EVELAND_WORKFLOW_WORLD_URL` or inability to connect to PostgreSQL.
+- Unset `WORKFLOW_WORLD_URL` or inability to connect to PostgreSQL.
 
 ### Remediation steps
 

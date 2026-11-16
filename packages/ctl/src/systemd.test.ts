@@ -207,16 +207,16 @@ describe("the dispatcher's narrowed environment", () => {
   test("carries only its documented variables — never the admin password or APP secret", () => {
     const rendered = renderDispatcherEnv({
       NODE_ENV: "production",
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://w",
+      WORKFLOW_WORLD_URL: "postgres://w",
       WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: "activation-token",
-      EVELAND_SCHEDULER_RUNTIME_SECRET: "runtime-secret",
+      WORKFLOW_WORLD_RUNTIME_SECRET: "runtime-secret",
       APP_SECRET_KEY: "must-not-appear",
       EVELAND_ADMIN_PASSWORD: "must-not-appear-either",
       BETTER_AUTH_SECRET: "nor-this",
       DATABASE_URL: "postgres://platform",
       EVELAND_GATEWAY_AFFINITY_SECRET: "nor-this-one",
     });
-    expect(rendered).toContain("EVELAND_WORKFLOW_WORLD_URL=postgres://w");
+    expect(rendered).toContain("WORKFLOW_WORLD_URL=postgres://w");
     expect(rendered).toContain("WORKFLOW_DISPATCHER_ACTIVATION_TOKEN=activation-token");
     expect(rendered).not.toContain("must-not-appear");
     expect(rendered).not.toContain("nor-this");
@@ -262,7 +262,7 @@ describe("the public Gateway's and the Dashboard's narrowed environments", () =>
       "ANTHROPIC_API_KEY",
       "OPENAI_API_KEY",
       "EVELAND_SCHEDULER_DISPATCH_SECRET",
-      "EVELAND_SCHEDULER_RUNTIME_SECRET",
+      "WORKFLOW_WORLD_RUNTIME_SECRET",
     ]) {
       expect(GATEWAY_ENV_KEYS).not.toContain(forbidden);
       expect(WEB_ENV_KEYS).not.toContain(forbidden);
@@ -321,7 +321,7 @@ async function makeHarness(options: { uid?: number; bootstrapped?: boolean } = {
       "EVELAND_PUBLIC_ORIGIN=http://localhost:17300",
       "EVELAND_DATA_DIR=" + layout.dataDir,
       "EVELAND_NODE=/opt/eveland/node/bin/node",
-      "EVELAND_WORKFLOW_WORLD_URL=postgres://w",
+      "WORKFLOW_WORLD_URL=postgres://w",
       "WORKFLOW_DISPATCHER_ACTIVATION_TOKEN=tok",
     ].join("\n"),
     "utf8",
@@ -432,7 +432,7 @@ describe("runInstallCommand", () => {
       path.join(harness.layout.etcDir, "eveland-workflow-dispatcher.env"),
       "utf8",
     );
-    expect(dispatcherEnv).toContain("EVELAND_WORKFLOW_WORLD_URL=postgres://w");
+    expect(dispatcherEnv).toContain("WORKFLOW_WORLD_URL=postgres://w");
     expect(dispatcherEnv).not.toContain("APP_SECRET_KEY");
     // The public Gateway's and the Dashboard's files are narrowed too.
     const gatewayEnv = await readFile(

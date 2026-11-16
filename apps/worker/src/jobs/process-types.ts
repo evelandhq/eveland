@@ -32,7 +32,7 @@ export type ProcessJobOptions = {
     worldUrl: string | undefined,
     projectId: string,
   ) => Promise<Set<string>>;
-  /** Shared database backing `@evelandhq/workflow-world`; overrides EVELAND_WORKFLOW_WORLD_URL. */
+  /** Shared database backing `@evelandhq/workflow-world`; overrides WORKFLOW_WORLD_URL. */
   evelandWorkflowWorldUrl?: string;
   /** The shared World's cluster identity; overrides the database-derived value. */
   worldClusterIdentity?: string;

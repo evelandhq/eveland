@@ -619,7 +619,7 @@ describe("processNextJob", () => {
     expect(jobFailedLine).not.toContain("docker logs unavailable");
   });
 
-  test("bakes the shared workflow world and external runner into every new build", async () => {
+  test("bakes the shared workflow world into every new build", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
@@ -694,8 +694,8 @@ describe("processNextJob", () => {
     const run = runtimeCalls.find((call) => call.name === "startProcess");
     const runEnv = (run!.input as { env: Record<string, string> }).env;
     expect(runEnv).toMatchObject({
-      EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
-      EVELAND_WORKFLOW_RUNNER: "external",
+      WORKFLOW_WORLD_URL: evelandWorldUrl,
+      WORKFLOW_WORLD_TENANT_ID: project.id,
       NODE_ENV: "production",
       EVELAND_PROJECT_ID: project.id,
       EVELAND_IDENTITY_ISSUER: "https://control.example.com",
@@ -812,14 +812,14 @@ describe("processNextJob", () => {
     ).resolves.toBe(true);
 
     const logs = await store.listLogs(project.id, "deploy");
-    expect(logs.some((log) => log.line.includes("EVELAND_WORKFLOW_WORLD_URL"))).toBe(true);
+    expect(logs.some((log) => log.line.includes("WORKFLOW_WORLD_URL"))).toBe(true);
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "failed",
       deploymentStatus: "failed",
     });
   });
 
-  test("keeps the shared workflow world URL and runner reserved when a project defines the same secrets", async () => {
+  test("keeps the shared workflow world URL and spec version reserved when a project defines the same secrets", async () => {
     const secretKey = "eveland-test-secret-key-00000000";
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     const store = createTestStore();
@@ -841,16 +841,16 @@ describe("processNextJob", () => {
       schedules: [],
     });
     // A project that could set these could scope its world at another
-    // tenant's data or re-enable the embedded runner.
+    // tenant's data or ask it for a storage generation it refuses.
     await store.upsertSecret(
       project.id,
-      "EVELAND_WORKFLOW_WORLD_URL",
+      "WORKFLOW_WORLD_URL",
       JSON.stringify(encryptSecretValue("postgres://custom@db:5432/app", secretKey)),
     );
     await store.upsertSecret(
       project.id,
-      "EVELAND_WORKFLOW_RUNNER",
-      JSON.stringify(encryptSecretValue("embedded", secretKey)),
+      "WORKFLOW_SPEC_VERSION",
+      JSON.stringify(encryptSecretValue("8", secretKey)),
     );
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -883,8 +883,8 @@ describe("processNextJob", () => {
 
     const run = runtimeCalls.find((call) => call.name === "startProcess");
     const runEnv = (run!.input as { env: Record<string, string> }).env;
-    expect(runEnv.EVELAND_WORKFLOW_WORLD_URL).toBe(platformWorldUrl);
-    expect(runEnv.EVELAND_WORKFLOW_RUNNER).toBe("external");
+    expect(runEnv.WORKFLOW_WORLD_URL).toBe(platformWorldUrl);
+    expect(runEnv.WORKFLOW_SPEC_VERSION).toBe("");
   });
 
   test("injects the global shared Agent environment as a fallback for Project Secrets", async () => {
@@ -1107,7 +1107,7 @@ describe("processNextJob", () => {
     });
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
       expect.objectContaining({
-        line: expect.stringContaining("EVELAND_WORKFLOW_WORLD_URL"),
+        line: expect.stringContaining("WORKFLOW_WORLD_URL"),
       }),
     );
   });

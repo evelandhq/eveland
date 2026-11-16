@@ -56,7 +56,7 @@ const dockerAdapterDataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-docke
 const dockerAdapterConfig = {
   internalPort: 3000,
   dataDir: dockerAdapterDataDir,
-  backendDistDir: () => "/opt/eveland/sandbox-bwrap",
+  providerDistDir: () => "/opt/eveland/sandbox-bwrap",
 };
 
 test("the Worker dev process restarts when the shared .env changes", async () => {
@@ -223,8 +223,6 @@ describe("buildDockerRunArgs", () => {
       "/host/eveland/memory/proj_123:/var/lib/eveland-memory",
       "--env",
       "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
-      "--env",
-      "EVELAND_SANDBOX_TEMPLATE_REVISION=eveland/proj_123:rel_456",
       "--env-file",
       "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
       "eveland/proj_123:rel_456",
@@ -232,7 +230,6 @@ describe("buildDockerRunArgs", () => {
       "-lc",
       "npm run start",
     ]);
-    expect(args).toContain("EVELAND_SANDBOX_TEMPLATE_REVISION=eveland/proj_123:rel_456");
   });
 
   test("applies configured memory, CPU, and PID limits", () => {
@@ -254,24 +251,6 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("1G");
     expect(args).toContain("0.5");
     expect(args).toContain("64");
-  });
-
-  test("does not let project env override the platform template revision", () => {
-    const args = buildDockerRunArgs({
-      containerName: "eveland-proj_123",
-      imageTag: "eveland/proj_123:rel_platform",
-      internalPort: 3000,
-      hostPort: 43125,
-      sandboxCacheDir: "/host/eveland/sandbox/proj_123",
-      memoryRootDir: "/host/eveland/memory/proj_123",
-      observabilityPolicyDir: "/host/eveland/observability/proj_123/dep_456",
-      envFilePath: "/var/lib/eveland-data/deployment-env/eveland-proj_123.env",
-      command: "npm run start",
-    });
-
-    expect(args.filter((arg) => arg.startsWith("EVELAND_SANDBOX_TEMPLATE_REVISION="))).toEqual([
-      "EVELAND_SANDBOX_TEMPLATE_REVISION=eveland/proj_123:rel_platform",
-    ]);
   });
 });
 
@@ -451,7 +430,7 @@ describe("createDockerAdapter", () => {
     expect(result.releaseRef).toBe("eveland/proj_123:rel_456");
     expect(injectSandboxModules).toHaveBeenCalledWith({
       releaseDir: buildDir,
-      backendDistDir: "/opt/eveland/sandbox-bwrap",
+      providerDistDir: "/opt/eveland/sandbox-bwrap",
     });
     expect(result.log).toContain("Injected eve sandbox modules: agent/sandbox.js");
     expect(result.log).toContain("Docker sandbox self-check passed");
@@ -580,7 +559,7 @@ describe("createDockerAdapter", () => {
     });
 
     expect(result.log).toMatch(/WARNING.*no agent\/ directory/i);
-    expect(result.log).toContain("default sandbox backend chain");
+    expect(result.log).toContain("fall back to eve's default sandbox");
   });
 
   test("checks the image's prepared sandboxes before the self-check", async () => {

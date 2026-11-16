@@ -14,7 +14,7 @@ export type ScheduleDispatchCredential = {
 export function resolveSchedulerRuntimeSecret(env: NodeJS.ProcessEnv): string | undefined {
   return resolveSecretWithDevFallback(
     env,
-    env.EVELAND_SCHEDULER_RUNTIME_SECRET,
+    env.WORKFLOW_WORLD_RUNTIME_SECRET,
     developmentRuntimeSecret,
   );
 }

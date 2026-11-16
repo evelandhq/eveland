@@ -66,7 +66,7 @@ async function main(): Promise<void> {
     // runtime secret ON PURPOSE (one contract, both ends); this smoke injects
     // its own value into the deployment via jobOptions, so the dispatcher
     // must sign with the same one.
-    process.env.EVELAND_SCHEDULER_RUNTIME_SECRET = SCHEDULER_RUNTIME_SECRET;
+    process.env.WORKFLOW_WORLD_RUNTIME_SECRET = SCHEDULER_RUNTIME_SECRET;
     cleanupWorkflowRuntime = await startWorkflowRuntime(cleanupStore.store);
     const { store } = cleanupStore;
     const runtime = createRuntimeAdapterFromEnv();

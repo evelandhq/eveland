@@ -12,27 +12,18 @@ import {
 } from "./sandbox-inject.js";
 import { SHIMMED_SANDBOX_ENTRY_POINTS } from "./sandbox-provider-modules.js";
 
-async function makeRelease({
-  agent = true,
-  providerEntry = true,
-  connectionEntry = true,
-}: { agent?: boolean; providerEntry?: boolean; connectionEntry?: boolean } = {}): Promise<{
+async function makeRelease({ agent = true }: { agent?: boolean } = {}): Promise<{
   releaseDir: string;
-  backendDistDir: string;
+  providerDistDir: string;
 }> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-inject-"));
   const releaseDir = path.join(root, "release");
-  const backendDistDir = path.join(root, "dist");
+  const providerDistDir = path.join(root, "dist");
   await mkdir(agent ? path.join(releaseDir, "agent") : releaseDir, { recursive: true });
-  await mkdir(backendDistDir, { recursive: true });
-  await writeFile(path.join(backendDistDir, "index.js"), "export const marker = 1;\n");
-  if (providerEntry) {
-    await writeFile(path.join(backendDistDir, "provider.js"), "export const BwrapSandbox = {};\n");
-  }
-  if (connectionEntry) {
-    await writeFile(path.join(backendDistDir, "connection.js"), "export const marker = 1;\n");
-  }
-  return { releaseDir, backendDistDir };
+  await mkdir(providerDistDir, { recursive: true });
+  await writeFile(path.join(providerDistDir, "index.js"), "export const marker = 1;\n");
+  await writeFile(path.join(providerDistDir, "provider.js"), "export const BwrapSandbox = {};\n");
+  return { releaseDir, providerDistDir };
 }
 
 describe("resolveSandboxRunTimeoutMs", () => {
@@ -104,9 +95,9 @@ describe("injectSandboxModules", () => {
   const platformDir = (releaseDir: string) => path.join(releaseDir, ".eveland", "sandbox-platform");
 
   test("generates a provider module for an empty slot, plus the platform module and every shim", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result).toEqual({
       generated: ["agent/sandbox.js"],
@@ -131,7 +122,7 @@ describe("injectSandboxModules", () => {
   });
 
   test("keeps an authored module in place and redirects its eve sandbox imports to the shims", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     await writeFile(
       path.join(releaseDir, "agent", "sandbox.ts"),
       `import { defineSandbox } from "eve/sandbox";
@@ -150,7 +141,7 @@ export default defineSandbox(async () => {
 `,
     );
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result).toMatchObject({ generated: [], rewritten: ["agent/sandbox.ts"], replaced: [] });
     expect(existsSync(path.join(releaseDir, "agent", "sandbox.js"))).toBe(false);
@@ -165,7 +156,7 @@ export default defineSandbox(async () => {
   });
 
   test("uses eve's folder layout: rewrites the folder module, keeps seeds, drops the shadowed flat module", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
     await writeFile(
       path.join(releaseDir, "agent", "sandbox", "sandbox.ts"),
@@ -176,7 +167,7 @@ export default defineSandbox(async () => {
     await writeFile(path.join(releaseDir, "agent", "sandbox", "workspace", "k.md"), "seeded\n");
     await writeFile(path.join(releaseDir, "agent", "sandbox.ts"), "export default {};\n");
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result).toMatchObject({
       generated: [],
@@ -193,10 +184,10 @@ export default defineSandbox(async () => {
   });
 
   test("generates into an empty sandbox folder so its workspace seeds still compile", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "sandbox", "workspace"), { recursive: true });
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result.generated).toEqual(["agent/sandbox/sandbox.js"]);
     await expect(
@@ -205,7 +196,7 @@ export default defineSandbox(async () => {
   });
 
   test("covers every subagent: a parent-sharing module is only redirected, an empty one is generated", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "subagents", "reviewer"), { recursive: true });
     await mkdir(path.join(releaseDir, "agent", "subagents", "researcher"), { recursive: true });
     await writeFile(
@@ -213,7 +204,7 @@ export default defineSandbox(async () => {
       'import { defineParentSandbox } from "eve/sandbox";\nexport default defineParentSandbox();\n',
     );
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect([...result.generated].sort()).toEqual([
       "agent/sandbox.js",
@@ -229,13 +220,13 @@ export default defineSandbox(async () => {
   });
 
   test("leaves a custom provider import alone for the post-build check to refuse", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     const authored =
       'import { defineSandbox } from "eve/sandbox";\n' +
       'import { defineSandboxProvider } from "eve/sandbox/provider";\n';
     await writeFile(path.join(releaseDir, "agent", "sandbox.ts"), authored);
 
-    await injectSandboxModules({ releaseDir, backendDistDir });
+    await injectSandboxModules({ releaseDir, providerDistDir });
 
     await expect(readFile(path.join(releaseDir, "agent", "sandbox.ts"), "utf8")).resolves.toBe(
       'import { defineSandbox } from "../.eveland/sandbox-platform/sandbox.js";\n' +
@@ -244,11 +235,11 @@ export default defineSandbox(async () => {
   });
 
   test("keeps only the module eve would load and reports the shadowed ones as replaced", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     await writeFile(path.join(releaseDir, "agent", "sandbox.ts"), 'import "eve/sandbox";\n');
     await writeFile(path.join(releaseDir, "agent", "sandbox.js"), "export default {};\n");
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result).toMatchObject({
       rewritten: ["agent/sandbox.ts"],
@@ -258,12 +249,12 @@ export default defineSandbox(async () => {
   });
 
   test("replaces a symlinked authored module with a generated one", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     const target = path.join(releaseDir, "outside-sandbox.ts");
     await writeFile(target, 'import "eve/sandbox";\n');
     symlinkSync(target, path.join(releaseDir, "agent", "sandbox.ts"));
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result).toMatchObject({
       generated: ["agent/sandbox.js"],
@@ -274,19 +265,19 @@ export default defineSandbox(async () => {
   });
 
   test("re-running is idempotent for generated and authored modules alike", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "subagents", "researcher"), { recursive: true });
     await writeFile(
       path.join(releaseDir, "agent", "subagents", "researcher", "sandbox.ts"),
       'import { defineParentSandbox } from "eve/sandbox";\nexport default defineParentSandbox();\n',
     );
 
-    const first = await injectSandboxModules({ releaseDir, backendDistDir });
+    const first = await injectSandboxModules({ releaseDir, providerDistDir });
     const snapshot = await readFile(
       path.join(releaseDir, "agent", "subagents", "researcher", "sandbox.ts"),
       "utf8",
     );
-    const second = await injectSandboxModules({ releaseDir, backendDistDir });
+    const second = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(second).toEqual(first);
     await expect(
@@ -294,29 +285,13 @@ export default defineSandbox(async () => {
     ).resolves.toBe(snapshot);
   });
 
-  test("refuses a vendored sandbox-bwrap that predates the provider", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease({ providerEntry: false });
-
-    await expect(injectSandboxModules({ releaseDir, backendDistDir })).rejects.toThrow(
-      /sandbox-bwrap .*provider\.js/,
-    );
-  });
-
-  test("refuses a vendored sandbox-bwrap that predates eve 0.83's connection contract", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease({ connectionEntry: false });
-
-    await expect(injectSandboxModules({ releaseDir, backendDistDir })).rejects.toThrow(
-      /sandbox-bwrap .*connection\.js.*0\.6\.0/,
-    );
-  });
-
   test("generates a module for nested subagents at any depth, each with a correct relative import", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     await mkdir(path.join(releaseDir, "agent", "subagents", "outer", "subagents", "inner"), {
       recursive: true,
     });
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect([...result.generated].sort()).toEqual([
       "agent/sandbox.js",
@@ -331,10 +306,10 @@ export default defineSandbox(async () => {
   });
 
   test("an authored sandbox.js is kept rather than confused with generated output", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     await writeFile(path.join(releaseDir, "agent", "sandbox.js"), "export default {};\n");
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result).toEqual({ generated: [], rewritten: ["agent/sandbox.js"], replaced: [] });
     await expect(readFile(path.join(releaseDir, "agent", "sandbox.js"), "utf8")).resolves.toBe(
@@ -343,45 +318,45 @@ export default defineSandbox(async () => {
   });
 
   test("an authored non-.js module is kept even when its content starts with the generated marker", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     await writeFile(
       path.join(releaseDir, "agent", "sandbox.ts"),
       `${GENERATED_MODULE_MARKER} Do not edit.\nexport default {};\n`,
     );
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result).toEqual({ generated: [], rewritten: ["agent/sandbox.ts"], replaced: [] });
   });
 
   test("removes and reports a symlinked sandbox directory regardless of type", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
+    const { releaseDir, providerDistDir } = await makeRelease();
     const targetDir = path.join(releaseDir, "sandbox-target");
     await mkdir(targetDir, { recursive: true });
     symlinkSync(targetDir, path.join(releaseDir, "agent", "sandbox"), "dir");
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result.replaced).toEqual(["agent/sandbox"]);
     expect(existsSync(path.join(releaseDir, "agent", "sandbox"))).toBe(false);
     expect(existsSync(path.join(releaseDir, "agent", "sandbox.js"))).toBe(true);
   });
 
-  test("vendors the backend even when there is no agent directory (host capability, not project layout)", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease({ agent: false });
+  test("vendors the provider even when there is no agent directory (host capability, not project layout)", async () => {
+    const { releaseDir, providerDistDir } = await makeRelease({ agent: false });
 
-    const result = await injectSandboxModules({ releaseDir, backendDistDir });
+    const result = await injectSandboxModules({ releaseDir, providerDistDir });
 
     expect(result.generated).toEqual([]);
     expect(result.replaced).toEqual([]);
     expect(existsSync(path.join(releaseDir, ".eveland", "sandbox-bwrap", "index.js"))).toBe(true);
   });
 
-  test("throws a clear error when the backend dist dir has no index.js", async () => {
-    const { releaseDir, backendDistDir } = await makeRelease();
-    await rm(path.join(backendDistDir, "index.js"));
+  test("throws a clear error when the provider dist dir has no index.js", async () => {
+    const { releaseDir, providerDistDir } = await makeRelease();
+    await rm(path.join(providerDistDir, "index.js"));
 
-    await expect(injectSandboxModules({ releaseDir, backendDistDir })).rejects.toThrow(
+    await expect(injectSandboxModules({ releaseDir, providerDistDir })).rejects.toThrow(
       /pnpm install/,
     );
   });

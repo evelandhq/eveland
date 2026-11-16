@@ -57,26 +57,24 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   EVELAND_SANDBOX_MAX_OUTPUT_BYTES: ["EVELAND_SANDBOX_MAX_OUTPUT_BYTES"],
   EVELAND_SANDBOX_RUN_TIMEOUT_MS: ["EVELAND_SANDBOX_RUN_TIMEOUT_MS"],
   EVELAND_SCHEDULER_REDEEM_URL: ["EVELAND_SCHEDULER_REDEEM_URL"],
-  // The development fallback is keyed off NODE_ENV, so a production flip
-  // changes the secret even when the variable itself does not.
-  EVELAND_SCHEDULER_RUNTIME_SECRET: ["EVELAND_SCHEDULER_RUNTIME_SECRET", "NODE_ENV"],
+  // The same runtime secret as WORKFLOW_WORLD_RUNTIME_SECRET, under the name
+  // the injected Scheduler Channel reads. The development fallback is keyed
+  // off NODE_ENV, so a production flip changes the secret even when the
+  // variable itself does not.
+  EVELAND_SCHEDULER_RUNTIME_SECRET: ["WORKFLOW_WORLD_RUNTIME_SECRET", "NODE_ENV"],
   // Tenancy, topology, and dispatch authentication for the platform workflow
   // world. A project that could set these could scope its world at another
   // tenant's data, hand the runner a database nothing provisions, or make every
-  // dispatch fail authentication. The World reads its canonical
-  // `WORKFLOW_WORLD_*` names first and the `EVELAND_*` names after them, so
-  // both are owned here; ./reserved-environment.test.ts fails on any name the
-  // installed World reads that is in neither this table nor
+  // dispatch fail authentication; a spec version would ask the World for a
+  // storage generation it refuses. ./reserved-environment.test.ts fails on any
+  // name the installed World reads that is in neither this table nor
   // DEPLOYMENT_LAUNCH_ENVIRONMENT_KEYS.
-  EVELAND_WORKFLOW_RUNNER: ["EVELAND_WORKFLOW_RUNNER"],
-  EVELAND_WORKFLOW_STREAM_COMPACTION: ["EVELAND_WORKFLOW_STREAM_COMPACTION"],
-  EVELAND_WORKFLOW_WORLD_URL: ["EVELAND_WORKFLOW_WORLD_URL"],
-  WORKFLOW_WORLD_RUNNER: ["EVELAND_WORKFLOW_RUNNER"],
-  WORKFLOW_WORLD_RUNTIME_SECRET: ["EVELAND_SCHEDULER_RUNTIME_SECRET", "NODE_ENV"],
-  WORKFLOW_WORLD_STREAM_COMPACTION: ["EVELAND_WORKFLOW_STREAM_COMPACTION"],
+  WORKFLOW_SPEC_VERSION: [],
+  WORKFLOW_WORLD_RUNTIME_SECRET: ["WORKFLOW_WORLD_RUNTIME_SECRET", "NODE_ENV"],
+  WORKFLOW_WORLD_STREAM_COMPACTION: ["WORKFLOW_WORLD_STREAM_COMPACTION"],
   // Per project by construction, like EVELAND_PROJECT_ID.
   WORKFLOW_WORLD_TENANT_ID: [],
-  WORKFLOW_WORLD_URL: ["EVELAND_WORKFLOW_WORLD_URL"],
+  WORKFLOW_WORLD_URL: ["WORKFLOW_WORLD_URL"],
   // eve 0.52.0 turned on CLI telemetry by default: every `eve build`,
   // `eve info`, and `eve start` the platform runs would otherwise spawn a
   // detached flush that POSTs command usage to telemetry.vercel.com and, on a
@@ -97,9 +95,6 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   // carrying it would strip the project's own build toolchain out of the
   // install that `npx eve build` then runs against.
   NODE_ENV: ["NODE_ENV"],
-  // A platform constant on the shared world: the hook-wake bypass in
-  // workflow-world 0.26.1 is safe only while optimistic inline start stays off.
-  WORKFLOW_OPTIMISTIC_INLINE_START: [],
   // Read by both worlds: connection capacity on the workflow Postgres instance
   // is platform-planned (max_connections ~ pool size x running Deployments).
   WORKFLOW_POSTGRES_MAX_POOL_SIZE: ["WORKFLOW_POSTGRES_MAX_POOL_SIZE"],
@@ -119,7 +114,7 @@ export const RESERVED_RUNTIME_ENVIRONMENT_KEYS: readonly string[] = Object.keys(
  */
 export const DEPLOYMENT_LAUNCH_ENVIRONMENT_KEYS: readonly string[] = [
   "EVELAND_DEPLOYMENT_ID",
-  // The shared World's canonical name for the same id, read before the alias.
+  // The same id under the name the shared World reads.
   "WORKFLOW_WORLD_DEPLOYMENT_ID",
 ];
 

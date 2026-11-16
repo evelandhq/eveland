@@ -85,17 +85,10 @@ describe("clusterWorldIdentity", () => {
 });
 
 describe("isSupportedWorkflowStorageSpec", () => {
-  test("admits slot identity (6), the sealed log (7), hook force-claim (8), and the single orchestrator (9), nothing older or unknown", () => {
-    // 6 is what shared builds 0.5.0 through 0.17.0 attest and what a 0.18.0+
-    // Deployment declares under WORKFLOW_SEALED_LOG=0; 7 is the 0.18.0 through
-    // 0.26.x default, 8 the 0.27.0 through 0.29.0 one, and 9 what 0.30.0 mints
-    // under eve 1.0. A Release on any of them must still activate. Spec 5
-    // predates per-run queues and is retired.
-    expect(isSupportedWorkflowStorageSpec(6)).toBe(true);
-    expect(isSupportedWorkflowStorageSpec(7)).toBe(true);
-    expect(isSupportedWorkflowStorageSpec(8)).toBe(true);
+  test("admits the single orchestrator (9) the shared World serves, nothing else", () => {
     expect(isSupportedWorkflowStorageSpec(9)).toBe(true);
-    expect(isSupportedWorkflowStorageSpec(5)).toBe(false);
+    expect(isSupportedWorkflowStorageSpec(8)).toBe(false);
+    expect(isSupportedWorkflowStorageSpec(6)).toBe(false);
     expect(isSupportedWorkflowStorageSpec(10)).toBe(false);
     expect(isSupportedWorkflowStorageSpec(null)).toBe(false);
   });

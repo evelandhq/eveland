@@ -185,8 +185,8 @@ describe("reconcileAbandonedWorkflowRuns", () => {
   });
 
   test("no configured world is a no-op", async () => {
-    vi.stubEnv("EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL", "");
-    vi.stubEnv("EVELAND_WORKFLOW_WORLD_URL", "");
+    vi.stubEnv("WORKFLOW_WORLD_BOOTSTRAP_URL", "");
+    vi.stubEnv("WORKFLOW_WORLD_URL", "");
     try {
       const store = createTestStore();
       const listActiveDeployments = vi.fn();

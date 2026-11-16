@@ -132,65 +132,40 @@ const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.jso
 
 /**
  * The spec version the shared World actually DECLARES, read out of its own
- * dist rather than assumed to be the package's current one.
- *
- * The two have parted company more than once: from 0.15.0 through 0.17.0 the
- * World named `SPEC_VERSION_SUPPORTS_SLOT_IDENTITY` (6) while its bundled
- * `@workflow/world` already reported `SPEC_VERSION_CURRENT` 7. From 0.18.0 it
- * declared `mintedSpecVersion()` as upstream recommends: the sealed log (7) by
- * default, or 6 when `WORKFLOW_SEALED_LOG=0` opts a Deployment out. 0.23.0
- * through 0.26.x capped that at `SPEC_VERSION_SUPPORTS_SEALED_LOG`, because
- * their `@workflow/world` beta.38 (eve 0.66.3) and later mint 8, the hook
- * force-claim reader contract, and eve 0.62.0's runtime refused a World above
- * 7 at startup. 0.27.0 implements force-claim (`capabilities.hookForceClaim`,
- * which eve 0.81.1's session handoff needs) and declares `mintedSpecVersion()`
- * outright again -- 8. 0.30.0 implements the in-band writer fence spec 9
- * (single-orchestrator) runs need and declares
- * `mintedSpecVersion(env, { inBandFence: true })` through `worldSpecVersion`,
- * which is 9 under eve 1.0: eve sets `WORKFLOW_SPEC_VERSION=9` in every
- * Deployment that sets neither it nor `WORKFLOW_SEALED_LOG`. eve gates on the
+ * dist rather than assumed to be the package's current one: eve gates on the
  * declared number, so every range check below has to use this one.
  *
- * The wiring is verified in the dist — one `worldSpecVersion()` call bound to
- * the `specVersion` the World object carries, which calls `mintedSpecVersion`
- * with the fence declared — and the value comes from the `@workflow/world` the
- * World itself resolves, called with the environment eve gives a Deployment
- * (only its `WORKFLOW_SPEC_VERSION=9` default) so the host running these
- * tests cannot change the answer on the World's behalf.
+ * The wiring is verified in the dist -- one `worldSpecVersion()` call bound to
+ * the `specVersion` the World object carries, which returns the single
+ * orchestrator generation -- and the value comes from the `@workflow/world`
+ * the World itself resolves.
  */
 function declaredWorldSpecVersion(): number {
   const source = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
   const storage = readFileSync(path.join(worldRoot, "dist/storage.js"), "utf8");
   const bound = [...source.matchAll(/const specVersion = worldSpecVersion\(\);/g)];
   const carried = [...source.matchAll(/^\s*specVersion,$/gm)];
-  const minted = [
-    ...storage.matchAll(/return mintedSpecVersion\(env, \{ inBandFence: true \}\);/g),
-  ];
+  const declared = [...storage.matchAll(/^\s*return SPEC_VERSION_SINGLE_ORCHESTRATOR;$/gm)];
   // Exactly one of each, or this is reading the wrong site: a second binding
   // or carrier would make "the first match" an arbitrary choice, and silently
   // answering for the wrong one is worse than failing here.
-  if (bound.length !== 1 || carried.length !== 1 || minted.length !== 1) {
+  if (bound.length !== 1 || carried.length !== 1 || declared.length !== 1) {
     throw new Error(
-      `expected the World's dist to bind specVersion to worldSpecVersion() once, carry it once, and mint with the in-band fence once, found ${String(bound.length)} binding(s), ${String(carried.length)} carrier(s) and ${String(minted.length)} mint(s)`,
+      `expected the World's dist to bind specVersion to worldSpecVersion() once, carry it once, and declare the single orchestrator once, found ${String(bound.length)} binding(s), ${String(carried.length)} carrier(s) and ${String(declared.length)} declaration(s)`,
     );
   }
-  const { mintedSpecVersion } = require(
+  const { SPEC_VERSION_SINGLE_ORCHESTRATOR } = require(
     require.resolve("@workflow/world", { paths: [worldRoot] }),
-  ) as {
-    mintedSpecVersion?: (
-      env?: Record<string, string | undefined>,
-      options?: { inBandFence?: boolean },
-    ) => number;
-  };
-  if (typeof mintedSpecVersion !== "function") {
-    throw new Error("@workflow/world does not export mintedSpecVersion()");
+  ) as { SPEC_VERSION_SINGLE_ORCHESTRATOR?: number };
+  if (typeof SPEC_VERSION_SINGLE_ORCHESTRATOR !== "number") {
+    throw new Error("@workflow/world does not export SPEC_VERSION_SINGLE_ORCHESTRATOR");
   }
-  return mintedSpecVersion({ WORKFLOW_SPEC_VERSION: "9" }, { inBandFence: true });
+  return SPEC_VERSION_SINGLE_ORCHESTRATOR;
 }
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins both platform worlds and the spec version each one declares", () => {
-    expect(worldManifest.version).toBe("0.31.1");
+    expect(worldManifest.version).toBe("1.0.0");
     expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
     // Both reviewed @workflow graphs stay recorded: the legacy World's, and
@@ -209,15 +184,10 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     const { SPEC_VERSION_CURRENT: postgresSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [postgresWorldRoot] }),
     ) as { SPEC_VERSION_CURRENT: number };
-    // Capability and declaration, asserted separately because they have
-    // differed before: the shared World's `@workflow/world` 5.0.3 can write
-    // spec 8 (the hook force-claim reader contract eve 0.66.3 brought in), and
-    // from 0.27.0 the World declares it too, which every line in the window
-    // reads (1.0 accepts 6 through 8); 0.23.0 through 0.26.x
-    // declared 7. The legacy World stays on slot identity. Moving the declared
-    // number is an eve-window decision, not a lockfile outcome — every line in
-    // the window must read what new Releases stamp. 0.30.0 stamps 9 under eve
-    // 1.0, whose runtime reads 6 through 9 from 1.0.0-rc.3.
+    // Capability and declaration, asserted separately because they differ:
+    // the shared World's `@workflow/world` reports 8 as its current spec while
+    // the World declares the single orchestrator (9) eve 1.0 asks for. The
+    // legacy World stays on slot identity.
     expect(sharedSpecVersion).toBe(8);
     expect(declaredWorldSpecVersion()).toBe(9);
     expect(postgresSpecVersion).toBe(6);
@@ -295,7 +265,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("exposes the bounded-storage controls in the operator reference", () => {
     const operatorReference = readSource("docs/en/reference/environment-variables.md");
     for (const name of [
-      "EVELAND_WORKFLOW_STREAM_COMPACTION",
+      "WORKFLOW_WORLD_STREAM_COMPACTION",
       "WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS",
       "WORKFLOW_DISPATCHER_TIMER_SWEEP_INTERVAL_MS",
       "WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS",

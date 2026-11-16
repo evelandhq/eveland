@@ -2,7 +2,7 @@
  * The shared workflow database has two audiences with different views of the
  * network, and they need different URLs.
  *
- * A deployment runs inside a container, so its injected `EVELAND_WORKFLOW_WORLD_URL`
+ * A deployment runs inside a container, so its injected `WORKFLOW_WORLD_URL`
  * has to name the database the way a container reaches it — on Docker Desktop
  * that is `host.docker.internal`, which does not resolve on the host at all.
  * The platform's own processes (the worker provisioning partitions, the API
@@ -15,12 +15,12 @@
  * ever set.
  */
 export function resolveWorkflowWorldPlatformUrl(env: NodeJS.ProcessEnv): string | undefined {
-  return env.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL ?? env.EVELAND_WORKFLOW_WORLD_URL;
+  return env.WORKFLOW_WORLD_BOOTSTRAP_URL ?? env.WORKFLOW_WORLD_URL;
 }
 
 /** The URL injected into deployments — always the container-reachable one. */
 export function resolveWorkflowWorldDeploymentUrl(env: NodeJS.ProcessEnv): string | undefined {
-  return env.EVELAND_WORKFLOW_WORLD_URL;
+  return env.WORKFLOW_WORLD_URL;
 }
 
 /** The suffix that turns the platform database's name into the workflow world's. */
@@ -33,7 +33,7 @@ export const WORKFLOW_DATABASE_SUFFIX = "_workflow";
  *
  * It has to be its own database rather than another schema inside the
  * platform's. This DSN is injected into every deployment (process-support.ts
- * reserves `EVELAND_WORKFLOW_WORLD_URL`), so a deployment's own — user-authored
+ * reserves `WORKFLOW_WORLD_URL`), so a deployment's own — user-authored
  * — code holds these credentials. Pointed at the platform database they open
  * the accounts, sessions and encrypted project-secret tables to every agent the
  * platform runs; pointed at a database holding nothing but the `workflow`

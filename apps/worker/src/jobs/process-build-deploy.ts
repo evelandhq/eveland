@@ -87,7 +87,7 @@ export async function handleBuildDeployJob(
 
   if (isProduction && !evelandWorkflowWorldUrl) {
     const detail =
-      "No EVELAND_WORKFLOW_WORLD_URL is configured for the shared durable workflow world every new build uses.";
+      "No WORKFLOW_WORLD_URL is configured for the shared durable workflow world every new build uses.";
     await store.appendLog({
       projectId: job.projectId,
       type: "deploy",

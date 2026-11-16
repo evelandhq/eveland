@@ -36,7 +36,7 @@ jobs:
       # PNPM_HOME keep pnpm on the store this job installed into (otherwise
       # pnpm's deps check resolves root's store, sees node_modules as stale
       # and tries to purge it), CI keeps pnpm non-interactive.
-      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow
+      WORKFLOW_WORLD_URL: postgres://eveland:eveland@127.0.0.1:5432/eveland_workflow
     steps:
       - uses: actions/checkout@v7
 
@@ -105,7 +105,7 @@ jobs:
       - name: Provision the shared workflow world database
         run: |
           # Same role/database the Lima guest creates: the worker injects
-          # EVELAND_WORKFLOW_WORLD_URL (job env above) into every Release it
+          # WORKFLOW_WORLD_URL (job env above) into every Release it
           # builds, and the deployed server refuses to boot without it. The
           # runner image ships PostgreSQL but leaves the service stopped.
           sudo systemctl start postgresql
@@ -115,13 +115,13 @@ jobs:
 
       - name: Worker preflight
         run: |
-          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "WORKFLOW_WORLD_URL=$WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/preflight-check.ts
 
       - name: Worker systemd smoke
         run: |
-          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "WORKFLOW_WORLD_URL=$WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts
 
@@ -134,7 +134,7 @@ jobs:
 
       - name: Agent sandbox end-to-end
         run: |
-          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "WORKFLOW_WORLD_URL=$WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/agent-sandbox-e2e.ts
 
@@ -144,13 +144,13 @@ jobs:
       # this proves the declaration builds and boots for real.
       - name: Starter template build e2e
         run: |
-          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "WORKFLOW_WORLD_URL=$WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/template-build-e2e.ts
 
       - name: Gateway e2e against the systemd runtime
         run: |
-          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "EVELAND_WORKFLOW_WORLD_URL=$EVELAND_WORKFLOW_WORLD_URL" \
+          sudo env "PATH=$PATH" "PNPM_HOME=$PNPM_HOME" "CI=$CI" "WORKFLOW_WORLD_URL=$WORKFLOW_WORLD_URL" \
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
             EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
             pnpm exec tsx infra/integration/gateway-e2e.mts

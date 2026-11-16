@@ -1,6 +1,6 @@
 // End-to-end proof, in the real Lima VM, that an imported eve project gets a
 // working bwrap sandbox it never declared, and that a redeploy preserves the
-// durable session workspace. The fixture authors its own Eve 0.64 sandbox on
+// durable session workspace. The fixture authors its own sandbox on
 // a Docker image the host never pulls, so every pass also proves Eveland
 // redirected it. Two layers combine to prove this, and both are required for
 // the script to report success:
@@ -119,60 +119,67 @@ const cacheDir = process.env.EVELAND_SANDBOX_CACHE_DIR;
 assert.ok(cacheDir, "EVELAND_SANDBOX_CACHE_DIR must be set");
 const environment = createBwrapSandboxProviderDefinition().environment({ cacheDir });
 const ctx = {
-  host: {
-    loadOptionalPackage: async () => {
-      throw new Error("unused");
-    },
-    resolveProjectPath: (projectPath) => projectPath,
-  },
-  session: {
-    auth: { current: null, initiator: null },
-    id: ${JSON.stringify(SESSION_KEY)},
-    turn: { id: "e2e-check", sequence: 0 },
-  },
+  kind: "session",
+  session: { id: ${JSON.stringify(SESSION_KEY)} },
   storagePath: path.join(releaseDir, ".eve", "sandbox-cache"),
 };
 const statePath = path.join(cacheDir, "e2e-provider-state.json");
 const markerContent = ${JSON.stringify(MARKER_CONTENT)};
 
+// eve builds run() and readTextFile() from the connection the same way.
+async function run(connection, command) {
+  const child = await connection.spawn({ command, env: {}, workingDirectory: "/workspace" });
+  const [stdout, stderr, exit] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.wait(),
+  ]);
+  return { exitCode: exit.exitCode, stdout, stderr };
+}
+async function readTextFile(connection, filePath) {
+  const stream = await connection.readFile({ path: filePath });
+  return stream === null ? null : await new Response(stream).text();
+}
+
 const mode = process.env.E2E_CHECK_MODE;
-let handle;
+let connection;
 if (mode === "seed") {
   const started = await environment.start(ctx, undefined, root.artifact);
-  handle = started.handle;
+  connection = started.connection;
   await writeFile(statePath, JSON.stringify(started.state));
 } else if (mode === "verify") {
   // Resumed against the second Release's artifact: the workspace belongs to
   // the session, not to the Release that first started it.
-  handle = await environment.resume(ctx, root.artifact, JSON.parse(await readFile(statePath, "utf8")));
+  connection = await environment.resume(ctx, root.artifact, JSON.parse(await readFile(statePath, "utf8")));
 } else {
   throw new Error('E2E_CHECK_MODE must be "seed" or "verify"');
 }
 try {
   if (mode === "seed") {
-    const prepared = await handle.sandbox.readTextFile({ path: "eveland-prepare.txt" });
+    const prepared = await readTextFile(connection, "eveland-prepare.txt");
     assert.equal(
       prepared,
       ${JSON.stringify(`authored-prepare-saw:${INITIAL_SEED_CONTENT}`)},
       "the authored prepare must have run inside the template during eve build",
     );
-    const result = await handle.sandbox.run({ command: "echo hello-from-sandbox" });
+    const result = await run(connection, "echo hello-from-sandbox");
     assert.equal(result.exitCode, 0, \`echo failed: \${result.stderr}\`);
     assert.ok(result.stdout.includes("hello-from-sandbox"), \`unexpected stdout: \${result.stdout}\`);
-    await handle.sandbox.writeTextFile({ path: "e2e-marker.txt", content: markerContent });
-    const restrict = await handle.sandbox.run({
-      command: "chmod 0600 /workspace/e2e-marker.txt && chmod 0700 /workspace",
+    await connection.writeFiles({
+      files: [{ path: "e2e-marker.txt", content: new TextEncoder().encode(markerContent) }],
     });
+    const restrict = await run(connection, "chmod 0600 /workspace/e2e-marker.txt && chmod 0700 /workspace");
     assert.equal(restrict.exitCode, 0, \`chmod failed: \${restrict.stderr}\`);
   } else {
-    const content = await handle.sandbox.readTextFile({ path: "e2e-marker.txt" });
+    const content = await readTextFile(connection, "e2e-marker.txt");
     assert.equal(content, markerContent, "durable session marker did not survive the redeploy");
-    const result = await handle.sandbox.run({ command: "echo still-alive" });
+    const result = await run(connection, "echo still-alive");
     assert.equal(result.exitCode, 0, \`echo failed: \${result.stderr}\`);
     assert.ok(result.stdout.includes("still-alive"), \`unexpected stdout: \${result.stdout}\`);
   }
 } finally {
-  await handle.onRuntimeShutdown();
+  // Stops the processes and keeps the workspace, as a server shutdown does.
+  await connection.stop();
 }
 console.log("E2E SANDBOX CHECK OK");
 `;

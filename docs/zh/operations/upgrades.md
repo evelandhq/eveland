@@ -84,7 +84,7 @@ eveland-ctl update
 
 ## 5. 把工作流世界迁出平台数据库
 
-在本次拆分之前配置的安装（`eveland-ctl` 此前把两个 DSN 都渲染到同一个库），其 `EVELAND_WORKFLOW_WORLD_URL` 指向的就是平台自己的库；`eveland-ctl doctor` 会以 `workflow-world-database` 报出来。这件事之所以要紧，是因为工作流库的 DSN 会注入到每一个 Agent Deployment：Agent 代码握着这份凭据，也就等于握着账号、会话与加密后的项目 Secret。
+在本次拆分之前配置的安装（`eveland-ctl` 此前把两个 DSN 都渲染到同一个库），其 `WORKFLOW_WORLD_URL` 指向的就是平台自己的库；`eveland-ctl doctor` 会以 `workflow-world-database` 报出来。这件事之所以要紧，是因为工作流库的 DSN 会注入到每一个 Agent Deployment：Agent 代码握着这份凭据，也就等于握着账号、会话与加密后的项目 Secret。
 
 平台不会替你自动改指向：正在执行的 Run、Timer 与 Hook 都在当前库的 `workflow` schema 里，静默切换会把它们丢在原地。请停机后手工迁移：
 
@@ -95,7 +95,7 @@ pg_dump -h 127.0.0.1 -p 17310 -U eveland -n workflow eveland \
   | psql -h 127.0.0.1 -p 17310 -U eveland eveland_workflow
 ```
 
-随后把所有组件指向新库——`etc/eveland.env` 里的 `EVELAND_WORKFLOW_WORLD_URL`（以及设置过的 `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL`）——再启动。用 `eveland-ctl doctor` 复核；等一次部署和一次工作流执行都通过之后，再删掉旧 schema：
+随后把所有组件指向新库——`etc/eveland.env` 里的 `WORKFLOW_WORLD_URL`（以及设置过的 `WORKFLOW_WORLD_BOOTSTRAP_URL`）——再启动。用 `eveland-ctl doctor` 复核；等一次部署和一次工作流执行都通过之后，再删掉旧 schema：
 
 ```sql
 DROP SCHEMA workflow CASCADE;

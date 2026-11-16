@@ -9,7 +9,7 @@ const heartbeat = {
   bootRecoveryCompleted: false,
   reenqueuedRuns: null,
   worldDatabaseIdentity: "cluster:7234567890123456789/eveland_workflow",
-  schemaGeneration: "0013_run_quarantines.sql",
+  schemaGeneration: "0001_baseline.sql",
   protocolMin: 1,
   protocolMax: 1,
   startedAt: "2026-08-18T00:00:00.000Z",

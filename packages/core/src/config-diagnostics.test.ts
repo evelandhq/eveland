@@ -83,14 +83,14 @@ describe("configuration diagnostics", () => {
 
   test("redacts the shared database URL", () => {
     const snapshot = createConfigurationSnapshot("worker", {
-      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL:
+      WORKFLOW_WORLD_BOOTSTRAP_URL:
         "postgres://world:database-password@db.internal:5432/workflow?sslmode=require",
     });
 
     expect(snapshot.entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL",
+          name: "WORKFLOW_WORLD_BOOTSTRAP_URL",
           value: "postgres://••••@db.internal:5432/workflow?sslmode=••••",
           sensitivity: "url",
         }),
@@ -99,17 +99,17 @@ describe("configuration diagnostics", () => {
     expect(JSON.stringify(snapshot)).not.toContain("database-password");
   });
 
-  test("reports workflow-world 0.7 bounded-storage controls", () => {
+  test("reports workflow-world bounded-storage controls", () => {
     const worker = createConfigurationSnapshot("worker", {});
     const dispatcher = createConfigurationSnapshot("workflow-dispatcher", {});
 
     expect(worker.entries).toContainEqual(
-      expect.objectContaining({ name: "EVELAND_WORKFLOW_STREAM_COMPACTION", value: "on" }),
+      expect.objectContaining({ name: "WORKFLOW_WORLD_STREAM_COMPACTION", value: "on" }),
     );
     expect(dispatcher.entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: "EVELAND_WORKFLOW_STREAM_COMPACTION",
+          name: "WORKFLOW_WORLD_STREAM_COMPACTION",
           value: "on",
         }),
         expect.objectContaining({

@@ -29,7 +29,7 @@ can run, and for failing closed instead of failing mysteriously.
 | Page                                                  | Decision it explains                                             |
 | ----------------------------------------------------- | ---------------------------------------------------------------- |
 | [Runtime](/docs/reference/design/runtime)             | Why production runs on systemd, not Docker                       |
-| [Sandbox](/docs/reference/design/sandbox)             | Why Eveland built its own bubblewrap sandbox backend             |
+| [Sandbox](/docs/reference/design/sandbox)             | Why Eveland built its own bubblewrap sandbox provider            |
 | [Scale to zero](/docs/reference/design/scale-to-zero) | Why Deployments idle-stop and how cold activation is shaped      |
 | [Workflow](/docs/reference/design/workflow)           | Why an external dispatcher and a purpose-built Workflow World    |
 | [Agent Gateway](/docs/reference/design/gateway)       | The data-plane invariants and what breaks without each           |

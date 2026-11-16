@@ -56,7 +56,7 @@ export type AppOptions = {
    * Expected `cluster:<system_identifier>/<database>` identity of the shared
    * workflow World, compared strictly against the dispatcher registration
    * before a workflow_step activation. Tests inject it; production derives it
-   * from the World database itself via `EVELAND_WORKFLOW_WORLD_URL`.
+   * from the World database itself via `WORKFLOW_WORLD_URL`.
    */
   worldClusterIdentity?: string;
   apiSessionIdleTtlMs?: number;

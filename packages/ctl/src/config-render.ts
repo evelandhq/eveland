@@ -69,13 +69,13 @@ export function renderPlatformEnv(options: {
     EVELAND_PUBLIC_ORIGIN: inputs.publicOrigin,
     EVELAND_AGENT_BASE_DOMAINS: deriveAgentBaseDomains(inputs.publicOrigin),
     DATABASE_URL: databaseUrl,
-    EVELAND_WORKFLOW_WORLD_URL: workflowWorldUrl,
+    WORKFLOW_WORLD_URL: workflowWorldUrl,
     // Deployments on macOS reach Postgres through host.docker.internal, which
     // the platform's own host processes cannot use; Linux Deployments are host
     // processes too, so there both views are the same loopback address and no
     // second DSN exists at all.
     ...(platform === "darwin" && inputs.databaseUrl === undefined
-      ? { EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: deriveWorkflowWorldUrl(bundledDatabaseUrl) }
+      ? { WORKFLOW_WORLD_BOOTSTRAP_URL: deriveWorkflowWorldUrl(bundledDatabaseUrl) }
       : {}),
     WORKFLOW_DISPATCHER_ACTIVATION_API_URL: `http://127.0.0.1:${API_PORT}`,
     // The API validates dispatcher activations against the gateway service
@@ -90,7 +90,7 @@ export function renderPlatformEnv(options: {
     EVELAND_OTLP_SERVICE_TOKEN: generateHexSecret(options.random),
     EVELAND_GATEWAY_SERVICE_TOKEN: gatewayServiceToken,
     EVELAND_GATEWAY_AFFINITY_SECRET: generateHexSecret(options.random),
-    EVELAND_SCHEDULER_RUNTIME_SECRET: generateHexSecret(options.random),
+    WORKFLOW_WORLD_RUNTIME_SECRET: generateHexSecret(options.random),
     EVELAND_SCHEDULER_DISPATCH_SECRET: generateHexSecret(options.random),
     EVELAND_SCHEDULER_REDEEM_URL: schedulerRedeemUrl,
     EVELAND_RUNTIME: platform === "darwin" ? "docker" : "systemd",

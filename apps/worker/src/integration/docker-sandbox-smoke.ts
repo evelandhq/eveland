@@ -15,7 +15,7 @@ import { allocateAvailableHostPort } from "../jobs/process.js";
 import { createDockerAdapter } from "../runtime/docker.js";
 import { waitForHttpHealth } from "../runtime/health.js";
 import { writeAgentRuntimePolicy } from "../runtime/observability/policy.js";
-import { resolveBackendDistDir } from "../runtime/select.js";
+import { resolveProviderDistDir } from "../runtime/select.js";
 import { processSafeName } from "../runtime/types.js";
 import { isCompletedTurnEvent, sessionStreamLineEvents } from "./delegated-turn.js";
 
@@ -31,7 +31,7 @@ const fixtureSourcePath = path.join(root, "source");
 const adapter = createDockerAdapter({
   internalPort: 3000,
   dataDir: process.env.EVELAND_DATA_DIR ?? ".eveland-data",
-  backendDistDir: resolveBackendDistDir,
+  providerDistDir: resolveProviderDistDir,
 });
 let started = false;
 
@@ -67,26 +67,38 @@ async function verifyContainerInitAndBwrapChurn(): Promise<void> {
   const churnScript = `
 import { mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
-import { createBwrapSandboxBackend } from "/app/.eveland/sandbox-bwrap/index.js";
+import { createBwrapSandboxProviderDefinition } from "/app/.eveland/sandbox-bwrap/index.js";
 const cacheRoot = process.env.EVELAND_SANDBOX_CACHE_DIR;
 if (!cacheRoot) throw new Error("missing EVELAND_SANDBOX_CACHE_DIR");
 const appRoot = await mkdtemp(path.join(cacheRoot, "pid-smoke-"));
+async function run(connection, command) {
+  const child = await connection.spawn({ command, env: {}, workingDirectory: "/workspace" });
+  const [, , exit] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.wait(),
+  ]);
+  return exit;
+}
 try {
-  const backend = createBwrapSandboxBackend({ createOptions: { cacheDir: appRoot, runTimeoutMs: 100 } });
-  const runtimeContext = { appRoot };
-  const handle = await backend.create({ templateKey: null, sessionKey: "pid-smoke", runtimeContext });
+  const environment = createBwrapSandboxProviderDefinition().environment({ cacheDir: appRoot, runTimeoutMs: 100 });
+  const storagePath = path.join(appRoot, "storage");
+  const artifact = await environment.prepare({ storagePath, log: () => {}, populate: async () => {}, templateKey: () => "pid-smoke" });
+  const ctx = { kind: "session", session: { id: "pid-smoke" }, storagePath };
+  const { connection, state } = await environment.start(ctx, undefined, artifact);
   for (let index = 0; index < 500; index += 1) {
-    const result = await handle.session.run({ command: "true" });
+    const result = await run(connection, "true");
     if (result.exitCode !== 0) throw new Error("short command failed at " + index);
   }
   let timedOut = false;
   try {
-    await handle.session.run({ command: "sleep 30 & (sleep 30 & wait) & wait" });
+    await run(connection, "sleep 30 & (sleep 30 & wait) & wait");
   } catch (error) {
-    timedOut = String(error).includes("timed out");
+    timedOut = String(error).includes("command timed out");
   }
   if (!timedOut) throw new Error("recursive background command did not hit its deadline");
-  await handle.shutdown();
+  await connection.stop();
+  await environment.onSessionEnd(ctx, state, { reason: "deleted" });
 } finally {
   await rm(appRoot, { recursive: true, force: true });
 }

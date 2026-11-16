@@ -31,7 +31,7 @@ describe("renderPlatformEnv", () => {
       "EVELAND_PUBLIC_ORIGIN",
       "EVELAND_AGENT_BASE_DOMAINS",
       "DATABASE_URL",
-      "EVELAND_WORKFLOW_WORLD_URL",
+      "WORKFLOW_WORLD_URL",
       "WORKFLOW_DISPATCHER_ACTIVATION_API_URL",
       "WORKFLOW_DISPATCHER_ACTIVATION_TOKEN",
       "APP_SECRET_KEY",
@@ -42,7 +42,7 @@ describe("renderPlatformEnv", () => {
       "EVELAND_OTLP_SERVICE_TOKEN",
       "EVELAND_GATEWAY_SERVICE_TOKEN",
       "EVELAND_GATEWAY_AFFINITY_SECRET",
-      "EVELAND_SCHEDULER_RUNTIME_SECRET",
+      "WORKFLOW_WORLD_RUNTIME_SECRET",
       "EVELAND_SCHEDULER_DISPATCH_SECRET",
       "EVELAND_SCHEDULER_REDEEM_URL",
       "EVELAND_RUNTIME",
@@ -58,16 +58,16 @@ describe("renderPlatformEnv", () => {
   test("macOS derives Docker-shaped deployment addresses and the docker runtime", () => {
     const { values } = render("darwin");
     expect(values.EVELAND_RUNTIME).toBe("docker");
-    expect(values.EVELAND_WORKFLOW_WORLD_URL).toContain("host.docker.internal");
-    expect(values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toContain("127.0.0.1");
+    expect(values.WORKFLOW_WORLD_URL).toContain("host.docker.internal");
+    expect(values.WORKFLOW_WORLD_BOOTSTRAP_URL).toContain("127.0.0.1");
     expect(values.EVELAND_SCHEDULER_REDEEM_URL).toContain("host.docker.internal");
   });
 
   test("Linux derives loopback deployment addresses and the systemd runtime", () => {
     const { values } = render("linux");
     expect(values.EVELAND_RUNTIME).toBe("systemd");
-    expect(values.EVELAND_WORKFLOW_WORLD_URL).toContain("127.0.0.1");
-    expect(values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBeUndefined();
+    expect(values.WORKFLOW_WORLD_URL).toContain("127.0.0.1");
+    expect(values.WORKFLOW_WORLD_BOOTSTRAP_URL).toBeUndefined();
     expect(values.EVELAND_SCHEDULER_REDEEM_URL).toContain("127.0.0.1");
   });
 
@@ -78,10 +78,8 @@ describe("renderPlatformEnv", () => {
     const dsn = "postgres://ops:pw@db.internal:6543/platform";
     const { values } = render("linux", { ...INPUTS, databaseUrl: dsn });
     expect(values.DATABASE_URL).toBe(dsn);
-    expect(values.EVELAND_WORKFLOW_WORLD_URL).toBe(
-      "postgres://ops:pw@db.internal:6543/platform_workflow",
-    );
-    expect(values.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL).toBeUndefined();
+    expect(values.WORKFLOW_WORLD_URL).toBe("postgres://ops:pw@db.internal:6543/platform_workflow");
+    expect(values.WORKFLOW_WORLD_BOOTSTRAP_URL).toBeUndefined();
   });
 
   test("the shared workflow world is never the platform's own database", () => {
@@ -91,7 +89,7 @@ describe("renderPlatformEnv", () => {
     for (const platform of ["darwin", "linux"] as const) {
       const { values } = render(platform);
       const platformDatabase = new URL(values.DATABASE_URL!).pathname;
-      for (const key of ["EVELAND_WORKFLOW_WORLD_URL", "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL"]) {
+      for (const key of ["WORKFLOW_WORLD_URL", "WORKFLOW_WORLD_BOOTSTRAP_URL"]) {
         const value = values[key];
         if (!value) continue;
         expect(new URL(value).pathname, `${platform} ${key}`).not.toBe(platformDatabase);
@@ -106,10 +104,10 @@ describe("renderPlatformEnv", () => {
     // a second, differently-addressed view of the same database would be a
     // way to point them at different clusters and nothing else.
     const { values } = render("linux");
-    const world = Object.entries(values).filter(([key]) =>
-      key.startsWith("EVELAND_WORKFLOW_WORLD"),
+    const world = Object.entries(values).filter(
+      ([key]) => key.startsWith("WORKFLOW_WORLD_") && key.endsWith("_URL"),
     );
-    expect(world).toEqual([["EVELAND_WORKFLOW_WORLD_URL", values.EVELAND_WORKFLOW_WORLD_URL]]);
+    expect(world).toEqual([["WORKFLOW_WORLD_URL", values.WORKFLOW_WORLD_URL]]);
   });
 
   test("the dispatcher activation token IS the gateway service token — the API validates against it", () => {
@@ -119,10 +117,8 @@ describe("renderPlatformEnv", () => {
 
   test("the scheduler secrets are independent values, as the worker preflight requires", () => {
     const { values } = render("darwin");
-    expect(values.EVELAND_SCHEDULER_RUNTIME_SECRET).not.toBe(
-      values.EVELAND_SCHEDULER_DISPATCH_SECRET,
-    );
-    expect(values.EVELAND_SCHEDULER_RUNTIME_SECRET!.length).toBeGreaterThanOrEqual(32);
+    expect(values.WORKFLOW_WORLD_RUNTIME_SECRET).not.toBe(values.EVELAND_SCHEDULER_DISPATCH_SECRET);
+    expect(values.WORKFLOW_WORLD_RUNTIME_SECRET!.length).toBeGreaterThanOrEqual(32);
     expect(values.EVELAND_SCHEDULER_DISPATCH_SECRET!.length).toBeGreaterThanOrEqual(32);
   });
 
@@ -134,7 +130,7 @@ describe("renderPlatformEnv", () => {
       values.EVELAND_OTLP_SERVICE_TOKEN,
       values.EVELAND_GATEWAY_SERVICE_TOKEN,
       values.EVELAND_GATEWAY_AFFINITY_SECRET,
-      values.EVELAND_SCHEDULER_RUNTIME_SECRET,
+      values.WORKFLOW_WORLD_RUNTIME_SECRET,
       values.EVELAND_SCHEDULER_DISPATCH_SECRET,
     ];
     expect(new Set(secrets).size).toBe(secrets.length);

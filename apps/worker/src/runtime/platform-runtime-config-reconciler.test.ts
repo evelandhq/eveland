@@ -11,9 +11,9 @@ import {
 import { RESERVED_RUNTIME_ENVIRONMENT_INPUTS } from "./reserved-environment.js";
 
 const baseEnv = {
-  EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland@127.0.0.1:17310/eveland_workflow",
+  WORKFLOW_WORLD_URL: "postgres://eveland@127.0.0.1:17310/eveland_workflow",
   EVELAND_IDENTITY_ISSUER: "https://identity.example.com",
-  EVELAND_SCHEDULER_RUNTIME_SECRET: "scheduler-runtime-secret",
+  WORKFLOW_WORLD_RUNTIME_SECRET: "scheduler-runtime-secret",
   NODE_ENV: "production",
 } as const satisfies NodeJS.ProcessEnv;
 
@@ -66,7 +66,7 @@ describe("platformRuntimeConfigurationFingerprint", () => {
 
   test("distinguishes an unset variable from an empty one", () => {
     expect(platformRuntimeConfigurationFingerprint({})).not.toBe(
-      platformRuntimeConfigurationFingerprint({ EVELAND_WORKFLOW_WORLD_URL: "" }),
+      platformRuntimeConfigurationFingerprint({ WORKFLOW_WORLD_URL: "" }),
     );
   });
 
@@ -108,7 +108,7 @@ describe("reconcilePlatformRuntimeConfiguration", () => {
         dataDir,
         env: {
           ...baseEnv,
-          EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland@10.0.0.5:5432/eveland_workflow",
+          WORKFLOW_WORLD_URL: "postgres://eveland@10.0.0.5:5432/eveland_workflow",
         },
       }),
     ).resolves.toHaveLength(1);

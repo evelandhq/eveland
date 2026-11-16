@@ -37,7 +37,7 @@ function fakeServiceFactory(state: { phase: "ready" | "stopped" }) {
 function runnerDeps(overrides: Record<string, unknown> = {}) {
   return {
     fetchImplementation: vi.fn(),
-    readSchemaGeneration: vi.fn(async () => "0013_run_quarantines.sql"),
+    readSchemaGeneration: vi.fn(async () => "0001_baseline.sql"),
     readWorldIdentity: vi.fn(async () => "cluster:7234567890123456789/eveland_workflow"),
     now: () => new Date("2026-08-18T00:00:00.000Z"),
     ...overrides,
@@ -198,7 +198,7 @@ describe("eveland workflow dispatcher runner", () => {
       ownershipAcquired: true,
       bootRecoveryCompleted: true,
       reenqueuedRuns: 3,
-      schemaGeneration: "0013_run_quarantines.sql",
+      schemaGeneration: "0001_baseline.sql",
       protocolMin: 1,
       protocolMax: 1,
       worldDatabaseIdentity: "cluster:7234567890123456789/eveland_workflow",
@@ -220,14 +220,14 @@ describe("eveland workflow dispatcher runner", () => {
         runId: "wrun_live",
         workflowName: "wf",
         deploymentId: "dep_live",
-        queueNamespace: null,
+        queueNamespace: "",
       },
       {
         tenantId: "p_a",
         runId: "wrun_doomed",
         workflowName: "wf",
         deploymentId: "dep_doomed",
-        queueNamespace: null,
+        queueNamespace: "",
       },
     ];
     const preflightBodies: Array<Record<string, unknown>> = [];
@@ -269,7 +269,7 @@ describe("eveland workflow dispatcher runner", () => {
         runId: "wrun_live",
         workflowName: "wf",
         deploymentId: "dep_live",
-        queueNamespace: null,
+        queueNamespace: "",
       },
     ];
     const fetchImplementation = vi.fn(async (url: string) => {
@@ -306,7 +306,7 @@ describe("eveland workflow dispatcher runner", () => {
         runId: "wrun_live",
         workflowName: "wf",
         deploymentId: "dep_live",
-        queueNamespace: null,
+        queueNamespace: "",
       },
     ];
     await expect(options.filterBootRecoveryRuns!(candidates)).resolves.toEqual(candidates);

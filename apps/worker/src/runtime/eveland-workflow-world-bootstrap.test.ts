@@ -29,8 +29,8 @@ describe("bootstrapEvelandWorkflowWorld", () => {
     await expect(
       bootstrapEvelandWorkflowWorld(
         {
-          EVELAND_WORKFLOW_WORLD_URL: "postgres://runtime:secret@runtime-db/workflow",
-          EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: "postgres://host:secret@host-db/workflow",
+          WORKFLOW_WORLD_URL: "postgres://runtime:secret@runtime-db/workflow",
+          WORKFLOW_WORLD_BOOTSTRAP_URL: "postgres://host:secret@host-db/workflow",
         },
         { createPool, runMigrations },
       ),
@@ -47,7 +47,7 @@ describe("bootstrapEvelandWorkflowWorld", () => {
 
     await expect(
       bootstrapEvelandWorkflowWorld(
-        { EVELAND_WORKFLOW_WORLD_URL: "postgres://host/world" },
+        { WORKFLOW_WORLD_URL: "postgres://host/world" },
         { createPool: () => pool, runMigrations },
       ),
     ).resolves.toBe(true);
