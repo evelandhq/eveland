@@ -15,9 +15,18 @@ The CLI ships directly as the `bin` of the official [`eveland`](https://www.npmj
 | :---------------------------- | :------------------------------------------------ | :-------------------------------------------------------------------- |
 | **npm scripts** (Recommended) | Standard development workflow pinned to lockfiles | Add `"deploy": "eveland deploy"` to `package.json`, run `pnpm deploy` |
 | **Direct execution**          | Ad-hoc interactive command runs                   | `pnpm exec eveland <command>` or `npx eveland <command>`              |
-| **Scaffolding**               | Initializing new projects                         | `pnpm dlx eveland@latest init <dir>`                                  |
 
 _Note: In local repository checkouts, run directly via `pnpm eveland <command>`._
+
+To start a new agent, scaffold it with eve and add the package:
+
+```bash
+npx eve@latest init my-agent
+cd my-agent
+npm install eveland
+```
+
+The package provides `eveland/auth` (`evelandIdentity()`), `eveland/memory`, and this CLI. Keep the agent's files in `agent/`, where `eve init` puts them: Eveland deploys one agent per repository from that directory ([Source import](/docs/reference/source-import)).
 
 ---
 
@@ -48,7 +57,6 @@ Invoking `eveland login` initiates an RFC 8628 device authorization flow:
 
 | Command                | Behavior and Arguments                                                                                                                                                                                                                                           |
 | :--------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eveland init <dir>`   | Scaffolds a new Eve agent project from starter templates.                                                                                                                                                                                                        |
 | `eveland login`        | Authenticates via device authorization flow, storing credentials per origin.                                                                                                                                                                                     |
 | `eveland logout`       | Purges stored credentials for the target origin.                                                                                                                                                                                                                 |
 | `eveland whoami`       | Prints current origin, user profile, role, and token scopes.                                                                                                                                                                                                     |

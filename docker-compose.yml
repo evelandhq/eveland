@@ -9,6 +9,9 @@ services:
       - "127.0.0.1:17310:5432"
     volumes:
       - eveland-postgres:/var/lib/postgresql/data
+      # Creates eveland_workflow, the shared workflow world's own database, on
+      # a fresh volume.
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
 
   otel-config-init:
     image: alpine:3.22
@@ -69,7 +72,7 @@ services:
       # host's and a Deployment's views; on the compose network both are this
       # container's own loopback. Pinning the container's view here wins,
       # because --env-file never overrides an existing variable.
-      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
+      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland_workflow
       APP_SECRET_KEY: eveland-dev-secret-key-000000000
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}"
       EVELAND_ADMIN_EMAIL: ${EVELAND_ADMIN_EMAIL:-admin@example.com}
@@ -143,9 +146,9 @@ services:
       CI: "true"
       # Explicit: eveland-dev-* fallback secrets only apply under NODE_ENV=development.
       NODE_ENV: development
-      # Shares the platform database in dev; production gives the workflow world
-      # its own so the two schemas never mix.
-      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@postgres:5432/eveland
+      # Its own database, as in production: every Deployment holds this DSN, so
+      # it must not open the platform's tables.
+      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@postgres:5432/eveland_workflow
       EVELAND_WORKFLOW_STREAM_COMPACTION: ${EVELAND_WORKFLOW_STREAM_COMPACTION:-on}
       WORKFLOW_DISPATCHER_ACTIVATION_API_URL: http://api:17301
       WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: ${EVELAND_GATEWAY_SERVICE_TOKEN:-eveland-dev-gateway-token}
@@ -201,8 +204,8 @@ services:
       # Deployed Agent containers reach the shared workflow database through the
       # host gateway; the worker bootstraps it through its Compose-reachable
       # address below.
-      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@host.docker.internal:17310/eveland
-      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland
+      EVELAND_WORKFLOW_WORLD_URL: postgres://eveland:eveland@host.docker.internal:17310/eveland_workflow
+      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland_workflow
       EVELAND_WORKFLOW_RUNNER: ${EVELAND_WORKFLOW_RUNNER:-external}
       EVELAND_WORKFLOW_STREAM_COMPACTION: ${EVELAND_WORKFLOW_STREAM_COMPACTION:-on}
       EVELAND_DATA_DIR: /workspace/.eveland-data

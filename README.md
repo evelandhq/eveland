@@ -58,6 +58,10 @@ docker compose -f docker-compose.yml -f docker-compose.native.yml up -d postgres
 pnpm dev                               # start all six dev processes
 ```
 
+The shared workflow world has its own database, `eveland_workflow`, which
+Compose creates on a fresh Postgres volume. A volume created before that needs
+it once: `docker compose exec postgres createdb -U eveland eveland_workflow`.
+
 On Linux, the bridged Collector reaches the host through Docker's private
 bridge address rather than a proxied `host.docker.internal`, so the API needs a
 listener there. Export it before `pnpm dev`:
