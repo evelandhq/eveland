@@ -84,4 +84,4 @@ eveland-ctl doctor    # 一次性列出健康宿主机所缺的一切
 - [生产架构概览](/zh/docs/production)：五个核心服务各自负责什么，以及为什么跑在 systemd 上
 - [eveland-ctl](/zh/docs/reference/ctl)：目录布局、完整命令参考与体检项
 - [升级与回滚](/zh/docs/operations/upgrades)：如何安全地在版本之间移动
-- [故障排查](/zh/docs/reference/troubleshooting)：按症状定位问题
+- [健康诊断](/zh/docs/operations/diagnostics#5-按故障现象排查)：按症状定位问题

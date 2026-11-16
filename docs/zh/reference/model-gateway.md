@@ -109,7 +109,7 @@ eve 构建时按模型 ID 在 Vercel AI Gateway 的模型目录里查上下文�
 
 ## 9. 本地开发
 
-默认情况下，`eve dev` 通过 `/login` 连接开发者自己的 Vercel 账号，不需要任何配置。要在本地使用同一个非 Vercel 网关（需要 eve ≥ 1.0.0-rc.2）：
+默认情况下，`eve dev` 通过 `/login` 连接开发者自己的 Vercel 账号，不需要任何配置。要在本地使用同一个非 Vercel 网关：
 
 ```ts title="agent/instrumentation/model-gateway.ts"
 import { defineInstrumentation } from "eve/instrumentation";

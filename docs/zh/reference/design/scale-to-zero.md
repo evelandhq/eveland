@@ -54,3 +54,4 @@ Eve 框架原本的定时调度计时器运行在进程内部。这一机制在�
 - [为什么是 systemd 而不是 Docker](/zh/docs/reference/design/runtime)：运行时密度与休眠边际成本论证
 - [路由与 Deployment 生命周期契约](/zh/docs/reference/routing)：ActivationLease、端口预留与冷启动
 - [定时任务与自动化](/zh/docs/observe/schedules)：面向开发者的定时调度与唤醒概览
+- [调度行为契约](/zh/docs/reference/scheduling)：Planner 状态机、预热与执行边界

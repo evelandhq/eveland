@@ -84,4 +84,4 @@ Re-running the installer on a machine that already has Eveland is an upgrade —
 - [Production architecture](/docs/production): what the five services do and why they run as systemd units
 - [eveland-ctl](/docs/reference/ctl): appliance layout, full command reference, and doctor checks
 - [Upgrades and rollbacks](/docs/operations/upgrades): moving between releases safely
-- [Troubleshooting](/docs/reference/troubleshooting): symptom-by-symptom triage
+- [Health and diagnostics](/docs/operations/diagnostics#5-troubleshooting-by-symptom): symptom-by-symptom triage

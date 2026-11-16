@@ -84,4 +84,4 @@ Before it touches anything, `update` reads the target release's `CHANGELOG.md` a
 
 - [Backup and restore](/docs/operations/backup-restore): full backup and disaster recovery procedures
 - [Runtime and resources](/docs/operations/runtime): deployment lifecycles and workflow retention classes
-- [Configuration reference](/docs/reference/configuration): component environment variable ownership
+- [Environment variables](/docs/reference/environment-variables): every variable, its default, and its owning component

@@ -9,16 +9,9 @@ Eve's `DefaultSandbox` picks its provider once, at `eve build`: Vercel Sandbox o
 
 In Eveland's host-native architecture, production hosts run no Docker daemon by design, so the default leaves every agent without a working sandbox.
 
-## Evaluation of Alternatives
+## Why bubblewrap
 
-| Option                               | Assessment                                                                                           |
-| :----------------------------------- | :--------------------------------------------------------------------------------------------------- |
-| **Vercel Sandbox**                   | Available only in managed cloud environments; cannot support on-premises deployments.                |
-| **Eve Docker Backend**               | Requires a continuous Docker daemon, conflicting with host-native density goals.                     |
-| **just-bash**                        | Pure JS simulation; cannot execute compiled binaries or native scripts.                              |
-| **Micro-VM Isolation (Firecracker)** | Excellent for hostile multi-tenant isolation, but adds excessive overhead for internal agent fleets. |
-
-**bubblewrap (bwrap)** emerged as the ideal solution: it requires only an unprivileged user namespace and stacks seamlessly on top of systemd hardening directives (such as `NoNewPrivileges=yes` and `ProtectSystem=strict`). Eveland publishes this provider as [`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap) with zero runtime dependencies.
+The sandbox has to run on a self-hosted host without a Docker daemon, execute real binaries such as `python` and `git`, and cost little enough per command that one machine can serve a fleet of Agents. **bubblewrap (bwrap)** meets all three: it needs only an unprivileged user namespace and stacks on top of the systemd hardening each Deployment already runs under (such as `NoNewPrivileges=yes` and `ProtectSystem=strict`). The accepted cost is a shared kernel, which suits Agents a team runs for itself rather than mutually hostile tenants. Eveland publishes the provider as [`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap), with zero runtime dependencies.
 
 ## Defined Security Boundary
 

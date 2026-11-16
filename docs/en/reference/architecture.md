@@ -24,11 +24,13 @@ description: Review application ownership, dependency direction, data paths, and
 Eveland enforces strict one-way architectural boundaries, guarded by ratchet test suites:
 
 ```text
-apps (Web, API, Gateway, Worker) ──> packages
-packages/session-collector ─────────> packages/core + packages/db
-packages/db ────────────────────────> packages/core
-packages/core ──────────────────────> No internal Eveland package dependencies (Root package)
-apps -X-> apps (Strictly forbidden: no app-to-app cross imports)
+apps ──────────────────────────────────────> packages
+session-collector, agent-auth, identity-broker ──> core + db
+agent-observer, agent-scheduler, ctl ──────> core
+db ────────────────────────────────────────> core
+core ──────────────────────────────────────> no other Eveland package
+eveland (published SDK and CLI) ───────────> no Eveland package
+apps -X-> apps (no app-to-app imports)
 ```
 
 ---
@@ -39,7 +41,7 @@ apps -X-> apps (Strictly forbidden: no app-to-app cross imports)
 External client request
   → Wildcard HTTPS host (*.agents.example.com)
   → Reverse proxy (Traefik terminates TLS)
-  → Agent Gateway (Host port 17300, validates Host & Auth)
+  → Agent Gateway (loopback port 17300, validates Host & Auth)
   → Routing policy / SessionBinding resolution
   → Private loopback deployment (127.0.0.1:18000–18999)
   → Eve HTTP channel execution

@@ -1,6 +1,6 @@
 ---
 title: Health and diagnostics
-description: Diagnose platform service availability, triage failure surfaces, and verify sandbox self-checks.
+description: Diagnose platform service availability, triage failure surfaces, verify sandbox self-checks, and troubleshoot common failures by symptom.
 ---
 
 Eveland clearly separates **component availability (Health)**, **asynchronous job logs (Job Logs)**, **runtime process output (Runtime Output)**, and **session traces (Session Events)**, helping operators quickly locate root causes.
@@ -59,10 +59,111 @@ During release compilation, Eveland injects the lightweight sandbox and immediat
   2. Ensure the `/workspace` mount directory exists on the host;
   3. Ensure the complete toolchain (`bwrap`, `rg`, GNU `grep`, etc.) is installed on `PATH`.
 
-Next: For specific error codes and symptoms, consult the [Troubleshooting reference](/docs/reference/troubleshooting).
+---
+
+## 5. Troubleshooting by symptom
+
+Start from **Settings → Instance health**, then find the symptom below.
+
+### 5.1 Worker fails to start
+
+**Common causes**
+
+- Missing host dependencies (e.g. `bubblewrap`, `apparmor`, or unprivileged `bwrap` user namespace permissions);
+- Absent `/workspace` mount point or missing `eveland-app` / `eveland-build` system users;
+- Unset `WORKFLOW_WORLD_URL` or inability to connect to PostgreSQL.
+
+**Remediation**
+
+1. Inspect Worker systemd logs:
+   ```bash
+   sudo journalctl -u eveland-worker -n 50 --no-pager
+   ```
+2. Run the host checks and address what they report:
+   ```bash
+   eveland-ctl doctor
+   ```
+
+### 5.2 Project import stays in "Pending" status
+
+**Common causes**
+
+- Worker process is inactive or failed;
+- Worker and API connect to different databases or point to mismatched `EVELAND_DATA_DIR` roots.
+
+**Remediation**
+
+1. Verify the Worker service is active:
+   ```bash
+   sudo systemctl status eveland-worker
+   ```
+2. Confirm that `DATABASE_URL` and `EVELAND_DATA_DIR` match exactly between API and Worker configuration files.
+
+### 5.3 Build succeeds but health check times out
+
+**Common causes**
+
+- Agent code fails to bind to the dynamically assigned port;
+- Agent crashes on startup or hangs during initialization;
+- Post-build sandbox self-check failed.
+
+**Remediation**
+
+1. Inspect deployment runtime logs:
+   ```bash
+   sudo journalctl -u eveland-<projectSlug>-<deploymentId>.service -n 100 --no-pager
+   ```
+2. Confirm that `GET http://127.0.0.1:<port>/eve/v1/health` returns HTTP 200 with `{ "ok": true }`. Any other answer keeps the Deployment from becoming ready. A 404 usually means an authored `agent/channels/eve.ts` replaced the eve channel with `defineChannel(...)`, which drops the health route; use `eveChannel(...)` to keep it.
+
+### 5.4 Public host returns 502 Bad Gateway or cold-start timeout
+
+**Common causes**
+
+- Agent Gateway service is inactive or port `17300` is blocked;
+- Reverse proxy (Traefik) misconfigured;
+- Agent cold start exceeded the configured readiness timeout (default: 30 seconds).
+
+**Remediation**
+
+1. Verify Agent Gateway status and health:
+   ```bash
+   sudo systemctl status eveland-gateway
+   curl -I http://127.0.0.1:17300/health
+   ```
+2. Inspect deployment event logs in the dashboard to determine if model loading or dependency imports caused cold-start delays. Increase `EVELAND_COLD_START_TIMEOUT_MS` if necessary.
+
+### 5.5 Token usage or conversation events are missing
+
+**Common causes**
+
+- Managed OTel Collector container is offline or unreachable;
+- Model provider omitted usage in the response stream (a model run with no `usage.recorded`).
+
+**Remediation**
+
+1. Check OTel Collector container logs:
+   ```bash
+   docker compose logs otel-collector
+   ```
+2. Check exporter connectivity in **Settings → Observability**. Eveland records real reported token usage and never estimates missing values.
+
+### 5.6 Scheduled tasks (Schedules) do not run
+
+**Common causes**
+
+- Workflow Dispatcher is stopped or unable to acquire its advisory lock;
+- Non-standard cron syntax (Eveland requires 5-field minute-resolution cron, read in UTC unless the schedule sets an IANA `timezone`).
+
+**Remediation**
+
+1. Check Dispatcher status and heartbeats:
+   ```bash
+   sudo systemctl status eveland-workflow-dispatcher
+   sudo journalctl -u eveland-workflow-dispatcher -n 50 --no-pager
+   ```
+2. Open **Sessions** history for the project, inspect the **ScheduleRun** entry, and review missed ticks or error traces.
 
 ## Deeper reference
 
-- [Troubleshooting reference](/docs/reference/troubleshooting): symptom-indexed triage for concrete failures
 - [Runtime and resources](/docs/operations/runtime): instance lifecycle and resource limits
 - [Sandbox design decisions](/docs/reference/design/sandbox): bubblewrap hardening and self-check design

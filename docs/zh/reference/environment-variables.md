@@ -13,6 +13,11 @@ Collector）读取的全部环境变量参考。每个变量都列出默认值�
 除非另有说明，变量都在进程启动时经 `process.env` 读取。"生产必填"表示缺失时进程
 抛错或部署被阻断。
 
+在已安装的主机上，配置位于 `/opt/eveland/etc/eveland.env`，由 `eveland-ctl` 在首次启动时
+生成，并拆分为各 systemd 单元的服务级环境文件。不要把开发环境的 Fallback 带进生产。
+管理员可以在 **Settings → About** 对比各组件按白名单展示的生效配置，Secret 值始终脱敏。
+Agent 采集、隐私与外部遥测目的地属于 System 设置，不是环境变量。
+
 ---
 
 ## Storage
@@ -118,7 +123,7 @@ Internal-provider 里程碑使用 Same-site 浏览器拓扑。Eveland Identity �
 | `EVELAND_RELEASE_SWEEP_BATCH_SIZE`                  | 一次自动 Release 扫描排队的新归档 Job 上限。                                                                                                                                                                                                                                                                                                                                                                                     | `25`                                                  | Worker（`runtime/release-reaper.ts`）                                                                    |
 | `EVELAND_WORKFLOW_RUN_RECONCILE_INTERVAL_MS`        | 清算无人能再恢复的 Workflow Run 的扫描间隔：绑定在永远无法再激活的 Deployment（缺失或已归档）上的 Run 会被置为失败；已停止且被取代的 Deployment 上，若归档策略已不再保留它（没有路由目标、没有处于空闲 TTL 内的 SessionBinding、没有请求租约、且不在 `EVELAND_RELEASE_RETENTION` 的最新窗口内），其上 Eve 自身的 session Run 会被取消；只要该 Deployment 上还有项目自己编写的 workflow 在休眠，整台的 Run 都不动。`0` 关闭扫描。 | `60000`（1 分钟）                                     | Worker（`worker.ts`）                                                                                    |
 | `WORKFLOW_WORLD_STREAM_COMPACTION`                  | 为新的共享 World Stream 写入与终态 Block 重写启用 Snapshot 剥离。`off` 是紧急开关；读取方始终接受混合存储格式。Reserved，注入共享 World Deployment。                                                                                                                                                                                                                                                                             | `on`                                                  | Worker（`jobs/process-support.ts`）、Dispatcher、Deployment Runtime                                      |
-| `WORKFLOW_SPEC_VERSION`                             | 上游 Workflow SDK 的设置，共享 World 按 Deployment 逐个遵守：该 Deployment 创建的每个运行所打戳的存储 Spec。eve 1.0.0-rc.3 及之后会设为 `9`（单 Orchestrator，共享 World 自 0.30.0 起以 In-band Writer Fence 服务它），除非 Deployment 自己设置了它或 `WORKFLOW_SEALED_LOG`；`6` 到 `8` 同样遵守。平台不注入。已在进行中的运行保持其打戳时的版本。                                                                               | eve 1.0.0-rc.3+ 下为 `9`（否则未设置：Spec 8）        | Deployment Runtime（`@evelandhq/workflow-world`）                                                        |
+| `WORKFLOW_SPEC_VERSION`                             | 上游 Workflow SDK 的设置，共享 World 按 Deployment 逐个遵守：该 Deployment 创建的每个运行所打戳的存储 Spec。eve 会设为 `9`（单 Orchestrator，共享 World 以 In-band Writer Fence 服务它），除非 Deployment 自己设置了它或 `WORKFLOW_SEALED_LOG`；`6` 到 `8` 同样遵守。平台不注入。已在进行中的运行保持其打戳时的版本。                                                                                                            | `9`，由 eve 设置                                      | Deployment Runtime（`@evelandhq/workflow-world`）                                                        |
 | `WORKFLOW_SEALED_LOG`                               | 上游 Workflow SDK 的开关，共享 World 按 Deployment 逐个遵守，仅在 `WORKFLOW_SPEC_VERSION` 未设置时读取（上游已将其弃用）：未设置或 `1` 时声明 World 的默认值（Spec 8，Hook 强制接管），`0` 时声明 Spec 6。设置它也会让 eve 1.0 不再请求 Spec 9。平台不注入；Project 可以把它当作紧急兼容开关。                                                                                                                                   | 未设置                                                | Deployment Runtime（`@evelandhq/workflow-world`）                                                        |
 | `EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS`      | Dispatcher 注册 Heartbeat 需要多新鲜，否则生产共享构建与 `workflow_step` Activation 以 `workflow_unavailable` Fail Closed。systemd "active" 与 stdout Ready Token 都不能替代注册。                                                                                                                                                                                                                                               | `60000`                                               | API（`app-workflow-dispatcher-routes.ts`）、Worker（`jobs/process-build-deploy.ts`）                     |
 | `EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_INTERVAL_MS` | Dispatcher 向 Control API 报告机器可读注册（状态、Ownership、Boot Recovery、World Identity、协议窗口）的频率。                                                                                                                                                                                                                                                                                                                   | `15000`                                               | workflow-dispatcher（`dispatcher-runner.ts`）                                                            |
@@ -152,7 +157,7 @@ Internal-provider 里程碑使用 Same-site 浏览器拓扑。Eveland Identity �
 
 Dispatcher（`apps/workflow-dispatcher`，`@evelandhq/workflow-world` 内 Dispatcher 的薄启动器）从共享 Workflow Database Claim Durable Workflow Job，并把每个 Step POST 回所属 Agent Deployment，若其已被 Idle-reaped 则先激活。它读取上文的 `WORKFLOW_WORLD_URL` / `WORKFLOW_WORLD_BOOTSTRAP_URL`，外加下表变量。
 
-它目前每个共享数据库单实例，并持有一个生命周期 PostgreSQL Advisory Lock。首次从未持有该锁的 Dispatcher 版本升级时，先停止旧进程再启动新进程；第二个参与的 Dispatcher 会 Fail Closed。
+每个共享数据库只运行一个实例，并持有一个生命周期 PostgreSQL Advisory Lock；第二个参与的 Dispatcher 会 Fail Closed。
 
 | 变量                                                     | 用途                                                                                                                                                                                                                      | 默认值                                                | 读取位置                    |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------- |
@@ -194,13 +199,13 @@ Dispatcher（`apps/workflow-dispatcher`，`@evelandhq/workflow-world` 内 Dispat
 | `EVELAND_BUILD_SANDBOX`                       | `none` 关闭 Build 外层的 bwrap 包装；同时把 `bwrap` 移出 Preflight 的必需二进制列表。                                                                                                                                                                                                                                                                      | `bwrap`                      |
 | `EVELAND_SANDBOX_CACHE_DIR`                   | bwrap 模板/会话持久缓存的根目录（每项目一个子目录）。                                                                                                                                                                                                                                                                                                      | `<EVELAND_DATA_DIR>/sandbox` |
 | `EVELAND_MEMORY_ROOT`                         | 只注入、不配置：部署进程读取的每项目 Agent 记忆目录（SDK 的 `evelandMemoryBackend()` 用它为 Eve 的 `fileMemory()` 提供存储）。Worker 自行推导 `<EVELAND_DATA_DIR>/memory/<projectId>`，在 systemd 上授权、在 Docker 上挂载，并把该名称列为运行时保留，Project 条目无法覆盖。按项目（而非 Deployment）键控，记忆跨重新部署存活。                            | 推导，运行时保留             |
-| `EVE_TELEMETRY_DISABLED`                      | 只注入、不配置：平台运行的每次 `eve build`、`eve info` 与 `eve start` 都设为 `1`，并保留该名字使项目条目无法重新开启。Eve 0.52.0 起 CLI 默认上报使用情况；Eveland 上的 Build 与 Deployment 不会向 Vercel 上报任何数据。                                                                                                                                    |
+| `EVE_TELEMETRY_DISABLED`                      | 只注入、不配置：平台运行的每次 `eve build`、`eve info` 与 `eve start` 都设为 `1`，并保留该名字使项目条目无法重新开启。Eve 的 CLI 默认上报使用情况；Eveland 上的 Build 与 Deployment 不会向 Vercel 上报任何数据。                                                                                                                                           |
 | `EVE_SCHEDULES_DISABLED`                      | 只注入、不配置：每个 Deployment 都设为 `1`，使 eve 自己的调度器从不触发；定时任务一律由平台调度器经注入的 Scheduler Channel 派发。属于保留变量，项目条目无法重新打开 eve 的调度器而让任务重复执行。                                                                                                                                                        |
 | `WORKFLOW_LOCAL_BASE_URL`                     | 只注入、不配置：项目的公开 Agent Origin（`<scheme>://<project-slug>.<第一个 Base Domain>[:port]`）。eve 从它开始生成 Connection 登录链接和远程 Agent 回调 URL，而不是进程监听的私有 Loopback 端口。Reserved。                                                                                                                                              |
 | `WORKFLOW_WORLD_*`                            | 只注入、不配置：共享 World 的变量名（数据库、租户即 Project ID、流压缩、Dispatch 密钥、Deployment ID）。它们全部运行时保留，`WORKFLOW_SPEC_VERSION` 也一样，项目条目无法把 Deployment 指向别的租户或数据库，也无法向 World 请求它拒绝的存储版本。                                                                                                          |
 
-> **`EVELAND_SANDBOX_CACHE_DIR` 必须位于 Release 目录之外。** 自 eve 0.22 起 Session
-> Sandbox 按 Durable Session 建键，若缓存放在 Release 目录内会在重新部署时被丢弃——
+> **`EVELAND_SANDBOX_CACHE_DIR` 必须位于 Release 目录之外。** eve 按 Durable Session
+> 为 Session Sandbox 建键，若缓存放在 Release 目录内会在重新部署时被丢弃，
 > 摧毁每个 Session 的 `/workspace`。
 
 ## Agent Gateway（数据平面）
@@ -272,6 +277,5 @@ Instrumentation 保持独立，继续使用 Agent 源码中配置的 Provider/Ex
 
 ## 深入参考
 
-- [配置参考](/zh/docs/reference/configuration)：按组件划分的配置所有权与说明
 - [生产架构概览](/zh/docs/production)：系统核心服务与各组件网络/存储拓扑
 - [容量规划](/zh/docs/operations/capacity)：连接数、并发构建与内存配额配置指南

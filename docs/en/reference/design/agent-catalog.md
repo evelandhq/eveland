@@ -37,3 +37,4 @@ A unified chat surface flips this dynamic:
 - [Identity architecture design decisions](/docs/reference/design/identity): three independent trust boundaries and Caller Tokens
 - [Agent identity behavior contract](/docs/reference/identity): Agent Catalog read-only projection contract and `evelandIdentity()` protocol
 - [Deploy your first agent](/docs/agents/first-deployment): importing and publishing an agent with standard Eve Channels
+- [Security model](/docs/operations/security): external identity network policy and browser session isolation

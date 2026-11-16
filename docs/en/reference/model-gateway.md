@@ -109,7 +109,7 @@ At build time eve looks up context windows in Vercel AI Gateway's model catalog 
 
 ## 9. Local development
 
-By default `eve dev` connects to the developer's own Vercel account through `/login`, with no configuration. To use the same non-Vercel gateway locally (requires eve ≥ 1.0.0-rc.2):
+By default `eve dev` connects to the developer's own Vercel account through `/login`, with no configuration. To use the same non-Vercel gateway locally:
 
 ```ts title="agent/instrumentation/model-gateway.ts"
 import { defineInstrumentation } from "eve/instrumentation";
