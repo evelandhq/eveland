@@ -11,7 +11,7 @@ Scaffolded by `eveland init`; also seeded as an instance's first agent.
 | `agent/instructions.md` | The persona — its **first line** is the one to edit          |
 | `agent/agent.ts`        | Model pin                                                    |
 | `agent/tools/`          | One file per tool; `sleep.ts` re-exports eve's durable sleep |
-| `agent/channels/eve.ts` | Chat channel + authentication; keep its literal shape        |
+| `agent/channels/eve.ts` | Chat channel + authentication                                |
 
 ## Deploy it
 
