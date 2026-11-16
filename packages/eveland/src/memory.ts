@@ -116,6 +116,50 @@ export function evelandMemoryBackend(
   };
 }
 
+/**
+ * What Eve passes a memory slot's `namespace` function: the directory the
+ * application was built in, the agent node, and the slot. Restated rather than
+ * imported, like the backend types above.
+ */
+export type MemoryNamespaceContext = {
+  readonly appRoot: string;
+  readonly node: string;
+  readonly slot: string;
+};
+
+export type MemoryNamespaceFunction = (context: MemoryNamespaceContext) => string;
+
+/**
+ * A memory `namespace` that survives redeploys on Eveland.
+ *
+ * Off Vercel, Eve's default namespace includes a digest of `appRoot`, the
+ * directory the Release was built in. Each Eveland Release builds in its own
+ * directory, so under the default every redeploy starts from empty memory.
+ * On Eveland (`EVELAND_MEMORY_ROOT` set) this namespace keeps the node and slot
+ * that Eve's default separates by and leaves the build directory out; the
+ * memory directory already belongs to one project. Elsewhere it returns
+ * `fallback`'s namespace, so pass Eve's `defaultNamespace` to keep the agent
+ * portable:
+ *
+ * ```ts
+ * import { defaultNamespace, defineMemory } from "eve/memory";
+ *
+ * export default defineMemory({
+ *   namespace: evelandMemoryNamespace(defaultNamespace),
+ *   provider: fileMemory({ backend: evelandMemoryBackend() }),
+ *   scope: byPrincipal,
+ * });
+ * ```
+ */
+export function evelandMemoryNamespace(
+  fallback?: MemoryNamespaceFunction,
+): MemoryNamespaceFunction {
+  return (context) =>
+    fallback && !process.env.EVELAND_MEMORY_ROOT?.trim()
+      ? fallback(context)
+      : JSON.stringify(["eveland-memory-namespace-v1", context.node, context.slot]);
+}
+
 /** How long a writer may hold the lock before a peer treats it as abandoned. */
 const LOCK_STALE_MS = 10_000;
 /** Pause between lock attempts; a healthy holder needs only a few of these. */

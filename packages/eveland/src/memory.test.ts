@@ -5,8 +5,13 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { fileMemory, MemoryDocumentConflictError as EveConflictError } from "eve/memory/file";
 import type { MemoryDocumentBackend as EveMemoryDocumentBackend } from "eve/memory/file";
+import { defaultNamespace, type MemoryNamespaceDefinition } from "eve/memory";
 
-import { evelandMemoryBackend, MemoryDocumentConflictError } from "./memory.js";
+import {
+  evelandMemoryBackend,
+  evelandMemoryNamespace,
+  MemoryDocumentConflictError,
+} from "./memory.js";
 
 const signal = new AbortController().signal;
 
@@ -186,6 +191,45 @@ describe("evelandMemoryBackend", () => {
     await expect(
       backend.write({ key: "k", content: "two", expectedVersion: doc!.version, signal }),
     ).resolves.toMatchObject({ content: "two" });
+  });
+});
+
+describe("evelandMemoryNamespace", () => {
+  const releaseA = { appRoot: "/var/lib/eveland-data/releases/rel_a", node: "root", slot: "file" };
+  const releaseB = { ...releaseA, appRoot: "/var/lib/eveland-data/releases/rel_b" };
+
+  test("on Eveland, names one namespace for an agent's slot in every Release", () => {
+    const previous = process.env.EVELAND_MEMORY_ROOT;
+    process.env.EVELAND_MEMORY_ROOT = "/var/lib/eveland-data/memory/proj";
+    try {
+      const namespace = evelandMemoryNamespace(defaultNamespace);
+      expect(namespace(releaseA)).toBe(namespace(releaseB));
+      // Eve's own default changes with the build directory.
+      expect(defaultNamespace(releaseA)).not.toBe(defaultNamespace(releaseB));
+      // Nodes and slots stay apart, as in Eve's default.
+      expect(namespace({ ...releaseA, node: "subagents/researcher" })).not.toBe(
+        namespace(releaseA),
+      );
+      expect(namespace({ ...releaseA, slot: "notes" })).not.toBe(namespace(releaseA));
+    } finally {
+      if (previous === undefined) delete process.env.EVELAND_MEMORY_ROOT;
+      else process.env.EVELAND_MEMORY_ROOT = previous;
+    }
+  });
+
+  test("elsewhere, defers to the fallback it was given", () => {
+    const previous = process.env.EVELAND_MEMORY_ROOT;
+    delete process.env.EVELAND_MEMORY_ROOT;
+    try {
+      expect(evelandMemoryNamespace(defaultNamespace)(releaseA)).toBe(defaultNamespace(releaseA));
+    } finally {
+      if (previous !== undefined) process.env.EVELAND_MEMORY_ROOT = previous;
+    }
+  });
+
+  test("satisfies Eve's memory namespace definition", () => {
+    const namespace: MemoryNamespaceDefinition = evelandMemoryNamespace(defaultNamespace);
+    expect(typeof namespace).toBe("function");
   });
 });
 

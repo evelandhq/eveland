@@ -77,13 +77,14 @@ Blob on Vercel — and **requires an explicit backend everywhere else, including
 every Eveland deployment**. This entry point supplies that backend:
 
 ```ts
-import { defineMemory } from "eve/memory";
+import { defaultNamespace, defineMemory } from "eve/memory";
 import { fileMemory } from "eve/memory/file";
 import { byPrincipal } from "eve/memory/scope";
-import { evelandMemoryBackend } from "eveland/memory";
+import { evelandMemoryBackend, evelandMemoryNamespace } from "eveland/memory";
 
 export default defineMemory({
   scope: byPrincipal,
+  namespace: evelandMemoryNamespace(defaultNamespace),
   provider: fileMemory({ backend: evelandMemoryBackend() }),
 });
 ```
@@ -104,9 +105,16 @@ under `eve dev`, on Vercel, and on Eveland.
 Eveland Deployments inject `EVELAND_MEMORY_ROOT` natively: the worker derives
 a per-project directory under its own data root, provisions and grants (or
 mounts) it at every launch, and reserves the name so project environment
-entries cannot override it. Memories are keyed per project, so they survive
-redeploys and are removed with the project. Nothing to configure — the
-snippet above is the whole integration.
+entries cannot override it, so memories are kept per project and removed with
+the project.
+
+`evelandMemoryNamespace(defaultNamespace)` is what keeps them across
+redeploys. Off Vercel, Eve's default namespace includes a digest of the
+directory the application was built in, and every Eveland Release builds in
+its own directory, so under the default each redeploy starts with empty
+memory. On Eveland this namespace keeps the agent node and slot apart, as
+Eve's default does, and leaves the build directory out; anywhere else it
+returns the namespace of the function you pass, here Eve's own default.
 
 Prefer a one-word provider? Wrap it in your own code, where `fileMemory`
 resolves from your project's own Eve:

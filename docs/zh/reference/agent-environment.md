@@ -46,18 +46,21 @@ Eve 项目在打包（`npx eve build`）时会静态解析部分配置（例如�
 
   ```ts
   // agent/memory.ts
-  import { defineMemory } from "eve/memory";
+  import { defaultNamespace, defineMemory } from "eve/memory";
   import { fileMemory } from "eve/memory/file";
   import { byPrincipal } from "eve/memory/scope";
-  import { evelandMemoryBackend } from "eveland/memory";
+  import { evelandMemoryBackend, evelandMemoryNamespace } from "eveland/memory";
 
   export default defineMemory({
     scope: byPrincipal,
+    namespace: evelandMemoryNamespace(defaultNamespace),
     provider: fileMemory({ backend: evelandMemoryBackend() }),
   });
   ```
 
-  在 `eve dev` 下 `EVELAND_MEMORY_ROOT` 未设置，`evelandMemoryBackend()` 会让出，由 eve 自己的本地 backend 生效，因此同一份文件两处都能用。只有在实例使用 `Internal` 或 `OIDC` 身份时才按 principal 划分记忆：默认的 `Open` Provider 下所有访客共享同一个 principal。
+  记忆能跨重新部署保留，靠的是 `namespace` 这一行。在 Vercel 之外，eve 的默认 namespace 包含应用构建目录的摘要，而每个 Release 都在自己的目录里构建，没有这一行时每次重新部署都会从空记忆开始。`evelandMemoryNamespace()` 和 eve 的默认做法一样按 Agent 和 slot 区分，但不包含构建目录。
+
+  在 `eve dev` 下 `EVELAND_MEMORY_ROOT` 未设置，`evelandMemoryBackend()` 会让出，由 eve 自己的本地 backend 生效，`evelandMemoryNamespace(defaultNamespace)` 也会使用 eve 的默认 namespace，因此同一份文件两处都能用。只有在实例使用 `Internal` 或 `OIDC` 身份时才按 principal 划分记忆：默认的 `Open` Provider 下所有访客共享同一个 principal。
 
 - **租户安全隔离**：Worker 自动将该目录绑定至宿主机专属路径：`<EVELAND_DATA_DIR>/memory/<projectId>`。该路径按项目隔离且跨重新部署持久保留，项目被删除时统一清理。
 
