@@ -10,7 +10,7 @@ description: 为什么持久化工作流必须经由单例外置 Dispatcher 与�
 内嵌的工作流运行器（In-process Runner）随着 Agent 进程一起生存，在[缩容到零](/zh/docs/reference/design/scale-to-zero)机制下会随进程一同休眠退出。因此，Eveland 强制采用外置模式（External Mode）：
 
 - **职责解耦**：Deployment 自身严禁认领工作流任务；
-- **单例保证**：全集群必须且仅由一个 [Workflow Dispatcher](/zh/docs/production/workflow-dispatcher) 实例负责从数据库拉取待执行任务，并在到期时通过内部激活端点唤醒目标 Agent，将执行步骤（Step）投递给 Agent；
+- **单例保证**：全集群必须且仅由一个 Workflow Dispatcher 实例负责从数据库拉取待执行任务，并在到期时通过内部激活端点唤醒目标 Agent，将执行步骤（Step）投递给 Agent；
 - **排他互斥**：单实例通过 PostgreSQL Advisory Lock 严格保证，严禁启动多个副本，杜绝重复派发。
 
 ---
@@ -29,6 +29,5 @@ description: 为什么持久化工作流必须经由单例外置 Dispatcher 与�
 
 ## 相关参考
 
-- [安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)：宿主机 Dispatcher 安装与配置
 - [运行时与资源管理](/zh/docs/operations/runtime)：Durable Workflow World 租户隔离与保留策略
 - [定时任务与自动化](/zh/docs/observe/schedules)：面向开发者的定时任务与调度模型

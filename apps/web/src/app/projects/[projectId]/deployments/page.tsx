@@ -166,9 +166,8 @@ export default async function ProjectDeploymentsPage({
               (entry) => entry.deployment.id === deployment.id,
             );
             // Where this Deployment's source came from: a synced commit, or
-            // an upload and what it was based on. Every Release has one; the
-            // guard only covers a response from an older API.
-            const source = overview.releaseSources?.[deployment.releaseId] ?? null;
+            // an upload and what it was based on.
+            const source = overview.releaseSources[deployment.releaseId] ?? null;
             // Promoting an upload on a git project is allowed, but it puts
             // production on code the repository does not contain; the
             // promote button says so before it acts.

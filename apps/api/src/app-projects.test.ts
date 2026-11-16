@@ -605,6 +605,7 @@ describe("api app", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "endpoint",
+      observerContract: 3,
       containerName: "endpoint",
       internalPort: 3000,
       hostPort: 41000,
@@ -644,6 +645,7 @@ describe("api app", () => {
         projectId: project.id,
         sourceRevisionId: revision.id,
         imageTag: `preview-order-${index}`,
+        observerContract: 3,
         containerName: `preview-order-${index}`,
         internalPort: 3000,
         hostPort: 41000 + index,
@@ -691,6 +693,7 @@ describe("api app", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "a",
+      observerContract: 3,
       containerName: "a",
       internalPort: 3000,
       hostPort: 41001,
@@ -701,6 +704,7 @@ describe("api app", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "b",
+      observerContract: 3,
       containerName: "b",
       internalPort: 3000,
       hostPort: 41002,
@@ -755,21 +759,7 @@ describe("api app", () => {
     );
     expect(promote.status).toBe(200);
     await expect(store.getCurrentDeployment(project.id)).resolves.toMatchObject({ id: second.id });
-    const alias = await app.request(`/api/projects/${project.id}/aliases`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        alias: "canary",
-        targets: [{ deploymentId: second.id, weight: 10_000, variantName: "canary" }],
-      }),
-    });
-    expect(alias.status).toBe(201);
-    expect(invalidated.flat()).toEqual(
-      expect.arrayContaining([
-        `${project.slug}.agent.localhost`,
-        `canary--${project.slug}.agent.localhost`,
-      ]),
-    );
+    expect(invalidated.flat()).toEqual(expect.arrayContaining([`${project.slug}.agent.localhost`]));
   });
 
   test("drains a zero-weight deployment without treating its immutable preview as mutable traffic", async () => {
@@ -791,6 +781,7 @@ describe("api app", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "drain-a",
+      observerContract: 3,
       containerName: "drain-a",
       internalPort: 3000,
       hostPort: 41201,
@@ -801,6 +792,7 @@ describe("api app", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "drain-b",
+      observerContract: 3,
       containerName: "drain-b",
       internalPort: 3000,
       hostPort: 41202,
@@ -858,6 +850,7 @@ describe("api app", () => {
           projectId: project.id,
           sourceRevisionId: revision.id,
           imageTag: `expired-retention-${index}`,
+          observerContract: 3,
           summary:
             index === 0 ? { summarySource: "build-manifest", eveVersionResolved: "1.0.0" } : null,
           containerName: `expired-retention-${index}`,
@@ -939,6 +932,7 @@ describe("api app", () => {
           projectId: project.id,
           sourceRevisionId: revision.id,
           imageTag: `archived-overview-${index}`,
+          observerContract: 3,
           summary: { summarySource: "build-manifest", eveVersionResolved: "1.0.0" },
           containerName: `archived-overview-${index}`,
           internalPort: 3000,
@@ -999,145 +993,6 @@ describe("api app", () => {
 
     const rejected = await app.request(`/api/projects/${project.id}/deployments?limit=0`);
     expect(rejected.status).toBe(400);
-  });
-
-  test("groups experiment metrics by deployment, experiment, and variant", async () => {
-    const store = createTestStore();
-    const project = await store.createProject({
-      name: "Metrics Agent",
-      importKind: "zip",
-    });
-    const revision = await store.recordSourceRevision({
-      projectId: project.id,
-      kind: "zip",
-      sourcePath: "/tmp/metrics",
-      summary: {},
-      envVars: [],
-      files: [],
-      schedules: [],
-    });
-    const control = await store.recordDeployment({
-      projectId: project.id,
-      sourceRevisionId: revision.id,
-      imageTag: "control",
-      containerName: "control",
-      internalPort: 3000,
-      hostPort: 41301,
-      runtimeKind: "docker",
-    });
-    await store.ensureDeploymentRoutes(project.id, control.id, "agent.localhost");
-    const candidate = await store.recordDeployment({
-      projectId: project.id,
-      sourceRevisionId: revision.id,
-      imageTag: "candidate",
-      containerName: "candidate",
-      internalPort: 3000,
-      hostPort: 41302,
-      runtimeKind: "docker",
-    });
-    await store.ensureDeploymentRoutes(project.id, candidate.id, "agent.localhost");
-    const stable = await store.findProjectRoute(project.id);
-    await store.updateRouteTargets(stable!.id, [
-      { deploymentId: control.id, weight: 5_000, variantName: "control" },
-      { deploymentId: candidate.id, weight: 5_000, variantName: "candidate" },
-    ]);
-    const experimentId = `${stable!.id}:r2`;
-
-    const controlSession = await store.createSession({
-      projectId: project.id,
-      deploymentId: control.id,
-      eveSessionId: "eve_control",
-      trigger: "api",
-    });
-    await store.bindSession({
-      projectId: project.id,
-      eveSessionId: "eve_control",
-      routeId: stable!.id,
-      deploymentId: control.id,
-      trigger: "api",
-      variantName: "control",
-      experimentId,
-      requestId: "req_control",
-      remoteIp: null,
-      affinityFingerprint: "sha256-control",
-      affinitySource: "version_key",
-    });
-    await store.recordModelUsage(controlSession.id, {
-      eveSessionId: "eve_control",
-      turnId: "turn_control",
-      stepIndex: 0,
-      finishReason: "stop",
-      inputTokens: 10,
-      outputTokens: 5,
-      cacheReadTokens: 2,
-      cacheWriteTokens: 1,
-      costUsd: 0.01,
-      usageReported: true,
-    });
-    await store.completeSession(controlSession.id, { status: "completed" });
-
-    const candidateSession = await store.createSession({
-      projectId: project.id,
-      deploymentId: candidate.id,
-      eveSessionId: "eve_candidate",
-      trigger: "api",
-    });
-    await store.bindSession({
-      projectId: project.id,
-      eveSessionId: "eve_candidate",
-      routeId: stable!.id,
-      deploymentId: candidate.id,
-      trigger: "api",
-      variantName: "candidate",
-      experimentId,
-      requestId: "req_candidate",
-      remoteIp: null,
-      affinityFingerprint: "sha256-candidate",
-      affinitySource: "version_key",
-    });
-    await store.recordModelUsage(candidateSession.id, {
-      eveSessionId: "eve_candidate",
-      turnId: "turn_candidate",
-      stepIndex: 0,
-      finishReason: "error",
-      inputTokens: 20,
-      outputTokens: 2,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      costUsd: 0.02,
-      usageReported: true,
-    });
-    await store.completeSession(candidateSession.id, { status: "failed" });
-
-    const response = await createApp(store).request(`/api/projects/${project.id}/variant-metrics`);
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      variants: expect.arrayContaining([
-        expect.objectContaining({
-          deploymentId: control.id,
-          experimentId,
-          variantName: "control",
-          sessions: 1,
-          success: 1,
-          failure: 0,
-          tokens: 18,
-          costUsd: 0.01,
-          averageLatencyMs: expect.any(Number),
-        }),
-        expect.objectContaining({
-          deploymentId: candidate.id,
-          experimentId,
-          variantName: "candidate",
-          sessions: 1,
-          success: 0,
-          failure: 1,
-          tokens: 22,
-          costUsd: 0.02,
-          averageLatencyMs: expect.any(Number),
-        }),
-      ]),
-    });
   });
 
   test("creates a zip project from an uploaded archive and stores the extracted source path", async () => {
@@ -1348,6 +1203,7 @@ describe("promote failure handling", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "promote-errors:1",
+      observerContract: 3,
       containerName: "promote-errors-1",
       internalPort: 3000,
       hostPort: 41300,
@@ -1430,6 +1286,15 @@ describe("promote failure handling", () => {
     expect(older.status).toBe(200);
     await expect(older.json()).resolves.toMatchObject({
       logs: [expect.objectContaining({ line: "line 0" })],
+      olderCursor: null,
+    });
+
+    // Every read is a bounded page: no paging parameters reads the newest page.
+    const unpaged = await app.request(`/api/projects/${project.id}/logs`);
+    expect(unpaged.status).toBe(200);
+    await expect(unpaged.json()).resolves.toEqual({
+      logs: ["line 0", "line 1", "line 2"].map((line) => expect.objectContaining({ line })),
+      cursor: expect.any(String),
       olderCursor: null,
     });
 

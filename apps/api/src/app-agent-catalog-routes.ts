@@ -5,7 +5,7 @@ import { publicGatewayUrl } from "./app-support.js";
 
 type AgentCatalogRoutesContext = {
   app: ApiApp;
-  store: Store;
+  store: Pick<Store, "listAgentCatalog">;
   options: AppOptions;
 };
 

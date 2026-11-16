@@ -42,7 +42,23 @@ Eve projects statically resolve certain configuration during compilation (`npx e
 
 ## 4. Persistent agent memory (`EVELAND_MEMORY_ROOT`)
 
-- **Memory contract**: Eveland automatically injects `EVELAND_MEMORY_ROOT` into agent processes, designating the root directory where Eve persists `fileMemory()` documents.
+- **Memory contract**: Eveland injects `EVELAND_MEMORY_ROOT` into agent processes: the directory where an agent's file memory lives. eve does not read it. Outside `eve dev`, a bare `fileMemory()` has no backend and fails, so an agent that uses file memory passes the `eveland` SDK's backend, which reads `EVELAND_MEMORY_ROOT`:
+
+  ```ts
+  // agent/memory.ts
+  import { defineMemory } from "eve/memory";
+  import { fileMemory } from "eve/memory/file";
+  import { byPrincipal } from "eve/memory/scope";
+  import { evelandMemoryBackend } from "eveland/memory";
+
+  export default defineMemory({
+    scope: byPrincipal,
+    provider: fileMemory({ backend: evelandMemoryBackend() }),
+  });
+  ```
+
+  Under `eve dev`, where `EVELAND_MEMORY_ROOT` is unset, `evelandMemoryBackend()` steps aside and eve's own local backend applies, so the same file works in both places. Scope memory by principal only once the instance uses `Internal` or `OIDC` identity: under the default `Open` provider every visitor shares one principal.
+
 - **Tenant isolation**: The Worker binds this to a dedicated host path: `<EVELAND_DATA_DIR>/memory/<projectId>`. The directory persists across redeployments and restarts, and is cleaned up only upon project deletion.
 
 ## 5. Model Gateway reserved variables
@@ -54,4 +70,3 @@ Eve projects statically resolve certain configuration during compilation (`npx e
 
 - [Secrets and Connections](/docs/agents/secrets-connections): developer guide to credentials and interactive auth
 - [Security model](/docs/operations/security): encryption at rest and process privilege models
-- [Install the host Worker](/docs/production/worker): build sandboxes and variable filtering allowlists

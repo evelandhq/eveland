@@ -30,7 +30,7 @@ describe("route policy", () => {
   });
 
   test("scopes deterministic affinity to the route id and policy revision", () => {
-    const key = "client-version-key";
+    const key = "client-affinity-key";
 
     expect(affinityBucketForRoute("route_a", 7, key)).toBe(
       affinityBucketForRoute("route_a", 7, key),

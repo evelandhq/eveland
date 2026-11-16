@@ -3,7 +3,7 @@ title: 配置参考
 description: 查找生产配置分组以及每个值所属的组件。
 ---
 
-以当前 Release 中的 `.env.example`、Production Compose Overlay 与 `infra/systemd/eveland-worker.env.example` 作为精确配置面。本页只整理 Ownership，不替代 Release 专属 Default。全部变量、默认值与读取位置见[环境变量](/zh/docs/reference/environment-variables)。
+安装后的主机上，配置就是 `/opt/eveland/etc/eveland.env`：`eveland-ctl` 在首次启动时生成它，并为各 systemd unit 拆分出各自的环境文件。本页只整理 Ownership，不替代 Release 专属 Default。全部变量、默认值与读取位置见[环境变量](/zh/docs/reference/environment-variables)。
 
 ## 核心服务
 
@@ -19,7 +19,7 @@ description: 查找生产配置分组以及每个值所属的组件。
 
 ## Workflow Dispatcher
 
-配置共享 Workflow Database URL、Control API Activation Endpoint 与 Token、Pool Size、Concurrency 与维护节奏。以 `infra/systemd/eveland-workflow-dispatcher.env.example` 作为精确配置面；Dispatcher 以自己的 systemd Service 或容器运行，每个共享数据库单实例。
+配置共享 Workflow Database URL、Control API Activation Endpoint 与 Token、Pool Size、Concurrency 与维护节奏。Dispatcher 以自己的 systemd Service 运行，每个共享数据库单实例。
 
 ## Scheduler 与 Activation
 
@@ -35,6 +35,3 @@ description: 查找生产配置分组以及每个值所属的组件。
 
 - [环境变量参考](/zh/docs/reference/environment-variables)：平台全部环境变量名称、默认值与读取位置
 - [生产架构概览](/zh/docs/production)：核心服务、宿主机 Worker 与 Dispatcher 的整体拓扑
-- [安装核心服务](/zh/docs/production/core-services)：生产环境变量配置
-- [安装宿主机 Worker](/zh/docs/production/worker)：Worker systemd 环境变量配置
-- [安装 Workflow Dispatcher](/zh/docs/production/workflow-dispatcher)：Dispatcher 环境变量配置与参数调优

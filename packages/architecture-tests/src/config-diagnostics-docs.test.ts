@@ -27,4 +27,12 @@ describe("environment variable reference", () => {
 
     expect(undocumented).toEqual([]);
   });
+
+  // Not in the registry (no platform process reads them) but set by operators
+  // and agent authors: the appliance root and the CLI's headless token.
+  test("documents the host tooling variables operators set", () => {
+    for (const name of ["EVELAND_HOME", "EVELAND_TOKEN"]) {
+      expect(reference, name).toContain(`\`${name}\``);
+    }
+  });
 });

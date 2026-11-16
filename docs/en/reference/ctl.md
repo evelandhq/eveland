@@ -84,5 +84,4 @@ Resolving is not cleanup. It hands every quarantined run back to the next dispat
 ## Deeper reference
 
 - [Install Eveland](/docs/production/install): the installed path, start to finish
-- [Host prerequisites](/docs/production/prerequisites): what the ctl provisions, if you do it by hand
 - [Upgrades and rollbacks](/docs/operations/upgrades): version upgrade and maintenance workflows

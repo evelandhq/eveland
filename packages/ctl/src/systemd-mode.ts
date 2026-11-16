@@ -75,19 +75,6 @@ export function composeInfraServices(database: DatabaseMode): string[] {
   );
 }
 
-/**
- * Compose services this form used to run and no longer does, with the profile
- * that now hides each from the merged production configuration. A promotion
- * (or an update) must actively remove their containers: a leftover Dashboard
- * container still holds the Dashboard's port, and the host unit taking over
- * would fail to bind.
- */
-export const RETIRED_COMPOSE_SERVICES: ReadonlyArray<{ service: string; profile: string }> = [
-  { service: "api", profile: "dev-api" },
-  { service: "gateway", profile: "dev-gateway" },
-  { service: "web", profile: "dev-web" },
-];
-
 // No process installs its dependencies at start any more, so this is a
 // startup budget rather than the fifteen minutes an in-container
 // `pnpm install` plus `next build` used to need.
@@ -162,10 +149,9 @@ export type SystemdModeContext = {
 };
 
 /**
- * The dispatcher's env allowlist, mirroring
- * infra/systemd/eveland-workflow-dispatcher.env.example: release identity,
- * the workflow world, activation, the runtime secret, and OTLP. Nothing
- * else from etc/eveland.env — least privilege for the DynamicUser service.
+ * The dispatcher's env allowlist: release identity, the workflow world,
+ * activation, the runtime secret, and OTLP. Nothing else from
+ * etc/eveland.env — least privilege for the DynamicUser service.
  */
 export const DISPATCHER_ENV_KEYS = [
   "NODE_ENV",
@@ -714,25 +700,6 @@ export async function reconcileHostOwnership(
 }
 
 /**
- * Containers this form no longer runs. Removed actively, not left to the
- * operator: a leftover container still holds the port its host unit is about
- * to bind. Failures are reported and tolerated — on a fresh install there is
- * nothing to remove.
- */
-async function removeRetiredComposeServices(context: SystemdModeContext): Promise<void> {
-  if (RETIRED_COMPOSE_SERVICES.length === 0) return;
-  const profiles = RETIRED_COMPOSE_SERVICES.flatMap(({ profile }) => ["--profile", profile]);
-  const services = RETIRED_COMPOSE_SERVICES.map(({ service }) => service);
-  const removed = await context.execCommand(
-    applianceComposeArgs(context.layout, ...profiles, "rm", "--stop", "--force", ...services),
-    { cwd: context.repoRootDir },
-  );
-  if (removed.code === 0) {
-    context.io.stdout(`Removed the retired Compose services: ${services.join(", ")}.`);
-  }
-}
-
-/**
  * Writes the units and their env files, reloads systemd and enables (without
  * starting) the units; records systemd supervision in install.json. Starting
  * is `startViaSystemd`'s job so first boot and promotion share one path.
@@ -795,8 +762,6 @@ export async function installSystemdArtifacts(
     await writeTextFile(unitPath, renderPlatformUnit(spec, options));
     io.stdout(`Wrote ${unitPath}`);
   }
-
-  await removeRetiredComposeServices(context);
 
   const reload = await context.execCommand(["systemctl", "daemon-reload"], {
     cwd: context.repoRootDir,

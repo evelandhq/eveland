@@ -52,6 +52,7 @@ async function deployAndPromote(store: Store, projectId: string, sourceRevisionI
     projectId,
     sourceRevisionId,
     imageTag: `drift-${hostPort}`,
+    observerContract: 3,
     containerName: `drift-${hostPort}`,
     internalPort: 3000,
     hostPort,

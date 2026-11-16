@@ -480,8 +480,7 @@ the next deploy, and a plain environment change only enqueues restarts for live
 deployments.
 
 Page interaction, bulk import, restart semantics, Shared Agent Environment details,
-and the reserved list live in `docs/en/reference/agent-environment.md` and
-`docs/en/production/worker.md`.
+and the reserved list live in `docs/en/reference/agent-environment.md`.
 
 ---
 
@@ -666,8 +665,7 @@ retention policy chain, failing closed when lineage cannot be resolved;
 `persistent` rows are never rewritten.
 
 Attestation, bootstrap, dispatcher registration, storage boundaries, and retention
-class details live in `docs/en/operations/runtime.md` and
-`docs/en/production/workflow-dispatcher.md`.
+class details live in `docs/en/operations/runtime.md`.
 
 An Eve deployment's built-in execution tools must connect to an executable isolated
 sandbox — never silently degrading under production-style `eve start` to a

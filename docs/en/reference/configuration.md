@@ -3,7 +3,7 @@ title: Configuration
 description: Find the production configuration families and the component that owns each value.
 ---
 
-Use the checked-in `.env.example`, production Compose overlay, and `infra/systemd/eveland-worker.env.example` as the exact configuration surface for your release. This page organizes ownership; it does not replace release-specific defaults. Every variable, default, and reading site is listed in [Environment variables](/docs/reference/environment-variables).
+On an installed host the configuration is `/opt/eveland/etc/eveland.env`, which `eveland-ctl` renders at first boot and splits into per-service environment files for the systemd units. This page organizes ownership; it does not replace release-specific defaults. Every variable, default, and reading site is listed in [Environment variables](/docs/reference/environment-variables).
 
 ## Core services
 
@@ -19,7 +19,7 @@ Configure `EVELAND_RUNTIME=systemd`, the same absolute data root, application en
 
 ## Workflow dispatcher
 
-Configure the shared workflow database URL, the Control API activation endpoint and token, pool size, concurrency, and maintenance cadence. Use `infra/systemd/eveland-workflow-dispatcher.env.example` as the exact surface; the dispatcher runs as its own systemd service or container and is single-instance per shared database.
+Configure the shared workflow database URL, the Control API activation endpoint and token, pool size, concurrency, and maintenance cadence. The dispatcher runs as its own systemd service and is single-instance per shared database.
 
 ## Scheduler and activation
 
@@ -35,6 +35,3 @@ Never copy a development fallback into production. Admins can compare the allowl
 
 - [Environment variables](/docs/reference/environment-variables): complete dictionary of platform variable names, defaults, and consumers
 - [Production architecture](/docs/production): core services, host Worker, and Dispatcher topology
-- [Install the core services](/docs/production/core-services): production environment variable configuration
-- [Install the host Worker](/docs/production/worker): Worker systemd environment variable configuration
-- [Install the workflow dispatcher](/docs/production/workflow-dispatcher): Dispatcher environment variables and concurrency tuning

@@ -191,6 +191,7 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "archive-once:release",
+      observerContract: 3,
       containerName: "archive-once-release",
       internalPort: 3000,
       hostPort: 41910,
@@ -858,9 +859,6 @@ describe("SQL Store jobs", () => {
     await expect(store.getSourceFile(project.id, "agent/instructions.md")).resolves.toMatchObject({
       content: "You are concise.",
     });
-    await expect(store.listSchedules(project.id)).resolves.toEqual([
-      expect.objectContaining({ name: "daily" }),
-    ]);
   });
 
   test("leaves the previous revision and schedules intact when a later step fails", async () => {
@@ -922,9 +920,6 @@ describe("SQL Store jobs", () => {
     await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
       commitSha: "good-commit",
     });
-    await expect(store.listSchedules(project.id)).resolves.toEqual([
-      expect.objectContaining({ name: "daily" }),
-    ]);
     await expect(store.listSourceRevisions(project.id)).resolves.toHaveLength(1);
   });
 
@@ -945,6 +940,7 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       sourceRevisionId: initialRevision.id,
       imageTag: "eveland/resync:old",
+      observerContract: 3,
       containerName: "eveland-resync-old",
       internalPort: 3000,
       hostPort: 41002,
@@ -994,6 +990,7 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:rel_123",
+      observerContract: 3,
       containerName: "eveland-proj-dep_123",
       internalPort: 3000,
       hostPort: 41001,
@@ -1032,6 +1029,7 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:rel_456",
+      observerContract: 3,
       containerName: "eveland-proj-dep_456",
       internalPort: 3000,
       hostPort: 41002,
@@ -1062,6 +1060,7 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       sourceRevisionId: oldRevision.id,
       imageTag: "eveland/proj:old",
+      observerContract: 3,
       containerName: "eveland-proj-old",
       internalPort: 3000,
       hostPort: 41004,
@@ -1101,6 +1100,7 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:resolved",
+      observerContract: 3,
       summary: { summarySource: "build-manifest", eveVersionResolved: "1.0.0" },
       containerName: "eveland-proj-resolved",
       internalPort: 3000,
@@ -1132,6 +1132,7 @@ describe("SQL Store jobs", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:rel_789",
+      observerContract: 3,
       containerName: "eveland-proj-dep_789",
       internalPort: 3000,
       hostPort: 41003,

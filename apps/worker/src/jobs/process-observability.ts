@@ -22,10 +22,10 @@ const devSecretKey = "eveland-dev-secret-key-000000000";
 
 /**
  * Surfaces (in the project's runtime log) a release whose baked-in observer
- * predates the delivery contract: its hook shim never loads the
- * Worker-delivered runtime, so its telemetry pipeline is whatever the
- * platform shipped when the release was built -- likely a no-op by now.
- * Called at activation, where a stale release is about to serve sessions.
+ * speaks an older delivery contract than this platform: the Worker-delivered
+ * runtime may not match what its hook shim expects, so its sessions and usage
+ * may go uncaptured. Called at activation, where a stale release is about to
+ * serve sessions.
  */
 export async function warnStaleObserverRelease(
   store: Pick<Store, "appendLog">,
@@ -35,7 +35,7 @@ export async function warnStaleObserverRelease(
     release: ReleaseRecord;
   },
 ): Promise<void> {
-  const contract = input.release.observerContract ?? 0;
+  const contract = input.release.observerContract;
   if (contract >= OBSERVER_RUNTIME_CONTRACT) return;
   await store.appendLog({
     projectId: input.projectId,
@@ -43,7 +43,7 @@ export async function warnStaleObserverRelease(
     type: "runtime",
     line:
       `Release ${input.release.id} embeds an Eveland observer older than this platform ` +
-      `(contract ${contract || "unrecorded"} < ${OBSERVER_RUNTIME_CONTRACT}); session transcripts and usage ` +
+      `(contract ${contract} < ${OBSERVER_RUNTIME_CONTRACT}); session transcripts and usage ` +
       `may not be captured. Rebuild the release (redeploy the project) to refresh it.`,
   });
 }

@@ -21,13 +21,7 @@ vm_exists() {
 # The guest runs imported project code and build scripts, so it must never see
 # host secrets: infra/lima/eveland.yaml mounts no host filesystem, and the
 # source tree is streamed in as an archive of tracked/non-ignored files only,
-# so .env, .git, and other ignored host state stay on the host. Guests created
-# by an older config still carry the host home mount; recreate those.
-if vm_exists && grep -q 'location: "~"' "$HOME/.lima/$VM/lima.yaml"; then
-  echo "Recreating $VM: it was created with a host home mount." >&2
-  limactl delete -f "$VM"
-fi
-
+# so .env, .git, and other ignored host state stay on the host.
 if vm_exists; then
   limactl start "$VM" || true
 else

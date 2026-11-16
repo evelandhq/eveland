@@ -104,24 +104,20 @@ describe("Better Auth runtime", () => {
     ).resolves.toMatchObject({ email: "admin@example.com", role: "admin" });
   });
 
-  test("adopts the legacy project owner row as the configured admin", async () => {
+  // The bootstrap seeds one admin; a later EVELAND_ADMIN_EMAIL neither
+  // renames it nor collides with its fixed id.
+  test("keeps the seeded admin when the configured email changes", async () => {
     const { database, runtime } = await createTestRuntime();
-    const now = new Date();
-    await database.db.insert(users).values({
-      id: "user_local_admin",
-      email: "local@eveland.dev",
-      emailVerified: false,
-      name: "Local Admin",
-      role: "user",
-      banned: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-
     await runtime.bootstrapDefaultAdmin({
       email: "admin@example.com",
       name: "Admin",
       password: "admin-password",
+    });
+
+    await runtime.bootstrapDefaultAdmin({
+      email: "new-admin@example.com",
+      name: "New Admin",
+      password: "other-password",
     });
 
     await expect(database.db.select().from(users)).resolves.toEqual([
