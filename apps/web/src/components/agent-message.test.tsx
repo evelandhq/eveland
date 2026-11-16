@@ -119,6 +119,7 @@ describe("AgentMessage", () => {
   });
 
   test("renders an open sign-in with its link and code", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     renderMessage([
       {
         type: "interaction",
@@ -139,9 +140,14 @@ describe("AgentMessage", () => {
     ]);
     expect(screen.getByText("Connect GitHub")).toBeDefined();
     expect(screen.getByText("ABCD")).toBeDefined();
-    expect(screen.getByRole("link", { name: /Sign in with GitHub/ }).getAttribute("href")).toBe(
-      "https://github.example/auth",
-    );
+    const link = screen.getByRole("link", { name: /Sign in with GitHub/ });
+    expect(link.getAttribute("href")).toBe("https://github.example/auth");
+    // A plain link styled as a button: no button semantics on the anchor, and
+    // no Base UI complaint about a button rendered as something else.
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("role")).toBeNull();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   test("hides task controls and ignores part types a later eve adds", () => {
