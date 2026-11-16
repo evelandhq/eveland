@@ -7,12 +7,12 @@ import { afterEach, describe, expect, test } from "vitest";
 import { injectWorkflowWorld } from "./workflow-world.js";
 
 // The generated root config is what every shared-World Release builds from, so
-// it must satisfy the real compiler of the eve window's line. eve 1.0
-// only accepts an agent config that carries defineAgent's brand, a
-// non-enumerable symbol a plain object (or a spread of a branded one) lacks.
+// it must satisfy eve's real compiler. eve only accepts an agent config that
+// carries defineAgent's brand, a non-enumerable symbol a plain object (or a
+// spread of a branded one) lacks.
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
-const eveLines = [{ name: "eve (1.0.x)", root: "packages/agent-scheduler/node_modules/eve" }];
+const eveRoot = path.join(repoRoot, "packages/agent-scheduler/node_modules/eve");
 const worldPackageRoot = path.join(repoRoot, "apps/worker/node_modules/@evelandhq/workflow-world");
 const worldConfig = { packageName: "@evelandhq/workflow-world", packageVersion: "0.31.1" };
 const roots: string[] = [];
@@ -21,9 +21,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe.each(eveLines)("the injected workflow-world config builds on $name", ({ root }) => {
-  const eveRoot = path.join(repoRoot, root);
-
+describe("the injected workflow-world config builds on the verified eve", () => {
   test("when the project has no agent config", async () => {
     const releaseDir = await release(eveRoot, {});
     const result = await injectWorkflowWorld({ releaseDir, config: worldConfig });
@@ -62,7 +60,6 @@ describe.each(eveLines)("the injected workflow-world config builds on $name", ({
 });
 
 test("on eve 1.0 the wrapper does not brand an authored plain-object config eve itself rejects", async () => {
-  const eveRoot = path.join(repoRoot, eveLines[0]!.root);
   const releaseDir = await release(eveRoot, {
     "agent/agent.ts": 'export default { model: "anthropic/claude-sonnet-5" };\n',
   });
