@@ -93,11 +93,7 @@ function safeDecodeURIComponent(value: string): string | null {
   }
 }
 
-function affinityResult(
-  key: string,
-  source: "cookie" | "generated",
-  cookieValue: string | null,
-) {
+function affinityResult(key: string, source: "cookie" | "generated", cookieValue: string | null) {
   return {
     key,
     source,
