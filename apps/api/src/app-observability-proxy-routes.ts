@@ -111,10 +111,10 @@ export function registerObservabilityProxyRoute(input: {
 }
 
 /**
- * The 502 above used to be the only trace a broken destination left in the
- * API: an unreachable endpoint, a host the allowlist rejects, and a config
- * sealed under a rotated APP_SECRET_KEY all answered the same opaque body,
- * and the reason surfaced only in the Worker's five-minute health probe.
+ * Logs why a destination failed. The 502 above is the same opaque body for an
+ * unreachable endpoint, a host the allowlist rejects, and a config sealed
+ * under a rotated APP_SECRET_KEY; without this log the reason would surface
+ * only in the Worker's five-minute health probe.
  *
  * It has to be logged without becoming a flood. The Collector's persistent
  * queue retries a failing destination forever, so a permanent fault is a

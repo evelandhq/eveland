@@ -27,10 +27,10 @@ describe("auth error -> HTTP status mapping", () => {
     expect(response.status).toBe(401);
   });
 
-  test("upstream prose can no longer choose the status", async () => {
-    // Before the typed-error boundary, any message containing "not found"
-    // became a 404 -- including reworded upstream messages. Untyped errors
-    // now fall through to 400 regardless of wording.
+  test("upstream prose cannot choose the status", async () => {
+    // Only typed errors map to a status; an untyped error falls through to 400
+    // regardless of wording, so a reworded upstream message that happens to
+    // say "not found" cannot become a 404.
     const response = await respond(new Error("route not found in upstream"));
     expect(response.status).toBe(400);
     const conflictProse = await respond(new Error("cannot touch the last admin"));

@@ -736,8 +736,8 @@ describe("Open access Identity Provider", () => {
     );
 
     // Open access never redirects a caller into a login: non-browser callers
-    // cannot follow one, and the old wording claimed the Provider was merely
-    // "not available in this release", which is not what is happening.
+    // cannot follow one, and the code says why rather than claiming the
+    // Provider is merely unavailable.
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ code: "identity_login_not_required" });
   });

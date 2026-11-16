@@ -421,7 +421,7 @@ describe("createDockerAdapter", () => {
     const contents = await readFile(dockerfilePath, "utf8");
     expect(contents).toContain("FROM node:26-alpine");
     expect(contents).toContain("RUN npx eve build && npx eve info --json > .eveland/eve-info.json");
-    // eve 0.52.0 CLI telemetry: off for the build RUN and for the deployed process.
+    // eve CLI telemetry: off for the build RUN and for the deployed process.
     expect(contents).toContain("ENV EVE_TELEMETRY_DISABLED=1");
     await expect(
       readFile(path.join(buildDir, ".eveland", "verify-sandbox.mjs"), "utf8"),

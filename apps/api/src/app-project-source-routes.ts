@@ -108,9 +108,9 @@ export function registerProjectSourceRoutes(input: {
     return deleted ? c.body(null, 204) : c.json({ error: "Git credential not found" }, 404);
   });
 
-  // Uploads were previously unbounded: c.req.formData() buffers the archive
-  // in memory, so a single request could exhaust the API process. Playground
-  // and OTLP bodies already have caps; this closes the last unbounded route.
+  // c.req.formData() buffers the archive in memory, so an unbounded upload
+  // could exhaust the API process. Like Playground and OTLP bodies, uploads
+  // are capped.
   const uploadBodyLimit = bodyLimit({
     maxSize: Number(process.env.EVELAND_MAX_UPLOAD_BYTES ?? 104_857_600),
     onError: (c) => c.json({ error: "Upload too large" }, 413),

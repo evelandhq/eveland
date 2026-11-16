@@ -224,7 +224,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
     // dispatcher on the deployment's own port — bypass the Gateway entirely, so
     // anything arriving here is external and has no business driving a
     // project's workflow steps. The one exception is the webhook resume route
-    // (eve 0.48 `createWebhook()`): its token is the credential, so it rides
+    // (eve's `createWebhook()` URLs): its token is the credential, so it rides
     // the public-request path below.
     if (
       isWorkflowQueueNamespace(requestUrl.pathname) &&

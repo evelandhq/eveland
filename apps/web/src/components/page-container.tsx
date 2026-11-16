@@ -3,10 +3,9 @@ import { cn } from "@/lib/utils";
 /**
  * The one place the main area's horizontal rhythm is defined.
  *
- * Every page used to declare its own container, so the insets drifted: three
- * different max-widths, two vertical rhythms, and a project detail page that
- * never widened past `px-5` at any breakpoint. Route to route the content edge
- * visibly jumped. Import this instead of writing the classes again; a page that
+ * Pages that declare their own container drift apart -- different max-widths,
+ * vertical rhythms, and breakpoints -- and the content edge visibly jumps from
+ * route to route. Import this instead of writing the classes again; a page that
  * genuinely wants to be full-bleed simply does not use it.
  *
  * `PAGE_INSET` is the horizontal half on its own, for a full-bleed bar whose

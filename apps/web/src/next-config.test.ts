@@ -68,8 +68,7 @@ describe("verbatim /api rewrite", () => {
 /**
  * The browser transport prefixes every path with PUBLIC_API_PREFIX, so a
  * call-site literal that already starts with `/api/` would double the prefix
- * and 404 — the exact bug shape the old `/api/auth/...` tunnel
- * normalized. Scan the web sources so it fails here instead.
+ * and 404. Scan the web sources so it fails here instead.
  */
 describe("transport call sites", () => {
   test("no transport path literal double-prefixes /api", () => {

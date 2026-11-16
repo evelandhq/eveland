@@ -30,7 +30,7 @@ export type CanonicalPlaygroundStore = Pick<ProjectStore, "getProject"> &
  * Distills a non-ok upstream response into a stored failure reason. The body
  * is read from a clone so the original still flows back to the browser; a
  * gateway rejection's body carries the "why" — activation failure, no running
- * target, cold-start timeout — that previously existed only in host logs.
+ * target, cold-start timeout — that would otherwise exist only in host logs.
  */
 async function upstreamRejectionReason(upstream: Response): Promise<string> {
   let detail = "";

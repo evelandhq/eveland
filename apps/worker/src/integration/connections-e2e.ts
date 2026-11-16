@@ -21,8 +21,7 @@ import {
 
 /**
  * One budget for a whole session read. It has to cover the delegated child
- * run too: under eve 0.51 through 0.68 that started only after the root
- * session was already waiting; eve 0.69 holds the root turn for it.
+ * run too, which eve holds the root turn for.
  */
 const SESSION_STREAM_BUDGET_MS = 60_000;
 

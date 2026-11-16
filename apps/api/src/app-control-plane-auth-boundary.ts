@@ -40,7 +40,7 @@ export function createDeviceCodeRateLimiter(now: () => number = Date.now) {
   // least-recently-active one — evicting it bounds memory without ever
   // scanning the table on the request path. Eviction forgives that source's
   // history (degrade open); filling the table needs real address diversity
-  // now that the key is gateway-observed.
+  // because the key is the gateway-observed address.
   const requests = new Map<string, number[]>();
   return (source: string): boolean => {
     const cutoff = now() - DEVICE_CODE_RATE_LIMIT.windowMs;

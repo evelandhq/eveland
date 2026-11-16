@@ -76,8 +76,8 @@ describe("resolveRuntimeKind", () => {
     );
   });
 
-  // Before the default flip an empty string threw at adapter construction ("" is not
-  // nullish); the truthiness check now deliberately treats it as unset.
+  // "" is not nullish, so the truthiness check deliberately treats it as unset
+  // rather than as a runtime kind to construct an adapter for.
   test("treats an empty-string EVELAND_RUNTIME as unset", () => {
     expect(resolveRuntimeKind({ EVELAND_RUNTIME: "" } as NodeJS.ProcessEnv)).toBe("docker");
     expect(

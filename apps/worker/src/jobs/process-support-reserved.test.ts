@@ -122,7 +122,7 @@ describe("reserved runtime environment names", () => {
 
     expect(env.NODE_ENV).toBe("production");
     expect(env.EVELAND_PROJECT_ID).toBe(project.id);
-    // eve 0.52.0 turned CLI telemetry on by default; `npx eve start` runs the CLI.
+    // eve's CLI telemetry is on by default; `npx eve start` runs the CLI.
     expect(env.EVE_TELEMETRY_DISABLED).toBe("1");
     // The platform scheduler dispatches every authored schedule; eve's own
     // cron would run each one a second time.

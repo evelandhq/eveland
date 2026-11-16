@@ -19,9 +19,8 @@ export const apiBaseUrl = PUBLIC_API_PREFIX;
 /**
  * The complete control-plane error contract. Validation failures carry
  * `issues` (a field-level message the user can act on), so the decoder
- * prefers those over the generic line -- previously only the new-project path
- * read them, and the same failure through the shared client degraded to
- * "Invalid request".
+ * prefers those over the generic line, so every caller of the shared client
+ * shows the actionable message rather than "Invalid request".
  */
 export async function decodeApiError(
   response: Response,

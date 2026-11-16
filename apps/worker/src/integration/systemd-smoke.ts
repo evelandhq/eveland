@@ -215,8 +215,8 @@ try {
   console.log("RELEASE RETENTION OK");
 
   // --- delete_project: prove it stops the unit, removes its env file, and drops the project.
-  // This replaces the manual `systemctl stop`/`reset-failed` teardown this script used to do
-  // by hand -- deletion IS the teardown now, exercised through the real job pipeline. ---
+  // Deletion IS the teardown, exercised through the real job pipeline rather than a manual
+  // `systemctl stop`/`reset-failed`. ---
   const deletion = await store.enqueueJob(project.id, "delete_project");
   await runExpectedJob(store, "smoke-worker", {
     projectId: project.id,

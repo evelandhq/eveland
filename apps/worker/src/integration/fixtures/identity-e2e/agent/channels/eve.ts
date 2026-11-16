@@ -1,7 +1,7 @@
 import { eveChannel } from "eve/channels/eve";
 import { evelandIdentity } from "eveland/auth";
 
-// The production shape this platform hands imported Agents after eve 0.30:
+// The production shape this platform hands imported Agents:
 // the ONLY admission path is a platform-minted Caller Token verified by
 // evelandIdentity(). There is deliberately no none()/httpBasic() fallback --
 // the identity-e2e harness asserts both directions, so an unauthenticated

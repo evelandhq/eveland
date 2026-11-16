@@ -331,8 +331,8 @@ export async function composeDeploymentEnv(
     EVELAND_SANDBOX_RUN_TIMEOUT_MS: resolveSandboxRunTimeoutMs(workerEnv),
     EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES: sandboxProcessLimits.maxConcurrentProcesses,
     EVELAND_SANDBOX_MAX_OUTPUT_BYTES: sandboxProcessLimits.maxOutputBytes,
-    // `npx eve start` is a CLI command, and from eve 0.52.0 the CLI reports
-    // usage to Vercel unless told not to (see ../runtime/reserved-environment.ts).
+    // `npx eve start` is a CLI command, and eve's CLI reports usage
+    // to Vercel unless told not to (see ../runtime/reserved-environment.ts).
     EVE_TELEMETRY_DISABLED: "1",
     // Schedules run only when the platform scheduler dispatches them (see
     // ../runtime/reserved-environment.ts).

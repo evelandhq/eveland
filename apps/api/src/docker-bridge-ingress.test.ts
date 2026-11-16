@@ -153,8 +153,8 @@ describe("Docker bridge listener retry", () => {
 
   test("keeps retrying EADDRNOTAVAIL with a growing delay until the bridge appears", () => {
     // The boot-order race: docker0 does not exist when the API starts and
-    // shows up a few seconds later. One failure used to mean no Collector
-    // ingress until someone restarted the API by hand.
+    // shows up a few seconds later. Giving up after one failure would leave no
+    // Collector ingress until someone restarted the API by hand.
     const { servers, timers, log } = harness();
     expect(servers).toHaveLength(1);
 

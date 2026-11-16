@@ -125,15 +125,15 @@ describe("workflow dispatcher registration API", () => {
     });
     expect(response.status).toBe(400);
 
-    // The legacy host:port/database shape no longer registers either: the
-    // readiness gate compares cluster fingerprints, and a URL-derived identity
-    // is exactly the fails-open comparison the cluster form exists to replace.
-    const legacyShape = await app.request("/internal/workflow/dispatcher/heartbeat", {
+    // A host:port/database URL shape does not register either: the readiness
+    // gate compares cluster fingerprints, and a URL-derived identity would be a
+    // fails-open comparison.
+    const urlShape = await app.request("/internal/workflow/dispatcher/heartbeat", {
       method: "POST",
       headers: serviceHeaders,
       body: heartbeatBody({ worldDatabaseIdentity: "localhost:5432/eveland_workflow" }),
     });
-    expect(legacyShape.status).toBe(400);
+    expect(urlShape.status).toBe(400);
 
     // "unknown" stays registrable: a dispatcher that cannot read its World
     // must still be able to report itself (it never satisfies readiness).
