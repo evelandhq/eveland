@@ -12,7 +12,7 @@ import type { ObservedModelCall } from "./model-capture.js";
 import { asDate, asNonNegativeInteger, asRecord, asString, canonicalJson } from "./values.js";
 
 /**
- * The session-event vocabulary the observer exports (the v27 protocol):
+ * The session-event vocabulary the observer exports:
  * `delivery.consumed` is the received message, `content.completed` the
  * produced text (and, under `recordOutputs`, reasoning), `call.*` the actions,
  * `model.*` the model runs, `usage.recorded` the provider usage,

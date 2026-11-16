@@ -62,8 +62,13 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       telemetryEventId: "root-step",
       eventFingerprint: "root-step-fingerprint",
       event: {
-        type: "step.completed",
-        data: { turnId: "turn_1", stepIndex: 0, usage: { inputTokens: 12, outputTokens: 3 } },
+        type: "usage.recorded",
+        scope: { turnId: "turn_1", runId: "run_1" },
+        data: {
+          kind: "model",
+          owner: { runId: "run_1" },
+          usage: { inputTokens: 12, outputTokens: 3 },
+        },
       },
     });
     await store.ingestAgentEvent(
@@ -73,8 +78,13 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
         eveSessionId: "eve_child",
         parentEveSessionId: "eve_root",
         event: {
-          type: "step.completed",
-          data: { turnId: "turn_child", stepIndex: 0, usage: { inputTokens: 7, outputTokens: 2 } },
+          type: "usage.recorded",
+          scope: { turnId: "turn_child", runId: "run_child" },
+          data: {
+            kind: "model",
+            owner: { runId: "run_child" },
+            usage: { inputTokens: 7, outputTokens: 2 },
+          },
         },
       }),
     );
@@ -84,11 +94,13 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
         eventFingerprint: "remote-called-fingerprint",
         sourceSequence: 2,
         event: {
-          type: "subagent.called",
+          type: "child.opened",
+          scope: { turnId: "turn_1" },
           data: {
-            childSessionId: "eve_remote",
+            sessionId: "eve_remote",
+            owner: { callId: "call_remote" },
             name: "remote-researcher",
-            remote: { url: "https://agents.example.test/eve/v1/session" },
+            stream: "/eve/v1/session/eve_root/subagents/call_remote/eve_remote/stream",
           },
         },
       }),
@@ -98,7 +110,11 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
         telemetryEventId: "approval",
         eventFingerprint: "approval-fingerprint",
         sourceSequence: 3,
-        event: { type: "input.requested", data: { requestId: "approval_1" } },
+        event: {
+          type: "interaction.opened",
+          scope: { turnId: "turn_1" },
+          data: { interactionId: "approval_1", request: { kind: "approval", prompt: "Allow?" } },
+        },
       }),
     );
     const first = await store.ingestAgentEvent(step);
@@ -116,7 +132,7 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
     const nodes = await store.listSessionNodes(gatewaySession.id);
     expect(nodes).toHaveLength(3);
     expect(nodes.find((node) => node.eveSessionId === "eve_remote")).toMatchObject({
-      remoteUrl: "https://agents.example.test/eve/v1/session",
+      agentName: "remote-researcher",
       resolutionStatus: "unresolved",
     });
     await expect(store.listModelUsageEvents(gatewaySession.id)).resolves.toHaveLength(2);
@@ -182,7 +198,7 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
           telemetryEventId: "ordering-completed",
           eventFingerprint: "ordering-completed-fingerprint",
           sourceSequence: 10,
-          event: { type: "session.completed", data: {} },
+          event: { type: "session.ended", data: { outcome: "completed" } },
         }),
       );
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -396,7 +412,7 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
           telemetryEventId: "schedule-race",
           eventFingerprint: "schedule-race-fingerprint",
           eveSessionId: "eve_schedule_race",
-          channelKind: "schedule",
+          channelKind: "channel:eveland-scheduler",
         }),
       );
       await expect(Promise.race([completion, ingest, settled(300)])).resolves.toBe("still held");
@@ -497,7 +513,7 @@ function envelope(
     parentEveSessionId: null,
     sourceSequence: 1,
     agent: { id: "agent_root", name: "root", nodeId: "root" },
-    channelKind: "http",
+    channelKind: "channel:eve",
     eventAt: new Date().toISOString(),
     event: { type: "session.started", data: {} },
     ...overrides,

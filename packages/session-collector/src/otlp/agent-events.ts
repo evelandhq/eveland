@@ -80,7 +80,7 @@ function observationFromLogRecord(
     runtimeInstanceId,
     eveSessionId: stringValue(attributes["eveland.eve.session.id"]),
     parentEveSessionId: stringValue(attributes["eveland.eve.parent_session.id"]) ?? null,
-    sourceSequence: sourceSequenceOf(eventRecord, data),
+    sourceSequence: sourceSequenceOf(eventRecord),
     ...(observedModelId
       ? {
           observedModel: {
@@ -111,18 +111,14 @@ function observationFromLogRecord(
 
 /**
  * The per-session order eve gives an event, for the projection's
- * newest-observation guard. v26 stamps `data.sequence`; v27 (eve 0.84+)
- * positions each fact by its stream line and its index within that line,
- * which the observer forwards as `meta.position`. Lines are dense and a
- * commit holds far fewer than 1,000 facts, so `line * 1000 + index` orders
- * them within the column's 32-bit range for any realistic session.
+ * newest-observation guard. eve positions each fact by its stream line and
+ * its index within that line, which the observer forwards as
+ * `meta.position`. Lines are dense and a commit holds far fewer than 1,000
+ * facts, so `line * 1000 + index` orders them within the column's 32-bit
+ * range for any realistic session. An event without a position is not one
+ * eve's hooks hand over, so it is not projected.
  */
-function sourceSequenceOf(
-  eventRecord: Record<string, unknown> | undefined,
-  data: Record<string, unknown> | undefined,
-): number | null {
-  const v26 = nonNegativeInteger(data?.sequence);
-  if (v26 !== undefined) return v26;
+function sourceSequenceOf(eventRecord: Record<string, unknown> | undefined): number | null {
   const position = recordValue(recordValue(eventRecord?.meta)?.position);
   const line = nonNegativeInteger(position?.line);
   const index = nonNegativeInteger(position?.index);

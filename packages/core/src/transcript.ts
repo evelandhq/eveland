@@ -11,7 +11,7 @@ export type TranscriptSourceEvent = {
 
 export type TranscriptSourceNode = {
   id: string;
-  /** The node's Eve session, matched against an Eve 0.69 `agent.started`. */
+  /** The node's Eve session, matched against the `child.opened` that opened it. */
   eveSessionId?: string | null;
   parentNodeId: string | null;
   nodeId: string | null;
@@ -38,8 +38,7 @@ export type TranscriptToolCall = {
   status: "completed" | "failed" | "cancelled" | "pending";
   errorText: string | null;
   usage: TranscriptUsage | null;
-  targetNodeId: string | null;
-  /** The Eve session an Eve 0.69 `agent.started` says this call opened. */
+  /** The Eve session the call's `child.opened` says it opened. */
   childEveSessionId: string | null;
   eventAt: string;
   child: TranscriptNode | null;
@@ -137,10 +136,7 @@ export function buildSessionTranscript(
     const view = views.get(node.id);
     if (!view) continue;
     const parentView = node.parentNodeId ? views.get(node.parentNodeId) : null;
-    const slot = parentView
-      ? (findCallThatOpened(parentView, node.eveSessionId ?? null) ??
-        findOpenSubagentCall(parentView, node.nodeId))
-      : null;
+    const slot = parentView ? findCallThatOpened(parentView, node.eveSessionId ?? null) : null;
     if (slot) {
       slot.child = view;
     } else {
@@ -155,10 +151,7 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
   const turns: TranscriptTurn[] = [];
   const turnsById = new Map<string, TranscriptTurn>();
   const callsById = new Map<string, TranscriptToolCall>();
-  // Eve 0.69 runs every agent call as a task: its `action.result` is only a
-  // receipt, and `task.settled` carries how the call really ended.
-  const taskCallIds = new Set<string>();
-  // v27 (eve 0.84+) settles an interaction without repeating its kind.
+  // Eve settles an interaction without repeating its kind.
   const interactionKinds = new Map<string, string>();
 
   const turnFor = (payload: Record<string, unknown> | null, eventAt: string): TranscriptTurn => {
@@ -182,231 +175,9 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
   for (const event of events) {
     const payload = asRecord(event.payload);
     switch (event.type) {
-      case "message.received": {
-        const text = messageText(payload);
-        const turn = turnFor(payload, event.eventAt);
-        // Eve 0.61+ marks input it authored itself (a background task or
-        // subagent wake-up); nobody typed it, and Eve's own reducer skips it.
-        if (asString(payload?.kind) === "execution.background_task") break;
-        turn.items.push({ kind: "user", text, eventAt: event.eventAt });
-        turn.userMessage ??= text;
-        break;
-      }
-      case "message.completed": {
-        const text = messageText(payload);
-        const turn = turnFor(payload, event.eventAt);
-        turn.items.push({ kind: "assistant", text, eventAt: event.eventAt });
-        turn.assistantMessage = text;
-        break;
-      }
-      case "reasoning.completed": {
-        const text = messageText(payload);
-        if (text) {
-          turnFor(payload, event.eventAt).items.push({
-            kind: "reasoning",
-            text,
-            eventAt: event.eventAt,
-          });
-        }
-        break;
-      }
-      case "actions.requested": {
-        const turn = turnFor(payload, event.eventAt);
-        const actions = Array.isArray(payload?.actions) ? payload.actions : [];
-        for (const raw of actions) {
-          const action = asRecord(raw);
-          if (!action) continue;
-          const kind = asString(action.kind) ?? "";
-          const call: TranscriptToolCall = {
-            callId: asString(action.callId),
-            name:
-              asString(action.toolName) ??
-              asString(action.name) ??
-              asString(action.subagentName) ??
-              (kind || "tool"),
-            isSubagent: kind.startsWith("subagent"),
-            input: "input" in action ? action.input : null,
-            output: null,
-            status: "pending",
-            errorText: null,
-            usage: null,
-            targetNodeId: asString(action.nodeId),
-            childEveSessionId: null,
-            eventAt: event.eventAt,
-            child: null,
-          };
-          if (call.callId) callsById.set(call.callId, call);
-          turn.items.push({ kind: "tool", call });
-        }
-        break;
-      }
-      case "action.result": {
-        const result = asRecord(payload?.result);
-        const status = asString(payload?.status);
-        const failed = status !== null && status !== "completed";
-        const callId = asString(result?.callId);
-        const call = callId ? callsById.get(callId) : undefined;
-        if (call && callId && taskCallIds.has(callId)) break;
-        const output = result && "output" in result ? result.output : null;
-        const errorText = failed ? (errorMessage(result) ?? errorMessage(payload) ?? status) : null;
-        if (call) {
-          call.output = output;
-          call.status = failed ? "failed" : "completed";
-          call.errorText = errorText;
-          call.usage = usageFrom(result?.usage);
-        } else {
-          const kind = asString(result?.kind) ?? "";
-          turnFor(payload, event.eventAt).items.push({
-            kind: "tool",
-            call: {
-              callId,
-              name:
-                asString(result?.toolName) ??
-                asString(result?.name) ??
-                asString(result?.subagentName) ??
-                (kind || "tool"),
-              isSubagent: kind.startsWith("subagent"),
-              input: null,
-              output,
-              status: failed ? "failed" : "completed",
-              errorText,
-              usage: usageFrom(result?.usage),
-              targetNodeId: null,
-              childEveSessionId: null,
-              eventAt: event.eventAt,
-              child: null,
-            },
-          });
-        }
-        break;
-      }
-      case "task.started": {
-        const callId = asString(payload?.callId);
-        const call = callId ? callsById.get(callId) : undefined;
-        if (!callId || !call) break;
-        taskCallIds.add(callId);
-        if (asString(payload?.kind) === "agent") call.isSubagent = true;
-        break;
-      }
-      case "agent.started": {
-        const callId = asString(payload?.callId);
-        const call = callId ? callsById.get(callId) : undefined;
-        if (call) {
-          call.isSubagent = true;
-          call.childEveSessionId = asString(payload?.sessionId);
-        }
-        break;
-      }
-      case "task.settled": {
-        const callId = asString(payload?.callId);
-        const call = callId ? callsById.get(callId) : undefined;
-        if (!call) break;
-        const status = asString(payload?.status);
-        call.status =
-          status === "failed" ? "failed" : status === "cancelled" ? "cancelled" : "completed";
-        call.output = payload && "output" in payload ? payload.output : null;
-        call.errorText =
-          status === "failed"
-            ? (errorMessage(payload) ?? "failed")
-            : status === "cancelled"
-              ? (asString(asRecord(payload?.cancel)?.reason) ?? null)
-              : null;
-        break;
-      }
-      case "step.completed": {
-        const usage = usageFrom(payload?.usage);
-        if (usage) {
-          const turn = turnFor(payload, event.eventAt);
-          turn.usage = addUsage(turn.usage, usage);
-        }
-        break;
-      }
-      case "turn.completed": {
-        turnFor(payload, event.eventAt).status = "completed";
-        break;
-      }
-      case "turn.failed": {
-        const turn = turnFor(payload, event.eventAt);
-        turn.status = "failed";
-        turn.items.push({
-          kind: "system",
-          label: "Turn failed",
-          text: errorMessage(payload),
-          eventAt: event.eventAt,
-        });
-        break;
-      }
-      case "turn.cancelled": {
-        const turn = turnFor(payload, event.eventAt);
-        turn.status = "cancelled";
-        for (const call of turnToolCalls(turn)) {
-          if (call.status === "pending") {
-            call.status = "cancelled";
-            call.errorText = "Turn cancelled";
-          }
-        }
-        turn.items.push({
-          kind: "system",
-          label: "Turn cancelled",
-          text: null,
-          eventAt: event.eventAt,
-        });
-        break;
-      }
-      case "step.failed": {
-        turnFor(payload, event.eventAt).items.push({
-          kind: "system",
-          label: "Step failed",
-          text: errorMessage(payload),
-          eventAt: event.eventAt,
-        });
-        break;
-      }
-      case "session.failed": {
-        const turn = turnFor(payload, event.eventAt);
-        turn.items.push({
-          kind: "system",
-          label: "Session failed",
-          text: errorMessage(payload),
-          eventAt: event.eventAt,
-        });
-        if (turn.status === "incomplete") turn.status = "failed";
-        break;
-      }
-      case "input.requested": {
-        const request = asRecord(payload?.request);
-        turnFor(payload, event.eventAt).items.push({
-          kind: "system",
-          label: "Input requested",
-          text:
-            asString(request?.prompt) ??
-            asString(payload?.prompt) ??
-            (messageText(payload) || null),
-          eventAt: event.eventAt,
-        });
-        break;
-      }
-      case "authorization.required": {
-        turnFor(payload, event.eventAt).items.push({
-          kind: "system",
-          label: "Authorization required",
-          text: asString(payload?.displayName) ?? asString(payload?.description),
-          eventAt: event.eventAt,
-        });
-        break;
-      }
-      case "authorization.completed": {
-        turnFor(payload, event.eventAt).items.push({
-          kind: "system",
-          label: "Authorization completed",
-          text: asString(payload?.outcome),
-          eventAt: event.eventAt,
-        });
-        break;
-      }
-      // v27 (eve 0.84+). The stored payload is the fact's `data`; the
-      // projection copies the owning turn from the envelope's scope into it
-      // when the data does not name one.
+      // The stored payload is the fact's `data`; the projection copies the
+      // owning turn from the envelope's scope into it when the data does not
+      // name one.
       case "delivery.consumed": {
         const text = messageText(payload);
         const turn = turnFor(payload, event.eventAt);
@@ -441,7 +212,6 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
           status: "pending",
           errorText: null,
           usage: null,
-          targetNodeId: null,
           childEveSessionId: null,
           eventAt: event.eventAt,
           child: null,
@@ -585,7 +355,7 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
   return turns;
 }
 
-/** The text of a v27 `content.completed`: its value, or the fallback a file carries. */
+/** The text of a `content.completed`: its value, or the fallback a file carries. */
 function contentText(payload: Record<string, unknown> | null): string | null {
   if (!payload) return null;
   if (typeof payload.value === "string") return payload.value || null;
@@ -668,41 +438,19 @@ function findCallThatOpened(
   );
 }
 
-function findOpenSubagentCall(
-  view: TranscriptNode,
-  nodeId: string | null,
-): TranscriptToolCall | null {
-  const open = view.turns
-    .flatMap(turnToolCalls)
-    .filter((call) => call.isSubagent && call.child === null);
-  return (
-    open.find((call) => nodeId !== null && call.targetNodeId === nodeId) ??
-    (nodeId === null ? (open[0] ?? null) : null)
-  );
-}
-
+/** The text parts of a delivery, joined. */
 function messageText(payload: Record<string, unknown> | null): string {
-  if (!payload) return "";
-  const direct = asString(payload.message) ?? asString(payload.text) ?? asString(payload.content);
-  if (direct !== null) return direct;
-  if (Array.isArray(payload.parts)) {
-    return payload.parts
-      .map((part) => asString(asRecord(part)?.text))
-      .filter((text): text is string => text !== null)
-      .join("");
-  }
-  return "";
+  if (!Array.isArray(payload?.parts)) return "";
+  return payload.parts
+    .map((part) => asString(asRecord(part)?.text))
+    .filter((text): text is string => text !== null)
+    .join("");
 }
 
+/** The message of a settled item's error (`error: { code, message }`), or its reason. */
 function errorMessage(payload: Record<string, unknown> | null): string | null {
   if (!payload) return null;
-  const error = payload.error;
-  return (
-    asString(error) ??
-    asString(asRecord(error)?.message) ??
-    asString(payload.reason) ??
-    asString(payload.message)
-  );
+  return asString(asRecord(payload.error)?.message) ?? asString(payload.reason);
 }
 
 function usageFrom(value: unknown): TranscriptUsage | null {

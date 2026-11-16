@@ -5,9 +5,8 @@ import {
   isDelegatedUsageRecord,
   isEveRecord,
   parseEveJsonObject,
-  parseStepUsageEvent,
+  parseModelUsageEvent,
   parseUnreportedModelRun,
-  unsegmentedRunKey,
 } from "./eve.js";
 
 test("Eve wire helpers parse object payloads", () => {
@@ -20,7 +19,7 @@ test("Eve wire helpers parse object payloads", () => {
 });
 
 describe("parseUnreportedModelRun", () => {
-  test("a completed v27 model run is a missing-usage candidate keyed by its run", () => {
+  test("a completed model run is a missing-usage candidate keyed by its run", () => {
     expect(
       parseUnreportedModelRun(
         "model.settled",
@@ -29,7 +28,6 @@ describe("parseUnreportedModelRun", () => {
       ),
     ).toEqual({
       turnId: "turn_1",
-      stepIndex: null,
       runKey: "run:run_1",
       finishReason: "stop",
       inputTokens: null,
@@ -73,81 +71,10 @@ describe("parseUnreportedModelRun", () => {
   });
 });
 
-describe("parseStepUsageEvent", () => {
-  test("normalizes provider-reported usage from a completed model step", () => {
+describe("parseModelUsageEvent", () => {
+  test("reads usage owned by a model run or a context change", () => {
     expect(
-      parseStepUsageEvent("step.completed", {
-        turnId: "turn_2",
-        stepIndex: 3,
-        finishReason: "stop",
-        usage: {
-          inputTokens: 120,
-          outputTokens: 30,
-          cacheReadTokens: 80,
-          cacheWriteTokens: 10,
-          costUsd: 0.0042,
-        },
-      }),
-    ).toEqual({
-      turnId: "turn_2",
-      stepIndex: 3,
-      runKey: null,
-      finishReason: "stop",
-      inputTokens: 120,
-      outputTokens: 30,
-      cacheReadTokens: 80,
-      cacheWriteTokens: 10,
-      costUsd: 0.0042,
-      usageReported: true,
-    });
-  });
-
-  test("keeps unavailable usage fields distinct from zero", () => {
-    expect(
-      parseStepUsageEvent("step.completed", {
-        turnId: "turn_0",
-        stepIndex: 0,
-        finishReason: "tool-calls",
-        usage: { inputTokens: 42 },
-      }),
-    ).toEqual({
-      turnId: "turn_0",
-      stepIndex: 0,
-      runKey: null,
-      finishReason: "tool-calls",
-      inputTokens: 42,
-      outputTokens: null,
-      cacheReadTokens: null,
-      cacheWriteTokens: null,
-      costUsd: null,
-      usageReported: true,
-    });
-  });
-
-  test("records a completed step whose provider omitted usage", () => {
-    expect(
-      parseStepUsageEvent("step.completed", {
-        turnId: "turn_0",
-        stepIndex: 0,
-        finishReason: "stop",
-      }),
-    ).toEqual({
-      turnId: "turn_0",
-      stepIndex: 0,
-      runKey: null,
-      finishReason: "stop",
-      inputTokens: null,
-      outputTokens: null,
-      cacheReadTokens: null,
-      cacheWriteTokens: null,
-      costUsd: null,
-      usageReported: false,
-    });
-  });
-
-  test("reads v27 usage owned by a model run or a context change", () => {
-    expect(
-      parseStepUsageEvent(
+      parseModelUsageEvent(
         "usage.recorded",
         {
           kind: "model",
@@ -164,7 +91,6 @@ describe("parseStepUsageEvent", () => {
       ),
     ).toEqual({
       turnId: "turn_3",
-      stepIndex: null,
       runKey: "run:run_7",
       finishReason: null,
       inputTokens: 100,
@@ -175,7 +101,7 @@ describe("parseStepUsageEvent", () => {
       usageReported: true,
     });
     expect(
-      parseStepUsageEvent(
+      parseModelUsageEvent(
         "usage.recorded",
         {
           kind: "model",
@@ -191,18 +117,18 @@ describe("parseStepUsageEvent", () => {
     const usage = { inputTokens: 5, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
     const recorded = { kind: "model", owner: { runId: "r" }, usage };
     const scope = { turnId: "t", runId: "r" };
-    // eve 1.0.0-rc.11+ commits a retried attempt's record with `model.retried`
-    // and the final one with `model.settled`: same run, different lines.
+    // eve commits a retried attempt's record with `model.retried` and the
+    // final one with `model.settled`: same run, different lines.
     expect(
-      parseStepUsageEvent("usage.recorded", recorded, scope, { line: 4, index: 1 })?.runKey,
+      parseModelUsageEvent("usage.recorded", recorded, scope, { line: 4, index: 1 })?.runKey,
     ).toBe("run:r@line:4");
     expect(
-      parseStepUsageEvent("usage.recorded", recorded, scope, { line: 9, index: 1 })?.runKey,
+      parseModelUsageEvent("usage.recorded", recorded, scope, { line: 9, index: 1 })?.runKey,
     ).toBe("run:r@line:9");
     // An unpositioned record, and a context change's record, keep their owner key.
-    expect(parseStepUsageEvent("usage.recorded", recorded, scope)?.runKey).toBe("run:r");
+    expect(parseModelUsageEvent("usage.recorded", recorded, scope)?.runKey).toBe("run:r");
     expect(
-      parseStepUsageEvent(
+      parseModelUsageEvent(
         "usage.recorded",
         { kind: "model", owner: { changeId: "c" }, usage },
         { changeId: "c" },
@@ -211,17 +137,11 @@ describe("parseStepUsageEvent", () => {
     ).toBe("change:c");
   });
 
-  test("names the owner key a commit-line run key replaced", () => {
-    expect(unsegmentedRunKey("run:r@line:12")).toBe("run:r");
-    expect(unsegmentedRunKey("run:r")).toBeNull();
-    expect(unsegmentedRunKey("change:c")).toBeNull();
-  });
-
-  test("leaves delegated v27 usage to the child session that recorded it", () => {
+  test("leaves delegated usage to the child session that recorded it", () => {
     const usage = { inputTokens: 5, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
     const position = { line: 6, index: 2 };
     expect(
-      parseStepUsageEvent(
+      parseModelUsageEvent(
         "usage.recorded",
         { kind: "model", owner: { callId: "call_1" }, usage },
         { turnId: "t" },
@@ -229,10 +149,10 @@ describe("parseStepUsageEvent", () => {
       ),
     ).toBeNull();
     expect(
-      parseStepUsageEvent("usage.recorded", { kind: "delegated-late", usage }, {}, position),
+      parseModelUsageEvent("usage.recorded", { kind: "delegated-late", usage }, {}, position),
     ).toBeNull();
     expect(
-      parseStepUsageEvent("model.settled", { runId: "run_1", outcome: "completed" }),
+      parseModelUsageEvent("model.settled", { runId: "run_1", outcome: "completed" }),
     ).toBeNull();
     expect(isDelegatedUsageRecord({ kind: "model", owner: { callId: "call_1" }, usage })).toBe(
       true,
@@ -247,10 +167,9 @@ describe("parseStepUsageEvent", () => {
     const decision = { kind: "decision", usage: { ...usage, costUsd: 0.002 } };
     const auxiliary = { kind: "auxiliary", owner: { callId: "call_9" }, usage };
     expect(
-      parseStepUsageEvent("usage.recorded", decision, { turnId: "turn_4" }, { line: 7, index: 2 }),
+      parseModelUsageEvent("usage.recorded", decision, { turnId: "turn_4" }, { line: 7, index: 2 }),
     ).toEqual({
       turnId: "turn_4",
-      stepIndex: null,
       runKey: "record@line:7:2",
       finishReason: null,
       inputTokens: 40,
@@ -261,21 +180,26 @@ describe("parseStepUsageEvent", () => {
       usageReported: true,
     });
     expect(
-      parseStepUsageEvent("usage.recorded", auxiliary, { turnId: "turn_4" }, { line: 8, index: 0 }),
+      parseModelUsageEvent(
+        "usage.recorded",
+        auxiliary,
+        { turnId: "turn_4" },
+        { line: 8, index: 0 },
+      ),
     ).toMatchObject({ turnId: "turn_4", runKey: "record@line:8:0", inputTokens: 40 });
     // Spend nothing owns (cache warming) is this session's own as well.
     expect(
-      parseStepUsageEvent("usage.recorded", { kind: "model", usage }, {}, { line: 2, index: 0 }),
+      parseModelUsageEvent("usage.recorded", { kind: "model", usage }, {}, { line: 2, index: 0 }),
     ).toMatchObject({ turnId: "record@line:2:0", runKey: "record@line:2:0" });
     expect(isDelegatedUsageRecord(decision)).toBe(false);
     expect(isDelegatedUsageRecord(auxiliary)).toBe(false);
     // Without a stream position nothing makes the record idempotent.
-    expect(parseStepUsageEvent("usage.recorded", decision, { turnId: "turn_4" })).toBeNull();
+    expect(parseModelUsageEvent("usage.recorded", decision, { turnId: "turn_4" })).toBeNull();
   });
 
-  test("ignores events that cannot identify a completed model step", () => {
-    expect(parseStepUsageEvent("turn.completed", { turnId: "turn_0", stepIndex: 0 })).toBeNull();
-    expect(parseStepUsageEvent("step.completed", { turnId: "turn_0" })).toBeNull();
+  test("ignores every other event", () => {
+    expect(parseModelUsageEvent("model.settled", { runId: "r", outcome: "completed" })).toBeNull();
+    expect(parseModelUsageEvent("turn.settled", { turnId: "turn_0" })).toBeNull();
   });
 });
 
@@ -286,8 +210,7 @@ describe("Eve session request classification", () => {
     if (typeof classify !== "function") return;
 
     expect(classify("POST", "/eve/v1/session")).toEqual({ kind: "initial", sessionId: null });
-    // The pre-0.31 tokenless reset route is gone; the path segment now reads
-    // as an ordinary (if odd) session id, exactly like any other segment.
+    // A bare `reset` segment is an ordinary (if odd) session id.
     expect(classify("POST", "/eve/v1/session/reset")).toEqual({
       kind: "continuation",
       sessionId: "reset",
@@ -310,7 +233,6 @@ describe("Eve session request classification", () => {
       kind: "stream",
       sessionId: "eve/parent",
     });
-    // Eve 0.33 moved clear/compact/reset onto ID-addressed control routes.
     expect(classify("POST", "/eve/v1/session/eve_1/clear")).toEqual({
       kind: "clear",
       sessionId: "eve_1",
@@ -323,12 +245,12 @@ describe("Eve session request classification", () => {
       kind: "reset",
       sessionId: "eve_1",
     });
-    // Eve 0.87 renamed retirement to `end` and kept `reset` as its alias.
+    // `end` retires the session; `reset` is its alias.
     expect(classify("POST", "/eve/v1/session/eve_1/end")).toEqual({
       kind: "reset",
       sessionId: "eve_1",
     });
-    // Eve 0.84 follows every descendant session under its root's stream.
+    // Eve follows every descendant session under its root's stream.
     expect(classify("GET", "/eve/v1/session/eve%2Froot/descendants/stream")).toEqual({
       kind: "stream",
       sessionId: "eve/root",
@@ -502,76 +424,34 @@ describe("Playground turn validation", () => {
 });
 
 describe("eve event projections", () => {
-  test("maps every boundary event onto the scheduled-execution outcome", () => {
+  test("maps settled outcomes and pauses onto the scheduled-execution outcome", () => {
     const { scheduleExecutionStatusFromEveEvent, EVE_SESSION_BOUNDARY_EVENT_TYPES } = Eve;
-    expect(scheduleExecutionStatusFromEveEvent("turn.completed", "completed")).toBe("succeeded");
-    expect(scheduleExecutionStatusFromEveEvent("session.completed", "completed")).toBe("succeeded");
-    expect(scheduleExecutionStatusFromEveEvent("turn.failed", "failed")).toBe("failed");
-    expect(scheduleExecutionStatusFromEveEvent("turn.cancelled", "running")).toBe("failed");
-    expect(scheduleExecutionStatusFromEveEvent("session.failed", "failed")).toBe("failed");
-    expect(scheduleExecutionStatusFromEveEvent("session.waiting", "waiting_approval")).toBe(
-      "parked",
+    const settled = (outcome: string) => ({ turnId: "t", outcome });
+    expect(scheduleExecutionStatusFromEveEvent("turn.settled", settled("completed"))).toBe(
+      "succeeded",
     );
-    expect(scheduleExecutionStatusFromEveEvent("session.waiting", "waiting")).toBe("succeeded");
-    // 0.69: a question inside a running call parks the turn without ending it.
-    expect(scheduleExecutionStatusFromEveEvent("turn.waiting", "waiting_approval")).toBe("parked");
-    // A turn waiting on its own tasks is still running.
-    expect(scheduleExecutionStatusFromEveEvent("turn.waiting", "running")).toBe("running");
-    // 0.70: a schedule whose turn holds for a sign-in parks like one holding
-    // for an approval, once the sign-in moved the session to waiting_approval.
-    expect(
-      scheduleExecutionStatusFromEveEvent(
-        "turn.waiting",
-        Eve.sessionStatusFromEveEvent("authorization.required", "running")!,
-      ),
-    ).toBe("parked");
-    // Total mapping: anything outside the boundary vocabulary keeps running.
-    expect(scheduleExecutionStatusFromEveEvent("step.completed", "running")).toBe("running");
-    expect(scheduleExecutionStatusFromEveEvent(undefined, "running")).toBe("running");
-    // Every declared boundary event resolves to a non-running outcome once a
-    // question is pending, and all but `turn.waiting` without one.
-    // v27 settled events carry their outcome in `data`.
-    const sample = (type: string) =>
-      type === "turn.settled" || type === "session.ended" ? { outcome: "completed" } : undefined;
+    expect(scheduleExecutionStatusFromEveEvent("turn.settled", settled("failed"))).toBe("failed");
+    expect(scheduleExecutionStatusFromEveEvent("turn.settled", settled("cancelled"))).toBe(
+      "failed",
+    );
+    expect(scheduleExecutionStatusFromEveEvent("session.ended", settled("failed"))).toBe("failed");
+    // A turn pauses only for a person.
+    expect(scheduleExecutionStatusFromEveEvent("turn.paused")).toBe("parked");
+    // An unknown or missing outcome never settles the run, and anything
+    // outside the boundary vocabulary keeps it running.
+    expect(scheduleExecutionStatusFromEveEvent("turn.settled")).toBe("running");
+    expect(scheduleExecutionStatusFromEveEvent("turn.settled", settled("later"))).toBe("running");
+    expect(scheduleExecutionStatusFromEveEvent("model.settled")).toBe("running");
+    expect(scheduleExecutionStatusFromEveEvent(undefined)).toBe("running");
+    // Every declared boundary event resolves to a non-running outcome.
     for (const type of EVE_SESSION_BOUNDARY_EVENT_TYPES) {
-      expect(scheduleExecutionStatusFromEveEvent(type, "waiting_approval", sample(type))).not.toBe(
-        "running",
-      );
-      if (type !== "turn.waiting") {
-        expect(scheduleExecutionStatusFromEveEvent(type, "running", sample(type))).not.toBe(
-          "running",
-        );
-      }
+      expect(scheduleExecutionStatusFromEveEvent(type, settled("completed"))).not.toBe("running");
     }
   });
 
-  test("maps v27 settled outcomes onto the scheduled-execution outcome", () => {
-    const { scheduleExecutionStatusFromEveEvent } = Eve;
-    const settled = (outcome: string) => ({ turnId: "t", outcome });
-    expect(
-      scheduleExecutionStatusFromEveEvent("turn.settled", "running", settled("completed")),
-    ).toBe("succeeded");
-    expect(scheduleExecutionStatusFromEveEvent("turn.settled", "running", settled("failed"))).toBe(
-      "failed",
-    );
-    expect(
-      scheduleExecutionStatusFromEveEvent("turn.settled", "running", settled("cancelled")),
-    ).toBe("failed");
-    expect(scheduleExecutionStatusFromEveEvent("session.ended", "running", settled("failed"))).toBe(
-      "failed",
-    );
-    // A v27 turn pauses only for a person.
-    expect(scheduleExecutionStatusFromEveEvent("turn.paused", "running")).toBe("parked");
-    // An unknown or missing outcome never settles the run.
-    expect(scheduleExecutionStatusFromEveEvent("turn.settled", "running")).toBe("running");
-    expect(scheduleExecutionStatusFromEveEvent("turn.settled", "running", settled("later"))).toBe(
-      "running",
-    );
-    expect(scheduleExecutionStatusFromEveEvent("model.settled", "running")).toBe("running");
-  });
-
-  test("projects v27 session status from interactions and settled outcomes", () => {
+  test("projects session status from interactions and settled outcomes", () => {
     const { sessionStatusFromEveEvent } = Eve;
+    expect(sessionStatusFromEveEvent("session.started", "running")).toBe("running");
     let status = sessionStatusFromEveEvent("turn.started", "waiting", { turnId: "t" })!;
     expect(status).toBe("running");
     status = sessionStatusFromEveEvent("interaction.opened", status)!;
@@ -595,84 +475,36 @@ describe("eve event projections", () => {
     expect(sessionStatusFromEveEvent("usage.recorded", "running")).toBeNull();
   });
 
-  test("projects session status transitions including the approval-parked hold", () => {
-    const { sessionStatusFromEveEvent } = Eve;
-    expect(sessionStatusFromEveEvent("session.started", "running")).toBe("running");
-    expect(sessionStatusFromEveEvent("turn.started", "waiting")).toBe("running");
-    expect(sessionStatusFromEveEvent("input.requested", "running")).toBe("waiting_approval");
-    expect(sessionStatusFromEveEvent("session.waiting", "waiting_approval")).toBe(
-      "waiting_approval",
-    );
-    expect(sessionStatusFromEveEvent("session.waiting", "running")).toBe("waiting");
-    expect(sessionStatusFromEveEvent("session.completed", "running")).toBe("completed");
-    expect(sessionStatusFromEveEvent("session.failed", "running")).toBe("failed");
-    expect(sessionStatusFromEveEvent("step.completed", "running")).toBeNull();
-    // 0.69 resumes an answered turn under the same turnId, with no turn.started.
-    expect(sessionStatusFromEveEvent("input.resolved", "waiting_approval")).toBe("running");
-    expect(sessionStatusFromEveEvent("input.resolved", "waiting")).toBeNull();
-    expect(sessionStatusFromEveEvent("turn.waiting", "waiting_approval")).toBeNull();
-    expect(sessionStatusFromEveEvent("turn.waiting", "running")).toBeNull();
-    // A connection sign-in waits on a person like an approval does; eve 0.70
-    // holds the turn for it, so `authorization.completed` resumes the session.
-    expect(sessionStatusFromEveEvent("authorization.required", "running")).toBe("waiting_approval");
-    expect(sessionStatusFromEveEvent("authorization.completed", "waiting_approval")).toBe(
-      "running",
-    );
-    expect(sessionStatusFromEveEvent("authorization.completed", "waiting")).toBeNull();
-  });
-
-  test("keeps a session parked while a held turn still waits on a person", () => {
-    const { sessionStatusFromEveEvent, scheduleExecutionStatusFromEveEvent } = Eve;
-    // Answering one of several pending requests resolves it, then eve parks
-    // the same turn again with `turn.waiting { on: "input" }` (0.70 for
-    // approvals, 0.70.3 for questions); the session still waits on a person.
-    let status = sessionStatusFromEveEvent("input.requested", "running")!;
-    status = sessionStatusFromEveEvent("input.requested", status)!;
-    status = sessionStatusFromEveEvent("input.resolved", status)!;
-    expect(status).toBe("running");
-    status = sessionStatusFromEveEvent("turn.waiting", status, { on: "input", turnId: "t" })!;
-    expect(status).toBe("waiting_approval");
-    expect(scheduleExecutionStatusFromEveEvent("turn.waiting", status)).toBe("parked");
-    // A turn that waits on its own tasks keeps running, and an event without
-    // its payload projects nothing.
-    expect(sessionStatusFromEveEvent("turn.waiting", "running", { on: "tasks" })).toBeNull();
-    expect(sessionStatusFromEveEvent("turn.waiting", "running")).toBeNull();
-  });
-
   test("renders the Session failure line from the boundary payload", () => {
     const { sessionErrorFromEveEvent } = Eve;
-    expect(sessionErrorFromEveEvent("session.failed", { message: "boom" })).toBe("boom");
     expect(
       sessionErrorFromEveEvent("session.ended", {
         outcome: "failed",
-        error: { code: "MODEL_CALL_FAILED", message: "v27 boom" },
+        error: { code: "MODEL_CALL_FAILED", message: "boom" },
       }),
-    ).toBe("v27 boom");
-    expect(sessionErrorFromEveEvent("session.failed", {})).toBe(
-      "The agent reported session.failed without a message.",
+    ).toBe("boom");
+    expect(sessionErrorFromEveEvent("session.ended", { outcome: "failed" })).toBe(
+      "The agent reported session.ended without a message.",
     );
     expect(sessionErrorFromEveEvent(undefined, "not a record")).toBe(
-      "The agent reported session.failed without a message.",
+      "The agent reported session.ended without a message.",
     );
   });
 
   test("renders the scheduled-execution failure line from the boundary payload", () => {
     const { scheduleExecutionErrorFromEveEvent } = Eve;
-    expect(scheduleExecutionErrorFromEveEvent("turn.failed", { message: "boom" })).toBe(
-      "Scheduled Session turn.failed: boom",
-    );
     expect(
       scheduleExecutionErrorFromEveEvent("turn.settled", {
         outcome: "failed",
-        error: { code: "X", message: "v27 boom" },
+        error: { code: "X", message: "boom" },
       }),
-    ).toBe("Scheduled Session turn.settled (failed): v27 boom");
-    expect(scheduleExecutionErrorFromEveEvent("turn.failed", {})).toBe(
-      "Scheduled Session ended with turn.failed.",
+    ).toBe("Scheduled Session turn.settled (failed): boom");
+    expect(scheduleExecutionErrorFromEveEvent("turn.settled", { outcome: "cancelled" })).toBe(
+      "Scheduled Session ended with turn.settled (cancelled).",
     );
-    expect(scheduleExecutionErrorFromEveEvent(undefined, { message: "boom" })).toBe(
-      "Scheduled Session failed: boom",
-    );
+    expect(
+      scheduleExecutionErrorFromEveEvent(undefined, { error: { code: "X", message: "boom" } }),
+    ).toBe("Scheduled Session failed: boom");
     expect(scheduleExecutionErrorFromEveEvent(undefined, "not a record")).toBe(
       "Scheduled Session ended with failure.",
     );

@@ -61,7 +61,7 @@ export const agentEventObservationSchema = z
     runtimeInstanceId: z.string().min(1).nullable().optional(),
     eveSessionId: z.string().min(1),
     parentEveSessionId: z.string().min(1).nullable(),
-    sourceSequence: z.number().int().nonnegative().nullable(),
+    sourceSequence: z.number().int().nonnegative(),
     agent: z
       .object({
         id: z.string().nullable(),

@@ -1190,7 +1190,7 @@ describe("SQL Store jobs", () => {
     await store.appendSessionEvent(session.id, "message", { role: "user", content: "Hello" });
     await store.recordModelUsage(session.id, {
       turnId: "turn_0",
-      stepIndex: 0,
+      runKey: "run:r5",
       finishReason: "stop",
       inputTokens: 120,
       outputTokens: 30,
@@ -1291,7 +1291,7 @@ describe("SQL Store jobs", () => {
 
     const usageEvent = await store.recordModelUsage(session.id, {
       turnId: "turn_0",
-      stepIndex: 0,
+      runKey: "run:r6",
       finishReason: "stop",
       inputTokens: 120,
       outputTokens: 30,
@@ -1304,7 +1304,7 @@ describe("SQL Store jobs", () => {
     expect(usageEvent).toMatchObject({
       sessionId: session.id,
       turnId: "turn_0",
-      stepIndex: 0,
+      runKey: "run:r6",
       inputTokens: 120,
     });
     await expect(store.listSessions(project.id)).resolves.toEqual([
@@ -1330,7 +1330,7 @@ describe("SQL Store jobs", () => {
     const session = await store.createSession({ projectId: project.id, trigger: "playground" });
     const step = {
       turnId: "turn_0",
-      stepIndex: 0,
+      runKey: "run:r8",
       finishReason: "stop",
       inputTokens: 12,
       outputTokens: 4,
@@ -1359,7 +1359,7 @@ describe("SQL Store jobs", () => {
 
     await store.recordModelUsage(session.id, {
       turnId: "turn_0",
-      stepIndex: 0,
+      runKey: "run:r9",
       finishReason: "stop",
       inputTokens: null,
       outputTokens: null,

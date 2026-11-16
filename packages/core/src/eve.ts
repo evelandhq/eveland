@@ -1,15 +1,13 @@
-export type ModelStepUsage = {
+export type ModelUsage = {
   turnId: string;
-  /** The v26 step index; null for a v27 record, which a model run owns. */
-  stepIndex: number | null;
   /**
-   * The idempotency key a v27 usage row is stored under; null for a v26 step.
-   * A model run's key names the commit line too (`run:<runId>@line:<line>`)
-   * when the fact carries its stream position, see {@link runUsageKey}; a
-   * context change's key is its owner (`change:<changeId>`); any other record
-   * is keyed by its stream position (`record@line:<line>:<index>`).
+   * The idempotency key a usage row is stored under. A model run's key names
+   * the commit line too (`run:<runId>@line:<line>`) when the fact carries its
+   * stream position, see {@link runUsageKey}; a context change's key is its
+   * owner (`change:<changeId>`); any other record is keyed by its stream
+   * position (`record@line:<line>:<index>`).
    */
-  runKey: string | null;
+  runKey: string;
   finishReason: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
@@ -75,7 +73,6 @@ export type EveSessionRequest = {
     | "continuation"
     | "cancel"
     | "reset"
-    | "end"
     | "stream"
     | "clear"
     | "compact"
@@ -183,10 +180,10 @@ export function classifyEveSessionRequest(
     return { kind: "initial", sessionId: null };
   }
 
-  // Eve 0.37.1 lets a caller follow a remote child's stream through the
-  // parent Agent that owns the subagent call. Routing is therefore pinned by
-  // the parent session, while transport semantics stay identical to the
-  // canonical session stream (activation kind, idle timeout, and heartbeat).
+  // A caller follows a remote child's stream through the parent Agent that
+  // owns the subagent call. Routing is therefore pinned by the parent
+  // session, while transport semantics stay identical to the canonical
+  // session stream (activation kind, idle timeout, and heartbeat).
   const subagentStream = /^\/eve\/v1\/session\/([^/]+)\/subagents\/([^/]+)\/([^/]+)\/stream$/.exec(
     pathname,
   );
@@ -205,8 +202,8 @@ export function classifyEveSessionRequest(
     }
   }
 
-  // Eve 0.84 (v27) serves a session's followed descendants -- every child
-  // session its calls opened, recursively -- as one stream under the root.
+  // Eve serves a session's followed descendants -- every child session its
+  // calls opened, recursively -- as one stream under the root.
   // It is a read of the root session's stream family, so it is pinned by the
   // root session id and keeps the canonical stream's transport semantics.
   const descendantsStream = /^\/eve\/v1\/session\/([^/]+)\/descendants\/stream$/.exec(pathname);
@@ -243,8 +240,8 @@ export function classifyEveSessionRequest(
     return null;
   }
 
-  // Eve 0.87 renamed the retirement route `reset` to `end` and kept `reset`
-  // as an alias; both retire the session, so they share one request kind.
+  // `end` retires the session and eve keeps `reset` as its alias, so both
+  // share one request kind.
   return {
     kind: suffix === null ? "continuation" : suffix === "end" ? "reset" : suffix,
     sessionId,
@@ -293,7 +290,7 @@ export function isWorkflowQueueNamespace(pathname: string): boolean {
 
 /**
  * The one route inside that namespace that IS meant to be reached from the
- * outside. From eve 0.48, a tool whose `execute` is a Workflow body can mint
+ * outside. A tool whose `execute` is a Workflow body can mint
  * `createWebhook()` URLs, and eve serves them at
  * `/.well-known/workflow/v1/webhook/:token` on every method (GET, POST, PUT,
  * PATCH, DELETE). The token is the only credential and an unknown or spent one
@@ -306,56 +303,38 @@ export function isWorkflowWebhookRoute(pathname: string): boolean {
 }
 
 /**
- * Provider-reported usage for one model call, from either session protocol:
- * a v26 `step.completed` (keyed by turn and step index) or a v27
- * `usage.recorded` (keyed by the model run or context change that owns it).
+ * Provider-reported usage from a `usage.recorded`, keyed by the model run or
+ * context change that owns it, or by its stream position.
  *
- * A v27 record that re-reports a child's spend (see
+ * A record that re-reports a child's spend (see
  * {@link isDelegatedUsageRecord}) is left to the child's node, so a session's
  * totals never count the same model call twice; every other record counts on
- * the session that recorded it. v27 records every usage field (eve fills a
+ * the session that recorded it. eve records every usage field (it fills a
  * missing token count with zero), so missing usage is a model run with no
  * record at all rather than a record with gaps.
  */
-export function parseStepUsageEvent(
+export function parseModelUsageEvent(
   type: string,
   payload: unknown,
   scope?: unknown,
   position?: unknown,
-): ModelStepUsage | null {
-  if (type === "usage.recorded") return parseUsageRecorded(payload, scope, position);
-  if (type !== "step.completed" || !isEveRecord(payload)) {
-    return null;
-  }
-
-  const turnId = typeof payload.turnId === "string" ? payload.turnId : null;
-  const stepIndex = readNonNegativeInteger(payload.stepIndex);
-  if (!turnId || stepIndex === null) {
-    return null;
-  }
-
-  return {
-    turnId,
-    stepIndex,
-    runKey: null,
-    finishReason: typeof payload.finishReason === "string" ? payload.finishReason : null,
-    ...usageFields(isEveRecord(payload.usage) ? payload.usage : null),
-  };
+): ModelUsage | null {
+  return type === "usage.recorded" ? parseUsageRecorded(payload, scope, position) : null;
 }
 
 /**
- * A v27 model run that completed is owed a `usage.recorded`. Projecting it as a
+ * A model run that completed is owed a `usage.recorded`. Projecting it as a
  * missing-usage row keyed by its run lets a run that never reports usage count
  * as missing, while a record that arrives later (or earlier) for the same run
  * key reconciles that row instead of counting the run twice. Runs that failed
- * or were cancelled are not counted, as v26 never reported a step for them.
+ * or were cancelled are not owed one, so they never count as missing.
  */
 export function parseUnreportedModelRun(
   type: string,
   payload: unknown,
   scope?: unknown,
   position?: unknown,
-): ModelStepUsage | null {
+): ModelUsage | null {
   if (type !== "model.settled" || !isEveRecord(payload) || payload.outcome !== "completed") {
     return null;
   }
@@ -373,7 +352,6 @@ export function parseUnreportedModelRun(
       typeof scopeRecord?.turnId === "string" && scopeRecord.turnId.length > 0
         ? scopeRecord.turnId
         : runKey,
-    stepIndex: null,
     runKey,
     finishReason: typeof payload.finishReason === "string" ? payload.finishReason : null,
     ...usageFields(null),
@@ -382,8 +360,8 @@ export function parseUnreportedModelRun(
 
 /**
  * The usage key of a model run's record or settlement. A run can carry more
- * than one record: from eve 1.0.0-rc.11 an answer eve discards (an empty
- * answer it asks for again) records its usage in the `model.retried` commit,
+ * than one record: an answer eve discards (an empty answer it asks for
+ * again) records its usage in the `model.retried` commit,
  * and the answer that stands records its own in the `model.settled` commit,
  * both owned by the same run. A settlement and the record it is owed always
  * share one commit, which is one stream line, so the line keeps those two on
@@ -394,16 +372,6 @@ export function parseUnreportedModelRun(
 function runUsageKey(runId: string, position: unknown): string {
   const line = isEveRecord(position) ? readNonNegativeInteger(position.line) : null;
   return line === null ? `run:${runId}` : `run:${runId}@line:${String(line)}`;
-}
-
-/**
- * The bare owner key (`run:<runId>`) a commit-line run key replaced, or null
- * for a key that names no line. Rows projected before keys named the line
- * hold the bare key, and a run that has one keeps using it.
- */
-export function unsegmentedRunKey(runKey: string): string | null {
-  const match = /^(run:.+)@line:\d+$/.exec(runKey);
-  return match ? match[1]! : null;
 }
 
 /**
@@ -439,7 +407,7 @@ function parseUsageRecorded(
   payload: unknown,
   scope: unknown,
   position: unknown,
-): ModelStepUsage | null {
+): ModelUsage | null {
   if (!isEveRecord(payload) || isDelegatedUsageRecord(payload)) return null;
   const owner = isEveRecord(payload.owner) ? payload.owner : null;
   const runKey =
@@ -458,7 +426,6 @@ function parseUsageRecorded(
         : runKey;
   return {
     turnId,
-    stepIndex: null,
     runKey,
     finishReason: null,
     ...usageFields(isEveRecord(payload.usage) ? payload.usage : null),
@@ -468,7 +435,7 @@ function parseUsageRecorded(
 function usageFields(
   usage: Record<string, unknown> | null,
 ): Pick<
-  ModelStepUsage,
+  ModelUsage,
   | "inputTokens"
   | "outputTokens"
   | "cacheReadTokens"
@@ -559,32 +526,17 @@ function isSupportedPlaygroundFile(mediaType: string, filename: string): boolean
 }
 
 /**
- * Eve's turn/session boundary events -- the vocabulary is eve's, and eve adds
- * to it (turn.cancelled arrived in 0.24), so every projection that decides
- * "did this event end a scheduled run / change a session's state" imports the
- * list and the mappings below from here instead of re-spelling them. The
- * mapping tables are pinned by eve.test.ts.
+ * Eve's turn/session boundary events -- the vocabulary is eve's, so every
+ * projection that decides "did this event end a scheduled run / change a
+ * session's state" imports the list and the mappings below from here instead
+ * of re-spelling them. The mapping tables are pinned by eve.test.ts.
  *
- * The window spans two session protocols, so the list holds both
- * vocabularies. v27 (eve 0.84+) ends every item with one settled event whose
- * `outcome` says how it ended -- `turn.settled` replaces turn.completed,
- * turn.failed, and turn.cancelled; `session.ended` replaces session.completed
- * and session.failed -- and a turn pauses (`turn.paused`) only for a person:
- * an approval, a question, a sign-in, or a budget prompt. Mappings that need
- * the outcome read it from the event's `data`.
+ * Eve ends every item with one settled event whose `outcome` says how it
+ * ended (`turn.settled`, `session.ended`), and a turn pauses (`turn.paused`)
+ * only for a person: an approval, a question, a sign-in, or a budget prompt.
+ * Mappings that need the outcome read it from the event's `data`.
  */
 export const EVE_SESSION_BOUNDARY_EVENT_TYPES = [
-  "turn.completed",
-  "turn.failed",
-  "turn.cancelled",
-  // Eve 0.69: a turn that parks without ending -- on a question asked inside
-  // a running call, or while its tasks work -- emits this instead of
-  // `session.waiting`; it ends a scheduled run only under a pending question.
-  "turn.waiting",
-  "session.waiting",
-  "session.completed",
-  "session.failed",
-  // Eve 0.84 (v27).
   "turn.settled",
   "turn.paused",
   "session.ended",
@@ -596,23 +548,13 @@ function eventOutcome(data: unknown): string | null {
 
 /**
  * Projects an eve event onto the platform Session status vocabulary, or null
- * when the event does not move the projection. `session.waiting` keeps an
- * approval-parked session parked instead of demoting it to plain waiting.
- * From Eve 0.69 a question asked inside a running call parks the turn without
- * ending it, and the answer resumes that same turn with no `turn.started`, so
- * `input.resolved` is what takes an approval-parked session back to running.
- * A connection sign-in waits on a person the same way (0.70 holds the turn
- * for it too), so it parks the session until `authorization.completed`.
- * Answering one of several pending requests resolves only that one, and eve
- * parks the turn again with `turn.waiting { on: "input" }`, so that event --
- * read from the event's `data` -- puts the session back in waiting_approval.
- *
- * v27 folds approvals, questions, sign-ins, and budget prompts into one
- * interaction: `interaction.opened` parks the session, `interaction.settled`
- * resumes it, and `turn.paused` (which names every interaction the turn still
- * awaits) parks it again. A settled turn of any outcome leaves the session
- * idle, which v27 no longer announces separately, and `session.ended` carries
- * the terminal outcome.
+ * when the event does not move the projection. Eve folds approvals,
+ * questions, sign-ins, and budget prompts into one interaction:
+ * `interaction.opened` parks the session, `interaction.settled` resumes it,
+ * and `turn.paused` (which names every interaction the turn still awaits)
+ * parks it again. A settled turn of any outcome leaves the session idle,
+ * which eve does not announce separately, and `session.ended` carries the
+ * terminal outcome.
  */
 export function sessionStatusFromEveEvent(
   type: string,
@@ -620,26 +562,10 @@ export function sessionStatusFromEveEvent(
   data?: unknown,
 ): "running" | "waiting_approval" | "waiting" | "completed" | "failed" | null {
   if (type === "session.started" || type === "turn.started") return "running";
-  if (
-    type === "input.requested" ||
-    type === "authorization.required" ||
-    type === "interaction.opened" ||
-    type === "turn.paused"
-  )
-    return "waiting_approval";
-  if (
-    type === "input.resolved" ||
-    type === "authorization.completed" ||
-    type === "interaction.settled"
-  )
+  if (type === "interaction.opened" || type === "turn.paused") return "waiting_approval";
+  if (type === "interaction.settled")
     return currentStatus === "waiting_approval" ? "running" : null;
-  if (type === "turn.waiting")
-    return isEveRecord(data) && data.on === "input" ? "waiting_approval" : null;
-  if (type === "session.waiting")
-    return currentStatus === "waiting_approval" ? "waiting_approval" : "waiting";
   if (type === "turn.settled") return "waiting";
-  if (type === "session.completed") return "completed";
-  if (type === "session.failed") return "failed";
   if (type === "session.ended") {
     const outcome = eventOutcome(data);
     return outcome === "completed" ? "completed" : outcome === "failed" ? "failed" : null;
@@ -649,17 +575,12 @@ export function sessionStatusFromEveEvent(
 
 /**
  * Projects an eve event onto a scheduled execution's outcome. Total: any
- * non-boundary event leaves the execution "running". A `session.waiting` --
- * or, from Eve 0.69, a `turn.waiting` -- under an approval request parks the
- * run; otherwise `session.waiting` means the turn finished and the run
- * succeeded, while `turn.waiting` means the turn still runs (its tasks work).
- * v27: `turn.paused` always waits on a person, so it parks the run, and the
- * outcome of `turn.settled` / `session.ended` (read from `data`) decides the
- * rest.
+ * non-boundary event leaves the execution "running". `turn.paused` always
+ * waits on a person, so it parks the run, and the outcome of `turn.settled` /
+ * `session.ended` (read from `data`) decides the rest.
  */
 export function scheduleExecutionStatusFromEveEvent(
   type: string | undefined,
-  sessionStatus: string,
   data?: unknown,
 ): "running" | "succeeded" | "failed" | "parked" {
   if (type === "turn.settled" || type === "session.ended") {
@@ -669,26 +590,12 @@ export function scheduleExecutionStatusFromEveEvent(
     return "running";
   }
   if (type === "turn.paused") return "parked";
-  if (type === "turn.failed" || type === "turn.cancelled" || type === "session.failed")
-    return "failed";
-  if (
-    (type === "session.waiting" || type === "turn.waiting") &&
-    sessionStatus === "waiting_approval"
-  )
-    return "parked";
-  if (type === "turn.waiting") return "running";
-  if (type === "turn.completed" || type === "session.waiting" || type === "session.completed")
-    return "succeeded";
   return "running";
 }
 
-/**
- * The failure text a boundary event carries: v26 put `message` on the event
- * itself, v27 nests one error shape (`error: { code, message }`) everywhere.
- */
+/** The failure text a boundary event carries in its error shape (`error: { code, message }`). */
 function eventErrorMessage(payload: unknown): string | null {
   if (!isEveRecord(payload)) return null;
-  if (typeof payload.message === "string") return payload.message;
   const error = isEveRecord(payload.error) ? payload.error : null;
   return typeof error?.message === "string" ? error.message : null;
 }
@@ -696,7 +603,7 @@ function eventErrorMessage(payload: unknown): string | null {
 /** Operator-facing failure line for a Session's own failure boundary event. */
 export function sessionErrorFromEveEvent(type: string | undefined, payload: unknown): string {
   const message = eventErrorMessage(payload);
-  return message ?? `The agent reported ${type ?? "session.failed"} without a message.`;
+  return message ?? `The agent reported ${type ?? "session.ended"} without a message.`;
 }
 
 /** Operator-facing failure line for a scheduled execution's boundary event. */

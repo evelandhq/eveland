@@ -379,7 +379,7 @@ function envelope(
     parentEveSessionId,
     sourceSequence: 1,
     agent: { id: name, name, nodeId: name },
-    channelKind: parentEveSessionId ? null : "http",
+    channelKind: parentEveSessionId ? null : "channel:eve",
     eventAt: new Date().toISOString(),
     event: { type: "session.started", data: {} },
   };
