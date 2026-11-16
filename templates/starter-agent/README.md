@@ -2,7 +2,7 @@
 
 A working eve agent for the eveland platform: a tour guide that demonstrates
 sessions, tools, durable timers, and the public URL.
-Scaffolded by `eveland init`; also seeded as an instance's first agent.
+Seeded by `eveland-ctl` as an instance's first agent.
 
 ## Layout
 

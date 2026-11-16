@@ -5,7 +5,7 @@ import type { FetchLike } from "./io.ts";
 
 /**
  * First-boot implicit login: mint a scoped CLI token for this machine's
- * `eveland` CLI so the golden path (init -> deploy) never hits a login wall.
+ * `eveland` CLI so `eveland deploy` on this machine never hits a login wall.
  *
  * This is the exact RFC 8628 device flow the CLI runs — the same seeded
  * public client, the same scopes, the same token shape — except the approval

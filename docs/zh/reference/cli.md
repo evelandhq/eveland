@@ -15,9 +15,18 @@ CLI 直接作为 [`eveland`](https://www.npmjs.com/package/eveland) npm 官方�
 | :--------------------- | :------------------------------------------- | :------------------------------------------------------------------------ |
 | **npm scripts** (推荐) | 常规项目工作流，版本随项目 lockfile 严格锁定 | 在 `package.json` 中配置 `"deploy": "eveland deploy"`，运行 `pnpm deploy` |
 | **临时执行**           | 交互式临时调试                               | `pnpm exec eveland <command>` 或 `npx eveland <command>`                  |
-| **脚手架初始化**       | 创建新项目前                                 | `pnpm dlx eveland@latest init <dir>`                                      |
 
 _注：在当前源码仓库内开发调试时，可通过根目录脚本 `pnpm eveland <command>` 直接执行。_
+
+新建 Agent 时，先用 eve 生成项目，再安装本包：
+
+```bash
+npx eve@latest init my-agent
+cd my-agent
+npm install eveland
+```
+
+本包提供 `eveland/auth`（`evelandIdentity()`）、`eveland/memory` 以及这个 CLI。Agent 文件保持在 `eve init` 生成的 `agent/` 目录中：Eveland 每个仓库只部署 `agent/` 下的一个 Agent（见[源码导入](/zh/docs/reference/source-import)）。
 
 ---
 
@@ -48,7 +57,6 @@ _注：在当前源码仓库内开发调试时，可通过根目录脚本 `pnpm 
 
 | 命令                   | 参数与行为说明                                                                                                                                                                                       |
 | :--------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eveland init <dir>`   | 使用内置的优质模板初始化一个全新的 Eve Agent 项目。                                                                                                                                                  |
 | `eveland login`        | 发起设备流认证登录，凭据按 Origin 隔离持久化。                                                                                                                                                       |
 | `eveland logout`       | 清除本地存储的登录凭据。                                                                                                                                                                             |
 | `eveland whoami`       | 打印当前连接的 Origin、当前用户、角色与 Token 作用域。                                                                                                                                               |

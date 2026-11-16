@@ -7,7 +7,13 @@ import { listSourceFiles, listWorkspaces, readSource } from "./scan-support.js";
 // the operator reference stay complete. (The registry -> docs direction is
 // enforced by packages/core/src/config-diagnostics-docs.test.ts; this closes
 // the source -> registry direction.)
-const ENV_READ_PATTERN = /process\.env(?:\.([A-Z0-9_]+)|\[\s*["']([A-Z0-9_]+)["']\s*\])/g;
+//
+// Reads through an injected environment object (`env.X`, `workerEnv.X`,
+// `input.env["X"]`) count too: most of the platform takes its environment as
+// a parameter so tests can pass one, and those reads are as operator-facing
+// as `process.env.X`.
+const ENV_READ_PATTERN =
+  /(?:\bprocess\.env|\b(?:[A-Za-z_$][\w$]*)?[eE]nv)\??(?:\.([A-Z0-9_]+)|\[\s*["']([A-Z0-9_]+)["']\s*\])/g;
 
 // `const { EVELAND_X } = process.env` reads a variable in a form the pattern
 // above cannot attribute; forbid the idiom instead of missing it.
@@ -31,6 +37,14 @@ const PLATFORM_INJECTED_OR_AGENT_SIDE = new Set([
   "EVELAND_SCHEDULER_REDEEM_URL",
   "EVELAND_SCHEDULER_RUNTIME_SECRET",
 ]);
+
+// EVELAND_* variables read by the host tooling rather than a platform
+// process: eveland-ctl and the installer that hands over to it. The registry
+// describes what each platform component reads; these belong to the operator
+// reference's host tooling section (config-diagnostics-docs.test.ts checks
+// they are documented), except EVELAND_INSTALL_METHOD, which install.sh sets
+// for eveland-ctl itself.
+export const HOST_TOOLING = new Set(["EVELAND_HOME", "EVELAND_INSTALL_METHOD"]);
 
 function registryNames(): Set<string> {
   // The registry module itself is the source of truth -- imported, not
@@ -56,7 +70,8 @@ describe("configuration registry coverage", () => {
           if (
             name.startsWith("EVELAND_") &&
             !registered.has(name) &&
-            !PLATFORM_INJECTED_OR_AGENT_SIDE.has(name)
+            !PLATFORM_INJECTED_OR_AGENT_SIDE.has(name) &&
+            !HOST_TOOLING.has(name)
           ) {
             unregistered.add(`${name} (${file})`);
           }

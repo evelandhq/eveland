@@ -223,9 +223,16 @@ corresponding tests and docs are updated.
 - The platform is invite-only. Better Auth owns users, credential
   accounts, and sessions; its Organization plugin backs the single Team's
   members, roles, and invitations behind Eveland-owned endpoints.
-- Except for explicitly public health and invitation-acceptance paths,
-  platform APIs require a valid Team member session. Do not weaken this
-  boundary when adding routes.
+- Platform APIs require a valid Team member session (or a scoped CLI token,
+  below), except for these explicitly public paths: `/health`; invitation
+  preview and acceptance (`/api/invitations/*`) and password reset
+  (`/api/password-reset/*`); the Better Auth sign-in, session, and
+  device-flow allowlist under `/api/auth/*`; the read-only Agent Catalog
+  (`GET /api/agent-catalog`); and the Agent-user Identity plane
+  (`/api/identity/*` and `/.well-known/jwks.json`), which has its own
+  Identity sessions and tokens. `/internal/*` routes authenticate with their
+  own service tokens and are never reachable through the public proxy. Do
+  not weaken this boundary when adding routes.
 - The `eveland` CLI authenticates with scoped OAuth access tokens from the
   RFC 8628 device flow (`Authorization: Bearer`). Token principals are
   confined to the deny-by-default scope map in `apps/api/src/cli-auth.ts` —
