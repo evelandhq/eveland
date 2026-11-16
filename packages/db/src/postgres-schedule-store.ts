@@ -1,5 +1,9 @@
 import { createId } from "@evelandhq/core/ids";
-import { getNextRunAt, validateScheduleDefinitionFields } from "@evelandhq/core/schedules";
+import {
+  DEFAULT_SCHEDULE_TIMEZONE,
+  getNextRunAt,
+  validateScheduleDefinitionFields,
+} from "@evelandhq/core/schedules";
 import {
   EVE_SESSION_BOUNDARY_EVENT_TYPES,
   scheduleExecutionErrorFromEveEvent,
@@ -59,7 +63,10 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
 
     async recordScheduleVersions(input) {
       for (const definition of input.definitions) {
-        validateScheduleDefinitionFields(definition);
+        validateScheduleDefinitionFields({
+          ...definition,
+          timezone: definition.timezone ?? DEFAULT_SCHEDULE_TIMEZONE,
+        });
       }
       return db.transaction(async (tx) => {
         const [revision] = await tx
@@ -115,6 +122,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
               sourceRevisionId: input.sourceRevisionId,
               kind: definition.kind,
               cron: definition.cron,
+              timezone: definition.timezone ?? DEFAULT_SCHEDULE_TIMEZONE,
               sourcePath: definition.sourcePath,
               definitionHash: definition.definitionHash,
             })
@@ -138,6 +146,7 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
           if (
             versionRow.definitionHash !== definition.definitionHash ||
             versionRow.cron !== definition.cron ||
+            versionRow.timezone !== (definition.timezone ?? DEFAULT_SCHEDULE_TIMEZONE) ||
             versionRow.kind !== definition.kind ||
             versionRow.sourcePath !== definition.sourcePath
           ) {
@@ -378,7 +387,12 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
         for (const row of due) {
           if (!row.schedule.nextRunAt) continue;
           const dueAt = row.schedule.nextRunAt;
-          const advance = calculateScheduleAdvance(row.version.cron, dueAt, input.now);
+          const advance = calculateScheduleAdvance(
+            row.version.cron,
+            dueAt,
+            input.now,
+            row.version.timezone,
+          );
           if (!advance) {
             await tx
               .update(projectSchedules)
@@ -945,13 +959,14 @@ export function calculateScheduleAdvance(
   cron: string,
   dueAt: Date,
   now: Date,
+  timezone: string = DEFAULT_SCHEDULE_TIMEZONE,
 ): { nextRunAt: Date; missedTicks: number } | undefined {
   try {
-    let nextRunAt = getNextRunAt(cron, dueAt);
+    let nextRunAt = getNextRunAt(cron, dueAt, timezone);
     let missedTicks = 0;
     while (nextRunAt <= now) {
       missedTicks += 1;
-      nextRunAt = getNextRunAt(cron, nextRunAt);
+      nextRunAt = getNextRunAt(cron, nextRunAt, timezone);
     }
     return { nextRunAt, missedTicks };
   } catch {

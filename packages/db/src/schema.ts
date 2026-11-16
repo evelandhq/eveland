@@ -1032,6 +1032,8 @@ export const scheduleVersions = pgTable(
       .references(() => sourceRevisions.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     cron: text("cron").notNull(),
+    // Canonical IANA zone the cron is read in.
+    timezone: text("timezone").notNull().default("UTC"),
     sourcePath: text("source_path").notNull(),
     definitionHash: text("definition_hash").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

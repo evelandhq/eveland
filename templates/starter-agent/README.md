@@ -25,8 +25,8 @@ Or import this directory through the Dashboard (zip or Git URL).
 ## Adding a schedule
 
 None ships by default — a cron schedule spends tokens on a timer. When you
-want one, create `agent/schedules/daily-digest.md` (five-field cron, UTC,
-minute resolution):
+want one, create `agent/schedules/daily-digest.md` (five-field cron, minute
+resolution, read in UTC unless you add an IANA `timezone:` line):
 
 ```md
 ---

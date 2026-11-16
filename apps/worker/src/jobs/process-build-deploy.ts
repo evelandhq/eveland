@@ -210,10 +210,11 @@ export async function handleBuildDeployJob(
       projectId: project.id,
       sourceRevisionId: revision.id,
       definitions: build.schedulerDefinitions.map(
-        ({ key, kind, cron, sourcePath, definitionHash }) => ({
+        ({ key, kind, cron, timezone, sourcePath, definitionHash }) => ({
           key,
           kind,
           cron,
+          timezone,
           sourcePath,
           definitionHash,
         }),

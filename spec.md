@@ -155,7 +155,7 @@ in `docs/en/reference/dashboard.md`. The cross-page product invariants:
 
 - Every absolute date and time in the Dashboard renders in the current user's
   display timezone, never decided by the server's runtime default timezone; a
-  schedule's raw cron keeps its source-level UTC semantics.
+  schedule's raw cron keeps its source-level semantics in its own timezone.
 - Project deletion is permanent and asynchronous: the full name is typed to
   confirm, the API atomically marks `deleting` and creates a unique
   `delete_project` job; on failure the record survives and supports idempotent
@@ -364,13 +364,12 @@ definitions, filters, and model-attribution rules live in
 
 ### Schedules (/projects/proj_xxxxxxxxxx/schedules)
 
-Eveland is the sole scheduler for production schedules. A prepared Release keeps a
-schedule's Eve registration shape but replaces the native cron handler with a
-no-op — warm previews, older versions, and the stable target never each execute the
-same cron; the real authored handlers are invoked only through the authenticated
-private Scheduler Channel. Both root and Extension sources accept only five-field,
-UTC, minute-granularity cron semantics, and a namespaced key conflict must fail the
-build; `.eveland/scheduler/definitions.json` is a required, validated build
+Eveland is the sole scheduler for production schedules. Every Deployment runs with
+eve's own schedule runner turned off — warm previews, older versions, and the stable
+target never each execute the same cron; the authored schedules, left as written,
+are invoked only through the authenticated private Scheduler Channel. Both root and
+Extension sources accept five-field, minute-granularity cron read in UTC or in the
+schedule's IANA `timezone`, and a namespaced key conflict must fail the build; `.eveland/scheduler/definitions.json` is a required, validated build
 artifact.
 
 Every Source Revision keeps an immutable ScheduleVersion; each project has an
@@ -542,9 +541,9 @@ decision change — discuss first, then act:
     side-effect credential, once redeemed, is never replayed automatically;
     telemetry projection advances idempotently by event sequence and never
     regresses state on replay.
-11. **The platform owns the cron clock.** Native cron handlers in a Release are
-    no-ops; the sole scheduler pins every execution to the target fixed at
-    creation.
+11. **The platform owns the cron clock.** eve's own schedule runner is off in
+    every Deployment; the sole scheduler pins every execution to the target
+    fixed at creation.
 12. **Observation never changes behavior.** Telemetry failures only degrade, never
     block; the Playground transport is not the authoritative observation path;
     Built-in only projects read models, leaving detail to external destinations.

@@ -5,13 +5,13 @@ description: Master agent cron schedules, pinned execution targets, and automate
 
 In multi-version preview and canary deployment environments, traditional in-process cron jobs cause critical hazards — such as older releases and preview deployments concurrently firing duplicate business schedules.
 
-Eveland **centralizes production schedule execution at the platform layer**: neutralizing in-process cron handlers and waking only the designated production deployment precisely on schedule.
+Eveland **centralizes production schedule execution at the platform layer**: turning eve's own in-process schedule runner off and waking only the designated production deployment precisely on schedule.
 
 ---
 
 ## 1. Schedule definitions and versioning
 
-- **Cron syntax**: Supports standard five-field UTC cron expressions at minute resolution (e.g. `0 9 * * 1-5` for weekdays at 09:00 UTC). eve's `timezone` option is not supported: a schedule that sets it fails the build, so write the cron in UTC.
+- **Cron syntax**: Supports standard five-field cron expressions at minute resolution (e.g. `0 9 * * 1-5` for weekdays at 09:00). The cron is read in UTC unless the schedule sets eve's `timezone` to an IANA name such as `Asia/Shanghai`, in which case it keeps that local time across daylight saving changes. See the [scheduling contract](/docs/reference/scheduling) for the exact rules.
 - **Configuration as code**: Schedules defined in Eve projects via Markdown or TypeScript are parsed during source import and stored as versioned platform records.
 
 ---

@@ -212,8 +212,9 @@ export function buildDockerSandboxVerifyArgs(imageTag: string): string[] {
 // so their discovery artifacts live in the image filesystem, not on the host.
 // One throwaway container prints them. The discovery manifest remains
 // informational, but the post-integration scheduler definitions are required:
-// native cron exports have already been disabled, so losing these definitions
-// must fail the build instead of falling back to a root-only snapshot.
+// eve's own schedule runner is off in every Deployment, so losing these
+// definitions must fail the build instead of falling back to a root-only
+// snapshot.
 const readImageDiscoveryScript =
   'const fs=require("fs");let m=null,v=null,d=null;' +
   'try{m=JSON.parse(fs.readFileSync("/app/.eve/discovery/agent-discovery-manifest.json","utf8"))}catch{}' +

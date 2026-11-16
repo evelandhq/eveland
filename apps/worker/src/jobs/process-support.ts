@@ -357,6 +357,9 @@ export async function composeDeploymentEnv(
     // `npx eve start` is a CLI command, and from eve 0.52.0 the CLI reports
     // usage to Vercel unless told not to (see ../runtime/reserved-environment.ts).
     EVE_TELEMETRY_DISABLED: "1",
+    // Schedules run only when the platform scheduler dispatches them (see
+    // ../runtime/reserved-environment.ts).
+    EVE_SCHEDULES_DISABLED: "1",
     // Always reserved, empty when the project uses no Model Gateway, so a
     // project entry can never aim the injected default provider at a gateway
     // of its own choosing. The key stays the project's own AI_GATEWAY_API_KEY.

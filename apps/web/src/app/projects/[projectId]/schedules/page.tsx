@@ -102,7 +102,7 @@ export default async function SchedulesPage({
                   <TableCell>
                     {version ? (
                       <div className="flex flex-col gap-1">
-                        <span>{describeScheduleCron(version.cron)}</span>
+                        <span>{describeScheduleCron(version.cron, version.timezone)}</span>
                         <span className="font-mono text-xs text-muted-foreground">
                           {version.cron}
                         </span>

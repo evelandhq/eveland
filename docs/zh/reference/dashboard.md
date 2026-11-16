@@ -36,7 +36,7 @@ Project 详情路由使用独立的 Project 外壳：左上角返回 Projects，
 
 个人设置支持：修改姓名；上传、替换或移除头像（只接受 PNG、JPEG、WebP，最大 512 KB）；查看登录邮箱（当前只读）；配置 Display timezone（未保存偏好时默认使用浏览器当前 IANA 时区，保存后作为个人偏好跨页面和登录 Session 生效）；使用当前密码修改密码（新密码至少 12 个字符，成功后撤销当前 Session 之外的所有登录 Session）。
 
-Dashboard 中所有绝对日期与时间——包括列表、详情、Logs、Session Timeline、ScheduleRun、Usage 与 Instance Health 图表坐标和 Tooltip——统一按当前用户的 Display timezone 展示，不得由 Next.js Server Component 的运行时默认时区决定。Schedule 的原始 cron 和其声明的 `UTC` 时区仍按源码语义展示；`nextRunAt`、due/start/complete 等实际时间点使用个人时区。
+Dashboard 中所有绝对日期与时间——包括列表、详情、Logs、Session Timeline、ScheduleRun、Usage 与 Instance Health 图表坐标和 Tooltip——统一按当前用户的 Display timezone 展示，不得由 Next.js Server Component 的运行时默认时区决定。Schedule 的原始 cron 和其时区（未声明时为 UTC）仍按源码语义展示；`nextRunAt`、due/start/complete 等实际时间点使用个人时区。
 
 Profile 更新复用 Better Auth 用户记录。Better Auth 的 HTTP 面按 allowlist 暴露：仅 `sign-in/email`、`sign-out`、`get-session` 与 CLI device authorization 族（`device/code`、`device`、`device/approve`、`device/deny`、`oauth2/token`）公开可路由，其余端点（含 `update-user`、`change-password`、sign-up、organization、admin 族、OAuth provider 其余端点，以及未来版本新增的任何端点）一律 404——密码修改必须走 Eveland 的 `/profile/password`（强制撤销其他 Session），邀请与成员管理走 Eveland-owned 端点。
 
@@ -110,7 +110,7 @@ Sessions 是核心运行历史。列表只展示实际 Eve Session，不把 Sche
 
 每个 Session 展示：Session ID；触发来源（Playground / Cron / Webhook / Channel / API）；关联 Schedule（如由 cron 触发）；开始时间；状态（Running / Completed / Failed / Waiting Approval）；当前 Deployment；Input / Output / Total token 消耗；Usage 完整性（完整 / 部分缺失 / Provider 未报告）。
 
-由 ScheduleRun 创建的 Session 在详情页标题区下方以单行紧凑 provenance 展示 Schedule key、cron/manual trigger、ScheduleRun 状态与开始时间。cron run 同时展示 24 小时制、明确标注 UTC 的人类可读周期和原始五字段表达式；missed tick 与错误仅在存在时显示。完整 Release、Deployment 与多 Session 关系继续通过 ScheduleRun 详情查看。
+由 ScheduleRun 创建的 Session 在详情页标题区下方以单行紧凑 provenance 展示 Schedule key、cron/manual trigger、ScheduleRun 状态与开始时间。cron run 同时展示 24 小时制、标注该 Schedule 时区（未声明时为 UTC）的人类可读周期和原始五字段表达式；missed tick 与错误仅在存在时显示。完整 Release、Deployment 与多 Session 关系继续通过 ScheduleRun 详情查看。
 
 进入 Session 后展示 Eve 的事件时间线（message → model response → tool call → tool result → step complete → final response / failure）。详情页不展示 span tree 与 LogRecord 明细。Built-in 不存储原始 Agent span 与 LogRecord，span 级别的下钻在启用接收 Agent traces 的外部 Destination 后由该 Destination 提供；用户源码 instrumentation 发送到其自有 backend 的数据不由 Eveland 读取或合并。
 

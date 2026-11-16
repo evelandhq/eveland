@@ -3,14 +3,15 @@ import { realpathSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  canonicalScheduleTimezone,
+  DEFAULT_SCHEDULE_TIMEZONE,
+  parseMarkdownScheduleContent,
   parseScheduleSource,
   validateReleaseRelativePath,
   validateScheduleDefinitionFields,
 } from "@evelandhq/core/schedules";
 import ts from "typescript";
 
-const reservedOriginalSchedule = "__evelandOriginalSchedule";
-const reservedOriginalMarkdown = "__evelandOriginalMarkdown";
 const reservedChannelPath = "agent/channels/eveland-scheduler.ts";
 export const SCHEDULER_DEFINITIONS_RELEASE_PATH = ".eveland/scheduler/definitions.json";
 const moduleExtensions = new Set([".cts", ".mts", ".cjs", ".mjs", ".ts", ".js"]);
@@ -19,8 +20,11 @@ export type SchedulerDefinition = {
   key: string;
   kind: "markdown" | "handler";
   cron: string;
+  /** Canonical IANA zone the cron is read in. */
+  timezone: string;
   sourcePath: string;
   definitionHash: string;
+  /** Release-relative file the dispatch Channel reads the schedule from. */
   modulePath: string;
 };
 
@@ -40,6 +44,20 @@ type ResolvedExtensionScheduleMount = {
   overrides?: ExtensionScheduleManifest;
 };
 
+/**
+ * Hands a Release's schedules to the platform scheduler.
+ *
+ * Authored schedule files are left exactly as written. The deployed process
+ * runs with `EVE_SCHEDULES_DISABLED=1`, so eve never fires them on its own
+ * cadence; the injected Channel imports each one (or, for a Markdown file,
+ * embeds its prompt) and runs it when the platform dispatches it.
+ *
+ * What remains of the source analysis is read-only: each module schedule's
+ * `cron`, `timezone`, and whether it has `content` or `run` are read from its
+ * TypeScript AST, because the platform has to plan runs before the build and
+ * eve publishes no schedule timing anywhere else (`eve info --json` lists
+ * schedule names only).
+ */
 export async function injectSchedulerAdapter(input: {
   releaseDir: string;
 }): Promise<SchedulerInjectionResult> {
@@ -60,53 +78,13 @@ export async function injectSchedulerAdapter(input: {
   for (const relativePath of relativeSchedulePaths) {
     const sourcePath = path.posix.join("agent/schedules", relativePath.split(path.sep).join("/"));
     const content = await readFile(path.join(schedulesRoot, relativePath), "utf8");
-    const discovered = parseScheduleSource(sourcePath, content);
-    if (keys.has(discovered.key))
-      throw new Error(`Schedule key ${discovered.key} is declared more than once.`);
-    keys.add(discovered.key);
-
-    if (discovered.kind === "markdown") {
-      const generatedRelativePath = relativePath.replace(/\.md$/, ".ts");
-      const generatedPath = path.join(schedulesRoot, generatedRelativePath);
-      if (await exists(generatedPath)) {
-        throw new Error(
-          `Markdown schedule ${sourcePath} collides with reserved generated module ${generatedRelativePath}.`,
-        );
-      }
-      await atomicWriteFile(
-        generatedPath,
-        [
-          `export const ${reservedOriginalMarkdown} = ${JSON.stringify(discovered.prompt)};`,
-          `export default {`,
-          `  cron: ${JSON.stringify(discovered.cron)},`,
-          `  run: async () => {},`,
-          `};`,
-          ``,
-        ].join("\n"),
-      );
-      await rm(path.join(schedulesRoot, relativePath));
-      definitions.push({
-        key: discovered.key,
-        kind: "markdown",
-        cron: discovered.cron,
-        sourcePath,
-        definitionHash: hashDefinition(content),
-        modulePath: path.posix.join(
-          "agent/schedules",
-          generatedRelativePath.split(path.sep).join("/"),
-        ),
-      });
-      continue;
-    }
-
-    const transformed = transformModuleSchedule(sourcePath, content);
-    await atomicWriteFile(path.join(schedulesRoot, relativePath), transformed.code);
+    const { key } = parseScheduleSource(sourcePath, content);
+    if (keys.has(key)) throw new Error(`Schedule key ${key} is declared more than once.`);
+    keys.add(key);
     definitions.push({
-      key: discovered.key,
-      kind: transformed.kind,
-      cron: transformed.cron,
+      key,
       sourcePath,
-      definitionHash: hashDefinition(content),
+      ...readScheduleDefinition(sourcePath, content),
       modulePath: sourcePath,
     });
   }
@@ -118,7 +96,7 @@ export async function injectSchedulerAdapter(input: {
 export async function injectExtensionSchedules(input: {
   releaseDir: string;
   manifest: unknown;
-}): Promise<{ definitions: SchedulerDefinition[]; transformedFiles: string[] }> {
+}): Promise<{ definitions: SchedulerDefinition[] }> {
   const releaseDir = path.resolve(input.releaseDir);
   const definitions = await readSchedulerDefinitions(releaseDir);
   if (!definitions) {
@@ -128,11 +106,6 @@ export async function injectExtensionSchedules(input: {
   }
   const mounts = readResolvedExtensionMounts(input.manifest);
   const existingKeys = new Set(definitions.map((definition) => definition.key));
-  const transformedFiles: string[] = [];
-  const transformedSources = new Map<
-    string,
-    Pick<SchedulerDefinition, "kind" | "cron" | "definitionHash" | "modulePath">
-  >();
 
   const planned = mounts
     .sort((left, right) => left.namespace.localeCompare(right.namespace))
@@ -143,7 +116,6 @@ export async function injectExtensionSchedules(input: {
         return {
           mount,
           source,
-          relativeSchedulePath,
           key: `${mount.namespace}__${localKey}`,
           sourceFile: resolveReleaseFile(
             releaseDir,
@@ -162,63 +134,24 @@ export async function injectExtensionSchedules(input: {
     existingKeys.add(entry.key);
   }
 
-  for (const { mount, source, relativeSchedulePath, key, sourceFile } of planned) {
-    let transformed = transformedSources.get(sourceFile);
+  for (const { mount, source, key, sourceFile } of planned) {
     const sourcePath = path.posix.join(
       "agent/extensions",
       mount.namespace,
       source.entry.logicalPath,
     );
-    if (!transformed) {
-      const content = await readFile(sourceFile, "utf8");
-      const discovered = parseScheduleSource(
-        path.posix.join("agent/schedules", relativeSchedulePath),
-        content,
-      );
-      if (discovered.kind === "markdown") {
-        const generatedFile = sourceFile.replace(/\.md$/, ".ts");
-        if (await exists(generatedFile)) {
-          throw new Error(
-            `Extension Markdown schedule ${sourcePath} collides with reserved generated module ${path.basename(generatedFile)}.`,
-          );
-        }
-        await atomicWriteFile(
-          generatedFile,
-          [
-            `export const ${reservedOriginalMarkdown} = ${JSON.stringify(discovered.prompt)};`,
-            `export default {`,
-            `  cron: ${JSON.stringify(discovered.cron)},`,
-            `  run: async () => {},`,
-            `};`,
-            ``,
-          ].join("\n"),
-        );
-        await rm(sourceFile);
-        transformed = {
-          kind: "markdown",
-          cron: discovered.cron,
-          definitionHash: hashDefinition(content),
-          modulePath: releaseRelativePath(releaseDir, generatedFile),
-        };
-      } else {
-        const module = transformModuleSchedule(sourcePath, content);
-        await atomicWriteFile(sourceFile, module.code);
-        transformed = {
-          kind: module.kind,
-          cron: module.cron,
-          definitionHash: hashDefinition(content),
-          modulePath: releaseRelativePath(releaseDir, sourceFile),
-        };
-      }
-      transformedSources.set(sourceFile, transformed);
-      transformedFiles.push(transformed.modulePath);
-    }
-    definitions.push({ key, sourcePath, ...transformed });
+    const content = await readFile(sourceFile, "utf8");
+    definitions.push({
+      key,
+      sourcePath,
+      ...readScheduleDefinition(sourcePath, content),
+      modulePath: releaseRelativePath(releaseDir, sourceFile),
+    });
   }
 
   definitions.sort((left, right) => left.key.localeCompare(right.key));
   await writeSchedulerArtifacts(releaseDir, definitions);
-  return { definitions, transformedFiles };
+  return { definitions };
 }
 
 export async function readSchedulerDefinitions(
@@ -250,10 +183,23 @@ export function parseSchedulerDefinitions(value: unknown): SchedulerDefinition[]
   return value;
 }
 
-function transformModuleSchedule(
+/** The timing and kind of one schedule file, read without changing it. */
+function readScheduleDefinition(
   sourcePath: string,
   content: string,
-): { code: string; cron: string; kind: "markdown" | "handler" } {
+): Pick<SchedulerDefinition, "kind" | "cron" | "timezone" | "definitionHash"> {
+  const definitionHash = hashDefinition(content);
+  if (sourcePath.endsWith(".md")) {
+    const { cron, timezone } = parseMarkdownScheduleContent(sourcePath, content);
+    return { kind: "markdown", cron, timezone, definitionHash };
+  }
+  return { ...readModuleSchedule(sourcePath, content), definitionHash };
+}
+
+function readModuleSchedule(
+  sourcePath: string,
+  content: string,
+): { cron: string; timezone: string; kind: "markdown" | "handler" } {
   const sourceFile = ts.createSourceFile(
     sourcePath,
     content,
@@ -261,22 +207,21 @@ function transformModuleSchedule(
     true,
     scriptKind(sourcePath),
   );
-  assertNoReservedIdentifier(sourceFile, sourcePath);
   const defaultExport = findConcreteDefaultExport(sourceFile);
   if (!defaultExport) {
     throw new Error(
       `Schedule ${sourcePath} must use a concrete default export; default re-exports are not supported.`,
     );
   }
-  const definition = resolveDefinitionExpression(sourceFile, defaultExport.expression);
+  const definition = resolveDefinitionExpression(sourceFile, defaultExport);
   const cron = readStringProperty(definition, "cron", sourcePath);
-  // eve 1.0.0-rc.14 added an optional IANA `timezone`; the platform fires
-  // every cron in UTC, so honoring the schedule means refusing the zone.
-  if (findProperty(definition, "timezone") !== undefined) {
-    throw new Error(
-      `Schedule ${sourcePath} sets timezone, but Eveland runs every schedule in UTC. Remove timezone and write the cron in UTC.`,
-    );
-  }
+  const timezone =
+    findProperty(definition, "timezone") === undefined
+      ? DEFAULT_SCHEDULE_TIMEZONE
+      : canonicalScheduleTimezone(
+          readStringProperty(definition, "timezone", sourcePath),
+          sourcePath,
+        );
   // A fire-and-forget prompt (`content`) keeps the platform's "markdown"
   // definition kind, the same kind a `.md` schedule has.
   const hasMarkdown = findProperty(definition, "content") !== undefined;
@@ -284,83 +229,16 @@ function transformModuleSchedule(
   if (hasMarkdown === hasRun) {
     throw new Error(`Schedule ${sourcePath} must define exactly one of content or run.`);
   }
-
-  const factory = ts.factory;
-  const originalDeclaration = factory.createVariableStatement(
-    undefined,
-    factory.createVariableDeclarationList(
-      [
-        factory.createVariableDeclaration(
-          reservedOriginalSchedule,
-          undefined,
-          undefined,
-          defaultExport.expression,
-        ),
-      ],
-      ts.NodeFlags.Const,
-    ),
-  );
-  const originalExport = factory.createExportDeclaration(
-    undefined,
-    false,
-    factory.createNamedExports([
-      factory.createExportSpecifier(
-        false,
-        undefined,
-        factory.createIdentifier(reservedOriginalSchedule),
-      ),
-    ]),
-  );
-  const noopDefault = factory.createExportAssignment(
-    undefined,
-    false,
-    factory.createObjectLiteralExpression(
-      [
-        factory.createPropertyAssignment(
-          "cron",
-          factory.createPropertyAccessExpression(
-            factory.createIdentifier(reservedOriginalSchedule),
-            "cron",
-          ),
-        ),
-        factory.createPropertyAssignment(
-          "run",
-          factory.createArrowFunction(
-            [factory.createModifier(ts.SyntaxKind.AsyncKeyword)],
-            undefined,
-            [],
-            undefined,
-            factory.createToken(ts.SyntaxKind.EqualsGreaterThanToken),
-            factory.createBlock([], false),
-          ),
-        ),
-      ],
-      true,
-    ),
-  );
-  const statements = sourceFile.statements.flatMap((statement) => {
-    if (statement !== defaultExport.statement) return [statement];
-    return [...defaultExport.preservedStatements, originalDeclaration, originalExport, noopDefault];
-  });
-  const next = factory.updateSourceFile(sourceFile, statements);
-  const code = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed }).printFile(next);
-  return { code, cron, kind: hasMarkdown ? "markdown" : "handler" };
+  return { cron, timezone, kind: hasMarkdown ? "markdown" : "handler" };
 }
 
-function findConcreteDefaultExport(sourceFile: ts.SourceFile):
-  | {
-      statement: ts.Statement;
-      expression: ts.Expression;
-      preservedStatements: ts.Statement[];
-    }
-  | undefined {
+/** The expression a module exports as its default, when it does so in this file. */
+function findConcreteDefaultExport(sourceFile: ts.SourceFile): ts.Expression | undefined {
   const assignment = sourceFile.statements.find(
     (statement): statement is ts.ExportAssignment =>
       ts.isExportAssignment(statement) && !statement.isExportEquals,
   );
-  if (assignment) {
-    return { statement: assignment, expression: assignment.expression, preservedStatements: [] };
-  }
+  if (assignment) return assignment.expression;
 
   for (const statement of sourceFile.statements) {
     if (
@@ -376,27 +254,7 @@ function findConcreteDefaultExport(sourceFile: ts.SourceFile):
     );
     if (!defaultSpecifier?.propertyName || !ts.isIdentifier(defaultSpecifier.propertyName))
       continue;
-    const remaining = statement.exportClause.elements.filter(
-      (element) => element !== defaultSpecifier,
-    );
-    const preservedStatements =
-      remaining.length === 0
-        ? []
-        : [
-            ts.factory.updateExportDeclaration(
-              statement,
-              statement.modifiers,
-              statement.isTypeOnly,
-              ts.factory.updateNamedExports(statement.exportClause, remaining),
-              statement.moduleSpecifier,
-              statement.attributes,
-            ),
-          ];
-    return {
-      statement,
-      expression: ts.factory.createIdentifier(defaultSpecifier.propertyName.text),
-      preservedStatements,
-    };
+    return ts.factory.createIdentifier(defaultSpecifier.propertyName.text);
   }
   return undefined;
 }
@@ -458,23 +316,32 @@ function fixedSessionDispatchBlock(): string {
         }`;
 }
 
-function generateSchedulerChannel(definitions: SchedulerDefinition[]): string {
-  const imports = definitions.map((definition, index) => {
-    const exportName = definition.sourcePath.endsWith(".md")
-      ? reservedOriginalMarkdown
-      : reservedOriginalSchedule;
-    return `import { ${exportName} as schedule${index} } from ${JSON.stringify(moduleSpecifierFromChannel(definition.modulePath))};`;
-  });
-  const entries = definitions.map((definition, index) => {
-    const markdown = definition.sourcePath.endsWith(".md")
-      ? `schedule${index}`
-      : `scheduledPrompt(schedule${index})`;
-    const value =
-      definition.kind === "markdown"
-        ? `{ kind: "markdown", markdown: ${markdown} }`
-        : `{ kind: "handler", definition: schedule${index} }`;
-    return `  ${JSON.stringify(definition.key)}: ${value},`;
-  });
+async function generateSchedulerChannel(
+  releaseDir: string,
+  definitions: SchedulerDefinition[],
+): Promise<string> {
+  const imports: string[] = [];
+  const entries: string[] = [];
+  for (const [index, definition] of definitions.entries()) {
+    let value: string;
+    if (definition.modulePath.endsWith(".md")) {
+      // A Markdown file is not a module; its prompt is the whole schedule.
+      const { prompt } = parseMarkdownScheduleContent(
+        definition.sourcePath,
+        await readFile(path.join(releaseDir, definition.modulePath), "utf8"),
+      );
+      value = `{ kind: "markdown", markdown: ${JSON.stringify(prompt)} }`;
+    } else {
+      imports.push(
+        `import schedule${index} from ${JSON.stringify(moduleSpecifierFromChannel(definition.modulePath))};`,
+      );
+      value =
+        definition.kind === "markdown"
+          ? `{ kind: "markdown", markdown: scheduledPrompt(schedule${index}) }`
+          : `{ kind: "handler", definition: schedule${index} }`;
+    }
+    entries.push(`  ${JSON.stringify(definition.key)}: ${value},`);
+  }
   const routeArgs = "{ params, from, to }";
   const dispatchBlock = fixedSessionDispatchBlock();
 
@@ -675,19 +542,6 @@ function readStringProperty(
   return value.text;
 }
 
-function assertNoReservedIdentifier(sourceFile: ts.SourceFile, sourcePath: string): void {
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isIdentifier(node) &&
-      (node.text === reservedOriginalSchedule || node.text === reservedOriginalMarkdown)
-    ) {
-      throw new Error(`Schedule ${sourcePath} uses a reserved identifier: ${node.text}.`);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-}
-
 async function listScheduleFiles(root: string, relativeDir = ""): Promise<string[]> {
   if (!(await exists(root))) return [];
   const entries = await readdir(path.join(root, relativeDir), { withFileTypes: true });
@@ -738,7 +592,7 @@ async function writeSchedulerArtifacts(
   const definitionsPath = path.join(releaseDir, SCHEDULER_DEFINITIONS_RELEASE_PATH);
   await mkdir(path.dirname(channelPath), { recursive: true });
   await mkdir(path.dirname(definitionsPath), { recursive: true });
-  await atomicWriteFile(channelPath, generateSchedulerChannel(definitions));
+  await atomicWriteFile(channelPath, await generateSchedulerChannel(releaseDir, definitions));
   await atomicWriteFile(definitionsPath, `${JSON.stringify(definitions, null, 2)}\n`);
 }
 
@@ -878,6 +732,7 @@ function isSchedulerDefinition(value: unknown): value is SchedulerDefinition {
     typeof value.key === "string" &&
     (value.kind === "markdown" || value.kind === "handler") &&
     typeof value.cron === "string" &&
+    typeof value.timezone === "string" &&
     typeof value.sourcePath === "string" &&
     typeof value.definitionHash === "string" &&
     typeof value.modulePath === "string"

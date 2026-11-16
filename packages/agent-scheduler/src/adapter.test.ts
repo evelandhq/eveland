@@ -15,68 +15,74 @@ import {
 
 const execFileAsync = promisify(execFile);
 describe("injectSchedulerAdapter", () => {
-  test("rewrites module and Markdown schedules to native no-ops while preserving originals", async () => {
-    const releaseDir = await fixture({
-      eveVersion: VERIFIED_EVE_VERSION,
-      files: {
-        "agent/schedules/billing/sweep.ts": `import { defineSchedule } from "eve/schedules";
+  // The deployed process runs with EVE_SCHEDULES_DISABLED=1, so eve never
+  // fires an authored schedule itself; nothing in the Release is rewritten.
+  test("leaves authored schedules as written and dispatches them from the Channel", async () => {
+    const files = {
+      "agent/schedules/billing/sweep.ts": `import { defineSchedule } from "eve/schedules";
 import { helper } from "../../lib/helper";
 export default defineSchedule({ cron: "0 3 * * *", async run() { await helper(); } });
 `,
-        "agent/schedules/identifier.mjs": `const authored = { cron: "15 4 * * *", async run() {} };
+      "agent/schedules/identifier.mjs": `const authored = { cron: "15 4 * * *", async run() {} };
 export default authored;
 `,
-        "agent/schedules/markdown-task.ts": `export default { cron: "20 5 * * *", content: "Run the TypeScript markdown task." };
+      "agent/schedules/markdown-task.ts": `export default { cron: "20 5 * * *", content: "Run the TypeScript markdown task." };
 `,
-        "agent/schedules/report.md": `---
+      "agent/schedules/report.md": `---
 cron: "30 5 * * *"
 ---
 Produce the daily report.
 `,
-      },
-    });
+    };
+    const releaseDir = await fixture({ eveVersion: VERIFIED_EVE_VERSION, files });
 
     const result = await injectSchedulerAdapter({ releaseDir });
 
-    expect(result.definitions.map((definition) => definition.key)).toEqual([
-      "billing/sweep",
-      "identifier",
-      "markdown-task",
-      "report",
+    expect(
+      result.definitions.map(({ key, kind, timezone, modulePath }) => ({
+        key,
+        kind,
+        timezone,
+        modulePath,
+      })),
+    ).toEqual([
+      {
+        key: "billing/sweep",
+        kind: "handler",
+        timezone: "UTC",
+        modulePath: "agent/schedules/billing/sweep.ts",
+      },
+      {
+        key: "identifier",
+        kind: "handler",
+        timezone: "UTC",
+        modulePath: "agent/schedules/identifier.mjs",
+      },
+      {
+        key: "markdown-task",
+        kind: "markdown",
+        timezone: "UTC",
+        modulePath: "agent/schedules/markdown-task.ts",
+      },
+      { key: "report", kind: "markdown", timezone: "UTC", modulePath: "agent/schedules/report.md" },
     ]);
-    expect(result.definitions.map((definition) => definition.kind)).toEqual([
-      "handler",
-      "handler",
-      "markdown",
-      "markdown",
-    ]);
-    const transformed = await readFile(
-      path.join(releaseDir, "agent/schedules/billing/sweep.ts"),
-      "utf8",
-    );
-    expect(transformed).toContain('from "../../lib/helper"');
-    expect(transformed).toContain("__evelandOriginalSchedule");
-    expect(transformed).toContain("run: async () => { }");
-    expect(transformed).not.toContain(
-      'export default defineSchedule({ cron: "0 3 * * *", async run() { await helper(); } })',
-    );
-
-    const markdownModule = await readFile(
-      path.join(releaseDir, "agent/schedules/report.ts"),
-      "utf8",
-    );
-    expect(markdownModule).toContain(
-      'export const __evelandOriginalMarkdown = "Produce the daily report."',
-    );
-    expect(markdownModule).toContain('cron: "30 5 * * *"');
+    for (const [relativePath, content] of Object.entries(files)) {
+      await expect(readFile(path.join(releaseDir, relativePath), "utf8")).resolves.toBe(content);
+    }
     await expect(
-      readFile(path.join(releaseDir, "agent/schedules/report.md"), "utf8"),
+      readFile(path.join(releaseDir, "agent/schedules/report.ts"), "utf8"),
     ).rejects.toThrow(/ENOENT/);
     const channel = await readFile(
       path.join(releaseDir, "agent/channels/eveland-scheduler.ts"),
       "utf8",
     );
+    expect(channel).toContain('import schedule0 from "../schedules/billing/sweep";');
+    expect(channel).toContain('"billing/sweep": { kind: "handler", definition: schedule0 },');
     expect(channel).toContain("markdown: scheduledPrompt(schedule2)");
+    expect(channel).toContain(
+      '"report": { kind: "markdown", markdown: "Produce the daily report." },',
+    );
+    expect(channel).not.toContain("schedule3");
   });
 
   test("generates a closed authenticated dispatch Channel without embedding secrets", async () => {
@@ -189,7 +195,7 @@ Produce the daily report.
   });
 
   test.each(["ts", "mts", "cts", "js", "mjs", "cjs"])(
-    "transforms an authored .%s module schedule with the TypeScript AST",
+    "reads an authored .%s module schedule without changing it",
     async (extension) => {
       const sourcePath = `agent/schedules/nested/direct.${extension}`;
       const releaseDir = await fixture({
@@ -202,23 +208,13 @@ Produce the daily report.
       expect(result.definitions).toEqual([
         expect.objectContaining({ key: "nested/direct", kind: "handler", sourcePath }),
       ]);
-      await expect(readFile(path.join(releaseDir, sourcePath), "utf8")).resolves.toContain(
-        "__evelandOriginalSchedule",
+      await expect(readFile(path.join(releaseDir, sourcePath), "utf8")).resolves.toBe(
+        `export default { cron: "0 6 * * *", async run() {} };`,
       );
     },
   );
 
-  test("rejects reserved authored identifiers and the reserved Channel path", async () => {
-    const identifierCollision = await fixture({
-      eveVersion: VERIFIED_EVE_VERSION,
-      files: {
-        "agent/schedules/collision.ts": `const __evelandOriginalSchedule = {}; export default __evelandOriginalSchedule;`,
-      },
-    });
-    await expect(injectSchedulerAdapter({ releaseDir: identifierCollision })).rejects.toThrow(
-      /reserved identifier/,
-    );
-
+  test("rejects the reserved Channel path and schedules it cannot read statically", async () => {
     const channelCollision = await fixture({
       eveVersion: VERIFIED_EVE_VERSION,
       files: {
@@ -257,23 +253,54 @@ Produce the daily report.
     );
   });
 
-  // eve 1.0.0-rc.14 lets a fixed schedule name an IANA `timezone`. The
-  // platform scheduler fires every cron in UTC, so a schedule that asks for
-  // another zone would fire at the wrong hour; the build fails instead.
+  // The platform scheduler reads each cron in its schedule's own IANA zone,
+  // stored under the canonical name eve compiles ("utc" builds as "UTC").
   test.each([
-    `export default { cron: "0 9 * * *", timezone: "Asia/Shanghai", async run() {} };`,
-    `import { defineSchedule } from "eve/schedules";\nexport default defineSchedule({ cron: "0 9 * * *", "timezone": "UTC", content: "Morning." });`,
-  ])("rejects a module schedule that names a timezone: %s", async (source) => {
+    [
+      `export default { cron: "0 9 * * *", timezone: "asia/shanghai", async run() {} };`,
+      "Asia/Shanghai",
+    ],
+    [
+      `import { defineSchedule } from "eve/schedules";\nexport default defineSchedule({ cron: "0 9 * * *", "timezone": "UTC", content: "Morning." });`,
+      "UTC",
+    ],
+  ])("reads a module schedule's timezone: %s", async (source, timezone) => {
+    const releaseDir = await fixture({
+      eveVersion: VERIFIED_EVE_VERSION,
+      files: {
+        "agent/schedules/morning.ts": source,
+        "agent/schedules/evening.md": `---\ncron: "0 18 * * *"\ntimezone: America/Los_Angeles\n---\nEvening.\n`,
+      },
+    });
+    const result = await injectSchedulerAdapter({ releaseDir });
+    expect(result.definitions.map(({ key, timezone }) => ({ key, timezone }))).toEqual([
+      { key: "evening", timezone: "America/Los_Angeles" },
+      { key: "morning", timezone },
+    ]);
+  });
+
+  test.each([
+    [
+      `export default { cron: "0 9 * * *", timezone: "Mars/Olympus", async run() {} };`,
+      /not an IANA timezone/,
+    ],
+    [
+      `export default { cron: "0 9 * * *", timezone: "+08:00", async run() {} };`,
+      /not an IANA timezone/,
+    ],
+    [
+      `const zone = "Asia/Tokyo";\nexport default { cron: "0 9 * * *", timezone: zone, async run() {} };`,
+      /must declare a static timezone string/,
+    ],
+  ])("rejects a module schedule timezone it cannot honor: %s", async (source, message) => {
     const releaseDir = await fixture({
       eveVersion: VERIFIED_EVE_VERSION,
       files: { "agent/schedules/morning.ts": source },
     });
-    await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
-      /agent\/schedules\/morning\.ts sets timezone.*UTC/,
-    );
+    await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(message);
   });
 
-  test("builds the transformed overlay with the real eve compiler", async () => {
+  test("builds the injected Channel with the real eve compiler", async () => {
     const releaseDir = await fixture({
       eveVersion: VERIFIED_EVE_VERSION,
       files: {
@@ -358,6 +385,8 @@ export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { w
         cwd: releaseDir,
         env: {
           ...process.env,
+          // As the worker runs every Deployment: eve's own cron stays off.
+          EVE_SCHEDULES_DISABLED: "1",
           EVELAND_SCHEDULER_RUNTIME_SECRET: "runtime-fixture-secret",
           EVELAND_SCHEDULER_REDEEM_URL: `http://127.0.0.1:${redeemAddress.port}/internal/scheduler/dispatch`,
         },
@@ -540,14 +569,23 @@ describe("injectExtensionSchedules", () => {
     );
     await expect(
       readFile(path.join(releaseDir, "agent/extensions/crm/schedules/sync.ts"), "utf8"),
-    ).resolves.toContain("__evelandOriginalSchedule");
+    ).resolves.toBe('export default { cron: "30 2 * * *", async run() {} };');
+    await expect(readFile(path.join(extensionRoot, "schedules/report.md"), "utf8")).resolves.toBe(
+      '---\ncron: "0 3 * * *"\n---\nProduce the extension report.\n',
+    );
     const channel = await readFile(
       path.join(releaseDir, "agent/channels/eveland-scheduler.ts"),
       "utf8",
     );
     expect(channel).toContain('"crm__report"');
     expect(channel).toContain('"crm__sync"');
-    expect(channel).toContain("../../node_modules/@acme/crm/dist/extension/schedules/report");
+    expect(channel).toContain(
+      '"crm__report": { kind: "markdown", markdown: "Produce the extension report." },',
+    );
+    expect(channel).toContain('from "../extensions/crm/schedules/sync";');
+    expect(result.definitions.find(({ key }) => key === "crm__report")?.modulePath).toBe(
+      "node_modules/@acme/crm/dist/extension/schedules/report.md",
+    );
   });
 
   test("reads Extension schedules from v16 mount manifests' sources", async () => {
@@ -647,9 +685,9 @@ describe("injectExtensionSchedules", () => {
         }),
       }),
     ).rejects.toThrow(/schedule key crm__sync.+collides/i);
-    await expect(
-      readFile(path.join(extensionRoot, "schedules/sync.mjs"), "utf8"),
-    ).resolves.not.toContain("__evelandOriginalSchedule");
+    await expect(readFile(path.join(extensionRoot, "schedules/sync.mjs"), "utf8")).resolves.toBe(
+      'export default { cron: "0 2 * * *", async run() {} };',
+    );
   });
 
   test("fails closed when separate namespace and local-key pairs produce the same key", async () => {
@@ -713,31 +751,6 @@ describe("injectExtensionSchedules", () => {
       }),
     ).rejects.toThrow(/must stay inside the disposable Release directory/);
   });
-
-  test("reports the generated module path for transformed Markdown schedules", async () => {
-    const releaseDir = await fixture({
-      eveVersion: VERIFIED_EVE_VERSION,
-      files: {
-        "node_modules/@acme/crm/dist/extension/schedules/report.md":
-          '---\ncron: "0 3 * * *"\n---\nProduce the extension report.\n',
-      },
-    });
-    await injectSchedulerAdapter({ releaseDir });
-    const extensionRoot = path.join(releaseDir, "node_modules/@acme/crm/dist/extension");
-
-    const result = await injectExtensionSchedules({
-      releaseDir,
-      manifest: extensionDiscoveryManifest({
-        releaseDir,
-        extensionRoot,
-        schedules: ["schedules/report.md"],
-      }),
-    });
-
-    expect(result.transformedFiles).toEqual([
-      "node_modules/@acme/crm/dist/extension/schedules/report.ts",
-    ]);
-  });
 });
 
 describe("parseSchedulerDefinitions", () => {
@@ -745,6 +758,7 @@ describe("parseSchedulerDefinitions", () => {
     key: "crm__sync",
     kind: "handler" as const,
     cron: "0 2 * * *",
+    timezone: "Europe/Berlin",
     sourcePath: "agent/extensions/crm/schedules/sync.mjs",
     definitionHash: "a".repeat(64),
     modulePath: "node_modules/@acme/crm/dist/extension/schedules/sync.mjs",
@@ -756,6 +770,8 @@ describe("parseSchedulerDefinitions", () => {
 
   test.each([
     ["invalid cron", { ...valid, cron: "not cron" }],
+    ["missing timezone", { ...valid, timezone: undefined }],
+    ["non-canonical timezone", { ...valid, timezone: "europe/berlin" }],
     ["empty key", { ...valid, key: "" }],
     ["escaping source path", { ...valid, sourcePath: "../outside.ts" }],
     ["absolute module path", { ...valid, modulePath: "/tmp/outside.mjs" }],

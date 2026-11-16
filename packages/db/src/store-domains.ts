@@ -810,6 +810,8 @@ export interface ScheduleStore {
       key: string;
       kind: ScheduleVersion["kind"];
       cron: string;
+      /** Canonical IANA zone; UTC when omitted. */
+      timezone?: string;
       sourcePath: string;
       definitionHash: string;
     }>;

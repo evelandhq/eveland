@@ -103,7 +103,8 @@ describe("reserved runtime environment names", () => {
 
     expect(undeclared).toEqual([]);
     // EVELAND_PROJECT_ID and WORKFLOW_WORLD_TENANT_ID are derived per project; the EVELAND_MODEL_GATEWAY_KIND
-    // and _URL names come from the database at every launch; EVE_TELEMETRY_DISABLED and
+    // and _URL names come from the database at every launch; EVE_SCHEDULES_DISABLED,
+    // EVE_TELEMETRY_DISABLED and
     // WORKFLOW_OPTIMISTIC_INLINE_START are platform constants. None has a
     // worker-environment input.
     expect(
@@ -116,6 +117,7 @@ describe("reserved runtime environment names", () => {
       "EVELAND_PROJECT_ID",
       "WORKFLOW_WORLD_TENANT_ID",
       "EVE_TELEMETRY_DISABLED",
+      "EVE_SCHEDULES_DISABLED",
       "WORKFLOW_OPTIMISTIC_INLINE_START",
     ]);
   });
@@ -150,6 +152,9 @@ describe("reserved runtime environment names", () => {
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
     // eve 0.52.0 turned CLI telemetry on by default; `npx eve start` runs the CLI.
     expect(env.EVE_TELEMETRY_DISABLED).toBe("1");
+    // The platform scheduler dispatches every authored schedule; eve's own
+    // cron would run each one a second time.
+    expect(env.EVE_SCHEDULES_DISABLED).toBe("1");
     expect(env.WORKFLOW_POSTGRES_URL).toBe(`${workflowPostgresUrl}_wf_proj_reserved`);
     // No memoryRootDir option here, so the reserved value is the derived
     // worker-visible default: <EVELAND_DATA_DIR>/memory/<projectId>.

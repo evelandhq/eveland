@@ -31,6 +31,8 @@ test("builds Extension schedules and observed Extension subagents with the real 
     cwd: extensionPackageRoot,
   });
   await writeConsumer(releaseDir, extensionPackageRoot);
+  const builtSchedule = path.join(extensionPackageRoot, "dist/extension/schedules/sync.mjs");
+  const authoredSchedule = await readFile(builtSchedule, "utf8");
 
   await injectObserverHooks({ releaseDir });
   await injectSchedulerAdapter({ releaseDir });
@@ -69,9 +71,9 @@ test("builds Extension schedules and observed Extension subagents with the real 
       sourcePath: "agent/extensions/crm/schedules/sync.mjs",
     }),
   ]);
-  await expect(
-    readFile(path.join(extensionPackageRoot, "dist/extension/schedules/sync.mjs"), "utf8"),
-  ).resolves.toContain("__evelandOriginalSchedule");
+  // The Channel imports the Extension's schedule as published; the package is
+  // not rewritten.
+  await expect(readFile(builtSchedule, "utf8")).resolves.toBe(authoredSchedule);
   await expect(
     readFile(
       path.join(
@@ -126,6 +128,7 @@ test("builds Extension schedules and observed Extension subagents with the real 
       cwd: releaseDir,
       env: {
         ...process.env,
+        EVE_SCHEDULES_DISABLED: "1",
         EVELAND_SCHEDULER_RUNTIME_SECRET: "extension-runtime-secret",
         EVELAND_SCHEDULER_REDEEM_URL: `http://127.0.0.1:${redeemAddress.port}/internal/scheduler/dispatch`,
       },
