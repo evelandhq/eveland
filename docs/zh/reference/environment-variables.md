@@ -25,6 +25,11 @@ Collector）读取的全部环境变量参考。每个变量都列出默认值�
 | `WORKFLOW_WORLD_URL`              | 支撑 `@evelandhq/workflow-world`（平台的多租户 Workflow World）的共享 Postgres 数据库。每个新构建都会烘焙这个 World，因此生产 Worker 缺少该 URL 时启动 Fail Closed。API 从它派生 World 的 Cluster Identity，并拒绝为注册到其他 Cluster 的 Dispatcher 执行 Workflow-step Activation。Deployment Retention 保护带非终态 Run 的 Deployment（被未解决的 Dispatch Dead Letter 隔离的除外）；Worker 启动或 Tenant Provisioning 会在 Dispatcher 或 Deployment 使用之前自动应用全部待执行 Schema Migration。 | —（生产必填）                 | API 与 Worker（`packages/core/src/workflow-world-url.ts`、`packages/db/src/workflow-world-identity.ts`、`apps/worker/src/runtime/workflow-world-bootstrap.ts`）、Dispatcher |
 | `WORKFLOW_WORLD_BOOTSTRAP_URL`    | 读取方平台进程自身视角下的同一共享 Workflow Database。当平台访问 Postgres 的主机名与 Deployment 不同（如 Docker Desktop 下的 `host.docker.internal`）时设置。                                                                                                                                                                                                                                                                                                                                        | `WORKFLOW_WORLD_URL`          | API 与 Worker（`packages/core/src/workflow-world-url.ts`）、Dispatcher                                                                                                      |
 
+> **`WORKFLOW_WORLD_URL` 必须指向独立的数据库**，而不是 `DATABASE_URL` 所指的那个
+> （惯例是 `eveland` 与 `eveland_workflow`）。Worker 会把这个 DSN 注入每个 Deployment，
+> Agent 代码因此持有它；如果它指向平台数据库，账号、会话和加密的项目 Secret 也会一并暴露。
+> `eveland-ctl doctor` 会把共用数据库报告为 `workflow-world-database`。
+
 > **Agent 运行在 Docker 中时，`WORKFLOW_WORLD_URL` 必须使用容器可达的主机名**（如
 > `host.docker.internal`），不能用 `localhost`，因为 Agent 容器从容器内部访问宿主机
 > 数据库。`WORKFLOW_WORLD_BOOTSTRAP_URL` 则可以使用 `localhost` 或 Compose Service

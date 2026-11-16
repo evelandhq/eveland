@@ -1,6 +1,6 @@
 ---
 title: 升级与回滚
-description: 标准平台升级步骤、备份要求、版本回滚原则与历史版本迁移说明。
+description: 标准平台升级步骤、备份要求与版本回滚原则。
 ---
 
 Eveland 包含五个核心服务组件（API、Gateway、Dashboard、Worker 与 Workflow Dispatcher）。在执行平台升级时，应将其视为**协调一致的整体变更**，确保所有组件运行在相同的 Release 版本与 Git Revision 上。
@@ -14,8 +14,8 @@ Eveland 包含五个核心服务组件（API、Gateway、Dashboard、Worker 与 
 `eveland-ctl status` 的第一行就是这台机器当前的版本；有更新时会直接说出来：
 
 ```
-Release: v0.51.2 (stable) 6c1e3b8f2a91
-  ! v0.52.0 is available (crosses BREAKING CHANGES in v0.52.0) — run `eveland-ctl update`
+Release: v1.4.2 (stable) 6c1e3b8f2a91
+  ! v2.0.0 is available (crosses BREAKING CHANGES in v2.0.0) — run `eveland-ctl update`
 ```
 
 同样的提示也会出现在控制台的 **Settings → About**。
@@ -29,7 +29,7 @@ Release: v0.51.2 (stable) 6c1e3b8f2a91
 破坏性变更列表取自新版本自己的 `CHANGELOG.md`。安装器的 checkout 是 blobless clone，读这个文件本身就是一次单独的网络获取，即使 tag 已经拉到也可能失败。失败时，提示会明确说破坏性变更未知，而不是暗示没有。`eveland-ctl update` 会自己再读一次 changelog；如果这次也读不到，它会停下来询问，确认后才在没有变更摘要的情况下继续（见下文「标准升级流程」）：
 
 ```
-  ! v0.52.0 is available (its changelog could not be read: breaking changes unknown) — run `eveland-ctl update`
+  ! v2.0.0 is available (its changelog could not be read: breaking changes unknown) — run `eveland-ctl update`
 ```
 
 只有 `stable` 安装会参与比较。`edge` checkout 停在没有任何 release tag 指向的 commit 上，因此只显示 revision。
@@ -79,41 +79,6 @@ eveland-ctl update
 
 - **代码与数据库版本对应**：只有在旧版本代码完全兼容当前已执行的数据库迁移时，回滚至旧 Git Tag 才是安全的。PostgreSQL 的 `db:migrate` 不会自动逆向回滚。
 - **环境版本对齐**：回滚时必须同步回滚所有五个服务组件，严禁部分组件回滚而其他组件保持新版本。
-
----
-
-## 5. 把工作流世界迁出平台数据库
-
-在本次拆分之前配置的安装（`eveland-ctl` 此前把两个 DSN 都渲染到同一个库），其 `WORKFLOW_WORLD_URL` 指向的就是平台自己的库；`eveland-ctl doctor` 会以 `workflow-world-database` 报出来。这件事之所以要紧，是因为工作流库的 DSN 会注入到每一个 Agent Deployment：Agent 代码握着这份凭据，也就等于握着账号、会话与加密后的项目 Secret。
-
-平台不会替你自动改指向：正在执行的 Run、Timer 与 Hook 都在当前库的 `workflow` schema 里，静默切换会把它们丢在原地。请停机后手工迁移：
-
-```bash
-eveland-ctl stop
-createdb -h 127.0.0.1 -p 17310 -U eveland eveland_workflow
-pg_dump -h 127.0.0.1 -p 17310 -U eveland -n workflow eveland \
-  | psql -h 127.0.0.1 -p 17310 -U eveland eveland_workflow
-```
-
-随后把所有组件指向新库——`etc/eveland.env` 里的 `WORKFLOW_WORLD_URL`（以及设置过的 `WORKFLOW_WORLD_BOOTSTRAP_URL`）——再启动。用 `eveland-ctl doctor` 复核；等一次部署和一次工作流执行都通过之后，再删掉旧 schema：
-
-```sql
-DROP SCHEMA workflow CASCADE;
-DROP SCHEMA graphile_worker CASCADE;
-```
-
-已有 Deployment 在重建之前仍持有旧 DSN，所以迁移后请对每个 Agent 执行一次 **Build & Deploy**；在那之前它们的持久化 Run 仍写在旧库里。
-
----
-
-## 6. 关键历史架构演进速查
-
-如果你正从较早的历史版本进行跨大版本升级，请注意以下重要里程碑变化：
-
-- **统一单一前门 (Origin 合并)**：平台将所有控制台与 Agent 流量统一收敛至 Agent Gateway（默认端口 `17300`），浏览器通过单一 `EVELAND_PUBLIC_ORIGIN` 访问，不再需要为前端单独烘焙 API 地址。
-- **端口段统一规整**：平台各服务默认端口已全部迁移至专属端口段（如 API 为 `17301`，Gateway 为 `17300`，内置 Postgres 为 `17310`，Agent 动态端口为 `18000–18999`）。
-- **Identity 路由规范**：身份认证与 Agent Catalog 端点统一迁入 `/api/` 命名空间（例如 `/api/identity/*` 与 `/api/agent-catalog`）。
-- **外部工作流世界统一**：平台全面采用共享的 `@evelandhq/workflow-world` 架构，不再维护旧版按项目物理分库的模式。
 
 ## 相关参考
 
