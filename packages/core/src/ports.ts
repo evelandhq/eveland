@@ -32,9 +32,6 @@ export const API_PORT = 17301;
 /** Dashboard (Next.js), loopback-only behind the front door. */
 export const WEB_PORT = 17302;
 
-/** Reserved in the platform port block; nothing binds it. */
-export const MODEL_GATEWAY_PORT = 17303;
-
 /** Host-side mapping of the Postgres container (loopback-only publish). The
  * container network keeps `postgres:5432`. */
 export const POSTGRES_HOST_PORT = 17310;
