@@ -39,8 +39,8 @@ describe("DeploymentTrafficActions", () => {
     renderActions({ status: "archived" });
 
     // Every action here needs a Deployment that can still run or still be
-    // retired. An archived row used to render three permanently greyed
-    // buttons, which on a long history is most of the page.
+    // retired, so an archived row renders none -- greyed buttons on every
+    // archived row would be most of the page on a long history.
     expect(buttonNames()).toEqual([]);
   });
 

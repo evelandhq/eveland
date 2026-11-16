@@ -36,8 +36,8 @@ describe("project deployments surface", () => {
   test("renders only the actions a deployment can actually run", () => {
     const actions = source("../components/deployment-traffic-actions.tsx");
 
-    // Rows used to carry three permanently greyed buttons each. `disabled` is
-    // now reserved for transient state and the retention hold the row explains.
+    // No permanently greyed buttons: `disabled` is reserved for transient
+    // state and the retention hold the row explains.
     expect(actions).toContain('const canPromote = status === "running";');
     expect(actions).toContain(
       'const canArchive = status !== "archived" && status !== "archiving";',

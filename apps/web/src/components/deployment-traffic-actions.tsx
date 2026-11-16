@@ -48,11 +48,10 @@ export function DeploymentTrafficActions({
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Slow requests used to leave the whole row looking inert (buttons only go
-  // `disabled`), and the actioned button re-enabled before the refresh made
-  // the effect visible (#142). The clicked button now spins through both
-  // phases — the request (`pending`) and the refresh that makes the change
-  // visible (`settling`, cleared when the transition ends).
+  // The clicked button spins through both phases — the request (`pending`)
+  // and the refresh that makes the change visible (`settling`, cleared when
+  // the transition ends) — so a slow request never leaves the row looking
+  // inert and the button never re-enables before its effect shows (#142).
   const [settling, setSettling] = useState<string | null>(null);
   const [confirmingPromote, setConfirmingPromote] = useState(false);
   const [refreshing, startRefresh] = useTransition();
@@ -91,10 +90,10 @@ export function DeploymentTrafficActions({
     productionDeploymentId &&
     productionDeploymentId !== deploymentId &&
     status === "running";
-  // An archived row used to render three permanently greyed buttons, which on
-  // a project with a long history is most of the page. An action is rendered
-  // only where it could actually run; `disabled` is left for the transient
-  // cases -- a request in flight, or a retention hold the row explains.
+  // An action is rendered only where it could actually run: permanently
+  // greyed buttons on every archived row would be most of the page on a
+  // project with a long history. `disabled` is left for the transient cases
+  // -- a request in flight, or a retention hold the row explains.
   const canPromote = status === "running";
   const canDrain = status === "running" && !routed;
   const canArchive = status !== "archived" && status !== "archiving";

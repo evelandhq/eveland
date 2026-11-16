@@ -432,9 +432,8 @@ describe("Gateway", () => {
     });
     const headers = (await response.json()) as Record<string, string>;
 
-    // Eve 0.32 stopped reading the request Host in localDev(), so no Agent in
-    // the supported window still authorizes on a loopback name -- the original
-    // Host-spoof bypass is closed upstream. This stays as defense in depth
+    // eve's localDev() does not read the request Host, so no Agent in the
+    // supported window authorizes on a loopback name. This stays as defense in depth
     // because it is the Gateway's invariant either way: the Playground reaches
     // an Agent over loopback deliberately, and public traffic must never be
     // able to imitate it.

@@ -27,7 +27,7 @@
  * ../jobs/process-support-reserved.test.ts, which fails if either side gains a
  * name the other does not have -- and which also fails on a name added here
  * without its inputs, so a new reserved value cannot silently escape the
- * drift check the way every non-Identity name did before issue #477.
+ * drift check (issue #477).
  */
 export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, readonly string[]>> = {
   // The issuer falls back to EVELAND_PUBLIC_ORIGIN, and both it and the JWKS
@@ -85,7 +85,7 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   // Per project by construction, like EVELAND_PROJECT_ID.
   WORKFLOW_WORLD_TENANT_ID: [],
   WORKFLOW_WORLD_URL: ["WORKFLOW_WORLD_URL"],
-  // eve 0.52.0 turned on CLI telemetry by default: every `eve build`,
+  // eve's CLI telemetry is on by default: every `eve build`,
   // `eve info`, and `eve start` the platform runs would otherwise spawn a
   // detached flush that POSTs command usage to telemetry.vercel.com and, on a
   // systemd build where HOME is the release directory, write its installation

@@ -438,9 +438,8 @@ describe("buildReleaseBuildEnvironment", () => {
  * `buildReleaseBuildEnvironment` returning a complete environment only keeps
  * worker secrets out while its caller also passes `extendEnv: false` -- execa
  * extends `process.env` by default, and this process holds APP_SECRET_KEY,
- * DATABASE_URL and WORKFLOW_WORLD_URL. That pairing used to be self-evident
- * from one inline literal beside the execa call; now that the environment is
- * built elsewhere, only this asserts it.
+ * DATABASE_URL and WORKFLOW_WORLD_URL. The environment is built away from the
+ * execa call, so only this asserts the pairing.
  */
 describe("release build execa contract", () => {
   // readFileSync, because this file mocks node:fs/promises.

@@ -145,7 +145,7 @@ describe("instance Model Gateway routes", () => {
       jobs: Array<{ deploymentId: string }>;
       rebuildRequired: unknown[];
     };
-    // Restarting the legacy Release would reuse a build with no provider in
+    // Restarting the provider-less Release would reuse a build with no provider in
     // it, so it is not restarted, and the change is not claimed for it.
     expect(body.jobs.map((job) => job.deploymentId)).toEqual([current.deployment.id]);
     expect(body.rebuildRequired).toEqual([
@@ -160,7 +160,7 @@ describe("instance Model Gateway routes", () => {
       store.listProjectJobs(legacy.project.id, { type: "restart_deployment" }),
     ).resolves.toEqual([]);
 
-    // Resaving the same gateway restarts nothing, but the legacy Release
+    // Resaving the same gateway restarts nothing, but the provider-less Release
     // still lacks the provider, so it is still named.
     const resaved = await app.request("/api/platform/model-gateway", {
       method: "PUT",
@@ -171,7 +171,7 @@ describe("instance Model Gateway routes", () => {
       rebuildRequired: [{ deploymentId: legacy.deployment.id }],
     });
 
-    // Removing the gateway leaves the legacy Release calling models as
+    // Removing the gateway leaves the provider-less Release calling models as
     // authored, which is what removal asks for: nothing to rebuild.
     const removed = await app.request("/api/platform/model-gateway", { method: "DELETE" });
     await expect(removed.json()).resolves.toMatchObject({

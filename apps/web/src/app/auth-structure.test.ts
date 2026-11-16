@@ -211,9 +211,9 @@ describe("team management web surfaces", () => {
     expect(serverApi).toContain("cookieStore.toString()");
   });
 
-  // Cookie credentials are no longer a string to grep for in each caller:
-  // lib/api-transport sends them for every browser call, and
-  // api-transport.test.ts asserts that behavior directly.
+  // Cookie credentials are not grepped for in each caller: lib/api-transport
+  // sends them for every browser call, and api-transport.test.ts asserts that
+  // behavior directly.
 
   test("manages project variables and secrets with the shared table and dialog pattern", () => {
     const page = source("./projects/[projectId]/settings/page.tsx");
