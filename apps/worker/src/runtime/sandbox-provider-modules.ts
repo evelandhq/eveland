@@ -59,7 +59,8 @@ export function buildPlatformSandboxModule(generatedMarker: string): string {
 import { BwrapSandbox } from "../sandbox-bwrap/provider.js";
 
 const cacheDir = process.env.EVELAND_SANDBOX_CACHE_DIR;
-const platformOptions = {
+// Exported so a host check can drive the provider with exactly these limits.
+export const platformOptions = {
   ...(cacheDir ? { cacheDir } : {}),
   runTimeoutMs: Number(process.env.EVELAND_SANDBOX_RUN_TIMEOUT_MS ?? "600000"),
   maxConcurrentProcesses: Number(process.env.EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES ?? "64"),

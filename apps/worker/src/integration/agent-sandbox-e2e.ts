@@ -142,8 +142,43 @@ async function readTextFile(connection, filePath) {
 }
 
 const mode = process.env.E2E_CHECK_MODE;
+
+// The command limits the platform module gives every environment, read from
+// the same EVELAND_SANDBOX_* variables a Deployment carries, enforced by the
+// vendored provider on every spawned command the way eve's run() reaches it.
+async function checkLimits() {
+  const limited = createBwrapSandboxProviderDefinition().environment(platform.platformOptions);
+  const storagePath = path.join(cacheDir, "e2e-limits");
+  const artifact = await limited.prepare({
+    storagePath,
+    log: () => {},
+    populate: async () => {},
+    templateKey: () => "e2e-limits",
+  });
+  const limitsCtx = { kind: "session", session: { id: "e2e-limits" }, storagePath };
+  const started = await limited.start(limitsCtx, undefined, artifact);
+  try {
+    const startedAt = Date.now();
+    await assert.rejects(run(started.connection, "sleep 30"), /command timed out/);
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed < 15_000, \`the timeout must stop the command, it ran \${elapsed} ms\`);
+    await assert.rejects(
+      run(started.connection, "yes eveland-output | head -c 1000000"),
+      /output exceeded/,
+    );
+    const after = await run(started.connection, "echo still-serving");
+    assert.equal(after.exitCode, 0, \`a command after the limits failed: \${after.stderr}\`);
+    assert.ok(after.stdout.includes("still-serving"), \`unexpected stdout: \${after.stdout}\`);
+  } finally {
+    await started.connection.stop();
+    await limited.onSessionEnd(limitsCtx, started.state, { reason: "deleted" });
+  }
+}
+
 let connection;
-if (mode === "seed") {
+if (mode === "limits") {
+  await checkLimits();
+} else if (mode === "seed") {
   const started = await environment.start(ctx, undefined, root.artifact);
   connection = started.connection;
   await writeFile(statePath, JSON.stringify(started.state));
@@ -152,9 +187,9 @@ if (mode === "seed") {
   // the session, not to the Release that first started it.
   connection = await environment.resume(ctx, root.artifact, JSON.parse(await readFile(statePath, "utf8")));
 } else {
-  throw new Error('E2E_CHECK_MODE must be "seed" or "verify"');
+  throw new Error('E2E_CHECK_MODE must be "seed", "verify", or "limits"');
 }
-try {
+if (connection) try {
   if (mode === "seed") {
     const prepared = await readTextFile(connection, "eveland-prepare.txt");
     assert.equal(
@@ -195,7 +230,7 @@ function buildCheckArgs(input: {
   releaseDir: string;
   cacheDir: string;
   scriptPath: string;
-  mode: "seed" | "verify";
+  mode: "seed" | "verify" | "limits";
 }): string[] {
   const dynamicUser = resolveSystemdDeploymentUser(
     `eveland-sandbox-check-${process.pid}-${input.mode}`,
@@ -218,6 +253,13 @@ function buildCheckArgs(input: {
     `--setenv=EVELAND_SANDBOX_CACHE_DIR=${input.cacheDir}`,
     `--setenv=TMPDIR=${input.cacheDir}`,
     `--setenv=E2E_CHECK_MODE=${input.mode}`,
+    // Small enough that a check finishes in seconds.
+    ...(input.mode === "limits"
+      ? [
+          "--setenv=EVELAND_SANDBOX_RUN_TIMEOUT_MS=2000",
+          "--setenv=EVELAND_SANDBOX_MAX_OUTPUT_BYTES=4096",
+        ]
+      : []),
     "node",
     input.scriptPath,
   ];
@@ -226,7 +268,7 @@ function buildCheckArgs(input: {
 async function runDeterministicCheck(input: {
   releaseDir: string;
   cacheDir: string;
-  mode: "seed" | "verify";
+  mode: "seed" | "verify" | "limits";
 }): Promise<void> {
   const scriptPath = path.join(input.releaseDir, ".eveland", "e2e-check.mjs");
   await mkdir(path.dirname(scriptPath), { recursive: true });
@@ -596,6 +638,16 @@ try {
   // cache dir, independent of eve's session API. --------------------------
   await runDeterministicCheck({ releaseDir: releaseDir1, cacheDir: projectCacheDir, mode: "seed" });
   console.log("Deterministic sandbox check (seed) passed against release 1.");
+
+  // --- A3: the run timeout and output limit the platform configures are
+  // enforced on spawned commands by the vendored provider on this host, under
+  // the deployment hardening. -----------------------------------------------
+  await runDeterministicCheck({
+    releaseDir: releaseDir1,
+    cacheDir: projectCacheDir,
+    mode: "limits",
+  });
+  console.log("SANDBOX LIMITS OK timeout=2000ms output=4096B");
 
   // --- C: required live agent turn over HTTP -- the only proof that eve's
   // deployed runtime (not just the injected modules in isolation) runs the
