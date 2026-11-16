@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { injectExtensionSubagentHooks, type ObserverCoverageGap } from "@evelandhq/agent-observer";
 import { injectExtensionSchedules } from "@evelandhq/agent-scheduler";
+import { injectExtensionSandboxModules } from "./sandbox-inject.js";
 
 const discoveryManifestPath = ".eve/discovery/agent-discovery-manifest.json";
 export const EXTENSION_COVERAGE_GAPS_RELEASE_PATH =
@@ -11,6 +12,7 @@ export async function runExtensionIntegration(releaseDir: string): Promise<{
   observerFiles: string[];
   observerCoverageGaps: ObserverCoverageGap[];
   scheduleDefinitions: number;
+  sandboxFiles: string[];
 }> {
   const resolvedReleaseDir = path.resolve(releaseDir);
   const manifest = JSON.parse(
@@ -21,6 +23,10 @@ export async function runExtensionIntegration(releaseDir: string): Promise<{
     manifest,
   });
   const scheduler = await injectExtensionSchedules({
+    releaseDir: resolvedReleaseDir,
+    manifest,
+  });
+  const sandboxFiles = await injectExtensionSandboxModules({
     releaseDir: resolvedReleaseDir,
     manifest,
   });
@@ -39,5 +45,6 @@ export async function runExtensionIntegration(releaseDir: string): Promise<{
     observerFiles: observer.injectedFiles,
     observerCoverageGaps,
     scheduleDefinitions: scheduler.definitions.length,
+    sandboxFiles,
   };
 }

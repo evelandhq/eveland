@@ -9,7 +9,8 @@ Eveland 上的每个 eve 沙箱，包括内置 `bash`、`read_file`、`write_fil
 
 - 自己编写的 `agent/sandbox` 模块继续生效。它的 `prepare` 步骤和 `defineSandbox()` 选择器照常运行，`agent/sandbox/workspace/**` 下的工作区种子文件也会复制进去。
 - 每个内置 provider（`DefaultSandbox`、`DockerSandbox`、`VercelSandbox`、`JustBashSandbox`）都改为构建 bubblewrap 环境，因此镜像、Dockerfile 等 provider 专属选项会被忽略。
-- 只要有沙箱是由其它 provider 准备的，构建就会失败：在辅助文件而非沙箱模块中构建的环境、来自 `eve/sandbox/provider` 的自定义 provider，或 Extension 自带的沙箱。
+- 没有自己沙箱模块的目录式子 Agent（无论属于项目还是已安装的 Extension）都会得到一个打开 bubblewrap 环境的沙箱模块。
+- 只要有沙箱是由其它 provider 准备的，构建就会失败：在辅助文件而非沙箱模块中构建的环境、来自 `eve/sandbox/provider` 的自定义 provider、Extension 自带的沙箱，或单文件子 Agent（项目或 Extension 的 `subagents/<name>.ts`）的沙箱。eve 给单文件子 Agent 分配自己的默认沙箱，且没有可替换的槽位，因此请把这类子 Agent 改为目录形式（`subagents/<name>/agent.ts`）。
 
 ## 2. 命令能看到什么
 
