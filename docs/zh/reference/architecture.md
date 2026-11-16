@@ -24,11 +24,13 @@ description: 查阅系统组件职责、包依赖方向、数据流动链路与�
 Eveland 内部各模块严格遵守单向依赖规范，由架构测试固化：
 
 ```text
-apps (Web, API, Gateway, Worker) ──> packages
-packages/session-collector ─────────> packages/core + packages/db
-packages/db ────────────────────────> packages/core
-packages/core ──────────────────────> 无内部包依赖 (根模块)
-apps -X-> apps (严禁应用间直接交叉引用)
+apps ──────────────────────────────────────> packages
+session-collector, agent-auth, identity-broker ──> core + db
+agent-observer, agent-scheduler, ctl ──────> core
+db ────────────────────────────────────────> core
+core ──────────────────────────────────────> 不依赖其他 Eveland 包
+eveland（发布的 SDK 与 CLI）───────────────> 不依赖任何 Eveland 包
+apps -X-> apps（禁止应用之间互相引用）
 ```
 
 ---

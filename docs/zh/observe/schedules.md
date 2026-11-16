@@ -45,4 +45,4 @@ Eveland **在平台层统一接管生产定时调度**：关闭 eve 自带的进
 
 - [调度执行行为契约](/zh/docs/reference/scheduling)：Cron 格式规范、预热机制与 ScheduleRun 完整状态机
 - [Workflow 调度设计决策](/zh/docs/reference/design/workflow)：外置调度器与持久化工作流设计
-- [Schedule 故障排查](/zh/docs/reference/troubleshooting#schedule-未运行)：定时任务未触发诊断指南
+- [Schedule 故障排查](/zh/docs/operations/diagnostics#56-定时任务-schedules-未准时触发)：定时任务未触发诊断指南

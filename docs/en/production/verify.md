@@ -66,6 +66,6 @@ Your production installation is now verified! Proceed to [Deploy your first agen
 ## Deeper reference
 
 - [Deploy your first agent](/docs/agents/first-deployment): onboarding guide for agent developers
-- [Health and diagnostics](/docs/operations/diagnostics): component availability checks and log inspection matrix
-- [Troubleshooting](/docs/reference/troubleshooting): symptom-specific triage and known platform limits
+- [Health and diagnostics](/docs/operations/diagnostics): component availability checks, log inspection, and symptom-by-symptom triage
+- [Known limitations](/docs/reference/known-limitations): what Eveland does not host
 - [Security model](/docs/operations/security): full security boundaries and process privilege model

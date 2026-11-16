@@ -45,4 +45,4 @@ Scheduled executions are recorded as **ScheduleRun** entities under project sess
 
 - [Scheduling behavior contract](/docs/reference/scheduling): cron syntax, prewarm timeouts, and the ScheduleRun state machine
 - [Workflow dispatch design decisions](/docs/reference/design/workflow): external dispatchers and durable workflows
-- [Troubleshooting schedules](/docs/reference/troubleshooting#schedule-not-running): diagnosing schedule dispatch issues
+- [Troubleshooting schedules](/docs/operations/diagnostics#56-scheduled-tasks-schedules-do-not-run): diagnosing schedule dispatch issues

@@ -66,5 +66,6 @@ _(可选) 在 macOS 开发机上，可借助 Lima 虚拟机运行自动化集成
 ## 相关参考
 
 - [部署第一个 Agent](/zh/docs/agents/first-deployment)：开发者上手指引
-- [健康诊断与运行状态](/zh/docs/operations/diagnostics)：系统运行状态排查
-- [故障排查手册](/zh/docs/reference/troubleshooting)：常见错误代码与解决方案
+- [健康诊断与运行状态](/zh/docs/operations/diagnostics)：系统运行状态排查与按现象定位常见故障
+- [已知限制](/zh/docs/reference/known-limitations)：Eveland 不支持的内容
+- [安全模型](/zh/docs/operations/security)：完整的安全边界与进程权限模型

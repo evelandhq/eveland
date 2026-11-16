@@ -7,8 +7,8 @@ These pages record the **why** behind Eveland's structural decisions. The
 product boundaries and architecture principles live in the repository's
 `spec.md`, the per-domain behavior contracts in this site's reference section,
 and the operational truth in the rest of this documentation; this section
-explains the reasoning that produced them, distilled from the project's internal planning
-records when the platform was opened up in August 2026. Decision zero —
+explains the reasoning that produced them, distilled from the maintainers' planning
+records. Decision zero —
 why build Eveland at all — is [Why Eveland](/docs/why).
 
 Two conventions keep these pages honest:
@@ -17,9 +17,9 @@ Two conventions keep these pages honest:
   maintainers at decision time. Where a choice shipped **without** a recorded
   argument, the page says "recorded as a decision, without a written
   rationale" instead of inventing one after the fact.
-- Decisions are presented with the alternatives that were genuinely
-  considered and the trade-offs that were knowingly accepted. Costs are
-  listed next to benefits.
+- Decisions are presented with the trade-offs that were knowingly accepted.
+  Costs are listed next to benefits. The pages describe what was built;
+  approaches that were never built are not explained here.
 
 The one principle that recurs on every page: **the machine exists to serve
 Agents, not infrastructure.** Runtime, sandbox, scale-to-zero, and workflow

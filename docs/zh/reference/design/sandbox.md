@@ -9,16 +9,9 @@ Eve 的 `DefaultSandbox` 在 `eve build` 时一次性选定 Provider：在 Verce
 
 在 Eveland 推荐的宿主机原生架构中，宿主机按设计没有常驻的 Docker 守护进程，因此默认方案会让每个 Agent 都没有可用的沙箱。
 
-## 备选方案权衡
+## 为什么是 bubblewrap
 
-| 备选方案                       | 评估结论                                                              |
-| :----------------------------- | :-------------------------------------------------------------------- |
-| **Vercel 托管沙箱**            | 仅能在特定公有云托管平台使用，无法满足企业私有化部署要求。            |
-| **Eve Docker 后端**            | 依赖宿主机常驻 Docker 守护进程，违背了宿主机高密度运行时的设计初衷。  |
-| **just-bash**                  | 纯 JS 模拟环境，无法运行真实系统命令与语言运行时。                    |
-| **VM 级隔离 (Firecracker 等)** | 适用于多租户对抗性安全场景，但对于单企业内多 Agent 舰队场景开销过重。 |
-
-经过综合权衡，**bubblewrap (bwrap)** 成为最佳解法：它仅依赖 Linux 内核的原生非特权用户命名空间（User Namespace），能够与 systemd 的加固特性（如 `NoNewPrivileges=yes`、`ProtectSystem=strict`）完美叠加。Eveland 将此能力封装为独立的 [`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap) 模块，实现零额外运行时依赖。
+沙箱必须能在没有 Docker 守护进程的自托管宿主机上运行，能执行 `python`、`git` 等真实二进制，而且每条命令的开销足够低，让一台机器能承载一整个 Agent 舰队。**bubblewrap (bwrap)** 同时满足这三点：它只需要非特权用户命名空间（User Namespace），并能叠加在每个 Deployment 已有的 systemd 加固之上（如 `NoNewPrivileges=yes`、`ProtectSystem=strict`）。接受的代价是共享内核，这适合团队为自己运行的 Agent，而不是互相敌对的租户。Eveland 将该 Provider 发布为 [`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap)，没有任何运行时依赖。
 
 ## 安全防护边界
 

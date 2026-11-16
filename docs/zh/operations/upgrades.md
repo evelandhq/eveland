@@ -84,4 +84,4 @@ eveland-ctl update
 
 - [备份与恢复](/zh/docs/operations/backup-restore)：升级前后的完整数据备份与恢复操作
 - [运行时与资源管理](/zh/docs/operations/runtime)：部署生命周期与工作流策略
-- [配置参考](/zh/docs/reference/configuration)：各组件环境变量清单
+- [环境变量](/zh/docs/reference/environment-variables)：每个变量、默认值与所属组件

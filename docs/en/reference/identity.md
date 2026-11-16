@@ -44,7 +44,7 @@ When an agent guards its endpoints with Eveland identity functions, callers foll
 Client requests Agent (no credentials)
   → Agent responds with 401 Unauthorized + WWW-Authenticate: Bearer authorization_uri="..."
   → Client parses challenge, redirecting the browser to /api/identity/login
-  → Platform verifies credentials and mints a project-scoped Caller Token
+  → Platform verifies credentials and mints a short-lived, project-scoped Caller Token
   → Client retries the request with Authorization: Bearer <Caller Token>
   → Agent verifies the ES256 signature and project audience, resolving the principal
 ```

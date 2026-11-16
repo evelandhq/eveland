@@ -165,7 +165,6 @@ describe("Eveland public website contract", () => {
       "operations/upgrades.md",
       "operations/backup-restore.md",
       "operations/security.md",
-      "reference/configuration.md",
       "reference/environment-variables.md",
       "reference/eve-compatibility.md",
       "reference/known-limitations.md",
@@ -178,7 +177,6 @@ describe("Eveland public website contract", () => {
       "reference/dashboard.md",
       "reference/routing.md",
       "reference/observability.md",
-      "reference/troubleshooting.md",
     ];
 
     for (const locale of ["en", "zh"]) {

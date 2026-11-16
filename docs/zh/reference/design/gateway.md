@@ -41,4 +41,5 @@ Agent 对话通常是多轮长连接交互，后续轮次可能在数小时或�
 
 - [配置 Agent 流量与反向代理](/zh/docs/production/networking)：网络与端口规划
 - [路由契约规范](/zh/docs/reference/routing)：Route Policy 与会话绑定规则
+- [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)：支持的 Eve 版本与协议基线
 - [安全模型](/zh/docs/operations/security)：网关网络安全边界与凭据保护
