@@ -260,22 +260,9 @@ describe("runBootstrapConfig", () => {
   test("a rendered configuration whose answer was never recorded refuses to guess", async () => {
     const { deps, layout } = await makeDeps({});
     await runBootstrapConfig(deps);
-    // Exactly the crash window as it looks on a machine bootstrapped by the
-    // older code: configuration on disk, no record of which database it uses.
+    // Configuration on disk, no record of which database it uses.
     await rm(layout.installJsonPath);
     await expect(runBootstrapConfig(deps)).rejects.toThrow(/did not finish/);
-  });
-
-  test("a completed install from before the question existed still means bundled", async () => {
-    const { deps, layout } = await makeDeps({});
-    await runBootstrapConfig(deps);
-    const metadata = await readInstallMetadata(layout);
-    await writeInstallMetadata(layout, {
-      ...metadata!,
-      bootstrapCompleted: true,
-      database: undefined,
-    });
-    expect((await runBootstrapConfig(deps)).database).toBe("bundled");
   });
 });
 

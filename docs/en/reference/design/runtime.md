@@ -40,6 +40,5 @@ By contrast, systemd transient units consume **zero memory and CPU when dormant*
 ## Deeper reference
 
 - [Production architecture overview](/docs/production): core services and Worker topology
-- [Install the host Worker](/docs/production/worker): systemd service installation and configuration
 - [Why a bubblewrap sandbox](/docs/reference/design/sandbox): sandbox isolation and self-check decisions
 - [Scale-to-zero design decisions](/docs/reference/design/scale-to-zero): idle process teardown and cold activation

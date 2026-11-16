@@ -518,8 +518,8 @@ export function createSystemdAdapter(
         config.buildSandbox === "bwrap"
           ? // Running bwrap as the unprivileged build user relies on the same
             // AppArmor grant the deployed agent's own sandbox already requires
-            // (/etc/apparmor.d/bwrap, userns) -- see docs/en/production/prerequisites.md for
-            // the host provisioning that grants it; not re-documented here.
+            // (/etc/apparmor.d/bwrap, userns), which eveland-ctl's host
+            // provisioning (packages/ctl/src/linux-host.ts) grants.
             await execa(
               "runuser",
               buildRunAsUserArgs(config.buildUser, [

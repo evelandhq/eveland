@@ -51,42 +51,15 @@ peerDependencyRules:
 # first-party packages; the @ai-sdk and ai entries are pinned third-party
 # decisions.
 #
-# The @workflow/* entries are TWO reviewed graphs that coexist on purpose.
-# `@workflow/world-postgres@5.0.0-beta.34` and the beta.17/8/36/27 line below
-# it are the legacy World, spec-v6 throughout, kept only for Releases built
-# before the shared World and never selected for a new build. The Workflow
-# 5.4 set (world/errors 5.1.0, world-local 5.2.1, utils 5.0.2) is what
-# `@evelandhq/workflow-world` 0.29.0 through 0.31.1 pin -- the set eve
-# 1.0.0-rc.5 through rc.9 bundle (core 5.4.0; rc.3 had moved to world 5.1.0).
-# rc.10 moved eve's own bundle to Workflow 5.5 (core 5.5.0, world 5.2.0,
-# world-local 5.3.0), which only adds optional World members; eve compares
-# only the major line, so the same World serves it.
-# World 5.1.0 adds only optional capabilities; 0.30.0 declares the in-band
-# writer fence and serves spec 9 runs, which 0.29.0 kept on spec 8, and 0.31.0
-# declares the atomic start Hook every rc.6 session starts with.
-# 0.28.0 pinned the 5.2 family's patch set (world/errors 5.0.5, world-local
-# 5.1.2), the set eve moved to at 0.83.0 (core 5.2.3) and 1.0.0-rc.1 and rc.2
-# bundle. 0.25.0 through 0.27.0 pinned the earlier patches
-# (world/errors 5.0.3, world-local 5.1.0, utils 5.0.1), the set eve moved to
-# at 0.75.1 and 0.76.0 through 0.82.0 bundle (core 5.2.0), with the same World
-# calls; before it, 0.70.2 moved
-# to the stable 5.0.1 release (which 0.24.0 pinned) and 0.73.0 to core 5.1.0
-# with world/world-local/errors 5.0.2 -- the same World calls and spec
-# constants throughout, only optional members added. eve compares only the
-# major and prerelease tag of the World's declaration, so the same World
-# serves the whole window. The 5.0.3 `@workflow/world` reports
-# SPEC_VERSION_CURRENT 8 (the hook force-claim reader contract), and since
-# 0.27.0 the shared World declares `mintedSpecVersion()` outright -- 8, or 6
-# for a Deployment that opts out with WORKFLOW_SEALED_LOG=0 -- and implements
-# the takeover behind `capabilities.hookForceClaim`, which eve 0.81.1 and later
-# need to move a session to a fresh run. 0.23.0 through 0.26.x declared
-# `Math.min(mintedSpecVersion(), 7)`, because 0.62.0's runtime read spec 6
-# through 7 only and would have refused a World declaring 8 at startup (0.18.0
-# through 0.22.0 declared `mintedSpecVersion()`, which was 7 on their
-# @workflow/world; 0.5.0 through 0.17.0 always declared 6); 1.0 reads 6
-# through 8. eve gates on the declared number, which the contract
-# ratchet reads out of the World's dist and asserts per line; the platform
-# admits 6, 7, and 8 (SUPPORTED_WORKFLOW_STORAGE_SPECS).
+# The @workflow/* entries are two reviewed graphs. `@workflow/world-postgres`
+# 5.0.0-beta.34 and the beta.17/8/36/27 line below it are the legacy
+# per-project World, spec 6 throughout, never selected for a new build. The
+# Workflow 5.4 set (world/errors 5.1.0, world-local 5.2.1, utils 5.0.2) is what
+# `@evelandhq/workflow-world` pins. eve bundles Workflow 5.5, which only adds
+# optional World members, and compares only the major line of the World's
+# declaration, so the same World serves it. eve gates on the storage spec the
+# World declares; the contract ratchet reads that number out of the World's
+# dist, and the platform admits SUPPORTED_WORKFLOW_STORAGE_SPECS.
 minimumReleaseAgeExclude:
   - eve
   - "@evelandhq/sandbox-bwrap"

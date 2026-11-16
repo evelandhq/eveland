@@ -1433,6 +1433,15 @@ describe("promote failure handling", () => {
       olderCursor: null,
     });
 
+    // Every read is a bounded page: no paging parameters reads the newest page.
+    const unpaged = await app.request(`/api/projects/${project.id}/logs`);
+    expect(unpaged.status).toBe(200);
+    await expect(unpaged.json()).resolves.toEqual({
+      logs: ["line 0", "line 1", "line 2"].map((line) => expect.objectContaining({ line })),
+      cursor: expect.any(String),
+      olderCursor: null,
+    });
+
     const invalid = await app.request(`/api/projects/${project.id}/logs?before=abc`);
     expect(invalid.status).toBe(400);
     const both = await app.request(`/api/projects/${project.id}/logs?before=5&after=1`);

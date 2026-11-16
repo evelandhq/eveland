@@ -16,9 +16,12 @@ export const EVELAND_CLI_CLIENT_ID = "eveland-cli";
  *
  * - `deploy`: deliver an agent to the platform — create projects, sync and
  *   build source, promote Deployments, and manage project env (secrets).
- * - `observe`: read the delivery surface — projects, deployments, jobs,
- *   logs, schedules, sessions. Never secrets, never the interactive
- *   Playground plane.
+ * - `observe`: read the delivery surface — projects, endpoints,
+ *   deployments, jobs, logs, schedules, usage, and sessions (the list and a
+ *   single session's transcript, nodes, and usage). Each readable path is
+ *   listed below; anything else, including a project route added later, is
+ *   denied until it is listed. Never secrets, source, gateway or agent-auth
+ *   configuration, or the interactive Playground plane.
  */
 export const CLI_TOKEN_SCOPES = ["deploy", "observe"] as const;
 
@@ -38,31 +41,49 @@ export const CLI_OAUTH_CLIENT_SEED = {
 
 const PROJECT_SEGMENT = "[A-Za-z0-9_-]+";
 
+// The project sub-resources an observe token reads, one path segment each
+// (`schedule-runs`, not `schedule-runs/acknowledge`).
+const OBSERVE_PROJECT_READS = [
+  "endpoints",
+  "deployments",
+  "jobs",
+  "logs",
+  "usage",
+  "eve-version",
+  "schedules",
+  "schedule-attention",
+  "schedule-runs",
+  "sessions",
+];
+
 type ScopeRule = {
   scope: CliTokenScope | "any";
   methods: readonly string[];
   pattern: RegExp;
 };
 
-// The token-authenticated surface, deny-by-default. Every rule names the
-// narrowest prefix that serves the CLI's command set (login/whoami today;
-// deploy/logs/env in the follow-up PRs, which extend this table alongside
-// the commands they add).
+// The token-authenticated surface, deny-by-default: every rule names exact
+// paths, never a prefix, so a new route stays out of reach of CLI tokens
+// until a rule here lists it.
 const SCOPE_RULES: readonly ScopeRule[] = [
   // Identity read for `eveland whoami` — any valid CLI token.
   { scope: "any", methods: ["GET"], pattern: /^\/api\/members\/me$/ },
   // Instance policy (the eve window) for the deploy preflight.
   { scope: "any", methods: ["GET"], pattern: /^\/api\/instance$/ },
 
-  // Read the delivery surface. Secrets, the Playground plane, and agent-auth
-  // configuration are excluded: observation must not leak credentials or open
-  // an interactive channel.
+  // Read the delivery surface.
   {
     scope: "observe",
     methods: ["GET", "HEAD"],
     pattern: new RegExp(
-      `^/api/projects(?:$|/(?:name-availability$|${PROJECT_SEGMENT}(?:$|/(?!secrets|playground|agent-auth).+)))`,
+      `^/api/projects(?:/name-availability|/${PROJECT_SEGMENT}(?:/(?:${OBSERVE_PROJECT_READS.join("|")}))?)?$`,
     ),
+  },
+  // One session, read by id: its transcript, nodes, and usage.
+  {
+    scope: "observe",
+    methods: ["GET", "HEAD"],
+    pattern: new RegExp(`^/api/sessions/${PROJECT_SEGMENT}(?:/(?:events|nodes|usage))?$`),
   },
 
   // Deliver an agent: create project, sync source, build+deploy, promote,

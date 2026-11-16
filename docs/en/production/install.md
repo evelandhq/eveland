@@ -43,6 +43,8 @@ The first boot asks for what only you can know:
 | **Database**      | The bundled Postgres container (fine for a single node), or the URL of your own cluster. |
 | **Model API key** | Optional. Seeds the built-in demo agent so you have something to deploy immediately.     |
 
+An external cluster must give the platform session-level connections: do not put a transaction-level pooler (PgBouncer in transaction mode, for example) in front of it, because the job queue relies on `LISTEN/NOTIFY` and advisory locks. The installer creates the shared workflow database next to the platform's own on the same server.
+
 Everything else is generated for you and written to `/opt/eveland/etc/eveland.env` (mode `0600`) — auth secrets, service tokens, and the admin password:
 
 ```bash
@@ -76,88 +78,6 @@ Then sign in at your public origin as the admin, and continue with:
 | `eveland-ctl update`  | Backs up the databases, moves to the newest release, migrates, restarts.       |
 
 Re-running the installer on a machine that already has Eveland is an upgrade — it forwards to `eveland-ctl update`. The full command reference is in [eveland-ctl](/docs/reference/ctl).
-
-## Coming from an older, hand-installed platform
-
-If Eveland already runs on this host from a manual checkout and hand-written units, the installer can adopt it in place: same database, same releases, same projects. One value decides whether that works — **`APP_SECRET_KEY`**. Every project secret in the database is encrypted with it, so the old one must come across; a freshly generated key makes all of them unreadable.
-
-**1. Back up both databases and the data directory** — see [Backup and restore](/docs/operations/backup-restore). Do not skip this.
-
-**2. Stop the old services.**
-
-```bash
-sudo systemctl disable --now eveland-api eveland-gateway eveland-web eveland-worker eveland-workflow-dispatcher
-```
-
-**3. Move the old checkout out of the way.** The appliance wants `/opt/eveland` for itself, and your checkout is probably sitting there:
-
-```bash
-sudo mv /opt/eveland /opt/eveland-old
-```
-
-**4. Install, but do not start yet.**
-
-```bash
-curl -fsSL https://eveland.ai/install.sh -o install.sh
-sudo bash install.sh --no-start
-```
-
-**5. Carry the old configuration over.** Copy the values from the old `.env` into `/opt/eveland/etc/eveland.env`, keeping the `EVELAND_NODE` line the installer just pinned there. At minimum:
-
-```ini
-EVELAND_PUBLIC_ORIGIN=https://console.example.com
-EVELAND_AGENT_BASE_DOMAINS=agents.example.com
-DATABASE_URL=postgres://…
-EVELAND_WORKFLOW_WORLD_URL=postgres://…
-EVELAND_DATA_DIR=/var/lib/eveland   # keep pointing at the existing data root
-EVELAND_RUNTIME=systemd
-APP_SECRET_KEY=…                    # the old one, or every stored secret is lost
-BETTER_AUTH_SECRET=…                # keep it, or everyone is signed out
-EVELAND_GATEWAY_SERVICE_TOKEN=…
-EVELAND_GATEWAY_AFFINITY_SECRET=…
-EVELAND_SCHEDULER_RUNTIME_SECRET=…
-EVELAND_SCHEDULER_DISPATCH_SECRET=…
-EVELAND_SCHEDULER_REDEEM_URL=http://127.0.0.1:17301/api/scheduler/redeem
-WORKFLOW_DISPATCHER_ACTIVATION_API_URL=http://127.0.0.1:17301
-WORKFLOW_DISPATCHER_ACTIVATION_TOKEN=…   # the same value as EVELAND_GATEWAY_SERVICE_TOKEN
-EVELAND_OTLP_SERVICE_TOKEN=…
-EVELAND_ADMIN_EMAIL=…
-```
-
-Keep the file at mode `0600`. A configuration that already contains `APP_SECRET_KEY` is adopted verbatim: the first boot asks nothing and generates no new secrets.
-
-**6. Record which database this installation uses**, in `/opt/eveland/etc/install.json`:
-
-```json
-{
-  "version": 1,
-  "installedAt": "2026-09-04T00:00:00Z",
-  "method": "manual",
-  "osMode": "linux",
-  "bootstrapCompleted": false,
-  "database": "external"
-}
-```
-
-Use `"bundled"` if Postgres is the container on `127.0.0.1:17310`, `"external"` if it is your own cluster. Without this file the ctl refuses to guess — guessing wrong is how an installation ends up running beside a second, empty database.
-
-**7. Start it and check.**
-
-```bash
-sudo /opt/eveland/bin/eveland-ctl doctor   # missing keys, ports, database — before anything runs
-sudo /opt/eveland/bin/eveland-ctl start    # adopts the config, installs the units, migrates
-/opt/eveland/bin/eveland-ctl status
-```
-
-`start` rewrites `/etc/systemd/system/eveland-*.service` with the units it owns and gives them environment files under `/opt/eveland/etc/`, so the old `/etc/eveland/*.env` files stop being read. Once **Settings → About** shows every component on the new version and one existing project still builds and deploys — the real proof that `APP_SECRET_KEY` came across — delete `/etc/eveland` and `/opt/eveland-old`.
-
-From here on, upgrades are `eveland-ctl update`.
-
-## Installing by hand instead
-
-The installer is the supported path, and the one we test. Install by hand only when your host rules it out — no root on `/opt`, an image you must build from a configuration-management tool, or a hardened host where each step needs review. The manual pages walk through exactly what the installer automates:
-
-[Host prerequisites](/docs/production/prerequisites) → [Core services](/docs/production/core-services) → [Host Worker](/docs/production/worker) → [Workflow dispatcher](/docs/production/workflow-dispatcher) → [Agent traffic](/docs/production/networking) → [Verify](/docs/production/verify).
 
 ## Deeper reference
 
