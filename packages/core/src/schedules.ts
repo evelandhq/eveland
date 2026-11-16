@@ -158,7 +158,7 @@ function parseStrictFrontmatter(sourcePath: string, input: string): { cron?: str
   for (const line of input.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
-    const match = trimmed.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    const match = trimmed.match(/^([A-Za-z0-9_-]+):(.*)$/);
     if (!match) throw new Error(`Markdown schedule ${sourcePath} has invalid frontmatter.`);
     const [, key, rawValue = ""] = match;
     if (key === "timezone") {

@@ -478,7 +478,7 @@ function validatePlaygroundFilePart(part: Record<string, unknown>): number {
     throw new Error(`Playground file type ${mediaType || "unknown"} is not supported.`);
   if (typeof part.data !== "string") throw new Error("Playground files must use data URLs.");
 
-  const match = /^data:([^;,]+)(?:;[^,]*)*;base64,([A-Za-z0-9+/]*={0,2})$/.exec(part.data);
+  const match = /^data:([^;,]+)(?:;[^;,]*)*;base64,([A-Za-z0-9+/]*={0,2})$/.exec(part.data);
   if (!match || match[1]?.toLowerCase() !== mediaType)
     throw new Error("Playground files must use matching base64 data URLs.");
   const encoded = match[2] ?? "";

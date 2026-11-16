@@ -313,7 +313,7 @@ export function parseEvelandAuthenticationChallenge(
 
 function parseChallengeParameters(value: string): Record<string, string> {
   const parameters: Record<string, string> = {};
-  const pattern = /([!#$%&'*+.^_`|~0-9A-Za-z-]+)="((?:\\.|[^"])*)"/g;
+  const pattern = /([!#$%&'*+.^_`|~0-9A-Za-z-]+)="((?:\\.|[^"\\])*)"/g;
   for (const match of value.matchAll(pattern)) {
     const key = match[1]?.toLowerCase();
     const raw = match[2];

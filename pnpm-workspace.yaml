@@ -38,9 +38,23 @@ overrides:
   # deprecated @esbuild-kit chain pins esbuild ~0.18.
   # sharp floor raised to 0.35.4 for GHSA-rgj7-g3m4-5g8c (libheif), 2026-09-15.
   "miniflare>sharp": "^0.35.4"
-  "miniflare>undici": "^7.29.0"
+  "miniflare>undici": "^7.30.1"
   "ansi-to-react>linkify-it": "^5.0.2"
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
+  # Security floors for high/critical Dependabot alerts, 2026-11-15. Each
+  # parent still allows (or pins) a vulnerable patch; drop a floor once every
+  # parent resolves past it. dompurify via mermaid (GHSA-cg2g-xh64-v4q7);
+  # undici 7 via the legacy world-local, @ai-sdk/provider-utils, dotenvx and
+  # world-local 5.2.1, undici 8 via jsdom and node-gyp (GHSA-xjj6-f33q-929c and
+  # siblings); systeminformation via host-metrics and dotenvx
+  # (GHSA-3f7j-7jwc-fxfj); zod 4 via the Workflow worlds and
+  # @vercel/cli-config (GHSA-mrhx-c7xc-m3w5). vite, which vitest takes as a
+  # peer, is floored by the root devDependency instead (GHSA-587h-7wmj-h5pm).
+  "dompurify@<3.4.17": "^3.4.17"
+  "undici@>=7.0.0 <7.30.1": "^7.30.1"
+  "undici@>=8.0.0 <8.12.2": "^8.12.4"
+  "systeminformation@<5.33.16": "^5.33.16"
+  "zod@>=4.0.0 <4.6.6": "^4.6.7"
 peerDependencyRules:
   allowedVersions:
     # @pierre/trees 1.0.0-beta.6 (still the latest) pins @pierre/theming 1.0.0,

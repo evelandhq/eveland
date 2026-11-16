@@ -222,6 +222,7 @@ describe("Gateway", () => {
         response.end(JSON.stringify({ sessionId: "eve_bound" }));
         return;
       }
+      response.writeHead(200, { "content-type": "text/plain" });
       response.end(`proxied:${request.url}`);
     });
     const repo = repository([route({ hostPort: upstream.port })]);

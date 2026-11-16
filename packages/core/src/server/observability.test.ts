@@ -40,6 +40,25 @@ describe("external observability destination network policy", () => {
     ).resolves.toBeUndefined();
   });
 
+  // Trimming an endpoint's trailing slashes once backtracked quadratically on
+  // a long run of slashes that does not end the endpoint.
+  test("builds a crafted endpoint's signal URL in linear time", async () => {
+    const started = performance.now();
+    await expect(
+      validateExternalObservabilityDestination(
+        {
+          kind: "custom_otlp",
+          endpoint: `https://collector.example/base${"/".repeat(40_000)}x`,
+          supportedSignals: ["logs"],
+          domains: ["agent"],
+          headers: {},
+        },
+        { lookup: async () => [{ address: "8.8.8.8", family: 4 }] },
+      ),
+    ).resolves.toBeUndefined();
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
   test("requires public destinations to use HTTPS", async () => {
     await expect(
       validateExternalObservabilityDestination(

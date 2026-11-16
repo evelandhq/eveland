@@ -64,6 +64,19 @@ Run nightly.
     },
   );
 
+  // A long run of spaces before a value that ends in a lone carriage return
+  // once backtracked quadratically.
+  test("rejects crafted frontmatter in linear time", () => {
+    const started = performance.now();
+    expect(() =>
+      parseScheduleSource(
+        "agent/schedules/nightly.md",
+        `---\ncron:${" ".repeat(40_000)}a\rb\n---\nRun nightly.\n`,
+      ),
+    ).toThrow(/invalid frontmatter/);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
   test("names UTC when Markdown frontmatter asks for a timezone", () => {
     expect(() =>
       parseScheduleSource(

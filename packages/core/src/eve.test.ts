@@ -610,3 +610,42 @@ describe("eve event projections", () => {
     );
   });
 });
+
+// Crafted inputs that once made a validation regex backtrack exponentially or
+// quadratically. Each finishes in well under the bound once the pattern has
+// no ambiguous repetition; the slow form took seconds on these sizes.
+describe("Playground file validation on crafted data URLs", () => {
+  test("rejects a data URL of repeated parameter separators in linear time", () => {
+    const validate = (Eve as Record<string, unknown>).validatePlaygroundTurn;
+    if (typeof validate !== "function") throw new Error("validatePlaygroundTurn is missing");
+    const file = {
+      type: "file",
+      data: `data:text/plain${";".repeat(26)};base64,!`,
+      filename: "notes.txt",
+      mediaType: "text/plain",
+    };
+    const started = performance.now();
+    expect(() =>
+      validate({ message: [file] }, { maxFiles: 4, maxFileBytes: 8, maxTotalFileBytes: 16 }),
+    ).toThrow(/matching base64 data URLs/);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  test("still accepts data URL parameters before base64", () => {
+    const validate = (Eve as Record<string, unknown>).validatePlaygroundTurn;
+    if (typeof validate !== "function") throw new Error("validatePlaygroundTurn is missing");
+    const payload = {
+      message: [
+        {
+          type: "file",
+          data: "data:text/plain;charset=utf-8;name=a;base64,aGVsbG8=",
+          filename: "notes.txt",
+          mediaType: "text/plain",
+        },
+      ],
+    };
+    expect(validate(payload, { maxFiles: 4, maxFileBytes: 8, maxTotalFileBytes: 16 })).toEqual(
+      payload,
+    );
+  });
+});

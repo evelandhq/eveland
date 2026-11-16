@@ -155,7 +155,7 @@ function detectsEveChatCapability(
   );
   if (!channel) return false;
   return (
-    /import\s*\{[^}]*\beveChannel\b[^}]*\}\s*from\s*["']eve\/channels\/eve["']/.test(
+    /import\s*\{[^{}]*\beveChannel\b[^{}]*\}\s*from\s*["']eve\/channels\/eve["']/.test(
       channel.content,
     ) && /export\s+default\s+eveChannel\s*\(/.test(channel.content)
   );

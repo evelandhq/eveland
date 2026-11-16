@@ -40,6 +40,18 @@ describe("project slugs", () => {
     );
   });
 
+  // Trailing-slash trimming once backtracked quadratically on long runs of
+  // slashes that do not end the input.
+  test("trims trailing slashes in linear time", () => {
+    const started = performance.now();
+    expect(inferProjectSlugFromGitUrl(`https://github.com/acme/agent${"/".repeat(40_000)}x`)).toBe(
+      "x",
+    );
+    expect(normalizeGitCredentialHost(`gitlab.example.com${"/".repeat(40_000)}x`)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(200);
+    expect(inferProjectSlugFromGitUrl("https://github.com/acme/agent.git///")).toBe("agent");
+  });
+
   test("claims the requested slug and then deterministic numeric suffixes", async () => {
     const attempted: string[] = [];
 
