@@ -11,7 +11,17 @@ export type SourceFile = {
   content?: string;
 };
 
-export type EveProjectLayout = "nested" | "flat" | "unknown";
+/**
+ * eve's project layouts, as far as the preflight can tell them apart. Eveland
+ * deploys only `nested`: one agent whose files live in `agent/` at the
+ * repository root. eve also accepts agent files directly in the app root
+ * (`flat`) and workspace members under `agents/<name>/` (`workspace`); a
+ * build injects platform files into `agent/`, which turns a flat project
+ * into an empty nested one, so both are refused before anything is built.
+ */
+export type EveProjectLayout = "nested" | "flat" | "workspace" | "unknown";
+
+const AGENT_ROOT = "agent/";
 
 export type EveProjectSummary = {
   agents: string[];
@@ -24,16 +34,11 @@ export type EveProjectSummary = {
   sandbox: string[];
 };
 
-export type EveProjectCapabilities = {
-  eveChat: boolean;
-};
-
 export type EveProjectInspection = {
   valid: boolean;
   layout: EveProjectLayout;
   projectName: string | null;
   eveVersion: string | null;
-  capabilities: EveProjectCapabilities;
   summary: EveProjectSummary;
   envVars: string[];
   schedules: DiscoveredSchedule[];
@@ -58,7 +63,7 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
   }));
   const paths = new Set(normalized.map((file) => file.path));
   const layout = detectLayout(paths);
-  const root = layout === "nested" ? "agent/" : "";
+  const root = AGENT_ROOT;
   const summary = emptySummary();
   const schedules: DiscoveredSchedule[] = [];
   const envVars = new Set<string>();
@@ -91,11 +96,7 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
       summary.sandbox.push(file.path);
     }
 
-    if (
-      root === "agent/" &&
-      isUnder(file.path, `${root}schedules/`) &&
-      /\.(md|[cm]?[jt]s)$/.test(file.path)
-    ) {
+    if (isUnder(file.path, `${root}schedules/`) && /\.(md|[cm]?[jt]s)$/.test(file.path)) {
       summary.schedules.push(file.path);
       try {
         schedules.push(parseScheduleSource(file.path, file.content));
@@ -112,9 +113,8 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
 
   dedupeSummary(summary);
 
-  if (layout === "unknown" || summary.instructions.length === 0) {
-    errors.push("Missing root instructions.md, instructions.ts, or instructions/.");
-  }
+  const layoutError = unsupportedLayoutMessage(layout);
+  if (layoutError) errors.push(layoutError);
   const eveVersion = readDeclaredEveVersion(normalized);
   if (!isSupportedEveSpecifier(eveVersion)) {
     errors.push(unsupportedEveSpecifierMessage(eveVersion));
@@ -125,9 +125,6 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
     layout,
     projectName: readProjectName(normalized),
     eveVersion,
-    capabilities: {
-      eveChat: detectsEveChatCapability(normalized, root),
-    },
     summary,
     envVars: [...envVars].sort(),
     schedules,
@@ -135,41 +132,52 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
   };
 }
 
-function detectsEveChatCapability(
-  files: Array<{ path: string; content: string }>,
-  root: string,
-): boolean {
-  const channel = files.find((file) =>
-    new RegExp(`^${root}channels/eve\\.(?:[cm]?[jt]s)$`).test(file.path),
-  );
-  if (!channel) return false;
-  return (
-    /import\s*\{[^{}]*\beveChannel\b[^{}]*\}\s*from\s*["']eve\/channels\/eve["']/.test(
-      channel.content,
-    ) && /export\s+default\s+eveChannel\s*\(/.test(channel.content)
-  );
+const SUPPORTED_LAYOUT_HINT =
+  "Eveland deploys one agent per repository, with its files in agent/ at the repository root " +
+  "(agent/instructions.md, agent/agent.ts, agent/tools/, ...).";
+
+/** The preflight error for a layout Eveland does not deploy, or null for `nested`. */
+export function unsupportedLayoutMessage(layout: EveProjectLayout): string | null {
+  switch (layout) {
+    case "nested":
+      return null;
+    case "flat":
+      return (
+        "The agent's files are at the repository root (eve's flat layout), which Eveland does " +
+        "not deploy. Move instructions, agent.ts, and the agent's directories into agent/. " +
+        SUPPORTED_LAYOUT_HINT
+      );
+    case "workspace":
+      return (
+        "The repository is an eve workspace with agents under agents/<name>/, which Eveland does " +
+        `not deploy. Import a repository that holds a single agent. ${SUPPORTED_LAYOUT_HINT}`
+      );
+    case "unknown":
+      return `Missing agent/instructions.md, agent/instructions.ts, or agent/instructions/. ${SUPPORTED_LAYOUT_HINT}`;
+  }
 }
 
 function detectLayout(paths: Set<string>): EveProjectLayout {
-  if ([...paths].some((filePath) => isInstructionPath(filePath, "agent/"))) {
-    return "nested";
-  }
-  if ([...paths].some((filePath) => isInstructionPath(filePath, ""))) {
-    return "flat";
+  const all = [...paths];
+  if (all.some((filePath) => isInstructionPath(filePath, AGENT_ROOT))) return "nested";
+  if (all.some((filePath) => isInstructionPath(filePath, ""))) return "flat";
+  if (all.some((filePath) => /^agents\/[^/]+\/instructions(?:\.|\/)/.test(filePath))) {
+    return "workspace";
   }
   return "unknown";
 }
 
+// eve's authored instruction forms: one markdown or module file, or a directory.
+const INSTRUCTION_FILE = /^instructions\.(?:md|[cm]?[jt]s)$/;
+
 function isInstructionPath(filePath: string, root: string): boolean {
-  return (
-    filePath === `${root}instructions.md` ||
-    filePath === `${root}instructions.ts` ||
-    filePath.startsWith(`${root}instructions/`)
-  );
+  if (!filePath.startsWith(root)) return false;
+  const relative = filePath.slice(root.length);
+  return INSTRUCTION_FILE.test(relative) || relative.startsWith("instructions/");
 }
 
 function isUnder(filePath: string, directory: string): boolean {
-  return directory ? filePath.startsWith(directory) : false;
+  return filePath.startsWith(directory);
 }
 
 function isSkillPath(filePath: string, root: string): boolean {

@@ -48,7 +48,6 @@ describe("processNextJob", () => {
         status: "completed",
         summary: expect.objectContaining({
           eveVersion: expect.any(String),
-          capabilities: { eveChat: true },
         }),
       },
     );
