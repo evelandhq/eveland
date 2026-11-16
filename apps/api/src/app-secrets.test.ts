@@ -1,9 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  decryptSecretValue,
-  encryptSecretValue,
-  type EncryptedSecret,
-} from "@evelandhq/core/server/secrets";
+import { openSecret, sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { createApp } from "./app.js";
 import { createTestStore } from "@evelandhq/db/vitest";
 
@@ -69,9 +65,7 @@ describe("api app", () => {
     expect(JSON.stringify(body)).not.toContain("gpt-5");
     const [record] = await store.listSecretRecords(project.id);
     expect(record).toMatchObject({ id: created.secret.id, key: "DEFAULT_MODEL", kind: "secret" });
-    expect(
-      decryptSecretValue(JSON.parse(record!.encryptedValue) as EncryptedSecret, appSecretKey),
-    ).toBe("gpt-5");
+    expect(openSecret(record!.encryptedValue, appSecretKey, "project-secret")).toBe("gpt-5");
   });
 
   test("queues a targeted restart for every live deployment after saving a secret", async () => {
@@ -179,7 +173,7 @@ describe("api app", () => {
     await store.upsertSecret(
       project.id,
       "MODEL_NAME",
-      JSON.stringify(encryptSecretValue("gpt-old", appSecretKey)),
+      sealSecret("gpt-old", appSecretKey, "project-secret"),
       "variable",
     );
 
@@ -218,19 +212,17 @@ describe("api app", () => {
     const records = await store.listSecretRecords(project.id);
     expect(records).toHaveLength(2);
     expect(
-      decryptSecretValue(
-        JSON.parse(
-          records.find((record) => record.key === "MODEL_NAME")!.encryptedValue,
-        ) as EncryptedSecret,
+      openSecret(
+        records.find((record) => record.key === "MODEL_NAME")!.encryptedValue,
         appSecretKey,
+        "project-secret",
       ),
     ).toBe("gpt-5.4");
     expect(
-      decryptSecretValue(
-        JSON.parse(
-          records.find((record) => record.key === "OPENAI_API_KEY")!.encryptedValue,
-        ) as EncryptedSecret,
+      openSecret(
+        records.find((record) => record.key === "OPENAI_API_KEY")!.encryptedValue,
         appSecretKey,
+        "project-secret",
       ),
     ).toBe("sk-batch-secret");
 

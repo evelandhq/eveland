@@ -6,7 +6,7 @@ import { type RuntimeAdapter } from "../runtime/types.js";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { createFixtureEveProject, recordReadyDispatcherFixture } from "./process.test-support.js";
 
 describe("processNextJob", () => {
@@ -160,9 +160,7 @@ describe("processNextJob", () => {
     await store.upsertSecrets(project.id, [
       {
         key: "AI_GATEWAY_API_KEY",
-        value: JSON.stringify(
-          encryptSecretValue("sk-project-own", "eveland-test-secret-key-00000000"),
-        ),
+        value: sealSecret("sk-project-own", "eveland-test-secret-key-00000000", "project-secret"),
         kind: "secret",
       },
     ]);
@@ -247,7 +245,7 @@ describe("processNextJob", () => {
     await store.upsertSecrets(project.id, [
       {
         key: "AI_GATEWAY_API_KEY",
-        value: JSON.stringify(encryptSecretValue("sk-other", "eveland-test-secret-key-00000000")),
+        value: sealSecret("sk-other", "eveland-test-secret-key-00000000", "project-secret"),
         kind: "secret",
       },
     ]);
@@ -431,7 +429,7 @@ describe("processNextJob", () => {
     await store.upsertSecret(
       project.id,
       "OPENAI_API_KEY",
-      JSON.stringify(encryptSecretValue(secretValue, appSecretKey)),
+      sealSecret(secretValue, appSecretKey, "project-secret"),
     );
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -818,12 +816,12 @@ describe("processNextJob", () => {
     await store.upsertSecret(
       project.id,
       "WORKFLOW_WORLD_URL",
-      JSON.stringify(encryptSecretValue("postgres://custom@db:5432/app", secretKey)),
+      sealSecret("postgres://custom@db:5432/app", secretKey, "project-secret"),
     );
     await store.upsertSecret(
       project.id,
       "WORKFLOW_SPEC_VERSION",
-      JSON.stringify(encryptSecretValue("8", secretKey)),
+      sealSecret("8", secretKey, "project-secret"),
     );
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -883,19 +881,19 @@ describe("processNextJob", () => {
     await store.upsertSecret(
       project.id,
       "SHARED_TOKEN",
-      JSON.stringify(encryptSecretValue("project-secret-value", secretKey)),
+      sealSecret("project-secret-value", secretKey, "project-secret"),
     );
     await store.saveSharedAgentEnvironment({
       entries: [
         {
           key: "SHARED_TOKEN",
           kind: "secret",
-          encryptedValue: JSON.stringify(encryptSecretValue("shared-default-value", secretKey)),
+          encryptedValue: sealSecret("shared-default-value", secretKey, "shared-agent-environment"),
         },
         {
           key: "SHARED_ONLY",
           kind: "secret",
-          encryptedValue: JSON.stringify(encryptSecretValue("shared-only-value", secretKey)),
+          encryptedValue: sealSecret("shared-only-value", secretKey, "shared-agent-environment"),
         },
       ],
     });
@@ -966,19 +964,19 @@ describe("processNextJob", () => {
         {
           key: "MODEL_NAME",
           kind: "variable",
-          encryptedValue: JSON.stringify(encryptSecretValue("configured-model", secretKey)),
+          encryptedValue: sealSecret("configured-model", secretKey, "shared-agent-environment"),
         },
         {
           key: "OPENAI_API_KEY",
           kind: "secret",
-          encryptedValue: JSON.stringify(encryptSecretValue("shared-api-key", secretKey)),
+          encryptedValue: sealSecret("shared-api-key", secretKey, "shared-agent-environment"),
         },
       ],
     });
     await store.upsertSecret(
       project.id,
       "REPORTING_BASE_URL",
-      JSON.stringify(encryptSecretValue("https://reporting.example.com", secretKey)),
+      sealSecret("https://reporting.example.com", secretKey, "project-secret"),
       "variable",
     );
     await store.enqueueJob(project.id, "build_deploy");

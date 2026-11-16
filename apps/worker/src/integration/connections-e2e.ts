@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { materializeEveFixtureDirectory } from "@evelandhq/core/server/eve-fixture";
 import type { DeploymentRecord, ReleaseRecord } from "@evelandhq/core/contracts";
 import { createPgliteTestStore } from "@evelandhq/db/test";
@@ -80,11 +80,7 @@ async function main(): Promise<void> {
     // scoped to the disposable test Agent and never changes platform TLS.
     ["NODE_TLS_REJECT_UNAUTHORIZED", "0"],
   ] as const) {
-    await store.upsertSecret(
-      project.id,
-      key,
-      JSON.stringify(encryptSecretValue(value, APP_SECRET_KEY)),
-    );
+    await store.upsertSecret(project.id, key, sealSecret(value, APP_SECRET_KEY, "project-secret"));
   }
 
   const deployments = new Map<string, DeploymentRecord>();

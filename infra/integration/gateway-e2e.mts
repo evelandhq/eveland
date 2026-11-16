@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { GATEWAY_PORT } from "../../packages/core/src/ports.js";
 import { promisify } from "node:util";
 import { serve } from "../../apps/gateway/node_modules/@hono/node-server/dist/index.mjs";
-import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import { sealSecret } from "../../packages/core/src/server/sealed-secret.js";
 import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
 import { affinityBucketForRoute } from "../../packages/core/src/routing.js";
 import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
       await store.upsertSecret(
         project.id,
         "EVE_MOCK_AUTHORED_MODELS",
-        JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
+        sealSecret("1", APP_SECRET_KEY, "project-secret"),
       );
       assert.equal(
         await processNextJob(store, "gateway-e2e", { appSecretKey: APP_SECRET_KEY }),

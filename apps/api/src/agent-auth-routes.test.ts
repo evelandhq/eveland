@@ -1,7 +1,7 @@
 import { decodeAgentAuthEnvelope } from "@evelandhq/core/agent-auth";
 import type { OidcProtocol } from "@evelandhq/agent-auth/oidc";
 import type { AgentAuthProviderRegistration } from "@evelandhq/agent-auth";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
@@ -463,12 +463,12 @@ describe("Agent Auth control-plane routes", () => {
     await store.upsertSecret(
       project.id,
       "PROJECT_TOKEN",
-      JSON.stringify(encryptSecretValue("project-token-v1", appSecretKey)),
+      sealSecret("project-token-v1", appSecretKey, "project-secret"),
     );
     await store.upsertSecret(
       project.id,
       "MODEL_NAME",
-      JSON.stringify(encryptSecretValue("gpt-5", appSecretKey)),
+      sealSecret("gpt-5", appSecretKey, "project-secret"),
       "variable",
     );
     const catalogApp = createApp(store, { appSecretKey });
@@ -526,7 +526,7 @@ describe("Agent Auth control-plane routes", () => {
     await store.upsertSecret(
       project.id,
       "PROJECT_TOKEN",
-      JSON.stringify(encryptSecretValue("project-token-v2", appSecretKey)),
+      sealSecret("project-token-v2", appSecretKey, "project-secret"),
     );
     await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
       method: "POST",
@@ -546,7 +546,7 @@ describe("Agent Auth control-plane routes", () => {
     await store.upsertSecret(
       project.id,
       "OIDC_CLIENT_SECRET",
-      JSON.stringify(encryptSecretValue("project-client-secret", appSecretKey)),
+      sealSecret("project-client-secret", appSecretKey, "project-secret"),
     );
     let preflightSecret: string | undefined;
     const app = createApp(store, {

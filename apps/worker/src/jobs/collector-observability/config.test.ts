@@ -2,7 +2,7 @@ import {
   createDefaultObservabilityPolicy,
   type ObservabilityPolicy,
 } from "@evelandhq/core/observability";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
@@ -353,11 +353,10 @@ describe("managed OpenTelemetry Collector configuration", () => {
           securityRevision: 1,
           // Sealed under a since-rotated APP_SECRET_KEY. The product keeps such a
           // destination listed so an Admin can replace its credentials.
-          encryptedConfig: JSON.stringify(
-            encryptSecretValue(
-              JSON.stringify({ kind: "custom_otlp" }),
-              "eveland-dev-secret-key-111111111",
-            ),
+          encryptedConfig: sealSecret(
+            JSON.stringify({ kind: "custom_otlp" }),
+            "eveland-dev-secret-key-111111111",
+            "observability-destination",
           ),
           supportedSignals: ["logs"],
           domains: ["agent"],

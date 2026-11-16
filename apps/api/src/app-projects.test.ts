@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { decryptSecretValue, type EncryptedSecret } from "@evelandhq/core/server/secrets";
+import { openSecret } from "@evelandhq/core/server/sealed-secret";
 import { createApp } from "./app.js";
 import { createTestStore } from "@evelandhq/db/vitest";
 
@@ -263,10 +263,7 @@ describe("api app", () => {
     expect(secretRecords.map((secret) => secret.kind)).toEqual(["secret", "variable"]);
     expect(
       secretRecords.map((secret) =>
-        decryptSecretValue(
-          JSON.parse(secret.encryptedValue) as EncryptedSecret,
-          "eveland-test-secret-key-00000000",
-        ),
+        openSecret(secret.encryptedValue, "eveland-test-secret-key-00000000", "project-secret"),
       ),
     ).toEqual(["sk-first-deploy", "gpt-5"]);
     await expect(store.listProjectJobs(created.project.id)).resolves.toEqual([
@@ -544,10 +541,7 @@ describe("api app", () => {
 
     const stored = await store.getGitCredential("user_local_admin", "gitlab.example.com:8443");
     expect(
-      decryptSecretValue(
-        JSON.parse(stored!.encryptedToken) as EncryptedSecret,
-        "eveland-test-secret-key-00000000",
-      ),
+      openSecret(stored!.encryptedToken, "eveland-test-secret-key-00000000", "git-credential"),
     ).toBe("glpat-manual");
 
     const replaced = await app.request("/api/git-credentials", {
@@ -561,10 +555,7 @@ describe("api app", () => {
     await expect(store.listGitCredentials("user_local_admin")).resolves.toHaveLength(1);
     const rotated = await store.getGitCredential("user_local_admin", "gitlab.example.com:8443");
     expect(
-      decryptSecretValue(
-        JSON.parse(rotated!.encryptedToken) as EncryptedSecret,
-        "eveland-test-secret-key-00000000",
-      ),
+      openSecret(rotated!.encryptedToken, "eveland-test-secret-key-00000000", "git-credential"),
     ).toBe("glpat-rotated");
   });
 

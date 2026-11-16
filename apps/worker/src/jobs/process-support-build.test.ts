@@ -1,4 +1,4 @@
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test } from "vitest";
 
@@ -6,7 +6,8 @@ import { composeBuildVariables } from "./process-support.js";
 
 const secretKey = "eveland-test-secret-key-00000000";
 
-const encrypted = (value: string) => JSON.stringify(encryptSecretValue(value, secretKey));
+const encrypted = (value: string) => sealSecret(value, secretKey, "project-secret");
+const encryptedShared = (value: string) => sealSecret(value, secretKey, "shared-agent-environment");
 
 describe("composeBuildVariables", () => {
   test("exposes shared and project variables, with the Project entry winning", async () => {
@@ -18,8 +19,12 @@ describe("composeBuildVariables", () => {
     });
     await store.saveSharedAgentEnvironment({
       entries: [
-        { key: "MODEL_NAME", kind: "variable", encryptedValue: encrypted("shared-model") },
-        { key: "OPENAI_BASE_URL", kind: "variable", encryptedValue: encrypted("https://x/v1") },
+        { key: "MODEL_NAME", kind: "variable", encryptedValue: encryptedShared("shared-model") },
+        {
+          key: "OPENAI_BASE_URL",
+          kind: "variable",
+          encryptedValue: encryptedShared("https://x/v1"),
+        },
       ],
     });
     await store.upsertSecret(project.id, "MODEL_NAME", encrypted("project-model"), "variable");
@@ -39,7 +44,11 @@ describe("composeBuildVariables", () => {
     });
     await store.saveSharedAgentEnvironment({
       entries: [
-        { key: "OPENAI_API_KEY", kind: "secret", encryptedValue: encrypted("shared-api-key") },
+        {
+          key: "OPENAI_API_KEY",
+          kind: "secret",
+          encryptedValue: encryptedShared("shared-api-key"),
+        },
       ],
     });
     await store.upsertSecret(

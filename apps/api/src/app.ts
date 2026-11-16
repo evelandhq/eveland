@@ -3,7 +3,7 @@ import { PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
 import { cors } from "hono/cors";
 import type { AuthPrincipal } from "@evelandhq/core/contracts";
 import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
-import { assertValidSecretKey } from "@evelandhq/core/server/secrets";
+import { assertValidAppSecretKey } from "@evelandhq/core/server/sealed-secret";
 import type { Store } from "@evelandhq/db";
 import { proxyGatewayPlayground } from "./gateway-playground.js";
 import { registerInternalRoutes } from "./app-internal-routes.js";
@@ -72,7 +72,7 @@ export function createApp(
     throw new Error("Platform authentication is required outside tests.");
   }
   const appSecretKey = options.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey;
-  assertValidSecretKey(appSecretKey);
+  assertValidAppSecretKey(appSecretKey);
   const playgroundProxy = options.playgroundProxy ?? proxyGatewayPlayground;
   const dataDir = options.dataDir ?? process.env.EVELAND_DATA_DIR ?? ".eveland-data";
   const webOrigin =

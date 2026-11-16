@@ -6,7 +6,7 @@ import { type RuntimeAdapter } from "../runtime/types.js";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import type { DeploymentRecord } from "@evelandhq/core/contracts";
 import { createFixtureEveProject, sharedWorkflowWorldAttestation } from "./process.test-support.js";
 import { execa } from "execa";
@@ -326,7 +326,7 @@ describe("processNextJob", () => {
     await store.upsertSecret(
       project.id,
       "OPENAI_API_KEY",
-      JSON.stringify(encryptSecretValue("sk-test-123456", secretKey)),
+      sealSecret("sk-test-123456", secretKey, "project-secret"),
     );
     await store.enqueueJob(project.id, "build_deploy");
 

@@ -1,11 +1,11 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { PUBLIC_ORIGIN_FALLBACK } from "@evelandhq/core/ports";
 import { getCookie, setCookie } from "hono/cookie";
 import {
   normalizeIdentityProviderConnection,
   type IdentityProviderConnection,
 } from "@evelandhq/core/identity";
-import { decryptSecretValue, encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { openSecret, sealSecret } from "@evelandhq/core/server/sealed-secret";
 import {
   IdentityBrokerError,
   createIdentityBroker,
@@ -838,9 +838,7 @@ type OidcLoginSecrets = { state: string; nonce: string; codeVerifier: string };
  * one minted for this transaction.
  */
 function sealOidcLoginSecrets(secrets: OidcLoginSecrets, appSecretKey: string): string {
-  return JSON.stringify(
-    encryptSecretValue(JSON.stringify(secrets), loginTransactionKey(appSecretKey)),
-  );
+  return sealSecret(JSON.stringify(secrets), appSecretKey, "identity-login-transaction");
 }
 
 function openOidcLoginSecrets(
@@ -850,10 +848,7 @@ function openOidcLoginSecrets(
   if (!sealed) return null;
   try {
     const opened: unknown = JSON.parse(
-      decryptSecretValue(
-        JSON.parse(sealed) as Parameters<typeof decryptSecretValue>[0],
-        loginTransactionKey(appSecretKey),
-      ),
+      openSecret(sealed, appSecretKey, "identity-login-transaction"),
     );
     if (
       typeof opened === "object" &&
@@ -868,12 +863,6 @@ function openOidcLoginSecrets(
   } catch {
     return null;
   }
-}
-
-function loginTransactionKey(appSecretKey: string): string {
-  return createHmac("sha256", appSecretKey)
-    .update("eveland:identity:login-transaction:v1")
-    .digest("base64");
 }
 
 function splitOrigins(value: string | undefined): string[] {

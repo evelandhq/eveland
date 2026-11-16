@@ -4,7 +4,7 @@ import {
   type ExternalDestinationConfig,
   type ObservabilitySignal,
 } from "../observability.js";
-import { decryptSecretValue, encryptSecretValue, type EncryptedSecret } from "./secrets.js";
+import { openSecret, sealSecret } from "./sealed-secret.js";
 import type { LookupAddress } from "node:dns";
 import { lookup as defaultLookup } from "node:dns/promises";
 import { request as httpRequest } from "node:http";
@@ -51,7 +51,7 @@ export function encryptDestinationConfig(
   config: ExternalDestinationConfig,
   appSecretKey: string,
 ): string {
-  return JSON.stringify(encryptSecretValue(JSON.stringify(config), appSecretKey));
+  return sealSecret(JSON.stringify(config), appSecretKey, "observability-destination");
 }
 
 export function decryptDestinationConfig(
@@ -59,9 +59,8 @@ export function decryptDestinationConfig(
   appSecretKey: string,
 ): ExternalDestinationConfig {
   try {
-    const encrypted = JSON.parse(encryptedConfig) as EncryptedSecret;
     return externalDestinationConfigSchema.parse(
-      JSON.parse(decryptSecretValue(encrypted, appSecretKey)),
+      JSON.parse(openSecret(encryptedConfig, appSecretKey, "observability-destination")),
     );
   } catch {
     throw new Error("Could not decrypt an observability destination.");

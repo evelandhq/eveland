@@ -43,6 +43,7 @@
     "./server/eve-fixture": "./src/server/eve-fixture.ts",
     "./server/model-gateway-client": "./src/server/model-gateway-client.ts",
     "./server/observability": "./src/server/observability.ts",
+    "./server/sealed-secret": "./src/server/sealed-secret.ts",
     "./server/secrets": "./src/server/secrets.ts",
     "./server/scheduler-dispatch": "./src/server/scheduler-dispatch.ts",
     "./server/update-check": "./src/server/update-check.ts"

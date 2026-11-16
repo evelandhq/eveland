@@ -1,4 +1,4 @@
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test } from "vitest";
 
@@ -19,8 +19,7 @@ const baseOptions = {
   identityJwksUrl: "https://identity.example.com/.well-known/jwks.json",
 } as const;
 
-const encrypt = (value: string) =>
-  JSON.stringify(encryptSecretValue(value, baseOptions.appSecretKey));
+const encrypt = (value: string) => sealSecret(value, baseOptions.appSecretKey, "project-secret");
 
 /**
  * Every platform-owned runtime name for a Deployment on the shared platform

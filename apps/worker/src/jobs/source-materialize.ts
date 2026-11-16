@@ -1,7 +1,7 @@
-import { decryptSecretValue } from "@evelandhq/core/server/secrets";
+import { openSecret } from "@evelandhq/core/server/sealed-secret";
 
 import { getGitCommitSha, importGitSource } from "../source/importer.js";
-import { devSecretKey, parseEncryptedSecret } from "./process-support.js";
+import { devSecretKey } from "./process-support.js";
 
 /**
  * Materialize a git working copy and resolve its commit: the one place that
@@ -26,9 +26,10 @@ export async function materializeGitSource(input: {
       ? {
           credential: {
             host: input.credential.host,
-            token: decryptSecretValue(
-              parseEncryptedSecret(input.credential.encryptedToken),
+            token: openSecret(
+              input.credential.encryptedToken,
               input.appSecretKey ?? process.env.APP_SECRET_KEY ?? devSecretKey,
+              "git-credential",
             ),
           },
         }

@@ -2,7 +2,7 @@ import {
   deriveAgentTelemetrySecret,
   verifyAgentTelemetryCredential,
 } from "@evelandhq/core/server/agent-telemetry-credential";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -42,14 +42,14 @@ describe("deployment launch context", () => {
       await store.upsertSecret(
         project.id,
         "PROJECT_TOKEN",
-        JSON.stringify(encryptSecretValue("project-value", appSecretKey)),
+        sealSecret("project-value", appSecretKey, "project-secret"),
       );
       await store.saveSharedAgentEnvironment({
         entries: [
           {
             key: "SHARED_TOKEN",
             kind: "secret",
-            encryptedValue: JSON.stringify(encryptSecretValue("shared-value", appSecretKey)),
+            encryptedValue: sealSecret("shared-value", appSecretKey, "shared-agent-environment"),
           },
         ],
       });

@@ -2,12 +2,8 @@ import type { SharedAgentEnvironmentRecord } from "@evelandhq/core/contracts";
 import { resolveSchedulerRuntimeSecret } from "@evelandhq/core/server/scheduler-dispatch";
 import { GATEWAY_PORT } from "@evelandhq/core/ports";
 import { agentPublicOrigin, primaryAgentBaseDomain } from "@evelandhq/core/routing";
-import {
-  decryptSecretValue,
-  maskKnownSecrets,
-  mergeRuntimeEnvironment,
-  type EncryptedSecret,
-} from "@evelandhq/core/server/secrets";
+import { openSecret } from "@evelandhq/core/server/sealed-secret";
+import { maskKnownSecrets, mergeRuntimeEnvironment } from "@evelandhq/core/server/secrets";
 import {
   isSupportedEveSpecifier,
   unsupportedEveSpecifierMessage,
@@ -403,7 +399,7 @@ export async function composeBuildVariables(
       .filter((record) => record.kind === "variable")
       .map((record) => [
         record.key,
-        decryptSecretValue(parseEncryptedSecret(record.encryptedValue), appSecretKey),
+        openSecret(record.encryptedValue, appSecretKey, "project-secret"),
       ]),
   );
   // Must stay the runtime order (see mergeRuntimeEnvironment), minus the
@@ -421,7 +417,7 @@ function readSharedAgentEnvironmentValues(
       .filter((entry) => kind === undefined || entry.kind === kind)
       .map((entry) => [
         entry.key,
-        decryptSecretValue(parseEncryptedSecret(entry.encryptedValue), appSecretKey),
+        openSecret(entry.encryptedValue, appSecretKey, "shared-agent-environment"),
       ]),
   );
 }
@@ -435,21 +431,10 @@ async function readRuntimeSecrets(
   const values: Record<string, string> = {};
 
   for (const record of records) {
-    values[record.key] = decryptSecretValue(
-      parseEncryptedSecret(record.encryptedValue),
-      appSecretKey,
-    );
+    values[record.key] = openSecret(record.encryptedValue, appSecretKey, "project-secret");
   }
 
   return values;
-}
-
-export function parseEncryptedSecret(value: string): EncryptedSecret {
-  const parsed = JSON.parse(value) as Partial<EncryptedSecret>;
-  if (parsed.algorithm !== "aes-256-gcm" || !parsed.iv || !parsed.authTag || !parsed.ciphertext) {
-    throw new Error("Invalid encrypted secret payload.");
-  }
-  return parsed as EncryptedSecret;
 }
 
 export async function resolveRuntimeCommandContext(

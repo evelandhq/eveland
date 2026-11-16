@@ -1,5 +1,5 @@
 import { createTestStore } from "@evelandhq/db/vitest";
-import { decryptSecretValue, type EncryptedSecret } from "@evelandhq/core/server/secrets";
+import { openSecret } from "@evelandhq/core/server/sealed-secret";
 import { describe, expect, test } from "vitest";
 import { createApp } from "./app.js";
 
@@ -40,10 +40,8 @@ describe("shared Agent environment routes", () => {
     expect(JSON.stringify(saved)).not.toContain("sk-shared-secret");
 
     const record = await store.getSharedAgentEnvironmentRecord();
-    const encrypted = JSON.parse(
-      record!.entries.find((entry) => entry.key === "OPENAI_API_KEY")!.encryptedValue,
-    ) as EncryptedSecret;
-    expect(decryptSecretValue(encrypted, appSecretKey)).toBe("sk-shared-secret");
+    const sealed = record!.entries.find((entry) => entry.key === "OPENAI_API_KEY")!.encryptedValue;
+    expect(openSecret(sealed, appSecretKey, "shared-agent-environment")).toBe("sk-shared-secret");
   });
 
   test("restarts every live Deployment when the global environment changes", async () => {

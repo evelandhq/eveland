@@ -26,7 +26,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { DeploymentRecord } from "@evelandhq/core/contracts";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { materializeEveFixtureDirectory } from "@evelandhq/core/server/eve-fixture";
 import { createPgliteTestStore } from "@evelandhq/db/test";
 import { describeProjectJobs, runExpectedJob } from "./job-steps.test-support.js";
@@ -533,14 +533,18 @@ const project = await store.createProject({
 await store.upsertSecret(
   project.id,
   "EVE_MOCK_AUTHORED_MODELS",
-  JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
+  sealSecret("1", APP_SECRET_KEY, "project-secret"),
 );
 await store.saveSharedAgentEnvironment({
   entries: [
     {
       key: SHARED_ENVIRONMENT_KEY,
       kind: "secret",
-      encryptedValue: JSON.stringify(encryptSecretValue(SHARED_ENVIRONMENT_VALUE, APP_SECRET_KEY)),
+      encryptedValue: sealSecret(
+        SHARED_ENVIRONMENT_VALUE,
+        APP_SECRET_KEY,
+        "shared-agent-environment",
+      ),
     },
   ],
 });

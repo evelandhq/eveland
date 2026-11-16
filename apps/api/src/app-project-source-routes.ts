@@ -4,7 +4,7 @@ import {
   normalizeGitCredentialHost,
   normalizeGitHttpHost,
 } from "@evelandhq/core/ids";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { ProjectSlugConflictError, type Store } from "@evelandhq/db";
 import type { ApiApp } from "./app-types.js";
 import {
@@ -87,7 +87,7 @@ export function registerProjectSourceRoutes(input: {
     const record = await store.upsertGitCredential(
       currentUserId(c),
       host,
-      JSON.stringify(encryptSecretValue(parsed.data.gitlabPat, appSecretKey)),
+      sealSecret(parsed.data.gitlabPat, appSecretKey, "git-credential"),
     );
     // Echo only the public shape; the PAT never leaves the server again.
     return c.json(
@@ -187,7 +187,7 @@ export function registerProjectSourceRoutes(input: {
         ? {
             userId,
             host,
-            encryptedToken: JSON.stringify(encryptSecretValue(parsed.data.gitlabPat, appSecretKey)),
+            encryptedToken: sealSecret(parsed.data.gitlabPat, appSecretKey, "git-credential"),
             persistAfterImport: true,
           }
         : stored
@@ -239,7 +239,7 @@ export function registerProjectSourceRoutes(input: {
           secrets: environmentVariables.map((variable) => ({
             key: variable.key,
             kind: variable.kind,
-            encryptedValue: JSON.stringify(encryptSecretValue(variable.value, appSecretKey)),
+            encryptedValue: sealSecret(variable.value, appSecretKey, "project-secret"),
           })),
         });
         if (result.outcome === "not_found")
@@ -286,7 +286,7 @@ export function registerProjectSourceRoutes(input: {
           gitCredential = {
             userId,
             host,
-            encryptedToken: JSON.stringify(encryptSecretValue(parsed.data.gitlabPat, appSecretKey)),
+            encryptedToken: sealSecret(parsed.data.gitlabPat, appSecretKey, "git-credential"),
             persistAfterImport: true,
           };
         } else if (stored) {
