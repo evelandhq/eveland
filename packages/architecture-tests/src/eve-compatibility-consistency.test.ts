@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
   EVE_COMPATIBILITY_POLICY,
+  isSupportedEveDependency,
   LATEST_VERIFIED_EVE_VERSION,
   SUPPORTED_EVE_VERSION_RANGES,
   VERIFIED_EVE_VERSIONS,
@@ -121,7 +122,7 @@ function chineseList(values: readonly string[]): string {
 
 describe("Eve compatibility repository contract", () => {
   test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("1.0.0-rc.17");
+    expect(LATEST_VERIFIED_EVE_VERSION).toBe("1.0.0");
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
@@ -314,7 +315,16 @@ describe("Eve compatibility repository contract", () => {
       expect(Number(verifiedMatch[1]), line.range).toBe(major);
       expect(Number(verifiedMatch[2]), line.range).toBe(minor);
       expect(line.dependencyName, line.range).toBe(stableDependencyNames[index]);
-      return { major, minor, prerelease: verifiedMatch[4] !== undefined };
+      // A line verified at a release candidate necessarily hosts them; one
+      // verified at a stable patch keeps hosting the candidates it entered on
+      // for as long as it says so, since the window admits a whole line.
+      const hostsReleaseCandidates =
+        verifiedMatch[4] !== undefined ||
+        ("hostsReleaseCandidates" in line && line.hostsReleaseCandidates === true);
+      if (hostsReleaseCandidates) {
+        expect(isSupportedEveDependency(`${major}.${minor}.0-rc.1`), line.range).toBe(true);
+      }
+      return { major, minor, prerelease: hostsReleaseCandidates };
     });
 
     // One line, or two while a newer line overlaps the one it replaces. The
@@ -335,8 +345,8 @@ describe("Eve compatibility repository contract", () => {
 
     // The peer range is the union of maximal contiguous runs of supported
     // minors within one major -- never their hull, which would admit skipped
-    // lines. A run whose first line is verified at a release candidate starts
-    // at `-0`, the only comparator npm lets a prerelease satisfy.
+    // lines. A run whose first line hosts release candidates starts at `-0`,
+    // the only comparator npm lets a prerelease satisfy.
     const contiguousRuns: Array<typeof lineNumbers> = [];
     for (const line of lineNumbers) {
       const run = contiguousRuns.at(-1);

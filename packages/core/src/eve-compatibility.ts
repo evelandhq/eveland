@@ -2,8 +2,13 @@ export const EVE_COMPATIBILITY_POLICY = {
   supportedLines: [
     {
       range: "1.0.x",
-      verifiedVersion: "1.0.0-rc.17",
+      verifiedVersion: "1.0.0",
       dependencyName: "eve",
+      // The line entered on its release candidates (rc.1 on 2026-11-02), and
+      // Releases built on them stay deployable: the window admits whole
+      // lines. So the peer range keeps its `-0` floor after the verified
+      // patch went stable.
+      hostsReleaseCandidates: true,
     },
   ],
   // A single-line window: 0.83 retired on 2026-11-04 (Eveland v0.66.0 had
@@ -139,6 +144,24 @@ export const EVE_COMPATIBILITY_POLICY = {
   // YAML 1.2 frontmatter through js-yaml 5, MCP connections that fail when
   // `server/discover` fails (`protocolVersionDiscovery: false` opts out), and
   // dynamic schedule changes, which Eveland does not host.
+  //
+  // 1.0.0 (published 2026-11-15) became the verified 1.0 patch on 2026-11-16;
+  // rc.18 was reviewed on the way and never verified. The line's first stable
+  // release keeps every version Eveland pins, the sandbox provider contract,
+  // rc.13's Workflow set and World types, and makes exactly rc.17's World
+  // calls; `eve start`'s production supervisor is byte-identical, so the stop
+  // budget in the worker's shutdown-budget.ts holds. What moved:
+  // - A new root session creates its initial state inline instead of in a
+  //   separate durable step, and a turn settles without waiting for its usage
+  //   run attributes, which the Built-in projection never reads.
+  // - The unauthenticated callback route resumes only a run's own sign-in
+  //   hook or a remote agent's reply hook, named by token prefix, instead of
+  //   any hook whose token it is handed.
+  // - The CLI enables Node's compile cache in the temporary directory, which
+  //   each Deployment's systemd unit keeps private (`PrivateTmp=yes`).
+  // Releases built on the line's release candidates stay deployable, which is
+  // why the line declares `hostsReleaseCandidates` and the peer range keeps
+  // its `-0` floor.
   //
   // What the v27 protocol (introduced by 0.84) means for Eveland:
   // - Session events are `{ type, scope?, data }` facts, positioned by
