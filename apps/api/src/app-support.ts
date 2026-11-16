@@ -1,5 +1,6 @@
 import { type AgentAuthFailure } from "@evelandhq/agent-auth";
 import { GATEWAY_PORT } from "@evelandhq/core/ports";
+import { agentPublicOrigin } from "@evelandhq/core/routing";
 import type {
   ActivationLeaseClaim,
   AuthPrincipal,
@@ -39,13 +40,18 @@ export function publicGatewayUrl(
   hostname: string,
   options: Pick<AppOptions, "gatewayPublicScheme" | "gatewayPublicPort">,
 ): string {
-  const scheme =
-    options.gatewayPublicScheme ??
-    (process.env.EVELAND_GATEWAY_PUBLIC_SCHEME === "https" ? "https" : "http");
-  const configuredPort =
-    options.gatewayPublicPort ??
-    Number(process.env.EVELAND_GATEWAY_PUBLIC_PORT ?? (scheme === "http" ? GATEWAY_PORT : 0));
-  return `${scheme}://${hostname}${configuredPort ? `:${configuredPort}` : ""}`;
+  return agentPublicOrigin(
+    hostname,
+    {
+      EVELAND_GATEWAY_PUBLIC_SCHEME:
+        options.gatewayPublicScheme ?? process.env.EVELAND_GATEWAY_PUBLIC_SCHEME,
+      EVELAND_GATEWAY_PUBLIC_PORT:
+        options.gatewayPublicPort == null
+          ? process.env.EVELAND_GATEWAY_PUBLIC_PORT
+          : String(options.gatewayPublicPort),
+    },
+    GATEWAY_PORT,
+  );
 }
 
 export function getSetCookies(headers: Headers): string[] {

@@ -70,6 +70,16 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   // name the installed World reads that is in neither this table nor
   // DEPLOYMENT_LAUNCH_ENVIRONMENT_KEYS.
   WORKFLOW_SPEC_VERSION: [],
+  // eve starts the URLs it hands out to be called back on -- connection
+  // sign-in links and remote-agent callbacks -- from this origin, and falls
+  // back to the loopback address the process serves on.
+  // The platform sets it to the project's public Agent origin; a project that
+  // could set it would send those callbacks somewhere else.
+  WORKFLOW_LOCAL_BASE_URL: [
+    "EVELAND_AGENT_BASE_DOMAINS",
+    "EVELAND_GATEWAY_PUBLIC_SCHEME",
+    "EVELAND_GATEWAY_PUBLIC_PORT",
+  ],
   WORKFLOW_WORLD_RUNTIME_SECRET: ["WORKFLOW_WORLD_RUNTIME_SECRET", "NODE_ENV"],
   WORKFLOW_WORLD_STREAM_COMPACTION: ["WORKFLOW_WORLD_STREAM_COMPACTION"],
   // Per project by construction, like EVELAND_PROJECT_ID.

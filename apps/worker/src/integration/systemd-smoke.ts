@@ -1,8 +1,10 @@
 import { createPgliteTestStore } from "@evelandhq/db/test";
 import { VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import { AGENT_RUNTIME_POLICY_PATH } from "@evelandhq/core/observability";
+import { GATEWAY_PORT } from "@evelandhq/core/ports";
+import { agentPublicOrigin, primaryAgentBaseDomain } from "@evelandhq/core/routing";
 import { execa } from "execa";
-import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -83,6 +85,26 @@ try {
   console.log("SMOKE OK");
 
   const unit = `${deployment.containerName}.service`;
+
+  // --- public callback origin: the running Agent process, not just the env
+  // file, sees the project's public origin as eve's callback base. ---
+  const servingPid = (
+    await execa("systemctl", ["show", "--property=MainPID", "--value", unit])
+  ).stdout.trim();
+  const servingEnvironment = (await readFile(`/proc/${servingPid}/environ`, "utf8")).split("\0");
+  const callbackOrigin = agentPublicOrigin(
+    `${deployed.slug}.${primaryAgentBaseDomain(process.env)}`,
+    process.env,
+    GATEWAY_PORT,
+  );
+  if (!servingEnvironment.includes(`WORKFLOW_LOCAL_BASE_URL=${callbackOrigin}`)) {
+    throw new Error(
+      `Agent process does not see WORKFLOW_LOCAL_BASE_URL=${callbackOrigin}: ${servingEnvironment
+        .filter((entry) => entry.startsWith("WORKFLOW_LOCAL_BASE_URL="))
+        .join(", ")}`,
+    );
+  }
+  console.log(`CALLBACK ORIGIN OK ${callbackOrigin}`);
 
   // --- restart_deployment: prove it stops and starts a NEW process, not a no-op. ---
   const pidBefore = (

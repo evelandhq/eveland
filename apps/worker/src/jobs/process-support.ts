@@ -1,5 +1,7 @@
 import type { SharedAgentEnvironmentRecord } from "@evelandhq/core/contracts";
 import { resolveSchedulerRuntimeSecret } from "@evelandhq/core/server/scheduler-dispatch";
+import { GATEWAY_PORT } from "@evelandhq/core/ports";
+import { agentPublicOrigin, primaryAgentBaseDomain } from "@evelandhq/core/routing";
 import {
   decryptSecretValue,
   maskKnownSecrets,
@@ -241,12 +243,33 @@ function sharedWorldEnvironment(input: {
   };
 }
 
+/**
+ * The project's public Agent origin, which eve uses for every URL it hands out
+ * to be called back on. Every Deployment of the project is reachable there, and
+ * a callback only resumes a hook in the shared World, so the origin need not
+ * name the Deployment that minted it. Absent only for a project the store does
+ * not know, which no launch path produces.
+ */
+async function resolveCallbackOrigin(
+  store: Pick<Store, "getProject">,
+  projectId: string,
+  workerEnv: NodeJS.ProcessEnv,
+): Promise<string | undefined> {
+  const project = await store.getProject(projectId);
+  if (!project) return undefined;
+  return agentPublicOrigin(
+    `${project.slug}.${primaryAgentBaseDomain(workerEnv)}`,
+    workerEnv,
+    GATEWAY_PORT,
+  );
+}
+
 // Shared by build_deploy and restart_deployment. Durable-workflow gating is
 // NOT part of this: build_deploy only calls this after deciding the deploy may
 // proceed, and restart never re-gates an already-deployed release.
 export type DeploymentEnvironmentStore = Pick<
   Store,
-  "listSecretRecords" | "getSharedAgentEnvironmentRecord"
+  "listSecretRecords" | "getSharedAgentEnvironmentRecord" | "getProject"
 > &
   ModelGatewayEnvironmentStore;
 
@@ -294,6 +317,7 @@ export async function composeDeploymentEnv(
     appSecretKey,
   );
   const modelGateway = await resolveModelGatewayEnvironment(store, projectId);
+  const callbackOrigin = await resolveCallbackOrigin(store, projectId, workerEnv);
   const sandboxProcessLimits = resolveSandboxProcessLimits(workerEnv);
   // Project secrets are runtime input, but the workflow database is
   // platform-owned and bootstrapped before this worker accepts jobs. Keep its
@@ -317,6 +341,9 @@ export async function composeDeploymentEnv(
     // Schedules run only when the platform scheduler dispatches them (see
     // ../runtime/reserved-environment.ts).
     EVE_SCHEDULES_DISABLED: "1",
+    // Where eve's connection sign-in links and remote-agent callbacks
+    // start (see ../runtime/reserved-environment.ts).
+    ...(callbackOrigin ? { WORKFLOW_LOCAL_BASE_URL: callbackOrigin } : {}),
     // Always reserved, empty when the project uses no Model Gateway, so a
     // project entry can never aim the injected default provider at a gateway
     // of its own choosing. The key stays the project's own AI_GATEWAY_API_KEY.

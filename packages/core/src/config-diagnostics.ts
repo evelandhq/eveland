@@ -353,7 +353,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   {
     ...entry(
       "EVELAND_GATEWAY_PUBLIC_SCHEME",
-      ["api", "gateway"],
+      ["api", "gateway", "worker"],
       "Public Agent URL scheme and affinity-cookie security mode.",
       "http",
     ),
@@ -361,7 +361,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   },
   {
     name: "EVELAND_GATEWAY_PUBLIC_PORT",
-    components: ["api"],
+    components: ["api", "worker"],
     purpose: "Optional public Agent port appended to generated endpoints.",
     fallback: (env) =>
       derivedValue(

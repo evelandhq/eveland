@@ -27,9 +27,11 @@ const encrypt = (value: string) =>
  * world, the only kind new builds produce.
  */
 async function composeOnEvelandWorld() {
-  return composeDeploymentEnv(
-    createTestStore(),
-    "proj_reserved",
+  const store = createTestStore();
+  const project = await store.createProject({ name: "Reserved", importKind: "zip" });
+  const composed = await composeDeploymentEnv(
+    store,
+    project.id,
     {
       ...baseOptions,
       evelandWorkflowWorldUrl: evelandWorldUrl,
@@ -44,6 +46,7 @@ async function composeOnEvelandWorld() {
       WORKFLOW_WORLD_STREAM_COMPACTION: "off",
     },
   );
+  return { ...composed, project };
 }
 
 describe("reserved runtime environment names", () => {
@@ -116,10 +119,10 @@ describe("reserved runtime environment names", () => {
   });
 
   test("a project entry never wins against a reserved name at runtime", async () => {
-    const { env } = await composeOnEvelandWorld();
+    const { env, project } = await composeOnEvelandWorld();
 
     expect(env.NODE_ENV).toBe("production");
-    expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
+    expect(env.EVELAND_PROJECT_ID).toBe(project.id);
     // eve 0.52.0 turned CLI telemetry on by default; `npx eve start` runs the CLI.
     expect(env.EVE_TELEMETRY_DISABLED).toBe("1");
     // The platform scheduler dispatches every authored schedule; eve's own
@@ -152,6 +155,9 @@ describe("reserved runtime environment names", () => {
     );
 
     expect(env.WORKFLOW_WORLD_TENANT_ID).toBe(project.id);
+    // Callback, sign-in, and webhook URLs eve hands out start from the
+    // project's public origin, never the loopback port the process binds.
+    expect(env.WORKFLOW_LOCAL_BASE_URL).toBe(`http://${project.slug}.agent.localhost:17300`);
     expect(env.WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
     expect(env.WORKFLOW_WORLD_RUNTIME_SECRET).toBe(baseOptions.schedulerRuntimeSecret);
     expect(env.WORKFLOW_WORLD_STREAM_COMPACTION).toBe("on");
@@ -162,10 +168,10 @@ describe("reserved runtime environment names", () => {
   });
 
   test("the platform world gets its own tenancy names and no per-project database", async () => {
-    const { env, secretValues } = await composeOnEvelandWorld();
+    const { env, secretValues, project } = await composeOnEvelandWorld();
 
     expect(env.WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
-    expect(env.WORKFLOW_WORLD_TENANT_ID).toBe("proj_reserved");
+    expect(env.WORKFLOW_WORLD_TENANT_ID).toBe(project.id);
     expect(env.WORKFLOW_WORLD_STREAM_COMPACTION).toBe("off");
     expect(env.WORKFLOW_WORLD_RUNTIME_SECRET).toBe(baseOptions.schedulerRuntimeSecret);
     expect(env.WORKFLOW_POSTGRES_MAX_POOL_SIZE).toBe("10");
@@ -173,7 +179,7 @@ describe("reserved runtime environment names", () => {
     expect(env.EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES).toBe("64");
     expect(env.EVELAND_SANDBOX_MAX_OUTPUT_BYTES).toBe("16777216");
     expect(env.EVELAND_MEMORY_ROOT).toBe("/var/lib/eveland-memory");
-    expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
+    expect(env.EVELAND_PROJECT_ID).toBe(project.id);
     // The shared world URL carries credentials like the other connection
     // strings and must be masked out of logs the same way.
     expect(secretValues).toContain(evelandWorldUrl);

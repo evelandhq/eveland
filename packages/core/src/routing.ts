@@ -94,3 +94,27 @@ export function isSessionBindingActive(
     throw new Error("SessionBinding updatedAt must be a valid timestamp.");
   return updatedAt.getTime() > now.getTime() - ttlMs;
 }
+
+/**
+ * The Agent base domain new routes are created under: the first entry of
+ * `EVELAND_AGENT_BASE_DOMAINS`, or `agent.localhost` in development.
+ */
+export function primaryAgentBaseDomain(env: Record<string, string | undefined>): string {
+  return (env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost").split(",")[0]!.trim();
+}
+
+/**
+ * The browser-visible origin of an Agent hostname: the public scheme, and the
+ * public port unless it is `0` (the scheme's default). Unset, the port is the
+ * Gateway's own under http, which development serves directly, and the
+ * scheme's default under https.
+ */
+export function agentPublicOrigin(
+  hostname: string,
+  env: Record<string, string | undefined>,
+  gatewayPort: number,
+): string {
+  const scheme = env.EVELAND_GATEWAY_PUBLIC_SCHEME === "https" ? "https" : "http";
+  const port = Number(env.EVELAND_GATEWAY_PUBLIC_PORT ?? (scheme === "http" ? gatewayPort : 0));
+  return `${scheme}://${hostname.toLowerCase()}${port ? `:${String(port)}` : ""}`;
+}
