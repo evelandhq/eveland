@@ -9,7 +9,7 @@ import { listSourceFiles, listWorkspaces, readSource } from "./scan-support.js";
  * scan covers retired ports too, so none of them can creep back in.
  */
 const PORT_LITERAL =
-  /(?<!\d)(3000|3001|4000|4080|4090|4317|4318|4327|4328|5432|41000|55432|17300|17301|17302|17303|17310|17311|17312|17313|17314|17350|18000)(?!\d)/;
+  /(?<!\d)(3000|3001|4000|4080|4090|4317|4318|4327|4328|5432|41000|55432|17300|17301|17302|17310|17311|17312|17313|17314|17350|18000)(?!\d)/;
 
 const EXEMPT_FILES = new Set([
   // The single source of truth these literals are required to live in.

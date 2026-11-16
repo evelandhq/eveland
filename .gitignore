@@ -24,3 +24,6 @@ coverage/
 .claude/worktrees/
 docker-compose.override.yml
 next-env.d.ts
+
+# Local working notes; never committed.
+.plans/
