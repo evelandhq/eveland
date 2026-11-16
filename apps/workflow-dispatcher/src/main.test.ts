@@ -21,7 +21,9 @@ const startup = vi.hoisted(() => ({
 }));
 
 vi.mock("@evelandhq/workflow-world/dispatcher", () => ({ startDispatcherService: vi.fn() }));
-vi.mock("./dispatcher-runner.js", () => ({
+vi.mock("./dispatcher-runner.js", async (importOriginal) => ({
+  resolveControlApi: (await importOriginal<typeof import("./dispatcher-runner.js")>())
+    .resolveControlApi,
   defaultRunnerDeps: {},
   resolveHeartbeatIntervalMs: () => 15_000,
   startEvelandWorkflowDispatcher: startup.startRunner,
@@ -37,10 +39,12 @@ describe("workflow dispatcher startup", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.WORKFLOW_DISPATCHER_ACTIVATION_API_URL;
+    delete process.env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN;
   });
 
   test("waits for a healthy control API before starting the dispatcher", async () => {
     process.env.WORKFLOW_DISPATCHER_ACTIVATION_API_URL = "http://control.test";
+    process.env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN = "token";
     vi.stubGlobal("fetch", startup.healthFetch);
 
     await import("./main.js");

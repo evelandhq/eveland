@@ -44,7 +44,37 @@ function runnerDeps(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const controlApiEnv = {
+  WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test",
+  WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: "token",
+};
+
 describe("eveland workflow dispatcher runner", () => {
+  // The control API refuses an activation, heartbeat, or recovery preflight
+  // without the service token, so a dispatcher started without one would claim
+  // runs it can never deliver. That is a startup failure, in every NODE_ENV.
+  test.each([
+    ["unset", {}],
+    ["empty", { WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: "" }],
+  ])("refuses to start with an activation API and a token that is %s", async (_label, token) => {
+    const { startService } = fakeServiceFactory({ phase: "ready" });
+    const fetchImplementation = vi.fn();
+
+    await expect(
+      startEvelandWorkflowDispatcher(
+        {
+          NODE_ENV: "development",
+          WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test",
+          ...token,
+        },
+        telemetry,
+        { ...runnerDeps({ fetchImplementation }), startService } as never,
+      ),
+    ).rejects.toThrow(/WORKFLOW_DISPATCHER_ACTIVATION_TOKEN is required/);
+    expect(startService).not.toHaveBeenCalled();
+    expect(fetchImplementation).not.toHaveBeenCalled();
+  });
+
   test("ownership loss settles the handle's promise and the next heartbeat reports stopped", async () => {
     const state = { phase: "ready" as const } as { phase: "ready" | "stopped" };
     let lifecycle: DispatcherServiceOptions["lifecycle"];
@@ -67,7 +97,10 @@ describe("eveland workflow dispatcher runner", () => {
     });
     const fetchImplementation = vi.fn(async () => new Response("{}", { status: 200 }));
     const handle = await startEvelandWorkflowDispatcher(
-      { WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://127.0.0.1:17301" },
+      {
+        WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://127.0.0.1:17301",
+        WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: "token",
+      },
       telemetry,
       { ...runnerDeps({ fetchImplementation }), startService },
     );
@@ -111,11 +144,10 @@ describe("eveland workflow dispatcher runner", () => {
     const capacityTelemetry = { emit: vi.fn(), shutdown: vi.fn(async () => {}) };
     const fetchImplementation = vi.fn(async () => Response.json({ registration: {} }));
 
-    await startEvelandWorkflowDispatcher(
-      { WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test" },
-      capacityTelemetry,
-      { ...runnerDeps({ fetchImplementation }), startService } as never,
-    );
+    await startEvelandWorkflowDispatcher(controlApiEnv, capacityTelemetry, {
+      ...runnerDeps({ fetchImplementation }),
+      startService,
+    } as never);
 
     expect(capacityTelemetry.emit).toHaveBeenCalledWith({
       severity: "info",
@@ -211,11 +243,10 @@ describe("eveland workflow dispatcher runner", () => {
       return Response.json({ registration: {} });
     });
 
-    const handle = await startEvelandWorkflowDispatcher(
-      { WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test" },
-      telemetry,
-      { ...runnerDeps({ fetchImplementation }), startService } as never,
-    );
+    const handle = await startEvelandWorkflowDispatcher(controlApiEnv, telemetry, {
+      ...runnerDeps({ fetchImplementation }),
+      startService,
+    } as never);
 
     const options = vi.mocked(startService).mock.calls[0]![0];
     const kept = await options.filterBootRecoveryRuns!(candidates);
@@ -248,11 +279,10 @@ describe("eveland workflow dispatcher runner", () => {
       return Response.json({ registration: {} });
     });
 
-    await startEvelandWorkflowDispatcher(
-      { WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test" },
-      telemetry,
-      { ...runnerDeps({ fetchImplementation }), startService } as never,
-    );
+    await startEvelandWorkflowDispatcher(controlApiEnv, telemetry, {
+      ...runnerDeps({ fetchImplementation }),
+      startService,
+    } as never);
     const options = vi.mocked(startService).mock.calls[0]![0];
     await expect(options.filterBootRecoveryRuns!(candidates)).resolves.toEqual(candidates);
     expect(telemetry.emit).toHaveBeenCalledWith(
@@ -290,11 +320,10 @@ describe("eveland workflow dispatcher runner", () => {
       throw new TypeError("fetch failed");
     });
 
-    const handle = await startEvelandWorkflowDispatcher(
-      { WORKFLOW_DISPATCHER_ACTIVATION_API_URL: "http://control.test" },
-      telemetry,
-      { ...runnerDeps({ fetchImplementation }), startService } as never,
-    );
+    const handle = await startEvelandWorkflowDispatcher(controlApiEnv, telemetry, {
+      ...runnerDeps({ fetchImplementation }),
+      startService,
+    } as never);
     await expect(handle.heartbeat()).resolves.toBeUndefined();
     expect(telemetry.emit).toHaveBeenCalledWith(
       expect.objectContaining({ eventName: "workflow_dispatcher.heartbeat_failed" }),

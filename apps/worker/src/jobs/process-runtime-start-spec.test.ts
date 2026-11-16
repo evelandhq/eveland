@@ -10,7 +10,8 @@ describe("runtime deployment start spec", () => {
       port: 41_001,
       launchContext: {
         deploymentId: "dep_contract",
-        env: { EXISTING: "value" },
+        // A project entry under a launch-owned name never reaches the process.
+        env: { EXISTING: "value", WORKFLOW_WORLD_DEPLOYMENT_ID: "dep_spoofed" },
         secretValues: ["masked-value"],
         commandContext: {
           packageManager: "npm" as const,
@@ -43,6 +44,7 @@ describe("runtime deployment start spec", () => {
       env: {
         EXISTING: "value",
         EVELAND_DEPLOYMENT_ID: common.launchContext.deploymentId,
+        WORKFLOW_WORLD_DEPLOYMENT_ID: common.launchContext.deploymentId,
       },
       commandContext: common.launchContext.commandContext,
       sandboxCacheDir: common.launchContext.sandboxCacheDirs.hostDir,
@@ -61,6 +63,7 @@ describe("runtime deployment start spec", () => {
       env: {
         EXISTING: "value",
         EVELAND_DEPLOYMENT_ID: common.launchContext.deploymentId,
+        WORKFLOW_WORLD_DEPLOYMENT_ID: common.launchContext.deploymentId,
       },
       commandContext: common.launchContext.commandContext,
       sandboxCacheDir: common.launchContext.sandboxCacheDirs.workerDir,

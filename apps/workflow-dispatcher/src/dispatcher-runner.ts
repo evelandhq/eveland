@@ -49,11 +49,31 @@ export type DispatcherRunnerHandle = {
   ownershipLost: Promise<void>;
 };
 
+/**
+ * Where the control API is and the service token every call to it carries.
+ * The API refuses an activation, heartbeat, or recovery preflight without the
+ * token, so an activation API with no token is a configuration error that
+ * stops the dispatcher before it claims anything -- in every NODE_ENV. There is
+ * no development fallback: every development topology sets the token next to
+ * the API URL.
+ */
+export function resolveControlApi(env: NodeJS.ProcessEnv): { apiUrl: string; token: string } {
+  const apiUrl = (env.WORKFLOW_DISPATCHER_ACTIVATION_API_URL ?? "").replace(/\/+$/u, "");
+  const token = env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ?? "";
+  if (apiUrl && !token) {
+    throw new Error(
+      "WORKFLOW_DISPATCHER_ACTIVATION_TOKEN is required with WORKFLOW_DISPATCHER_ACTIVATION_API_URL; set it to the API's EVELAND_GATEWAY_SERVICE_TOKEN.",
+    );
+  }
+  return { apiUrl, token };
+}
+
 export async function startEvelandWorkflowDispatcher(
   env: NodeJS.ProcessEnv,
   telemetry: DispatcherTelemetry,
   deps: DispatcherRunnerDeps,
 ): Promise<DispatcherRunnerHandle> {
+  const { apiUrl: apiUrlForActivation, token: activationToken } = resolveControlApi(env);
   const instanceId = `wfd_${os.hostname()}_${String(process.pid)}_${randomUUID().slice(0, 8)}`;
   const generation = `eveland-workflow-dispatcher ${env.EVELAND_REVISION ?? "dev"}`;
 
@@ -101,12 +121,6 @@ export async function startEvelandWorkflowDispatcher(
         break;
     }
   };
-
-  const apiUrlForActivation = (env.WORKFLOW_DISPATCHER_ACTIVATION_API_URL ?? "").replace(
-    /\/+$/u,
-    "",
-  );
-  const activationToken = env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ?? "eveland-dev-gateway-token";
 
   /**
    * Boot-recovery filter (issue #433): ask the control plane which of the
@@ -183,7 +197,7 @@ export async function startEvelandWorkflowDispatcher(
       ? {
           activation: createActivationClient({
             apiUrl: apiUrlForActivation,
-            serviceToken: env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ?? "eveland-dev-gateway-token",
+            serviceToken: activationToken,
             instanceId,
           }),
         }
