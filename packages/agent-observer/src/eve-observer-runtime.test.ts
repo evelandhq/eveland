@@ -23,7 +23,12 @@ const EVE_PACKAGE = path.join(packageRoot, "node_modules/eve");
 const EVE_BIN = path.join(EVE_PACKAGE, "bin/eve.js");
 // Vitest sets NODE_ENV=test, under which eve swaps authored models for mocks;
 // the agent must run its own models the way a deployment does.
-const eveEnv = { ...process.env, NODE_ENV: "production", EVE_TELEMETRY_DISABLED: "1" };
+const eveEnv: NodeJS.ProcessEnv = {
+  ...process.env,
+  NODE_ENV: "production",
+  EVE_TELEMETRY_DISABLED: "1",
+};
+const TEST_POLICY_ENV = "EVELAND_OBSERVER_TEST_POLICY_PATH";
 
 type LogRecord = { attributes: Record<string, string> };
 
@@ -94,20 +99,9 @@ describe("observer runtime on a running eve agent", () => {
     await mkdir(mountDir);
     const policyPath = path.join(mountDir, "agent-policy.json");
     await writeFile(policyPath, JSON.stringify(policy(`http://127.0.0.1:${String(otlpPort)}`)));
-    const entryPath = path.join(mountDir, "entry.ts");
-    await writeFile(
-      entryPath,
-      [
-        `import { readFile } from "node:fs/promises";`,
-        `import { createObserverRuntime } from ${JSON.stringify(path.join(import.meta.dirname, "observer-runtime.ts"))};`,
-        `const runtime = createObserverRuntime({`,
-        `  loadPolicy: async () => JSON.parse(await readFile(${JSON.stringify(policyPath)}, "utf8")),`,
-        `});`,
-        `export default runtime.hook;`,
-        `export const instrumentation = runtime.instrumentation;`,
-        ``,
-      ].join("\n"),
-    );
+    // The test entry reads the policy path from the agent's environment.
+    eveEnv[TEST_POLICY_ENV] = policyPath;
+    const entryPath = path.join(packageRoot, "fixtures/eve-observer-runtime-entry.ts");
     const mountedRuntime = path.join(mountDir, "runtime.mjs");
     const mountUrl = pathToFileURL(mountedRuntime).href;
 
