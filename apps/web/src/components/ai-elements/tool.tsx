@@ -93,9 +93,9 @@ export const ToolContent = ({ className, ...props }: ToolContentProps) => (
 );
 
 export type BashToolContentProps = ComponentProps<"div"> & {
-  input: ToolPart["input"];
-  output: ToolPart["output"];
-  errorText: ToolPart["errorText"];
+  input: unknown;
+  output: unknown;
+  errorText: string | undefined;
 };
 
 export const BashToolContent = ({
@@ -150,7 +150,7 @@ const getRecordValue = (value: unknown, key: string): string | number | undefine
 };
 
 export type ToolInputProps = ComponentProps<"div"> & {
-  input: ToolPart["input"];
+  input: unknown;
 };
 
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
@@ -169,8 +169,8 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
 );
 
 export type ToolOutputProps = ComponentProps<"div"> & {
-  output: ToolPart["output"];
-  errorText: ToolPart["errorText"];
+  output: unknown;
+  errorText: string | undefined;
 };
 
 export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutputProps) => {
