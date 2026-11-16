@@ -4,6 +4,20 @@ All notable changes to Eveland are recorded here. Eveland follows
 [Semantic Versioning](https://semver.org/) and remains in the `0.x` initial
 development series until its public installation and upgrade contracts stabilize.
 
+## [0.72.0](https://github.com/evelandhq/eveland/compare/v0.71.0...v0.72.0) (2026-11-16)
+
+
+### Features
+
+* verify eve 1.0.0-rc.17 and reject schedules that set a timezone ([#643](https://github.com/evelandhq/eveland/issues/643)) ([f650201](https://github.com/evelandhq/eveland/commit/f6502017a3b0fa25bfbc3735ee43f57158ad893a))
+* verify eve 1.0.0, the line's first stable release ([#648](https://github.com/evelandhq/eveland/issues/648)) ([746d4c8](https://github.com/evelandhq/eveland/commit/746d4c8f4314d0cde7cb32eabb87c10b34dd19d2))
+
+
+### Bug Fixes
+
+* resolve high and critical security alerts ([#646](https://github.com/evelandhq/eveland/issues/646)) ([52ec629](https://github.com/evelandhq/eveland/commit/52ec629a8da04f11fdd7a108aec4e604b9974dd3))
+* update hono to 4.13.18 and @hono/node-server to 2.1.8 ([#647](https://github.com/evelandhq/eveland/issues/647)) ([7fd4e05](https://github.com/evelandhq/eveland/commit/7fd4e05094ff5285ea059ae8db6fb9ebc76982d1))
+
 ## [0.71.0](https://github.com/evelandhq/eveland/compare/v0.70.0...v0.71.0) (2026-11-13)
 
 
