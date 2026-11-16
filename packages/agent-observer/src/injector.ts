@@ -36,10 +36,11 @@ export const PLATFORM_OBSERVER_RUNTIME_PATH = path.posix.join(
 /**
  * Version of the observer delivery contract embedded in a release. Bump only
  * when a release must be REBUILT to keep observability working (i.e. the shim
- * contract itself changes). A release on this contract carries the hook shims
- * and the instrumentation shim that reports the model each provider call ran.
+ * contract itself changes). A release on this contract carries the hook shims,
+ * each naming its agent's file-form subagents, and the instrumentation shim
+ * that reports the model each provider call ran.
  */
-export const OBSERVER_RUNTIME_CONTRACT = 4;
+export const OBSERVER_RUNTIME_CONTRACT = 5;
 
 export type ObserverCoverageGap = {
   kind: "file-form-subagent";
@@ -135,7 +136,8 @@ export async function injectObserverHooks(input: {
 
   const agentRoots: string[] = [rootAgentRoot];
   const coverageGaps: ObserverCoverageGap[] = [];
-  await discoverSubagentRoots(rootAgentRoot, agentRoots, coverageGaps);
+  const unobserved = new Map<string, string[]>();
+  await discoverSubagentRoots(rootAgentRoot, agentRoots, coverageGaps, unobserved);
 
   const observerPaths = agentRoots.map((agentRoot) =>
     path.join(agentRoot, "hooks", observerFileName),
@@ -163,9 +165,18 @@ export async function injectObserverHooks(input: {
   await writeFile(runtimePath, await bundleObserverRuntime(), "utf8");
 
   const injectedFiles: string[] = [];
-  for (const observerPath of observerPaths) {
+  for (const [index, observerPath] of observerPaths.entries()) {
     await mkdir(path.dirname(observerPath), { recursive: true });
-    await writeFile(observerPath, createObserverShim(observerPath, runtimePath), "utf8");
+    await writeFile(
+      observerPath,
+      createObserverShim(
+        observerPath,
+        runtimePath,
+        undefined,
+        unobserved.get(agentRoots[index]!) ?? [],
+      ),
+      "utf8",
+    );
     injectedFiles.push(releaseRelativePath(releaseDir, observerPath));
   }
   // Instrumentation is root-only in eve and receives every session the
@@ -193,7 +204,11 @@ export async function injectExtensionSubagentHooks(input: {
 }): Promise<{ injectedFiles: string[]; coverageGaps: ObserverCoverageGap[] }> {
   const releaseDir = path.resolve(input.releaseDir);
   const manifest = readExtensionSubagentManifest(input.manifest);
-  const agentRoots: string[] = [];
+  // Each Extension subagent root that gets a hook, with its file-form subagents.
+  const agentRoots = new Map<string, string[]>();
+  // Consumer agents that mount Extensions, by the hook shim the release tree
+  // gave them, with their file-form subagents, the mounted ones included.
+  const consumerShims = new Map<string, string[]>();
   const coverageGaps: ObserverCoverageGap[] = [];
 
   const collectExtensionSubagent = (source: ExtensionSubagentSource): void => {
@@ -207,21 +222,34 @@ export async function injectExtensionSubagentHooks(input: {
       });
       return;
     }
-    agentRoots.push(entryPath);
+    agentRoots.set(entryPath, unobservedSubagentsOf(source.manifest));
     for (const nested of source.manifest.subagents) collectExtensionSubagent(nested);
     collectMountedSubagents(source.manifest, collectExtensionSubagent);
   };
 
   const scanConsumerManifest = (current: ExtensionSubagentManifest): void => {
+    // A consumer agent's hook shim, written with the release tree, names only
+    // its local file-form subagents; the Extensions it mounts can add more.
+    if (current.resolvedExtensions.length > 0) {
+      consumerShims.set(
+        resolveReleasePath(releaseDir, path.join(current.agentRoot, "hooks", observerFileName)),
+        unobservedSubagentsOf(current),
+      );
+    }
     collectMountedSubagents(current, collectExtensionSubagent);
-    for (const local of current.subagents) scanConsumerManifest(local.manifest);
+    for (const local of current.subagents) {
+      if (!isModulePath(local.entryPath)) scanConsumerManifest(local.manifest);
+    }
   };
   scanConsumerManifest(manifest);
 
-  const observerPaths = [...new Set(agentRoots)]
-    .sort((left, right) => left.localeCompare(right))
-    .map((agentRoot) => path.join(agentRoot, "hooks", observerFileName));
-  for (const observerPath of observerPaths) {
+  const observerShims = [...agentRoots]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([agentRoot, unobservedSubagents]) => ({
+      observerPath: path.join(agentRoot, "hooks", observerFileName),
+      unobservedSubagents,
+    }));
+  for (const { observerPath } of observerShims) {
     if (await exists(observerPath)) {
       throw new Error(
         `Reserved observer hook already exists at ${releaseRelativePath(releaseDir, observerPath)}. Rename the Extension-authored file; Eveland will not overwrite it.`,
@@ -234,10 +262,23 @@ export async function injectExtensionSubagentHooks(input: {
   // platform mount, which also holds the policy, so without the mount there
   // is no telemetry to capture and the hook stays inert.
   const injectedFiles: string[] = [];
-  for (const observerPath of observerPaths) {
+  for (const { observerPath, unobservedSubagents } of observerShims) {
     await mkdir(path.dirname(observerPath), { recursive: true });
-    await writeFile(observerPath, createObserverShim(observerPath, undefined), "utf8");
+    await writeFile(
+      observerPath,
+      createObserverShim(observerPath, undefined, undefined, unobservedSubagents),
+      "utf8",
+    );
     injectedFiles.push(releaseRelativePath(releaseDir, observerPath));
+  }
+  const runtimePath = path.join(releaseDir, runtimeRelativePath);
+  for (const [observerPath, unobservedSubagents] of consumerShims) {
+    if (unobservedSubagents.length === 0 || !(await exists(observerPath))) continue;
+    await writeFile(
+      observerPath,
+      createObserverShim(observerPath, runtimePath, undefined, unobservedSubagents),
+      "utf8",
+    );
   }
   return { injectedFiles, coverageGaps };
 }
@@ -248,18 +289,27 @@ export async function injectExtensionSubagentHooks(input: {
  * always matches the running platform. With a `fallbackRuntimePath` it falls
  * back to the bundle baked into the release; without one (an installed
  * Extension package) it is inert when the mount is absent.
+ *
+ * `unobservedSubagents` names the agent's subagents that eve runs without a
+ * hooks slot (file-form subagents), by the name the agent calls them: the
+ * agent's own record of what such a child spent is the only report of it.
  */
 export function createObserverShim(
   observerPath: string,
   fallbackRuntimePath: string | undefined,
   platformRuntimeUrl = `file://${PLATFORM_OBSERVER_RUNTIME_PATH}`,
+  unobservedSubagents: readonly string[] = [],
 ): string {
+  const hook =
+    unobservedSubagents.length === 0
+      ? `runtime?.default`
+      : `runtime?.observerHook({ unobservedSubagents: ${JSON.stringify(unobservedSubagents)} })`;
   return [
     `import { defineHook } from "eve/hooks";`,
     ``,
     ...runtimeImport(observerPath, fallbackRuntimePath, platformRuntimeUrl),
     ``,
-    `export default defineHook(runtime?.default ?? { events: { "*"() {} } });`,
+    `export default defineHook(${hook} ?? { events: { "*"() {} } });`,
     ``,
   ].join("\n");
 }
@@ -312,22 +362,28 @@ async function discoverSubagentRoots(
   agentRoot: string,
   agentRoots: string[],
   coverageGaps: ObserverCoverageGap[],
+  unobserved: Map<string, string[]>,
 ): Promise<void> {
   const subagentsDir = path.join(agentRoot, "subagents");
   if (!(await isDirectory(subagentsDir))) return;
 
   const entries = await readdir(subagentsDir, { withFileTypes: true });
-  for (const entry of entries) {
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     const entryPath = path.join(subagentsDir, entry.name);
     if (entry.isDirectory()) {
       if (await hasAgentConfig(entryPath)) {
         agentRoots.push(entryPath);
-        await discoverSubagentRoots(entryPath, agentRoots, coverageGaps);
+        await discoverSubagentRoots(entryPath, agentRoots, coverageGaps, unobserved);
       }
       continue;
     }
 
-    if (entry.isFile() && /\.(?:[cm]?[jt]s)$/.test(entry.name)) {
+    if (entry.isFile() && isModulePath(entry.name)) {
+      // eve names a file-form subagent after its file, less the extension.
+      unobserved.set(agentRoot, [
+        ...(unobserved.get(agentRoot) ?? []),
+        path.parse(entry.name).name,
+      ]);
       coverageGaps.push({
         kind: "file-form-subagent",
         path: entryPath,
@@ -368,7 +424,7 @@ async function exists(target: string): Promise<boolean> {
 
 function collectMountedSubagents(
   manifest: ExtensionSubagentManifest,
-  collect: (source: ExtensionSubagentSource) => void,
+  collect: (source: ExtensionSubagentSource, namespace: string) => void,
 ): void {
   for (const mount of [...manifest.resolvedExtensions].sort((left, right) =>
     left.namespace.localeCompare(right.namespace),
@@ -378,9 +434,24 @@ function collectMountedSubagents(
     for (const source of [...(mount.overrides?.subagents ?? []), ...mount.manifest.subagents]) {
       if (ids.has(source.subagentId)) continue;
       ids.add(source.subagentId);
-      collect(source);
+      collect(source, mount.namespace);
     }
   }
+}
+
+/**
+ * The agent's file-form subagents, by the name the agent calls them: its own
+ * by id, and a mounted Extension's under the mount's namespace
+ * (`crm__reviewer`).
+ */
+function unobservedSubagentsOf(manifest: ExtensionSubagentManifest): string[] {
+  const names = manifest.subagents
+    .filter((source) => isModulePath(source.entryPath))
+    .map((source) => source.subagentId);
+  collectMountedSubagents(manifest, (source, namespace) => {
+    if (isModulePath(source.entryPath)) names.push(`${namespace}__${source.subagentId}`);
+  });
+  return [...new Set(names)].sort((left, right) => left.localeCompare(right));
 }
 
 function readExtensionSubagentManifest(value: unknown): ExtensionSubagentManifest {

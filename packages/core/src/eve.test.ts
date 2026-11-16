@@ -6,6 +6,7 @@ import {
   isEveRecord,
   parseEveJsonObject,
   parseModelUsageEvent,
+  parseUnobservedChildUsage,
   parseUnreportedModelRun,
 } from "./eve.js";
 
@@ -158,6 +159,57 @@ describe("parseModelUsageEvent", () => {
       true,
     );
     expect(isDelegatedUsageRecord({ kind: "delegated-late", usage })).toBe(true);
+  });
+
+  test("counts a re-reported spend on a child that reports nothing itself, keyed by the parent's stream position", () => {
+    const usage = { inputTokens: 64, outputTokens: 3, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    expect(
+      parseUnobservedChildUsage(
+        "usage.recorded",
+        { kind: "model", owner: { callId: "call_1" }, usage },
+        { line: 9, index: 1 },
+      ),
+    ).toEqual({
+      turnId: "parent-record@line:9:1",
+      runKey: "parent-record@line:9:1",
+      finishReason: null,
+      inputTokens: 64,
+      outputTokens: 3,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd: null,
+      usageReported: true,
+    });
+    expect(
+      parseUnobservedChildUsage(
+        "usage.recorded",
+        { kind: "delegated-late", usage },
+        { line: 10, index: 0 },
+      ),
+    ).toMatchObject({ runKey: "parent-record@line:10:0", inputTokens: 64 });
+    // A record the recording session spent itself is never a child's.
+    expect(
+      parseUnobservedChildUsage(
+        "usage.recorded",
+        { kind: "model", owner: { runId: "run_1" }, usage },
+        { line: 9, index: 1 },
+      ),
+    ).toBeNull();
+    expect(
+      parseUnobservedChildUsage(
+        "usage.recorded",
+        { kind: "auxiliary", owner: { callId: "call_1" }, usage },
+        { line: 9, index: 1 },
+      ),
+    ).toBeNull();
+    // Without a stream position nothing makes the record idempotent.
+    expect(
+      parseUnobservedChildUsage("usage.recorded", {
+        kind: "model",
+        owner: { callId: "call_1" },
+        usage,
+      }),
+    ).toBeNull();
   });
 
   test("counts a decision's and an auxiliary call's spend on the session that made it, keyed by stream position", () => {

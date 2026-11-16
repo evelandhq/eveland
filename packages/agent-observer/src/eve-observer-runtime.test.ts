@@ -11,10 +11,9 @@ import type { AgentRuntimePolicy } from "@evelandhq/core/observability";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
   bundleObserverRuntimeEntry,
-  createObserverInstrumentationShim,
-  createObserverShim,
   injectExtensionSubagentHooks,
   injectObserverHooks,
+  PLATFORM_OBSERVER_RUNTIME_PATH,
 } from "./injector.js";
 
 const execFileAsync = promisify(execFile);
@@ -30,7 +29,7 @@ const eveEnv: NodeJS.ProcessEnv = {
 };
 const TEST_POLICY_ENV = "EVELAND_OBSERVER_TEST_POLICY_PATH";
 
-type LogRecord = { attributes: Record<string, string> };
+type LogRecord = { attributes: Record<string, string>; body: unknown };
 
 /**
  * Builds and starts a real eve agent with the observer injected the way a
@@ -38,6 +37,8 @@ type LogRecord = { attributes: Record<string, string> };
  * subagent, and an installed Extension's subagent) plus the root
  * instrumentation shim -- with every shim loading the runtime from a
  * stand-in for the platform mount, and exports to a local OTLP receiver.
+ * The root also delegates to a local and an Extension file-form subagent,
+ * which eve runs without a hooks slot.
  */
 describe("observer runtime on a running eve agent", () => {
   let workDir: string;
@@ -122,22 +123,20 @@ describe("observer runtime on a running eve agent", () => {
     expect(extension.injectedFiles).toEqual([
       "node_modules/eveland-probe-extension/dist/extension/subagents/helper/hooks/eveland-observer.js",
     ]);
-    // Point every shim at the stand-in mount; the shim generators are the ones
-    // injection used.
-    const bakedRuntime = path.join(agentDir, injected.runtimeFile!);
-    for (const file of injected.injectedFiles) {
+    // Point every shim injection wrote at the stand-in mount, keeping the rest
+    // of each shim as injection left it.
+    const platformRuntimeUrl = `file://${PLATFORM_OBSERVER_RUNTIME_PATH}`;
+    for (const file of [...injected.injectedFiles, ...extension.injectedFiles]) {
       const shimPath = path.join(agentDir, file);
-      await writeFile(
-        shimPath,
-        file.includes("/instrumentation/")
-          ? createObserverInstrumentationShim(shimPath, bakedRuntime, mountUrl)
-          : createObserverShim(shimPath, bakedRuntime, mountUrl),
-      );
+      const shim = await readFile(shimPath, "utf8");
+      expect(shim).toContain(platformRuntimeUrl);
+      await writeFile(shimPath, shim.replaceAll(platformRuntimeUrl, mountUrl));
     }
-    for (const file of extension.injectedFiles) {
-      const shimPath = path.join(agentDir, file);
-      await writeFile(shimPath, createObserverShim(shimPath, undefined, mountUrl));
-    }
+    // The root names the file-form subagents eve runs without a hooks slot,
+    // the mounted Extension's under its namespace.
+    await expect(
+      readFile(path.join(agentDir, "agent/hooks/eveland-observer.js"), "utf8"),
+    ).resolves.toContain('unobservedSubagents: ["filechild","probe__fhelper"]');
 
     await execFileAsync(process.execPath, [EVE_BIN, "build"], {
       cwd: agentDir,
@@ -169,7 +168,12 @@ describe("observer runtime on a running eve agent", () => {
           usageLogs(logs)
             .filter((log) => log.attributes["eveland.gen_ai.observed.model"])
             .map((log) => log.attributes["eveland.eve.session.id"]),
-        ).size >= 3,
+        ).size >= 3 &&
+        logs.some(
+          (log) =>
+            log.attributes["eveland.eve.session.id"] === rootSessionId &&
+            log.attributes["eveland.eve.event.type"] === "turn.settled",
+        ),
     ).catch((error: unknown) => {
       throw new Error(
         `${error instanceof Error ? error.message : String(error)} Received ${JSON.stringify(
@@ -218,6 +222,46 @@ describe("observer runtime on a running eve agent", () => {
     expect(children).toEqual([["dirchild-model"], ["ext-helper-model"]]);
   });
 
+  test("attributes a file-form subagent's spend, which only its parent reports, to that child", () => {
+    const opened = new Map<string, string>();
+    for (const log of logs) {
+      if (log.attributes["eveland.eve.event.type"] !== "child.opened") continue;
+      const data = otlpValue(log.body) as { data: { name: string; sessionId: string } };
+      opened.set(data.data.name, data.data.sessionId);
+    }
+    const fileChildren = [opened.get("filechild"), opened.get("probe__fhelper")];
+    expect(fileChildren.every(Boolean), JSON.stringify([...opened])).toBe(true);
+    // eve runs no hook in a file-form subagent's session: nothing of its own arrives.
+    expect(
+      logs.filter((log) => fileChildren.includes(log.attributes["eveland.eve.session.id"])),
+    ).toEqual([]);
+
+    const delegated = usageLogs(logs).filter((log) => {
+      const record = otlpValue(log.body) as { data: { owner?: { callId?: string } } };
+      return (
+        log.attributes["eveland.eve.session.id"] === rootSessionId &&
+        record.data.owner?.callId !== undefined
+      );
+    });
+    // The root re-reports every child's spend against the call that opened it.
+    expect(delegated).toHaveLength(4);
+    // Only the file-form children's records are theirs to count; the hooked
+    // children record their own spend.
+    expect(
+      Object.fromEntries(
+        delegated
+          .filter((log) => log.attributes["eveland.eve.usage.session.id"])
+          .map((log) => [
+            log.attributes["eveland.eve.usage.session.id"],
+            log.attributes["eveland.eve.usage.agent.name"],
+          ]),
+      ),
+    ).toEqual({
+      [opened.get("filechild")!]: "filechild",
+      [opened.get("probe__fhelper")!]: "probe__fhelper",
+    });
+  });
+
   test("links each child session to the root that delegated to it", () => {
     const parents = new Set(
       usageLogs(logs)
@@ -230,6 +274,30 @@ describe("observer runtime on a running eve agent", () => {
 
 function usageLogs(logs: LogRecord[]): LogRecord[] {
   return logs.filter((log) => log.attributes["eveland.eve.event.type"] === "usage.recorded");
+}
+
+/** Decodes an OTLP/JSON `AnyValue` into the plain value it carries. */
+function otlpValue(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  const any = value as {
+    stringValue?: string;
+    intValue?: string | number;
+    doubleValue?: number;
+    boolValue?: boolean;
+    kvlistValue?: { values?: Array<{ key: string; value: unknown }> };
+    arrayValue?: { values?: unknown[] };
+  };
+  if (any.stringValue !== undefined) return any.stringValue;
+  if (any.intValue !== undefined) return Number(any.intValue);
+  if (any.doubleValue !== undefined) return any.doubleValue;
+  if (any.boolValue !== undefined) return any.boolValue;
+  if (any.arrayValue) return (any.arrayValue.values ?? []).map(otlpValue);
+  if (any.kvlistValue) {
+    return Object.fromEntries(
+      (any.kvlistValue.values ?? []).map(({ key, value: entry }) => [key, otlpValue(entry)]),
+    );
+  }
+  return value;
 }
 
 async function copyFixture(name: string, target: string): Promise<void> {
@@ -272,6 +340,7 @@ async function startOtlpReceiver(logs: LogRecord[]): Promise<Server> {
               scopeLogs?: Array<{
                 logRecords?: Array<{
                   attributes?: Array<{ key: string; value: { stringValue?: string } }>;
+                  body?: unknown;
                 }>;
               }>;
             }>;
@@ -283,7 +352,7 @@ async function startOtlpReceiver(logs: LogRecord[]): Promise<Server> {
                 for (const { key, value } of record.attributes ?? []) {
                   if (value.stringValue !== undefined) attributes[key] = value.stringValue;
                 }
-                logs.push({ attributes });
+                logs.push({ attributes, body: record.body });
               }
             }
           }

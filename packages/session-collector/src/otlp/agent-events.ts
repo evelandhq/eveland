@@ -73,6 +73,7 @@ function observationFromLogRecord(
     stringValue(logRecord.timeUnixNano) ?? stringValue(logRecord.observedTimeUnixNano),
   );
   const observedModelId = stringValue(attributes["eveland.gen_ai.observed.model"]);
+  const unobservedChildSessionId = stringValue(attributes["eveland.eve.usage.session.id"]);
   const candidate = {
     telemetryEventId: stringValue(attributes["eveland.event.id"]),
     eventFingerprint: stringValue(attributes["eveland.event.fingerprint"]),
@@ -87,6 +88,14 @@ function observationFromLogRecord(
             modelId: observedModelId,
             responseModelId:
               stringValue(attributes["eveland.gen_ai.observed.response_model"]) ?? null,
+          },
+        }
+      : {}),
+    ...(unobservedChildSessionId
+      ? {
+          unobservedChild: {
+            eveSessionId: unobservedChildSessionId,
+            agentName: stringValue(attributes["eveland.eve.usage.agent.name"]) ?? null,
           },
         }
       : {}),
