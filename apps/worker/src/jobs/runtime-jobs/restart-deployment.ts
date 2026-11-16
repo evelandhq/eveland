@@ -37,11 +37,8 @@ export async function handleRestartDeploymentJob(
   job: RuntimeJob<"restart_deployment">,
   options: ProcessJobOptions,
 ): Promise<void> {
-  // Flip to "starting" and log before any load can throw so a failed restart
-  // still leaves a visible trail for the generic failure path.
-  await store.updateProjectState(job.projectId, {
-    deploymentStatus: "starting",
-  });
+  // Log before any load can throw so a failed restart still leaves a visible
+  // trail for the generic failure path.
   await store.appendLog({
     projectId: job.projectId,
     type: "deploy",
@@ -68,6 +65,14 @@ export async function handleRestartDeploymentJob(
   }
   if (deployment.projectId !== job.projectId) {
     throw new Error(`Deployment ${deployment.id} does not belong to project ${job.projectId}.`);
+  }
+  // Project-level deploymentStatus describes production. Every platform-wide
+  // restart fan-out also restarts previews, and a preview's restart must not
+  // repaint the project as starting, running, or (see ../job-registry.ts)
+  // failed.
+  const isProduction = deployment.id === project.deploymentId;
+  if (isProduction) {
+    await store.updateProjectState(job.projectId, { deploymentStatus: "starting" });
   }
   // A queued restart that lost the race to an archive must not resurrect it.
   if (deployment.status === "archived" || deployment.status === "archiving") {
@@ -188,9 +193,9 @@ export async function handleRestartDeploymentJob(
 
   // A persistence failure here must not stop the healthy, known process.
   await settleDeploymentStatus(store, deployment.id, "running");
-  await store.updateProjectState(job.projectId, {
-    deploymentStatus: "running",
-  });
+  if (isProduction) {
+    await store.updateProjectState(job.projectId, { deploymentStatus: "running" });
+  }
   await store.appendLog({
     projectId: job.projectId,
     deploymentId: deployment.id,

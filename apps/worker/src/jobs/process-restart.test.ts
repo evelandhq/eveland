@@ -506,6 +506,109 @@ describe("processNextJob", () => {
     });
   });
 
+  // Project-level deploymentStatus describes the production Deployment. A
+  // preview is restarted by every platform-wide restart fan-out (a rotated
+  // secret, a moved World), so its restart -- and its failure -- must leave the
+  // project's state to production.
+  async function projectWithIdleProductionAndPreview(name: string) {
+    const store = createTestStore();
+    const sourcePath = await createFixtureEveProject();
+    const project = await store.createProject({ name, importKind: "zip", sourcePath });
+    const importJob = await store.claimNextJob("worker-a");
+    await store.completeJob(importJob!.id);
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "zip",
+      sourcePath,
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const production = await store.recordDeployment({
+      releaseId: `rel_${name}_production`,
+      deploymentId: `dep_${name}_production`,
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: `eveland/proj:rel_${name}_production`,
+      containerName: `eveland-${name}-production`,
+      internalPort: 3000,
+      hostPort: 41061,
+      runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
+    });
+    const preview = await store.recordDeployment({
+      releaseId: `rel_${name}_preview`,
+      deploymentId: `dep_${name}_preview`,
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: `eveland/proj:rel_${name}_preview`,
+      containerName: `eveland-${name}-preview`,
+      internalPort: 3000,
+      hostPort: 41062,
+      runtimeKind: "docker",
+      workflowWorld: sharedWorkflowWorldAttestation,
+    });
+    await store.updateProjectState(project.id, { status: "deployed", deploymentStatus: "stopped" });
+    await store.enqueueJob(project.id, "restart_deployment", { deploymentId: preview.id });
+    return { store, project, production, preview };
+  }
+
+  test("a preview restart leaves the project's production state alone", async () => {
+    const { store, project, preview } = await projectWithIdleProductionAndPreview("prevok");
+    const observed: string[] = [];
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            observed.push((await store.getProject(project.id))!.deploymentStatus);
+            return { internalPort: 3000, log: "started" };
+          },
+          async stopProcess() {},
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    expect(observed).toEqual(["stopped"]);
+    await expect(store.getDeployment(preview.id)).resolves.toMatchObject({ status: "running" });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "deployed",
+      deploymentStatus: "stopped",
+    });
+  });
+
+  test("a failed preview restart does not mark the project failed", async () => {
+    const { store, project, preview } = await projectWithIdleProductionAndPreview("prevfail");
+
+    await expect(
+      processNextJob(store, "worker-a", {
+        runtime: {
+          name: "docker",
+          async buildRelease() {
+            throw new Error("restart must never build a release");
+          },
+          async startProcess() {
+            throw new Error("image is gone");
+          },
+          async stopProcess() {},
+        },
+        async waitForDeployment() {},
+      }),
+    ).resolves.toBe(true);
+
+    await expect(store.getDeployment(preview.id)).resolves.toMatchObject({ status: "stopped" });
+    await expect(store.getProject(project.id)).resolves.toMatchObject({
+      status: "deployed",
+      deploymentStatus: "stopped",
+    });
+  });
+
   test("resolves the runtime adapter by the deployment's recorded runtimeKind when no runtime override is injected", async () => {
     const runtimeCalls: Array<{ name: string; input: unknown }> = [];
     let runtimeForKindCalledWith: "docker" | "systemd" | null = null;

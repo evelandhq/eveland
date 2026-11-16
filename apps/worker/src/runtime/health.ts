@@ -4,7 +4,6 @@ export type HttpHealthInput = {
   host: string;
   port: number;
   timeoutMs: number;
-  healthPath?: string;
 };
 
 export type OwnedHttpHealthInput = HttpHealthInput & {
@@ -51,32 +50,51 @@ export async function waitForOwnedHttpHealth(input: OwnedHttpHealthInput): Promi
     host: input.host,
     port: input.port,
     timeoutMs: Math.max(1, deadline - Date.now()),
-    ...(input.healthPath ? { healthPath: input.healthPath } : {}),
   });
 }
 
+/**
+ * Polls eve's health route until it gives eve's own answer: HTTP 200 with
+ * `{ ok: true }` (`GET /eve/v1/health` returns `{ ok: true, status: "ready",
+ * workflowId }`). Any other response keeps the gate closed: a 404 means the
+ * process serves no eve health route -- an authored `agent/channels/eve.ts`
+ * built with `defineChannel` instead of `eveChannel` drops it -- and a 5xx
+ * means the process is failing, so neither is a ready Deployment.
+ */
 export async function waitForHttpHealth(input: HttpHealthInput): Promise<void> {
-  const url = `http://${input.host}:${input.port}${input.healthPath ?? "/eve/v1/health"}`;
+  const url = `http://${input.host}:${input.port}${EVE_HEALTH_PATH}`;
   const deadline = Date.now() + input.timeoutMs;
   let lastError: unknown;
+  let lastAnswer: string | undefined;
 
   while (Date.now() < deadline) {
     try {
-      // Any HTTP response proves the process accepted the connection; non-eve
-      // apps legitimately return 404 for the eve health path.
       const attemptTimeoutMs = Math.max(1, Math.min(1000, deadline - Date.now()));
-      await fetch(url, { signal: AbortSignal.timeout(attemptTimeoutMs) });
-      return;
+      const response = await fetch(url, { signal: AbortSignal.timeout(attemptTimeoutMs) });
+      if (response.status === 200 && (await reportsOk(response))) return;
+      await response.body?.cancel().catch(() => undefined);
+      lastAnswer =
+        response.status === 200
+          ? "answered HTTP 200 without { ok: true }"
+          : `last answered HTTP ${response.status}`;
+      lastError = undefined;
     } catch (error) {
       lastError = error;
-      const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) {
-        break;
-      }
-      await sleep(Math.min(250, remainingMs));
     }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      break;
+    }
+    await sleep(Math.min(250, remainingMs));
   }
 
+  if (lastError === undefined && lastAnswer !== undefined) {
+    throw new Error(
+      `Deployment ${url} was not ready within ${input.timeoutMs}ms: it ${lastAnswer}. ` +
+        "Eveland waits for eve's health route to report { ok: true }; an authored " +
+        "agent/channels/eve.ts must keep it by using eveChannel(...).",
+    );
+  }
   const detail =
     lastError instanceof Error
       ? lastError.cause instanceof Error
@@ -85,6 +103,17 @@ export async function waitForHttpHealth(input: HttpHealthInput): Promise<void> {
       : "";
   const cause = detail ? ` Last error: ${detail}` : "";
   throw new Error(`Deployment ${url} did not respond within ${input.timeoutMs}ms.${cause}`);
+}
+
+const EVE_HEALTH_PATH = "/eve/v1/health";
+
+async function reportsOk(response: Response): Promise<boolean> {
+  try {
+    const body = (await response.json()) as unknown;
+    return typeof body === "object" && body !== null && (body as { ok?: unknown }).ok === true;
+  } catch {
+    return false;
+  }
 }
 
 function sleep(ms: number): Promise<void> {

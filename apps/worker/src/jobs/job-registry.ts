@@ -46,7 +46,15 @@ export const jobRegistry: { [Type in JobType]: JobDescriptor<Type> } = {
   },
   restart_deployment: {
     handle: handleRestartDeploymentJob,
+    // Only a failed restart of production fails the project; a preview's
+    // failure stays on its job, its log, and its Deployment row. No target
+    // means production.
     onFailure: async (store, job) => {
+      const target = job.payload.deploymentId;
+      if (target) {
+        const project = await store.getProject(job.projectId);
+        if (project?.deploymentId !== target) return;
+      }
       await store.updateProjectState(job.projectId, {
         status: "failed",
         deploymentStatus: "failed",
