@@ -175,7 +175,7 @@ describe("AgentMessage with several questions from one call", () => {
     });
     const store = new SessionStore({
       initialEvents: [
-        fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } }),
+        fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0" } }),
         fact(
           "turn.started",
           { turnId: "t", cause: { deliveryId: "d" }, follows: null },
@@ -298,7 +298,7 @@ describe("questions relayed from separate child sessions", () => {
     });
     const store = new SessionStore({
       initialEvents: [
-        fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } }),
+        fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0" } }),
         fact(
           "turn.started",
           { turnId: "t", cause: { deliveryId: "d" }, follows: null },
@@ -386,7 +386,7 @@ describe("a question that settles while the page watches", () => {
       },
     });
     const opened = [
-      fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0-rc.1" } }),
+      fact("session.started", { runtime: { agentId: "a", eveVersion: "1.0.0" } }),
       fact(
         "turn.started",
         { turnId: "t", cause: { deliveryId: "d" }, follows: null },

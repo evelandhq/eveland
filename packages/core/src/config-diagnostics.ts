@@ -736,7 +736,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   entry(
     "EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS",
     ["worker"],
-    "Seconds a stopped Deployment gets to finish in-flight HTTP requests before its remaining connections are cut. Must stay below 20.",
+    "Seconds a stopped Deployment gets to finish in-flight HTTP requests before its remaining connections are cut. Must stay below 25.",
     "15",
   ),
   entry(

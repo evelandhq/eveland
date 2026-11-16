@@ -18,7 +18,7 @@ test("copies source into a prepared release and injects observers without modify
   await mkdir(path.join(sourcePath, "agent", "subagents", "child"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -54,7 +54,7 @@ test("injects the Extension integrator only when the source declares an Extensio
   await mkdir(path.join(sourcePath, "agent", "extensions"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -78,7 +78,7 @@ test("injects the scheduler adapter only into the disposable release", async () 
   await mkdir(path.join(sourcePath, "agent", "schedules"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(
@@ -116,7 +116,7 @@ export default {
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
   await writeFile(path.join(sourcePath, "agent", "agent.ts"), authoredConfig);
@@ -161,7 +161,7 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
   await mkdir(path.join(sourcePath, "agent"), { recursive: true });
   await writeFile(
     path.join(sourcePath, "package.json"),
-    JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
+    JSON.stringify({ dependencies: { eve: "1.0.0" } }),
   );
   await writeFile(path.join(sourcePath, "agent", "instructions.md"), "root");
 
@@ -192,7 +192,7 @@ test("wraps every Eve-supported authored agent module extension", async () => {
     await mkdir(sourcePath, { recursive: true });
     await writeFile(
       path.join(sourcePath, "package.json"),
-      JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }),
+      JSON.stringify({ dependencies: { eve: "1.0.0" } }),
     );
     await writeFile(path.join(sourcePath, "instructions.md"), "root");
     await writeFile(
@@ -231,7 +231,7 @@ async function eveProject(eve: string) {
 }
 
 test("injects the Model Gateway provider into an eve 1.0 release and logs it", async () => {
-  const { sourcePath, buildDir } = await eveProject("1.0.0-rc.2");
+  const { sourcePath, buildDir } = await eveProject("1.0.0");
 
   const result = await prepareReleaseTree({ sourcePath, buildDir });
 
@@ -247,7 +247,7 @@ test("injects the Model Gateway provider into an eve 1.0 release and logs it", a
 });
 
 test("seeds the cached model catalog into the release before the build", async () => {
-  const { root, sourcePath, buildDir } = await eveProject("1.0.0-rc.2");
+  const { root, sourcePath, buildDir } = await eveProject("1.0.0");
   const cacheFile = path.join(root, "data", "cache", "model-catalog.json");
   await mkdir(path.dirname(cacheFile), { recursive: true });
   await writeFile(
@@ -276,7 +276,7 @@ test("seeds the cached model catalog into the release before the build", async (
 });
 
 test("builds without a seed, and warns, when no catalog is available", async () => {
-  const { sourcePath, buildDir } = await eveProject("1.0.0-rc.2");
+  const { sourcePath, buildDir } = await eveProject("1.0.0");
 
   const result = await prepareReleaseTree({
     sourcePath,

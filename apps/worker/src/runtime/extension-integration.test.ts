@@ -202,7 +202,7 @@ async function stopEveStart(child: ReturnType<typeof spawn>): Promise<void> {
 async function writeFixtureExtension(
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "1.0.0-rc.2",
+  eveVersion = "1.0.0",
   includeScheduleSubagents = true,
 ): Promise<void> {
   await write(
@@ -256,7 +256,7 @@ async function writeConsumer(
   releaseDir: string,
   extensionPackageRoot: string,
   installedEveRoot = evePackageRoot,
-  eveVersion = "1.0.0-rc.2",
+  eveVersion = "1.0.0",
 ): Promise<void> {
   await write(
     releaseDir,

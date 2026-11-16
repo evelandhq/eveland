@@ -2,7 +2,7 @@ import { MODEL_GATEWAY_ENV } from "@evelandhq/core/model-gateway";
 import { ModelGatewayRequestError } from "@evelandhq/core/server/model-gateway-client";
 import { describe, expect, test, vi } from "vitest";
 
-import compiledManifest from "../runtime/__fixtures__/compiled-agent-manifest.eve-1.0.0-rc.1.json" with { type: "json" };
+import compiledManifest from "../runtime/__fixtures__/compiled-agent-manifest.eve-1.0.0.json" with { type: "json" };
 import { collectStaticModelIds } from "../runtime/discovery-artifacts.js";
 import {
   modelGatewayValidationLog,
@@ -16,7 +16,7 @@ const active = {
 };
 
 describe("collectStaticModelIds", () => {
-  // Trimmed from a real `eve build` (eve 1.0.0-rc.1) of an Agent whose root
+  // Trimmed from a real `eve build` (eve 1.0.0) of an Agent whose root
   // names "vendor/root" with compaction model "vendor/compact", and whose
   // subagents are: child ("vendor/child"), its nested grand ("vendor/grand"),
   // custom (an authored model object with provider "custom.chat"), and gw (an

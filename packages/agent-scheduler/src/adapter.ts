@@ -631,24 +631,22 @@ function readResolvedExtensionScheduleMount(
 }
 
 /**
- * A mount manifest's schedules. Discovery manifest v16 (eve 1.0.0-rc.3+) lists
- * every authored source in one `sources` array, whose slot is the first
- * segment of its logical path, where v15 had a `schedules` array; the other
- * sources (a mount's tools, connections and so on) are not this adapter's.
+ * A mount manifest's schedules. Discovery manifest v16 lists every authored
+ * source in one `sources` array, whose slot is the first segment of its
+ * logical path; the other sources (a mount's tools, connections and so on) are
+ * not this adapter's.
  */
 function readExtensionScheduleManifest(value: unknown): ExtensionScheduleManifest | undefined {
   if (!isRecord(value) || typeof value.agentRoot !== "string") return undefined;
-  const entries = Array.isArray(value.sources) ? value.sources : value.schedules;
+  const sources = value.sources;
   if (
-    !Array.isArray(entries) ||
-    !entries.every((entry) => isRecord(entry) && typeof entry.logicalPath === "string")
+    !Array.isArray(sources) ||
+    !sources.every((entry) => isRecord(entry) && typeof entry.logicalPath === "string")
   ) {
     return undefined;
   }
-  const schedules = (entries as Array<{ logicalPath: string }>).filter(
-    (entry) =>
-      !Array.isArray(value.sources) ||
-      entry.logicalPath.replaceAll("\\", "/").split("/", 1)[0] === "schedules",
+  const schedules = (sources as Array<{ logicalPath: string }>).filter(
+    (entry) => entry.logicalPath.replaceAll("\\", "/").split("/", 1)[0] === "schedules",
   );
   return { agentRoot: value.agentRoot, schedules };
 }

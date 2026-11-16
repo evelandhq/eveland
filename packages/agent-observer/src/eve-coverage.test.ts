@@ -8,217 +8,162 @@ import { VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const compatibilityMatrix = [
-  { version: VERIFIED_EVE_VERSION, fixtureName: "matrix-hooks", packageName: "eve" },
-];
+const EVE_PACKAGE = path.resolve(import.meta.dirname, "../node_modules/eve");
+const EVE_BIN = path.join(EVE_PACKAGE, "bin/eve.js");
 
-describe("Eve observer hook compatibility matrix", () => {
-  test.each(compatibilityMatrix)(
-    "runs observer coverage against Eve $version",
-    async ({ packageName, version }) => {
-      const { stdout } = await execFileAsync(process.execPath, [eveBin(packageName), "--version"]);
+describe("Eve observer hook compatibility", () => {
+  test("runs observer coverage against the verified Eve", async () => {
+    const { stdout } = await execFileAsync(process.execPath, [EVE_BIN, "--version"]);
 
-      expect(stdout.trim()).toBe(version);
-    },
-  );
+    expect(stdout.trim()).toBe(VERIFIED_EVE_VERSION);
+  });
 
-  test.each(compatibilityMatrix)(
-    "Eve $version leaves global AI SDK telemetry integrations reachable for model capture",
-    async ({ packageName }) => {
-      // model-capture.ts registers on globalThis.AI_SDK_TELEMETRY_INTEGRATIONS,
-      // which the AI SDK consults only when a call passes no per-call
-      // `integrations`: a per-call list REPLACES the global registrations
-      // rather than adding to them. One generation now spans the whole window.
-      // Eve spreads the global registrations into the per-call list itself, and
-      // the no-authored-integration arm forks: when Eve must sanitize its own
-      // integration's error content it passes the spread global list
-      // explicitly, and otherwise falls back to `void 0` — the AI SDK global
-      // path. The expression lives in instrumentation/runtime.js (0.47.5 moved
-      // it there wholesale from harness/tool-loop.js, and the pre-0.47.5 arms
-      // left the window with 0.47.x on 2026-09-03); the guard is a
-      // `bridgeIntegration` property access and the spread a local
-      // `integrations()` closure over
-      // `getRegisteredTelemetryIntegrations({sanitizeEveOtelErrors})`. Every
-      // arm keeps third-party global registrations reachable, and the sanitize
-      // path substitutes only Eve's own integration by identity (the `map` in
-      // ai-sdk-telemetry.js compares `e !== eveOtelIntegration`), so
-      // model-capture's integration is never wrapped — re-verified 2026-09-19
-      // (the pinned expression matches 0.58.1 and 0.62.0 alike; 0.55.0 moved
-      // the session-init and runtime-global helpers out of the surrounding
-      // runtime.js, 0.56.0 added the activation-span metadata block, and
-      // 0.57.0, 0.58.0 and 0.58.1 shipped runtime.js byte-identical to 0.56.0;
-      // 0.62.0 reworked instrumentation discovery around it -- path-named
-      // files, no flat module, no `capture` -- and left this expression alone;
-      // 0.64.1, re-verified 2026-09-23, only added an `installAiSdkWarningLogger`
-      // entry beside `runStep`, and 0.65.0, 0.66.0, 0.66.1, 0.66.2, 0.66.3, and
-      // 0.67.0 shipped runtime.js byte-identical to 0.64.1; 0.67.1 only moved
-      // an import path, and 0.67.2 and 0.68.0 are byte-identical to that; 0.69.0,
-      // re-verified 2026-10-02, only reordered imports and dropped the
-      // background-task instrumentation, leaving this expression alone; 0.70.0,
-      // re-verified the same day, only threads a trace-root session id through
-      // the runtime; 0.72.1, re-verified 2026-10-07, adds task-tool spans and
-      // an `isFrameworkTool` argument beside this expression and leaves it
-      // alone; 0.73.0 and 0.74.0, re-verified 2026-10-08, 0.75.0 and 0.75.1,
-      // re-verified 2026-10-09, and 0.76.0, re-verified 2026-10-10, ship
-      // runtime.js byte-identical to 0.72.1; 0.79.0, re-verified 2026-10-14,
-      // moved eve's spans onto the shared @eve/tracing library -- import
-      // paths, and `withErrorContent` became `withCapture` -- and left this
-      // expression alone; 0.81.1, re-verified 2026-10-21, imports the same
-      // library as the bundled `@vercel/agent-runs` since 0.80.1 and leaves it
-      // alone too, and 0.83.3, re-verified 2026-10-27, ships runtime.js
-      // byte-identical to 0.81.1). If the pinned expression changes
-      // shape in a new Eve line, re-verify model-capture.ts against it before
-      // bumping the matrix. The minifier is free to rename the locals (0.44.0
-      // emitted `r`, 0.44.3 `i`), so the pin captures identifiers instead of
-      // spelling them.
-      const evePackageDir = await realpath(evePackage(packageName));
-      const integrationsSource = await readFile(
-        path.join(evePackageDir, "dist/src/instrumentation/runtime.js"),
-        "utf8",
+  test("Eve leaves global AI SDK telemetry integrations reachable for model capture", async () => {
+    // model-capture.ts registers on globalThis.AI_SDK_TELEMETRY_INTEGRATIONS,
+    // which the AI SDK consults only when a call passes no per-call
+    // `integrations`: a per-call list REPLACES the global registrations
+    // rather than adding to them. Eve spreads the global registrations into
+    // the per-call list itself, and the no-authored-integration arm forks:
+    // when Eve must sanitize its own integration's error content it passes
+    // the spread global list explicitly, and otherwise falls back to
+    // `void 0` -- the AI SDK global path. Every arm keeps third-party global
+    // registrations reachable, and the sanitize path substitutes only Eve's
+    // own integration by identity, so model-capture's integration is never
+    // wrapped. If the pinned expression in instrumentation/runtime.js
+    // changes shape, re-verify model-capture.ts against it before raising
+    // the window's ceiling. The minifier is free to rename the locals, so
+    // the pin captures identifiers instead of spelling them.
+    const evePackageDir = await realpath(EVE_PACKAGE);
+    const integrationsSource = await readFile(
+      path.join(evePackageDir, "dist/src/instrumentation/runtime.js"),
+      "utf8",
+    );
+    expect(integrationsSource).toMatch(
+      /integrations:(\w+)\.(\w+)===void 0\?\w+\?\[\.\.\.(\w+)\(\)\]:void 0:\[\1\.\2,\.\.\.\3\(\)\]/,
+    );
+
+    const aiDist = await readFile(path.join(evePackageDir, "../ai/dist/index.js"), "utf8");
+    expect(aiDist).toContain("globalThis.AI_SDK_TELEMETRY_INTEGRATIONS");
+    expect(aiDist).toMatch(
+      /localIntegrations != null \? asArray\d*\(localIntegrations\) : getGlobalTelemetryIntegrations\(\)/,
+    );
+  });
+
+  test("Eve discovers packaged skills and exposes directory-form hook slots", async () => {
+    const fixtureDir = await prepareFixture();
+    try {
+      const { stdout } = await execFileAsync(process.execPath, [EVE_BIN, "info", "--json"], {
+        cwd: fixtureDir,
+      });
+      const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
+        artifacts: { discoveryManifest: string };
+      };
+      // v16 lists every authored source in one `sources` array; a source's
+      // slot is the first segment of its logical path.
+      type Source = { logicalPath: string; [field: string]: unknown };
+      const manifest = JSON.parse(await readFile(info.artifacts.discoveryManifest, "utf8")) as {
+        version: number;
+        sources: Source[];
+        subagents: Array<{ subagentId: string; manifest: { sources: Source[] } }>;
+      };
+      expect(manifest.version).toBe(16);
+      const inSlot = (sources: Source[] | undefined, slot: string) =>
+        (sources ?? []).filter((source) => source.logicalPath.split("/", 1)[0] === slot);
+
+      expect(inSlot(manifest.sources, "connections")).toContainEqual(
+        expect.objectContaining({
+          connectionName: "warehouse",
+          logicalPath: "connections/warehouse.ts",
+        }),
       );
-      expect(integrationsSource).toMatch(
-        /integrations:(\w+)\.(\w+)===void 0\?\w+\?\[\.\.\.(\w+)\(\)\]:void 0:\[\1\.\2,\.\.\.\3\(\)\]/,
+      expect(inSlot(manifest.sources, "hooks").map((hook) => hook.logicalPath)).toContain(
+        "hooks/root-observer.ts",
       );
-
-      const aiDist = await readFile(path.join(evePackageDir, "../ai/dist/index.js"), "utf8");
-      expect(aiDist).toContain("globalThis.AI_SDK_TELEMETRY_INTEGRATIONS");
-      expect(aiDist).toMatch(
-        /localIntegrations != null \? asArray\d*\(localIntegrations\) : getGlobalTelemetryIntegrations\(\)/,
+      expect(inSlot(manifest.sources, "skills")).toContainEqual(
+        expect.objectContaining({
+          name: "compatibility",
+          logicalPath: "skills/compatibility/SKILL.md",
+          sourceKind: "skill-package",
+        }),
       );
-    },
-  );
+      expect(manifest.subagents.map((subagent) => subagent.subagentId)).toEqual([
+        "directory-child",
+        "file-child",
+        "remote-child",
+      ]);
+      const child = (id: string) =>
+        manifest.subagents.find((subagent) => subagent.subagentId === id)?.manifest.sources;
+      expect(inSlot(child("directory-child"), "hooks").map((hook) => hook.logicalPath)).toContain(
+        "hooks/child-observer.ts",
+      );
+      expect(inSlot(child("directory-child"), "connections")).toContainEqual(
+        expect.objectContaining({
+          connectionName: "research",
+          logicalPath: "connections/research.ts",
+        }),
+      );
+      expect(inSlot(child("file-child"), "hooks")).toEqual([]);
+      expect(inSlot(child("remote-child"), "hooks")).toEqual([]);
 
-  test.each(compatibilityMatrix)(
-    "Eve $version discovers packaged skills and exposes directory-form hook slots",
-    async ({ fixtureName, packageName }) => {
-      const fixtureDir = await prepareFixture(fixtureName, packageName);
-      try {
-        const { stdout } = await execFileAsync(
-          process.execPath,
-          [eveBin(packageName), "info", "--json"],
-          {
-            cwd: fixtureDir,
-          },
-        );
-        const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
-          artifacts: { discoveryManifest: string };
-        };
-        // v16 (eve 1.0.0-rc.3+) lists every authored source in one `sources`
-        // array; a source's slot is the first segment of its logical path.
-        type Source = { logicalPath: string; [field: string]: unknown };
-        const manifest = JSON.parse(await readFile(info.artifacts.discoveryManifest, "utf8")) as {
-          version: number;
-          sources: Source[];
-          subagents: Array<{ subagentId: string; manifest: { sources: Source[] } }>;
-        };
-        expect(manifest.version).toBe(16);
-        const inSlot = (sources: Source[] | undefined, slot: string) =>
-          (sources ?? []).filter((source) => source.logicalPath.split("/", 1)[0] === slot);
+      // The platform's build summary reads `eve info --json`; this is the
+      // drift guard for @evelandhq/core/discovery against what the pinned
+      // eve prints. The projection fails closed on a missing or mistyped
+      // documented field, so a non-null result proves the shapes still
+      // match, and every projected field is asserted so a change in any of
+      // them fails here, not in production.
+      expect(projectEveInfo(info)).toEqual({
+        summarySource: "eve-info",
+        status: "ready",
+        layout: "nested",
+        diagnostics: { errors: 0, warnings: 0 },
+        model: expect.any(String),
+        instructions: expect.stringContaining("instructions.md"),
+        skills: expect.arrayContaining(["compatibility"]),
+        tools: expect.any(Array),
+        // eve info names declared subagents; a remote agent is not one.
+        subagents: ["directory-child", "file-child"],
+        schedules: [],
+        channels: expect.arrayContaining(["eve"]),
+      });
 
-        expect(inSlot(manifest.sources, "connections")).toContainEqual(
-          expect.objectContaining({
-            connectionName: "warehouse",
-            logicalPath: "connections/warehouse.ts",
-          }),
-        );
-        expect(inSlot(manifest.sources, "hooks").map((hook) => hook.logicalPath)).toContain(
-          "hooks/root-observer.ts",
-        );
-        expect(inSlot(manifest.sources, "skills")).toContainEqual(
-          expect.objectContaining({
-            name: "compatibility",
-            logicalPath: "skills/compatibility/SKILL.md",
-            sourceKind: "skill-package",
-          }),
-        );
-        expect(manifest.subagents.map((subagent) => subagent.subagentId)).toEqual([
-          "directory-child",
-          "file-child",
-          "remote-child",
-        ]);
-        const child = (id: string) =>
-          manifest.subagents.find((subagent) => subagent.subagentId === id)?.manifest.sources;
-        expect(inSlot(child("directory-child"), "hooks").map((hook) => hook.logicalPath)).toContain(
-          "hooks/child-observer.ts",
-        );
-        expect(inSlot(child("directory-child"), "connections")).toContainEqual(
-          expect.objectContaining({
-            connectionName: "research",
-            logicalPath: "connections/research.ts",
-          }),
-        );
-        expect(inSlot(child("file-child"), "hooks")).toEqual([]);
-        expect(inSlot(child("remote-child"), "hooks")).toEqual([]);
-
-        // The platform's build summary reads `eve info --json`; this is the
-        // drift guard for @evelandhq/core/discovery against what the pinned
-        // eve prints. The projection fails closed on a missing or mistyped
-        // documented field, so a non-null result proves the shapes still
-        // match, and every projected field is asserted so a change in any of
-        // them fails here, not in production.
-        expect(projectEveInfo(info)).toEqual({
-          summarySource: "eve-info",
-          status: "ready",
-          layout: "nested",
-          diagnostics: { errors: 0, warnings: 0 },
-          model: expect.any(String),
-          instructions: expect.stringContaining("instructions.md"),
-          skills: expect.arrayContaining(["compatibility"]),
-          tools: expect.any(Array),
-          // eve info names declared subagents; a remote agent is not one.
-          subagents: ["directory-child", "file-child"],
-          schedules: [],
-          channels: expect.arrayContaining(["eve"]),
-        });
-
-        const compileDir = path.join(path.dirname(info.artifacts.discoveryManifest), "../compile");
-        const compiledManifest = JSON.parse(
-          await readFile(path.join(compileDir, "compiled-agent-manifest.json"), "utf8"),
-        ) as {
-          remoteAgents: Array<{ name: string; url: string; path: string }>;
-          skills: Array<{ name: string; sourceKind: string }>;
-          workspaceResourceRoot: { logicalPath: string };
-        };
-        expect(compiledManifest.remoteAgents).toContainEqual(
-          expect.objectContaining({
-            name: "remote-child",
-            url: "https://remote.example.com",
-            path: "/eve/v1/session",
-          }),
-        );
-        expect(compiledManifest.skills).toContainEqual(
-          expect.objectContaining({ name: "compatibility", sourceKind: "skill-package" }),
-        );
-        const skillRoot = path.join(
-          compileDir,
-          compiledManifest.workspaceResourceRoot.logicalPath,
-          "skills",
-          "compatibility",
-        );
-        await expect(readFile(path.join(skillRoot, "SKILL.md"), "utf8")).resolves.toContain(
-          "Follow the packaged compatibility checklist",
-        );
-        await expect(
-          readFile(path.join(skillRoot, "references/checklist.md"), "utf8"),
-        ).resolves.toContain("Confirm the packaged reference");
-      } finally {
-        await rm(fixtureDir, { recursive: true, force: true });
-      }
-    },
-    120_000,
-  );
+      const compileDir = path.join(path.dirname(info.artifacts.discoveryManifest), "../compile");
+      const compiledManifest = JSON.parse(
+        await readFile(path.join(compileDir, "compiled-agent-manifest.json"), "utf8"),
+      ) as {
+        remoteAgents: Array<{ name: string; url: string; path: string }>;
+        skills: Array<{ name: string; sourceKind: string }>;
+        workspaceResourceRoot: { logicalPath: string };
+      };
+      expect(compiledManifest.remoteAgents).toContainEqual(
+        expect.objectContaining({
+          name: "remote-child",
+          url: "https://remote.example.com",
+          path: "/eve/v1/session",
+        }),
+      );
+      expect(compiledManifest.skills).toContainEqual(
+        expect.objectContaining({ name: "compatibility", sourceKind: "skill-package" }),
+      );
+      const skillRoot = path.join(
+        compileDir,
+        compiledManifest.workspaceResourceRoot.logicalPath,
+        "skills",
+        "compatibility",
+      );
+      await expect(readFile(path.join(skillRoot, "SKILL.md"), "utf8")).resolves.toContain(
+        "Follow the packaged compatibility checklist",
+      );
+      await expect(
+        readFile(path.join(skillRoot, "references/checklist.md"), "utf8"),
+      ).resolves.toContain("Confirm the packaged reference");
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
-function evePackage(packageName: string): string {
-  return path.resolve(import.meta.dirname, `../node_modules/${packageName}`);
-}
-
-function eveBin(packageName: string): string {
-  return path.join(evePackage(packageName), "bin/eve.js");
-}
-
-async function prepareFixture(fixtureName: string, packageName: string): Promise<string> {
-  const sourceFixtureDir = path.resolve(import.meta.dirname, `../fixtures/${fixtureName}`);
+async function prepareFixture(): Promise<string> {
+  const sourceFixtureDir = path.resolve(import.meta.dirname, "../fixtures/eve-hooks");
   const fixtureDir = await mkdtemp(path.join(os.tmpdir(), "eveland-eve-hooks-"));
   await cp(sourceFixtureDir, fixtureDir, {
     recursive: true,
@@ -227,13 +172,11 @@ async function prepareFixture(fixtureName: string, packageName: string): Promise
       return ![".eve", ".workflow-data", "node_modules"].includes(topLevelEntry);
     },
   });
-  const version = compatibilityMatrix.find((entry) => entry.packageName === packageName)?.version;
-  if (version === undefined) throw new Error(`Unknown Eve fixture package ${packageName}.`);
   await writeFile(
     path.join(fixtureDir, "package.json"),
-    `${JSON.stringify({ name: "eveland-eve-hooks-fixture", private: true, type: "module", dependencies: { eve: version } }, null, 2)}\n`,
+    `${JSON.stringify({ name: "eveland-eve-hooks-fixture", private: true, type: "module", dependencies: { eve: VERIFIED_EVE_VERSION } }, null, 2)}\n`,
   );
   await mkdir(path.join(fixtureDir, "node_modules"));
-  await symlink(evePackage(packageName), path.join(fixtureDir, "node_modules/eve"), "dir");
+  await symlink(EVE_PACKAGE, path.join(fixtureDir, "node_modules/eve"), "dir");
   return fixtureDir;
 }

@@ -1,6 +1,6 @@
 {
   "kind": "eve-agent-compiled-manifest",
-  "version": 55,
+  "version": 56,
   "config": {
     "model": {
       "id": "vendor/root",
@@ -43,7 +43,7 @@
     },
     {
       "name": "grand",
-      "nodeId": "subagents/child::subagents/grand",
+      "nodeId": "subagents/child::subagents/grand.ts",
       "parentNodeId": "subagents/child",
       "description": "Grand.",
       "agent": {
@@ -62,7 +62,7 @@
     },
     {
       "name": "custom",
-      "nodeId": "subagents/custom",
+      "nodeId": "subagents/custom.ts",
       "parentNodeId": "__root__",
       "description": "Custom.",
       "agent": {
@@ -77,7 +77,7 @@
             "source": {
               "sourceKind": "module",
               "logicalPath": "agent.ts",
-              "sourceId": "agent.ts"
+              "sourceId": "subagents/custom.ts"
             }
           },
           "compaction": {}
@@ -86,7 +86,7 @@
     },
     {
       "name": "gw",
-      "nodeId": "subagents/gw",
+      "nodeId": "subagents/gw.ts",
       "parentNodeId": "__root__",
       "description": "Gw.",
       "agent": {
@@ -101,7 +101,7 @@
             "source": {
               "sourceKind": "module",
               "logicalPath": "agent.ts",
-              "sourceId": "agent.ts"
+              "sourceId": "subagents/gw.ts"
             }
           },
           "compaction": {}

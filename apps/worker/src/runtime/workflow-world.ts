@@ -47,11 +47,9 @@ export type WorkflowWorldBuildConfig = {
  * `WORKFLOW_SEALED_LOG` itself; the World implements the in-band writer fence
  * spec 9 runs need. 0.27.0 through 0.29.0 declared `mintedSpecVersion()`
  * outright: hook force-claim (8) by default, or slot identity (6) for a
- * Deployment that opts out with `WORKFLOW_SEALED_LOG=0`. A 0.30.0 Release on
- * eve 1.0.0-rc.1 or rc.2, which do not ask for spec 9, mints 8 under an
- * attestation of 9; both are admitted, so the gate is unaffected. 0.31.0 keeps
+ * Deployment that opts out with `WORKFLOW_SEALED_LOG=0`. 0.31.0 keeps
  * spec 9 and adds the atomic start Hook (`capabilities.atomicStartHook`) eve
- * 1.0.0-rc.6 starts every session with; it is a capability, not a storage
+ * starts every session with; it is a capability, not a storage
  * generation, so the attestation does not record it. 8 is the reader contract for another run's
  * `createHook({ experimental_force: true })` taking a token over, which the
  * World implements from 0.27.0 (`capabilities.hookForceClaim`) and eve 0.81.1
