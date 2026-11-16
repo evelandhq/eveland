@@ -14,7 +14,6 @@ describe("runtime activation persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -332,7 +331,6 @@ async function deploymentFixture(
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   const deployment = await store.recordDeployment({
     projectId: project.id,
@@ -363,7 +361,6 @@ describe("runtime instance port reservation", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     return store.recordDeployment({
       projectId: project.id,

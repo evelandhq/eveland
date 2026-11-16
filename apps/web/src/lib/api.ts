@@ -24,7 +24,6 @@ import type {
   PublicSourceRevision as CorePublicSourceRevision,
   ResolvedAgentRoute as CoreResolvedAgentRoute,
   SourceOrigin as CoreSourceOrigin,
-  ScheduleRecord,
   ScheduleRunListItem,
   ScheduleRunStatus as CoreScheduleRunStatus,
   ScheduleVersion as CoreScheduleVersion,
@@ -37,7 +36,6 @@ import type {
 
 export type Project = CoreProject;
 export type PublicSecret = CorePublicSecret;
-export type Schedule = ScheduleRecord;
 export type ProjectSchedule = CoreProjectSchedule;
 export type ScheduleVersion = CoreScheduleVersion;
 export type ProjectScheduleSummary = CoreProjectScheduleSummary;

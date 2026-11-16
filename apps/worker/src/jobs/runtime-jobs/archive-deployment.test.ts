@@ -21,7 +21,6 @@ async function createArchiveFixture(store: Store) {
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   // Four deployments so the oldest falls outside the keep-recent-3 window.
   const deployments: DeploymentRecord[] = [];

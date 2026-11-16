@@ -1,7 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { ProjectImportKind, ScheduleRecord } from "@evelandhq/core/contracts";
-import { getNextRunAt } from "@evelandhq/core/schedules";
+import type { ProjectImportKind } from "@evelandhq/core/contracts";
 import { inspectEveProject, type SourceFile } from "@evelandhq/core/source";
 
 const ignoredDirectories = new Set([
@@ -23,7 +22,6 @@ export type SourceScanResult = {
   summary: Record<string, unknown>;
   envVars: string[];
   files: Array<{ path: string; content: string }>;
-  schedules: Array<Omit<ScheduleRecord, "id" | "projectId">>;
 };
 
 export async function scanEveSource(input: {
@@ -52,31 +50,6 @@ export async function scanEveSource(input: {
     },
     envVars: inspection.envVars,
     files: files.map((file) => ({ path: file.path, content: file.content ?? "" })),
-    schedules: inspection.schedules.map((schedule) => {
-      if (schedule.kind === "markdown") {
-        return {
-          name: schedule.key,
-          kind: schedule.kind,
-          cron: schedule.cron,
-          timezone: schedule.timezone,
-          enabled: true,
-          executable: true,
-          sourcePath: schedule.sourcePath,
-          nextRunAt: getNextRunAt(schedule.cron, new Date(), schedule.timezone).toISOString(),
-        };
-      }
-
-      return {
-        name: schedule.key,
-        kind: "typescript" as const,
-        cron: null,
-        timezone: null,
-        enabled: true,
-        executable: true,
-        sourcePath: schedule.sourcePath,
-        nextRunAt: null,
-      };
-    }),
   };
 
   assertNoNulCharacters(result);

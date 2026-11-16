@@ -125,7 +125,6 @@ describe("Deployment observability policy", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const staleDeployment = await store.recordDeployment({
       projectId: project.id,
@@ -190,7 +189,6 @@ describe("Deployment observability policy", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,

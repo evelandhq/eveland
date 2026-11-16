@@ -25,7 +25,6 @@ describe("SQL Store usage analytics", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const researchRevision = await store.recordSourceRevision({
         projectId: research.id,
@@ -34,7 +33,6 @@ describe("SQL Store usage analytics", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const supportDeployment = await store.recordDeployment({
         projectId: support.id,

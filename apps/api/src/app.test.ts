@@ -19,7 +19,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -105,7 +104,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     // Protocol 1 and per_run_queue_v1, but an event log written under a
     // storage generation this platform cannot read: independent axes.
@@ -182,7 +180,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -286,7 +283,9 @@ describe("api app", () => {
     });
     expect(complete.status).toBe(200);
     await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({ status: "running" });
-    await expect(store.listSessions(project.id)).resolves.toContainEqual(
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toContainEqual(
       expect.objectContaining({
         eveSessionId: "eve_schedule_api",
         scheduleRunId: run.id,

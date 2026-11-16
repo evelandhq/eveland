@@ -32,7 +32,6 @@ async function deploymentFixture(
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   const deployment = await store.recordDeployment({
     projectId: project.id,

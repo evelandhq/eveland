@@ -60,7 +60,6 @@ describe("shared Agent environment routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const firstDeployment = await store.recordDeployment({
       projectId: firstProject.id,
@@ -93,7 +92,6 @@ describe("shared Agent environment routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const otherLiveDeployment = await store.recordDeployment({
       projectId: secondProject.id,

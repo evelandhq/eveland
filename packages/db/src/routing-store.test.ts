@@ -33,7 +33,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const first = await store.recordDeployment({
       projectId: project.id,
@@ -107,7 +106,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const first = await store.recordDeployment({
       projectId: project.id,
@@ -176,7 +174,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const retained = await store.recordDeployment({
       projectId: project.id,
@@ -215,7 +212,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -277,7 +273,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {
@@ -319,7 +314,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {
@@ -390,7 +384,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {
@@ -440,7 +433,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {
@@ -484,7 +476,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 5; index += 1) {
@@ -530,7 +521,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -579,7 +569,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -631,7 +620,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -664,7 +652,9 @@ describe("routing repository", () => {
       affinitySource: null,
     });
 
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({ trigger: "api", routeId: route!.id, deploymentId: deployment.id }),
     ]);
     await expect(store.findSessionBinding(project.id, "eve_gateway")).resolves.toMatchObject({
@@ -682,7 +672,6 @@ describe("routing repository", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -758,7 +747,6 @@ describe("deployment recording atomicity", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const first = await store.recordDeployment({
       projectId: project.id,
@@ -806,7 +794,6 @@ describe("deployment list bounds", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const recorded: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {

@@ -34,6 +34,55 @@ export function createControlPlaneAuthRuntime(input: {
   });
 }
 
+/**
+ * Records one provider-reported model step the way production does: an
+ * observed `usage.recorded` event ingested against a Deployment of the project.
+ */
+export async function recordObservedModelUsage(
+  store: Store,
+  input: {
+    projectId: string;
+    eveSessionId: string;
+    agent: { id: string; name: string };
+    usage: Record<string, number>;
+  },
+) {
+  const revision = await store.recordSourceRevision({
+    projectId: input.projectId,
+    kind: "zip",
+    sourcePath: "/tmp/usage-fixture",
+    summary: {},
+    envVars: [],
+    files: [],
+  });
+  const deployment = await store.recordDeployment({
+    projectId: input.projectId,
+    sourceRevisionId: revision.id,
+    imageTag: "fixture:usage",
+    observerContract: 3,
+    containerName: `fixture-usage-${input.eveSessionId}`,
+    internalPort: 3000,
+    hostPort: 41994,
+    runtimeKind: "docker",
+  });
+  return store.ingestAgentEvent({
+    telemetryEventId: `${input.eveSessionId}_usage`,
+    eventFingerprint: `${input.eveSessionId}_usage`,
+    deploymentId: deployment.id,
+    eveSessionId: input.eveSessionId,
+    parentEveSessionId: null,
+    sourceSequence: 1,
+    agent: { ...input.agent, nodeId: "root" },
+    channelKind: "channel:eve",
+    eventAt: new Date().toISOString(),
+    event: {
+      type: "usage.recorded",
+      scope: { turnId: "turn_0", runId: "run_0" },
+      data: { kind: "model", owner: { runId: "run_0" }, usage: input.usage },
+    },
+  });
+}
+
 export async function createScheduleRunFixture(store: Store, createRun = true) {
   const project = await store.createProject({
     name: "Scheduled Agent",
@@ -48,7 +97,6 @@ export async function createScheduleRunFixture(store: Store, createRun = true) {
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   const versions = await store.recordScheduleVersions({
     projectId: project.id,

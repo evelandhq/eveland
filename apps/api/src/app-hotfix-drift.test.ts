@@ -41,7 +41,6 @@ async function recordRevision(
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
 }
 

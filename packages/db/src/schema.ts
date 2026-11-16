@@ -871,21 +871,6 @@ export const jobs = pgTable(
   ],
 );
 
-export const schedules = pgTable("schedules", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => projects.id),
-  name: text("name").notNull(),
-  kind: text("kind").notNull(),
-  cron: text("cron"),
-  timezone: text("timezone"),
-  enabled: boolean("enabled").notNull().default(true),
-  executable: boolean("executable").notNull().default(false),
-  sourcePath: text("source_path").notNull(),
-  nextRunAt: timestamp("next_run_at", { withTimezone: true }),
-});
-
 export const sourceRevisions = pgTable(
   "source_revisions",
   {

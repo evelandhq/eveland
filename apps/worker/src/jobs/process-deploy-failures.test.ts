@@ -29,7 +29,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
     let buildDir: string | null = null;
@@ -83,7 +82,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
     let buildDir: string | null = null;
@@ -157,7 +155,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.saveModelGateway({ kind: "openai-compatible", baseUrl: "https://llm.example/v1" });
     await store.upsertSecrets(project.id, [
@@ -245,7 +242,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.saveModelGateway({ kind: "openai-compatible", baseUrl: "https://llm.example/v1" });
     await store.upsertSecrets(project.id, [
@@ -312,7 +308,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -364,7 +359,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     // An existing deployment so the OLD process's stop (outside the cleanup
     // block) and the NEW process's cleanup stop can be told apart.
@@ -433,7 +427,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.upsertSecret(
       project.id,
@@ -511,7 +504,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -565,7 +557,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -636,7 +627,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
     await recordReadyDispatcherFixture(store);
@@ -715,7 +705,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -773,7 +762,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -824,7 +812,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     // A project that could set these could scope its world at another
     // tenant's data or ask it for a storage generation it refuses.
@@ -892,7 +879,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.upsertSecret(
       project.id,
@@ -974,7 +960,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.saveSharedAgentEnvironment({
       entries: [
@@ -1058,7 +1043,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -1116,7 +1100,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -1171,7 +1154,6 @@ describe("processNextJob", () => {
       summary: { eveVersion: "0.22.6" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -1224,7 +1206,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
     // The dispatcher must be claiming from the SAME database — proven by the

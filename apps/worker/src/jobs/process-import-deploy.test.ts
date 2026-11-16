@@ -270,7 +270,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.recordDeployment({
       projectId: project.id,
@@ -323,7 +322,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: ["OPENAI_API_KEY"],
       files: [],
-      schedules: [],
     });
     await store.upsertSecret(
       project.id,
@@ -490,7 +488,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy");
 
@@ -542,7 +539,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const current = await store.recordDeployment({
       releaseId: "rel_old",
@@ -626,7 +622,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const production = await store.recordDeployment({
       projectId: project.id,
@@ -652,7 +647,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "build_deploy", { promoteAfterDeploy: true });
 
@@ -710,7 +704,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const production = await store.recordDeployment({
       releaseId: "rel_production",
@@ -800,7 +793,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     // The current deployment was made by systemd; the worker's active runtime
     // below is docker. Only the systemd adapter may stop the systemd unit.
@@ -889,7 +881,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const versions: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {
@@ -974,7 +965,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const versions: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {

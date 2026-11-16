@@ -92,7 +92,6 @@ describe("instance health store", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const readyDeployment = await store.recordDeployment({
       projectId: project.id,

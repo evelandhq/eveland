@@ -29,7 +29,6 @@ async function projectWithLiveDeployment(
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   const deployment = await store.recordDeployment({
     releaseId: `rel_${name}`,

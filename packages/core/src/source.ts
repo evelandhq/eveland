@@ -1,5 +1,4 @@
 import { isSupportedEveSpecifier, unsupportedEveSpecifierMessage } from "./eve-compatibility.js";
-import { parseScheduleSource, type DiscoveredSchedule } from "./schedules.js";
 
 // Browser-safe module: pure string handling instead of node:path.
 function posixBasename(filePath: string): string {
@@ -41,7 +40,6 @@ export type EveProjectInspection = {
   eveVersion: string | null;
   summary: EveProjectSummary;
   envVars: string[];
-  schedules: DiscoveredSchedule[];
   errors: string[];
 };
 
@@ -65,7 +63,6 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
   const layout = detectLayout(paths);
   const root = AGENT_ROOT;
   const summary = emptySummary();
-  const schedules: DiscoveredSchedule[] = [];
   const envVars = new Set<string>();
   const errors: string[] = [];
 
@@ -98,11 +95,6 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
 
     if (isUnder(file.path, `${root}schedules/`) && /\.(md|[cm]?[jt]s)$/.test(file.path)) {
       summary.schedules.push(file.path);
-      try {
-        schedules.push(parseScheduleSource(file.path, file.content));
-      } catch {
-        // Invalid schedule files are still shown in source summary; build validation reports detail later.
-      }
     }
 
     const subagent = getSubagentId(file.path, root);
@@ -127,7 +119,6 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
     eveVersion,
     summary,
     envVars: [...envVars].sort(),
-    schedules,
     errors,
   };
 }

@@ -39,7 +39,6 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -122,7 +121,9 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
 
     expect(first.session.id).toBe(gatewaySession.id);
     expect(replay.duplicate).toBe(true);
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         trigger: "playground",
         status: "waiting_approval",
@@ -162,7 +163,6 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const deployment = await store.recordDeployment({
         projectId: project.id,
@@ -215,9 +215,9 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
 
       await Promise.all([lockTransaction, newer, older]);
 
-      await expect(store.listSessions(project.id)).resolves.toEqual([
-        expect.objectContaining({ status: "completed" }),
-      ]);
+      await expect(
+        store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+      ).resolves.toEqual([expect.objectContaining({ status: "completed" })]);
       await expect(store.listSessionEvents(started.session.id)).resolves.toHaveLength(3);
     } finally {
       releaseSessionLock();
@@ -259,7 +259,9 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       expect(second!.node.id).toBe(first!.node.id);
       expect(second!.session.id).toBe(first!.session.id);
       // The loser's own placeholder Session rolled back with its transaction.
-      await expect(store.listSessions(project.id)).resolves.toEqual([
+      await expect(
+        store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+      ).resolves.toEqual([
         expect.objectContaining({ id: first!.session.id, eveSessionId: "eve_race" }),
       ]);
       await expect(store.listSessionNodes(first!.session.id)).resolves.toHaveLength(1);
@@ -298,7 +300,9 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       const [first, second] = await Promise.all(racers);
       expect(second!.session.id).toBe(first!.session.id);
       expect(second!.node.id).not.toBe(first!.node.id);
-      await expect(store.listSessions(project.id)).resolves.toEqual([
+      await expect(
+        store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+      ).resolves.toEqual([
         expect.objectContaining({ id: first!.session.id, eveSessionId: "eve_parent_race" }),
       ]);
       const nodes = await store.listSessionNodes(first!.session.id);
@@ -329,7 +333,6 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
         deploymentId: deployment.id,
         trigger: "playground",
       });
-      await store.appendSessionEvent(gatewaySession.id, "message", { role: "user" });
       hold = holdWrites("sessions");
       await hold.held;
 
@@ -358,7 +361,9 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       // the Playground Session. The durable outcome is the same single row.
       const [completed, observed] = await Promise.all([completion, ingest]);
       expect(completed?.id).toBe(gatewaySession.id);
-      await expect(store.listSessions(project.id)).resolves.toEqual([
+      await expect(
+        store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+      ).resolves.toEqual([
         expect.objectContaining({
           id: gatewaySession.id,
           eveSessionId: "eve_playground_race",
@@ -368,7 +373,7 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
       ]);
       await expect(store.listSessionNodes(gatewaySession.id)).resolves.toHaveLength(1);
       const events = await store.listSessionEvents(gatewaySession.id);
-      expect(events.map((event) => event.index)).toEqual([0, 1]);
+      expect(events.map((event) => event.index)).toEqual([0]);
     } finally {
       hold?.release();
       await hold?.finished;
@@ -420,7 +425,9 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
 
       const [completed, observed] = await Promise.all([completion, ingest]);
       expect(completed?.id).toBe(run.id);
-      await expect(store.listSessions(project.id)).resolves.toEqual([
+      await expect(
+        store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+      ).resolves.toEqual([
         expect.objectContaining({
           id: observed.session.id,
           eveSessionId: "eve_schedule_race",
@@ -486,7 +493,6 @@ async function recordTestDeployment(
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   const deployment = await store.recordDeployment({
     projectId,

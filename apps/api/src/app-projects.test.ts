@@ -44,7 +44,6 @@ describe("api app", () => {
       summary: { eveVersion: "1.0.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
 
     const response = await createApp(store).request("/api/projects");
@@ -599,7 +598,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -637,7 +635,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deploymentKeys: string[] = [];
     for (let index = 0; index < 5; index += 1) {
@@ -687,7 +684,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const first = await store.recordDeployment({
       projectId: project.id,
@@ -775,7 +771,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const first = await store.recordDeployment({
       projectId: project.id,
@@ -841,7 +836,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments = [];
     for (let index = 0; index < 4; index += 1) {
@@ -923,7 +917,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments = [];
     for (let index = 0; index < 3; index += 1) {
@@ -1197,7 +1190,6 @@ describe("promote failure handling", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,

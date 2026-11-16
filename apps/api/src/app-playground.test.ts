@@ -16,7 +16,6 @@ describe("api app", () => {
       summary: { eveVersion: "1.0.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -71,7 +70,9 @@ describe("api app", () => {
 
     expect(response.status).toBe(202);
     expect(playgroundProxy).toHaveBeenCalledOnce();
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         eveSessionId: "eve_dormant",
         deploymentId: deployment.id,
@@ -93,7 +94,6 @@ describe("api app", () => {
       summary: { eveVersion: "1.0.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const projectCurrentDeployment = await store.recordDeployment({
       projectId: project.id,
@@ -157,7 +157,9 @@ describe("api app", () => {
     });
 
     expect(response.status).toBe(202);
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         eveSessionId: "eve_routed",
         deploymentId: gatewaySelectedDeployment.id,
@@ -185,7 +187,6 @@ describe("api app", () => {
       summary: { eveVersion: "1.0.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -344,14 +345,18 @@ describe("api app", () => {
     expect(stream.status).toBe(200);
     expect(stream.headers.get("x-eve-stream-tail-index")).toBe("2");
     await expect(stream.text()).resolves.toContain("interaction.opened");
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         eveSessionId: "eve_chat",
         status: "waiting_approval",
         completedAt: null,
       }),
     ]);
-    const [platformSession] = await store.listSessions(project.id);
+    const [platformSession] = await store
+      .listSessionsPage(project.id, { limit: 100 })
+      .then((page) => page.items);
     expect(JSON.stringify(await store.listSessionEvents(platformSession!.id))).not.toContain(
       attachmentData,
     );
@@ -404,7 +409,9 @@ describe("api app", () => {
       sessionId: "eve_chat",
       deliveryId: "dlv_reset",
     });
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         eveSessionId: "eve_chat",
         status: "completed",
@@ -444,7 +451,6 @@ describe("api app", () => {
       files: [
         { path: "package.json", content: JSON.stringify({ dependencies: { eve: "^1.0.0" } }) },
       ],
-      schedules: [],
     });
     const app = createApp(store);
 
