@@ -397,11 +397,14 @@ also builds no local view of the Collector's delivery volume or queue pressure.
   or cold activation.
 - Observability is not a billing ledger; usage records only what Eve/providers
   actually report, and missing values stay missing. A usage row is one
-  `usage.recorded` owned by a model run or a context change (keyed by `run_key`);
+  `usage.recorded`, keyed by `run_key`: a model run's or a context change's record
+  by its owner, and spend Eve makes outside its own model steps -- `decision`
+  (`decide()`, automatic model selection, tool approval) and `auxiliary` (a model
+  call a tool makes) -- by its stream position;
   rows recorded from Eve 0.83 Sessions are one `step.completed` each (keyed by turn
-  and step) and stay as they were. A v27 record owned
-  by a call re-reports spend its child session already recorded, so only the child
-  counts it; v27 fills a missing token count with zero, so missing usage is a
+  and step) and stay as they were. A `model` record owned by a call, and a
+  `delegated-late` one, re-report spend a child session already recorded, so only
+  the child counts them; v27 fills a missing token count with zero, so missing usage is a
   model run with no record at all. A model run's `run_key` also names the commit
   (stream line) the fact was written in. A completed model run counts as missing from
   its `model.settled` until its record arrives; eve writes that record in the same

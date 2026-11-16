@@ -16,6 +16,7 @@ import {
   GEN_AI_OPERATION_NAME_VALUE_EXECUTE_TOOL,
   GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
 } from "@opentelemetry/semantic-conventions/incubating";
+import { isDelegatedUsageRecord } from "@evelandhq/core/eve";
 import { commonAttributes } from "./attributes.js";
 import type { AgentTelemetryHookContext, RuntimeAgentPolicy } from "./contracts.js";
 import {
@@ -208,6 +209,17 @@ export function mapAgentTelemetryLifecycle(input: {
       const ownerRunKey = ownerRunId ? findRunKey(state, sessionId, ownerRunId, turnId) : undefined;
       const span = ownerRunKey ? state.steps.get(ownerRunKey) : undefined;
       if (!ownerRunKey || !span) {
+        // Spend no open run owns -- a decision, an auxiliary call, a context
+        // change -- is still this session's, so it is metered on its own; a
+        // child's re-reported spend is metered by the child's observer.
+        if (!ownerRunId && !isDelegatedUsageRecord(data)) {
+          recordUsage({
+            data,
+            modelId: undefined,
+            metrics,
+            attributes: { "eveland.gen_ai.usage.kind": asString(data.kind) ?? "unknown" },
+          });
+        }
         endSettledRuns(state, sessionId);
         return turnSpan;
       }

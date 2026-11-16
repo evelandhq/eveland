@@ -277,6 +277,44 @@ describe("buildTranscriptTurns on v27 (eve 0.84+) facts", () => {
     ]);
   });
 
+  test("counts a decision's and an auxiliary call's spend on the turn, not a child's re-report", () => {
+    const usage = (inputTokens: number) => ({
+      inputTokens,
+      outputTokens: 1,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+    const [turn] = buildTranscriptTurns([
+      fact("usage.recorded", {
+        turnId: "turn_1",
+        kind: "model",
+        owner: { runId: "run_1" },
+        usage: usage(10),
+      }),
+      fact("usage.recorded", { turnId: "turn_1", kind: "decision", usage: usage(100) }),
+      fact("usage.recorded", {
+        turnId: "turn_1",
+        kind: "auxiliary",
+        owner: { callId: "call_1" },
+        usage: usage(1000),
+      }),
+      fact("usage.recorded", {
+        turnId: "turn_1",
+        kind: "model",
+        owner: { callId: "call_2" },
+        usage: usage(9),
+      }),
+      fact("usage.recorded", { turnId: "turn_1", kind: "delegated-late", usage: usage(9) }),
+    ]);
+
+    expect(turn!.usage).toEqual({
+      inputTokens: 1110,
+      outputTokens: 3,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+  });
+
   test("records v27 failures, cancellations, sign-ins, and the child a call opened", () => {
     const turns = buildTranscriptTurns([
       fact("call.requested", {

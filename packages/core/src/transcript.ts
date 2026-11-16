@@ -1,3 +1,7 @@
+// Through the package's own export: the Dashboard bundles this module from source, and
+// its bundler does not map a relative `.js` specifier onto the `.ts` file.
+import { isDelegatedUsageRecord } from "@evelandhq/core/eve";
+
 export type TranscriptSourceEvent = {
   type: string;
   payload: unknown;
@@ -475,10 +479,8 @@ export function buildTranscriptTurns(events: TranscriptSourceEvent[]): Transcrip
         break;
       }
       case "usage.recorded": {
-        // A call-owned record re-reports a child's own spend, which that
-        // child's node already shows.
-        const owner = asRecord(payload?.owner);
-        if (!asString(owner?.runId) && !asString(owner?.changeId)) break;
+        // A re-reported child spend is shown on that child's node.
+        if (isDelegatedUsageRecord(payload)) break;
         const usage = usageFrom(payload?.usage);
         if (usage) {
           const turn = turnFor(payload, event.eventAt);

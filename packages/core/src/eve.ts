@@ -6,7 +6,8 @@ export type ModelStepUsage = {
    * The idempotency key a v27 usage row is stored under; null for a v26 step.
    * A model run's key names the commit line too (`run:<runId>@line:<line>`)
    * when the fact carries its stream position, see {@link runUsageKey}; a
-   * context change's key is its owner (`change:<changeId>`).
+   * context change's key is its owner (`change:<changeId>`); any other record
+   * is keyed by its stream position (`record@line:<line>:<index>`).
    */
   runKey: string | null;
   finishReason: string | null;
@@ -287,11 +288,10 @@ export function isWorkflowWebhookRoute(pathname: string): boolean {
  * a v26 `step.completed` (keyed by turn and step index) or a v27
  * `usage.recorded` (keyed by the model run or context change that owns it).
  *
- * A v27 record owned by a call (`owner.callId`) re-reports spend a child
- * session already recorded on its own stream, and an ownerless one
- * (`kind: "delegated-late"`) is a child's spend that arrived after its call
- * settled; both are left to the child's node, so a session's totals never
- * count the same model call twice. v27 records every usage field (eve fills a
+ * A v27 record that re-reports a child's spend (see
+ * {@link isDelegatedUsageRecord}) is left to the child's node, so a session's
+ * totals never count the same model call twice; every other record counts on
+ * the session that recorded it. v27 records every usage field (eve fills a
  * missing token count with zero), so missing usage is a model run with no
  * record at all rather than a record with gaps.
  */
@@ -384,19 +384,48 @@ export function unsegmentedRunKey(runKey: string): string | null {
   return match ? match[1]! : null;
 }
 
+/**
+ * Whether a `usage.recorded` re-reports spend a child session recorded on its
+ * own stream: a model record owned by a call (the child's spend, delivered to
+ * the call that opened it) or a `delegated-late` one (a child's spend that
+ * arrived after its call settled). Every other record -- a model run's, a
+ * context change's, and the spend eve makes outside its own model steps
+ * (`decision` for `decide()`, model selection, and tool approval; `auxiliary`
+ * for a model call a tool makes, which eve owns by that call) -- is the
+ * recording session's own.
+ */
+export function isDelegatedUsageRecord(data: unknown): boolean {
+  if (!isEveRecord(data)) return false;
+  if (data.kind === "delegated-late") return true;
+  const owner = isEveRecord(data.owner) ? data.owner : null;
+  return data.kind === "model" && typeof owner?.callId === "string";
+}
+
+/**
+ * The usage key of a record no model run or context change owns. Its stream
+ * position never changes and is unique within the session, so a redelivery
+ * lands on the same row; without one nothing makes the record idempotent.
+ */
+function positionUsageKey(position: unknown): string | null {
+  if (!isEveRecord(position)) return null;
+  const line = readNonNegativeInteger(position.line);
+  const index = readNonNegativeInteger(position.index);
+  return line === null || index === null ? null : `record@line:${line}:${index}`;
+}
+
 function parseUsageRecorded(
   payload: unknown,
   scope: unknown,
   position: unknown,
 ): ModelStepUsage | null {
-  if (!isEveRecord(payload)) return null;
+  if (!isEveRecord(payload) || isDelegatedUsageRecord(payload)) return null;
   const owner = isEveRecord(payload.owner) ? payload.owner : null;
   const runKey =
     typeof owner?.runId === "string" && owner.runId.length > 0
       ? runUsageKey(owner.runId, position)
       : typeof owner?.changeId === "string" && owner.changeId.length > 0
         ? `change:${owner.changeId}`
-        : null;
+        : positionUsageKey(position);
   if (runKey === null) return null;
   const scopeRecord = isEveRecord(scope) ? scope : null;
   const turnId =
