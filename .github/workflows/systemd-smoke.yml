@@ -183,6 +183,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Allow unprivileged user namespaces
+        # The sandbox's bwrap runs inside the build and the container, and the
+        # runner kernel's AppArmor restriction applies there too. Same lift as
+        # the systemd job above, on an ephemeral VM.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Docker sandbox smoke
         run: pnpm --filter @evelandhq/worker smoke:docker-sandbox
 
