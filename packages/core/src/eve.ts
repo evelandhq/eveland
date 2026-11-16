@@ -79,6 +79,7 @@ export type EveSessionRequest = {
     | "stream"
     | "clear"
     | "compact"
+    | "session_route"
     | "mcp_start"
     | "mcp_invocation";
   sessionId: string | null;
@@ -219,7 +220,7 @@ export function classifyEveSessionRequest(
   const match = /^\/eve\/v1\/session\/([^/]+)(?:\/(cancel|stream|clear|compact|reset|end))?$/.exec(
     pathname,
   );
-  if (!match?.[1]) return null;
+  if (!match?.[1]) return classifySessionRoute(pathname);
   // The alternation above is the source of truth for this cast.
   const suffix = (match[2] ?? null) as
     | "cancel"
@@ -246,6 +247,25 @@ export function classifyEveSessionRequest(
     kind: suffix === null ? "continuation" : suffix === "end" ? "reset" : suffix,
     sessionId,
   };
+}
+
+/**
+ * Any other route eve serves under a session -- the tool stubs `eve eval`
+ * reads (`GET /eve/v1/session/:id/stubs`), and whatever a later eve adds
+ * there -- belongs to that session, so it is pinned by the session id like
+ * every route above and eve answers it. A path whose segments do not decode
+ * stays out of the namespace.
+ */
+function classifySessionRoute(pathname: string): EveSessionRequest | null {
+  const route = /^\/eve\/v1\/session\/([^/?#]+)\/([^/?#][^?#]*)$/.exec(pathname);
+  if (!route) return null;
+  try {
+    const sessionId = decodeURIComponent(route[1]!);
+    for (const segment of route[2]!.split("/")) decodeURIComponent(segment);
+    return { kind: "session_route", sessionId };
+  } catch {
+    return null;
+  }
 }
 
 export function isEveSessionNamespace(pathname: string): boolean {

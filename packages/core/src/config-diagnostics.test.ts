@@ -199,7 +199,7 @@ describe("configuration diagnostics", () => {
           name: "EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS",
           value: "86400000",
         }),
-        expect.objectContaining({ name: "EVELAND_API_SESSION_IDLE_TTL_MS", value: "604800000" }),
+        expect.objectContaining({ name: "EVELAND_API_SESSION_IDLE_TTL_MS", value: "2592000000" }),
       ]),
     );
     expect(gateway.entries).toEqual(
@@ -210,7 +210,7 @@ describe("configuration diagnostics", () => {
           name: "EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS",
           value: "86400000",
         }),
-        expect.objectContaining({ name: "EVELAND_API_SESSION_IDLE_TTL_MS", value: "604800000" }),
+        expect.objectContaining({ name: "EVELAND_API_SESSION_IDLE_TTL_MS", value: "2592000000" }),
       ]),
     );
     expect(worker.entries).toEqual(
@@ -227,7 +227,7 @@ describe("configuration diagnostics", () => {
           name: "EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS",
           value: "86400000",
         }),
-        expect.objectContaining({ name: "EVELAND_API_SESSION_IDLE_TTL_MS", value: "604800000" }),
+        expect.objectContaining({ name: "EVELAND_API_SESSION_IDLE_TTL_MS", value: "2592000000" }),
       ]),
     );
   });

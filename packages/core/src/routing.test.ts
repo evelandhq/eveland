@@ -139,4 +139,15 @@ describe("route policy", () => {
       ),
     ).toBe(true);
   });
+
+  test("keeps a public API binding for Eve's 30-day session idle timeout by default", () => {
+    const now = new Date("2026-07-31T12:00:00.000Z");
+    const idleFor = (days: number, extraMs = 0) => ({
+      trigger: "api" as const,
+      updatedAt: new Date(now.getTime() - days * 86_400_000 - extraMs),
+    });
+    expect(Routing.isSessionBindingActive(idleFor(29), now)).toBe(true);
+    expect(Routing.isSessionBindingActive(idleFor(30, -1), now)).toBe(true);
+    expect(Routing.isSessionBindingActive(idleFor(30), now)).toBe(false);
+  });
 });

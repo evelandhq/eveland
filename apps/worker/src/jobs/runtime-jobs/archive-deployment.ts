@@ -1,4 +1,8 @@
 import type { DeploymentStatus } from "@evelandhq/core/contracts";
+import {
+  DEFAULT_API_SESSION_IDLE_TTL_MS,
+  DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
+} from "@evelandhq/core/routing";
 import type { Store } from "@evelandhq/db";
 import { rm } from "node:fs/promises";
 import path from "node:path";
@@ -70,9 +74,12 @@ export async function handleArchiveDeploymentJob(
       Number.isFinite(configuredRetention) ? Math.max(3, Math.floor(configuredRetention)) : 3,
       {
         playgroundIdleTtlMs: Number(
-          process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000,
+          process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ??
+            DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
         ),
-        apiIdleTtlMs: Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000),
+        apiIdleTtlMs: Number(
+          process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? DEFAULT_API_SESSION_IDLE_TTL_MS,
+        ),
         // A run sleeping on a timer holds no session and no lease, so without
         // this the archive would delete the build directory and image that are
         // the only things able to resume it.

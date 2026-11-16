@@ -29,7 +29,7 @@ Agent conversations are multi-turn and durable — follow-up interactions can ar
 
 - **Durable SessionBinding**: Once an agent issues a session ID, the gateway persists a `SessionBinding`. Follow-up turns, stream listeners, and cancel requests route strictly to the bound deployment.
 - **Graceful draining**: Adjusting traffic weights or rolling back releases leaves existing sessions bound to their original targets, applying new policies only to newly initiated root sessions.
-- **Bounded persistence**: Session bindings expire after an idle TTL (default: 24h for Playground, 7 days for public API). Expired sessions return a clean `410 session_expired`.
+- **Bounded persistence**: Session bindings expire after an idle TTL (default: 24h for Playground, 30 days for public API, matching Eve's session idle timeout). Expired sessions return a clean `410 session_expired`.
 
 ---
 

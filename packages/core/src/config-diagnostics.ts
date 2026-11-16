@@ -473,7 +473,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "EVELAND_API_SESSION_IDLE_TTL_MS",
     ["api", "gateway", "worker"],
     "Idle time after the last successful public API session request before its Deployment binding expires.",
-    "604800000",
+    "2592000000",
   ),
   entry(
     "EVELAND_COLD_START_TIMEOUT_MS",

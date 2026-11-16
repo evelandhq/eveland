@@ -129,8 +129,9 @@ describe("Gateway", () => {
       { method: "POST", path: "/eve/v1/session/" },
       { method: "GET", path: "/eve/v1/session/eve_1" },
       { method: "POST", path: "/eve/v1/session/eve_1/" },
-      { method: "POST", path: "/eve/v1/session/eve_1/unknown" },
+      { method: "POST", path: "/eve/v1/session/eve_1/stream" },
       { method: "POST", path: "/eve/v1/session/%E0%A4%A" },
+      { method: "GET", path: "/eve/v1/session/%E0%A4%A/stubs" },
     ]) {
       const response = await app.request(`http://p-alpha.agent.localhost${request.path}`, {
         method: request.method,

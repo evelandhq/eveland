@@ -9,6 +9,10 @@ import { formatBuildInfo } from "@evelandhq/core/build-info";
 import { createConfigurationSnapshot } from "@evelandhq/core/config-diagnostics";
 import { createBuildInfoFromEnv } from "@evelandhq/core/server/build-info";
 import { writeConfigurationSnapshotFile } from "@evelandhq/core/server/config-diagnostics";
+import {
+  DEFAULT_API_SESSION_IDLE_TTL_MS,
+  DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
+} from "@evelandhq/core/routing";
 import { listenForQueuedJobs } from "@evelandhq/db";
 import { createStoreFromEnv } from "@evelandhq/db/factory";
 import { runClaimedJob } from "./jobs/process.js";
@@ -357,8 +361,12 @@ const sweepReleases = () => {
   sweepReleaseRetention(storeFactory.store, {
     keepRecent: Number(process.env.EVELAND_RELEASE_RETENTION ?? 3),
     limit: Number(process.env.EVELAND_RELEASE_SWEEP_BATCH_SIZE ?? 25),
-    playgroundIdleTtlMs: Number(process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000),
-    apiIdleTtlMs: Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000),
+    playgroundIdleTtlMs: Number(
+      process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
+    ),
+    apiIdleTtlMs: Number(
+      process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? DEFAULT_API_SESSION_IDLE_TTL_MS,
+    ),
   }).catch((error: unknown) =>
     console.error(
       "Release retention sweep failed:",
@@ -384,8 +392,12 @@ const sweepAbandonedWorkflowRuns = () => {
     // The same policy the release reaper archives by: a superseded Deployment
     // it would no longer keep has session runs nothing can reach.
     keepRecent: Number(process.env.EVELAND_RELEASE_RETENTION ?? 3),
-    playgroundIdleTtlMs: Number(process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? 86_400_000),
-    apiIdleTtlMs: Number(process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? 604_800_000),
+    playgroundIdleTtlMs: Number(
+      process.env.EVELAND_PLAYGROUND_SESSION_IDLE_TTL_MS ?? DEFAULT_PLAYGROUND_SESSION_IDLE_TTL_MS,
+    ),
+    apiIdleTtlMs: Number(
+      process.env.EVELAND_API_SESSION_IDLE_TTL_MS ?? DEFAULT_API_SESSION_IDLE_TTL_MS,
+    ),
   }).catch((error: unknown) =>
     console.error(
       "Abandoned workflow-run reconciliation failed:",

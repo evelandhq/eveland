@@ -31,8 +31,8 @@ Each deployment retains an immutable release artifact, a dedicated preview hostn
 Once an agent outputs a `sessionId`, the gateway records a durable `SessionBinding`:
 
 - **Affinity enforcement**: Follow-up turns (Continue), cancellations (Cancel), and streaming requests (Stream) are **always forwarded to the originally bound deployment**, even across promotions, rollbacks, or when traffic weight is dropped to zero.
-- **Expiration policy**: Playground bindings expire after 24 hours of inactivity; public API bindings expire after 7 days idle. Inactive expired sessions return `410 session_expired`.
-- **Bound routes**: continuation, cancel, clear, compact, reset (and its newer name, `end`), the session stream, a remote child's stream through its parent, and the followed-descendants stream (`GET /eve/v1/session/:sessionId/descendants/stream`) are all pinned by the session id in the path.
+- **Expiration policy**: Playground bindings expire after 24 hours of inactivity; public API bindings expire after 30 days idle, matching Eve's own session idle timeout. Inactive expired sessions return `410 session_expired`.
+- **Bound routes**: continuation, cancel, clear, compact, reset (and its newer name, `end`), the session stream, a remote child's stream through its parent, the followed-descendants stream (`GET /eve/v1/session/:sessionId/descendants/stream`), and every other route under a session -- such as the tool stubs `eve eval` reads (`GET /eve/v1/session/:sessionId/stubs`) -- are all pinned by the session id in the path. Only a path whose segments do not decode, or a canonical route called with the wrong method, is refused with `404`.
 - **No migration**: a binding never moves to another Deployment; the bound Deployment answers every pinned request until the binding expires.
 
 ---
