@@ -44,7 +44,9 @@ export function platformSandboxArtifactsProblem(manifest: unknown): string | nul
     `on a provider other than ${PLATFORM_SANDBOX_PROVIDER}. Eveland runs every sandbox on ` +
     `${PLATFORM_SANDBOX_PROVIDER}: build the environment in the sandbox module itself, from eve's ` +
     "built-in providers, which Eveland redirects. Environments built in helper files, custom " +
-    "providers from eve/sandbox/provider, and sandboxes shipped by Extensions are not redirected."
+    "providers from eve/sandbox/provider, and sandboxes shipped by Extensions are not redirected. " +
+    "Neither is the default sandbox eve gives a file-form subagent (subagents/<name>.ts); make " +
+    "such a subagent a directory (subagents/<name>/agent.ts)."
   );
 }
 

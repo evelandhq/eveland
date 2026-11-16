@@ -95,7 +95,8 @@ limactl shell "$VM" -- sudo bash -c "
     corepack pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts
 
   # Private OTLP vertical slice under the real systemd hardening: a direct
-  # private-port turn (including a directory-form subagent) exports standard
+  # private-port turn delegating to a local and an installed Extension's
+  # directory-form subagent (both on the platform sandbox) exports standard
   # OTLP logs, which project one root tree and replay-safe usage.
   EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap \
     EVELAND_DATA_DIR=/var/lib/eveland-data \

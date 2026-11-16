@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import { sealSecret } from "../../packages/core/src/server/sealed-secret.js";
 import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
 import {
@@ -33,12 +35,35 @@ const AGENT_TELEMETRY_SECRET = deriveAgentTelemetrySecret(APP_SECRET_KEY);
 const FIXTURE_TEMPLATE_PATH = fileURLToPath(
   new URL("../../apps/worker/src/integration/fixtures/observer-e2e", import.meta.url),
 );
+const EXTENSION_TEMPLATE_PATH = fileURLToPath(
+  new URL("../../apps/worker/src/integration/fixtures/observer-e2e-extension", import.meta.url),
+);
+// The workspace's eve, the verified version the fixture also pins; it only
+// builds the Extension package here, never the Agent.
+const EVE_PACKAGE_PATH = fileURLToPath(
+  new URL("../../packages/agent-observer/node_modules/eve", import.meta.url),
+);
+const EXTENSION_PACKAGE = "eveland-probe-extension";
+const execFileAsync = promisify(execFile);
+
+/**
+ * Every child the root delegates to, by the name it calls each one: a local
+ * directory-form subagent and an installed Extension's. Both run with the
+ * observer hook and on the platform sandbox. File-form subagents are not
+ * here: eve gives them its own default sandbox, which a Release refuses.
+ */
+const CHILDREN = {
+  researcher: "local",
+  probe__helper: "extension",
+} as const;
+type ChildName = keyof typeof CHILDREN;
 
 async function main(): Promise<void> {
   const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-observer-e2e-source-"));
   try {
     const fixtureSourcePath = path.join(fixtureRoot, "source");
     await materializeEveFixtureDirectory(FIXTURE_TEMPLATE_PATH, fixtureSourcePath);
+    await mountProbeExtension(fixtureRoot, fixtureSourcePath);
     const { store, close } = await createPgliteTestStore();
     let runtime: ReturnType<typeof createRuntimeAdapterFromEnv> | null = null;
     let receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>> | null = null;
@@ -93,8 +118,8 @@ async function main(): Promise<void> {
       );
       processName = deployment.containerName;
 
-      const eveSessionId = await runDirectTurn(deployment.hostPort);
-      const observations = await waitForAgentObservations(receiver);
+      const { eveSessionId, children } = await runDirectTurn(deployment.hostPort);
+      const observations = await waitForAgentObservations(receiver, children);
       assert.ok(
         observations.some((observation) => observation.parentEveSessionId !== null),
         "directory subagent OTLP logs had no parent lineage",
@@ -107,20 +132,31 @@ async function main(): Promise<void> {
       assert.equal(
         sessions.length,
         1,
-        "root and subagent must aggregate into one platform session",
+        "root and subagents must aggregate into one platform session",
       );
       const session = sessions[0]!;
       const nodes = await store.listSessionNodes(session.id);
       const usage = await store.listModelUsageEvents(session.id);
       assert.equal(session.eveSessionId, eveSessionId);
-      assert.ok(nodes.length >= 2, `expected root + directory subagent nodes, got ${nodes.length}`);
-      assert.ok(
-        usage.length >= 2,
-        `expected provider usage for root + directory subagent, got ${usage.length}`,
+      assert.equal(
+        nodes.length,
+        1 + children.size,
+        `expected the root and one node per child, got ${nodes.map((node) => node.agentName).join(", ")}`,
       );
-      assert.ok(
-        session.usage.reportedSteps >= 2,
-        "session usage aggregate did not include both nodes",
+      for (const [name, childSessionId] of children) {
+        const node = nodes.find((candidate) => candidate.eveSessionId === childSessionId);
+        assert.ok(node, `${name} has no session node`);
+        assert.equal(node.parentEveSessionId, eveSessionId, `${name} is not under the root`);
+        const childUsage = usage.filter((event) => event.eveSessionId === childSessionId);
+        assert.ok(
+          childUsage.some((event) => event.usageReported),
+          `${name} (${CHILDREN[name]}) has no provider usage on its own node`,
+        );
+      }
+      assert.equal(
+        session.usage.reportedSteps,
+        usage.filter((event) => event.usageReported).length,
+        "session usage aggregate did not count every node's usage exactly once",
       );
 
       const usageBeforeReplay = { ...session.usage };
@@ -135,7 +171,7 @@ async function main(): Promise<void> {
       );
 
       console.log(
-        `OTLP AGENT E2E OK runtime=${runtime.name} session=${session.id} eve=${eveSessionId} nodes=${nodes.length} usageEvents=${usage.length}`,
+        `OTLP AGENT E2E OK runtime=${runtime.name} session=${session.id} eve=${eveSessionId} nodes=${nodes.length} usageEvents=${usage.length} extensionSubagent=1`,
       );
     } catch (error) {
       primaryFailed = true;
@@ -178,8 +214,17 @@ void main().catch((error) => {
 
 async function waitForAgentObservations(
   receiver: Awaited<ReturnType<typeof startOtlpTestReceiver>>,
+  children: ReadonlyMap<ChildName, string>,
 ) {
   const observations: ReturnType<typeof projectAgentEventsFromOtlpLogs> = [];
+  // Provider usage is its own `usage.recorded` fact, which each hooked child
+  // reports on its own session.
+  const usageReached = (childSessionId: string) =>
+    observations.some(
+      (observation) =>
+        eventType(observation.event) === "usage.recorded" &&
+        observation.eveSessionId === childSessionId,
+    );
   for (let attempt = 0; attempt < 60; attempt += 1) {
     for (const payload of receiver.drain("logs")) {
       observations.push(
@@ -191,16 +236,13 @@ async function waitForAgentObservations(
         }),
       );
     }
-    if (
-      // Provider usage is its own `usage.recorded` fact.
-      observations.some((observation) => eventType(observation.event) === "usage.recorded") &&
-      observations.some((observation) => observation.parentEveSessionId !== null)
-    ) {
-      return observations;
-    }
+    if ([...children.values()].every(usageReached)) return observations;
     await delay(250);
   }
-  throw new Error(`Agent did not export complete OTLP logs (observations=${observations.length}).`);
+  const missing = [...children].filter(([, id]) => !usageReached(id)).map(([name]) => name);
+  throw new Error(
+    `Agent did not export usage for every child (missing=${missing.join(", ")}, observations=${observations.length}).`,
+  );
 }
 
 function eventType(event: unknown): string | undefined {
@@ -212,12 +254,15 @@ function eventType(event: unknown): string | undefined {
     : undefined;
 }
 
-async function runDirectTurn(hostPort: number): Promise<string> {
+async function runDirectTurn(
+  hostPort: number,
+): Promise<{ eveSessionId: string; children: Map<ChildName, string> }> {
   const createResponse = await fetch(`http://127.0.0.1:${hostPort}/eve/v1/session`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      message: "Ask the researcher to investigate OpenTelemetry.",
+      // eve's mock model answers this directive with one call per named tool.
+      message: `Call tools in parallel: ${Object.keys(CHILDREN).join(", ")}`,
     }),
     signal: AbortSignal.timeout(20_000),
   });
@@ -237,9 +282,10 @@ async function runDirectTurn(hostPort: number): Promise<string> {
   assert.ok(stream.ok && stream.body, `session stream failed (${stream.status})`);
   const reader = stream.body.getReader();
   const decoder = new TextDecoder();
-  // The delegated child runs inside the root turn, so the read runs until the
-  // root turn settles after the child opened (see delegated-turn.ts).
-  const watch = watchDelegatedTurn({ subagentName: "researcher" });
+  // The delegated children run inside the root turn, so the read runs until
+  // the root turn settles after every child has settled (see delegated-turn.ts).
+  const watch = watchDelegatedTurn();
+  const children = new Map<ChildName, string>();
   const deadline = Date.now() + DELEGATED_TURN_BUDGET_MS;
   let buffer = "";
   const seen: string[] = [];
@@ -255,15 +301,72 @@ async function runDirectTurn(hostPort: number): Promise<string> {
       for (const event of sessionStreamLineEvents(JSON.parse(line))) {
         if (event.type) seen.push(event.type);
         watch.observe(event);
+        const opened = childOpened(event);
+        if (opened) children.set(opened.name, opened.sessionId);
       }
     }
   }
   await reader.cancel().catch(() => undefined);
   assert.ok(!watch.turnFailed, `root turn failed; stream events=${seen.join(", ")}`);
   assert.ok(watch.turnCompleted, `root turn did not complete; stream events=${seen.join(", ")}`);
-  assert.ok(
-    watch.subagentCalled,
-    `root did not invoke the directory-form researcher; stream events=${seen.join(", ")}`,
+  assert.deepEqual(
+    [...children.keys()].sort(),
+    Object.keys(CHILDREN).sort(),
+    `root did not open every child; stream events=${seen.join(", ")}`,
   );
-  return sessionId;
+  return { eveSessionId: sessionId, children };
+}
+
+function childOpened(event: {
+  type?: string;
+  data?: unknown;
+}): { name: ChildName; sessionId: string } | null {
+  if (event.type !== "child.opened" || !event.data || typeof event.data !== "object") return null;
+  const { name, sessionId } = event.data as { name?: unknown; sessionId?: unknown };
+  return typeof name === "string" && name in CHILDREN && typeof sessionId === "string"
+    ? { name: name as ChildName, sessionId }
+    : null;
+}
+
+/**
+ * Builds the probe Extension with the workspace's eve and vendors it into the
+ * fixture as a `file:` directory dependency, mounted at `probe`. Source
+ * import records text files only, and the built package is text.
+ */
+async function mountProbeExtension(workDir: string, sourcePath: string): Promise<void> {
+  const extensionDir = path.join(workDir, "probe-extension");
+  await cp(EXTENSION_TEMPLATE_PATH, extensionDir, { recursive: true });
+  const manifest = {
+    name: EXTENSION_PACKAGE,
+    version: "0.0.0",
+    private: true,
+    type: "module",
+    eve: { extension: { source: "./extension", dist: "./dist/extension" } },
+    files: ["dist"],
+    peerDependencies: { eve: "*" },
+  };
+  await writeFile(path.join(extensionDir, "package.json"), `${JSON.stringify(manifest)}\n`);
+  await mkdir(path.join(extensionDir, "node_modules"));
+  await symlink(EVE_PACKAGE_PATH, path.join(extensionDir, "node_modules/eve"), "dir");
+  await execFileAsync(
+    process.execPath,
+    [path.join(EVE_PACKAGE_PATH, "bin/eve.js"), "extension", "build"],
+    { cwd: extensionDir, env: { ...process.env, EVE_TELEMETRY_DISABLED: "1" } },
+  );
+
+  const vendored = path.join(sourcePath, EXTENSION_PACKAGE);
+  await mkdir(vendored);
+  await cp(path.join(extensionDir, "package.json"), path.join(vendored, "package.json"));
+  await cp(path.join(extensionDir, "dist"), path.join(vendored, "dist"), { recursive: true });
+  await mkdir(path.join(sourcePath, "agent/extensions"), { recursive: true });
+  await writeFile(
+    path.join(sourcePath, "agent/extensions/probe.ts"),
+    `export { default } from "${EXTENSION_PACKAGE}";\n`,
+  );
+  const packagePath = path.join(sourcePath, "package.json");
+  const fixturePackage = JSON.parse(await readFile(packagePath, "utf8")) as {
+    dependencies: Record<string, string>;
+  };
+  fixturePackage.dependencies[EXTENSION_PACKAGE] = `file:./${EXTENSION_PACKAGE}`;
+  await writeFile(packagePath, `${JSON.stringify(fixturePackage, null, 2)}\n`);
 }

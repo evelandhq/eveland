@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { access, cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -258,6 +259,126 @@ async function injectProviderModules(
   }
 
   return { generated, rewritten, replaced };
+}
+
+type DiscoveredAgent = {
+  subagents: Array<{ entryPath: string; manifest: DiscoveredAgent }>;
+  resolvedExtensions: Array<{ manifest: DiscoveredAgent; overrides?: DiscoveredAgent }>;
+};
+
+/**
+ * Puts the directory-form subagents of every installed Extension on the
+ * platform provider, the way {@link injectSandboxModules} does for the
+ * project's own slots. An Extension subagent that ships no sandbox of its own
+ * otherwise gets eve's default sandbox, which runs on whatever eve finds on
+ * the host. It runs after dependencies are installed, from eve's discovery
+ * manifest, and needs the platform module {@link injectSandboxModules} wrote.
+ *
+ * A sandbox the Extension ships is left as it is, and the Release check
+ * refuses it. File-form subagents (`subagents/<name>.ts`) have no sandbox slot
+ * to fill; eve always gives them its default sandbox.
+ */
+export async function injectExtensionSandboxModules(input: {
+  releaseDir: string;
+  manifest: unknown;
+}): Promise<string[]> {
+  const releaseDir = path.resolve(input.releaseDir);
+  const platformModule = path.join(realpathSync(releaseDir), SANDBOX_PLATFORM_DIR, "platform.js");
+  if ((await pathKind(platformModule)) !== "file") return [];
+  if (!isDiscoveredAgent(input.manifest)) {
+    throw new Error("Expected a well-formed eve discovery manifest for Extension sandboxes.");
+  }
+
+  const extensionRoots = new Set<string>();
+  const collectExtensionSubagents = (agent: DiscoveredAgent): void => {
+    for (const subagent of agent.subagents) {
+      if (isModulePath(subagent.entryPath)) continue;
+      extensionRoots.add(subagent.entryPath);
+      collectExtensionSubagents(subagent.manifest);
+    }
+    for (const mount of agent.resolvedExtensions) {
+      if (mount.overrides) collectExtensionSubagents(mount.overrides);
+      collectExtensionSubagents(mount.manifest);
+    }
+  };
+  const scanProject = (agent: DiscoveredAgent): void => {
+    for (const mount of agent.resolvedExtensions) {
+      if (mount.overrides) collectExtensionSubagents(mount.overrides);
+      collectExtensionSubagents(mount.manifest);
+    }
+    for (const subagent of agent.subagents) {
+      if (!isModulePath(subagent.entryPath)) scanProject(subagent.manifest);
+    }
+  };
+  scanProject(input.manifest);
+
+  const generated: string[] = [];
+  for (const root of [...extensionRoots].sort()) {
+    const canonicalRoot = realpathSync(root);
+    if (!isPathInside(realpathSync(releaseDir), canonicalRoot)) {
+      throw new Error(`Extension subagent ${root} must stay inside the Release directory.`);
+    }
+    if (await hasOwnSandbox(canonicalRoot)) continue;
+    const toPlatform = path.relative(canonicalRoot, platformModule).split(path.sep).join("/");
+    const target = path.join(canonicalRoot, "sandbox.js");
+    await writeFile(
+      target,
+      buildGeneratedProviderSandboxModule(toPlatform, GENERATED_MODULE_MARKER),
+      "utf8",
+    );
+    generated.push(
+      path.relative(releaseDir, path.join(root, "sandbox.js")).split(path.sep).join("/"),
+    );
+  }
+  return generated;
+}
+
+async function hasOwnSandbox(agentRoot: string): Promise<boolean> {
+  if ((await pathKind(path.join(agentRoot, "sandbox"))) !== null) return true;
+  for (const extension of AUTHORED_MODULE_EXTENSIONS) {
+    const candidate = path.join(agentRoot, `sandbox${extension}`);
+    if ((await pathKind(candidate)) === null) continue;
+    const contents = await readFile(candidate, "utf8").catch(() => "");
+    if (!(extension === ".js" && contents.startsWith(GENERATED_MODULE_MARKER))) return true;
+  }
+  return false;
+}
+
+function isDiscoveredAgent(value: unknown): value is DiscoveredAgent {
+  if (typeof value !== "object" || value === null) return false;
+  const { subagents, resolvedExtensions } = value as Record<string, unknown>;
+  return (
+    Array.isArray(subagents) &&
+    subagents.every(
+      (subagent) =>
+        typeof subagent === "object" &&
+        subagent !== null &&
+        typeof (subagent as Record<string, unknown>).entryPath === "string" &&
+        isDiscoveredAgent((subagent as Record<string, unknown>).manifest),
+    ) &&
+    Array.isArray(resolvedExtensions) &&
+    resolvedExtensions.every((mount) => {
+      if (typeof mount !== "object" || mount === null) return false;
+      const { manifest, overrides } = mount as Record<string, unknown>;
+      return (
+        isDiscoveredAgent(manifest) && (overrides === undefined || isDiscoveredAgent(overrides))
+      );
+    })
+  );
+}
+
+function isModulePath(target: string): boolean {
+  return /\.(?:[cm]?[jt]s)$/.test(target);
+}
+
+function isPathInside(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return (
+    Boolean(relative) &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
 }
 
 /**
