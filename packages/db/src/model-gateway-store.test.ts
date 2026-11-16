@@ -95,6 +95,7 @@ describe("Model Gateway store", () => {
         projectId: project.id,
         sourceRevisionId: revision.id,
         imageTag: `eveland/${name}:rel`,
+        observerContract: 3,
         containerName: `eveland-${name}`,
         internalPort: 3000,
         hostPort: 41000 + name.length,

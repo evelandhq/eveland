@@ -523,12 +523,6 @@ export const targetsArraySchema = z
 export const routeTargetsSchema = z
   .object({ targets: targetsArraySchema })
   .superRefine(validateTargetsPayload);
-export const aliasSchema = z
-  .object({
-    alias: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/),
-    targets: targetsArraySchema,
-  })
-  .superRefine(validateTargetsPayload);
 
 function validateTargetsPayload(
   value: { targets: Array<{ deploymentId: string; weight: number }> },

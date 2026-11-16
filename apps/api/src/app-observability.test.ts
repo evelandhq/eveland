@@ -22,6 +22,7 @@ describe("api app", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/token:rel_123",
+      observerContract: 3,
       containerName: "eveland-token",
       internalPort: 3000,
       hostPort: 41002,

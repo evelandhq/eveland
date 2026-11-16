@@ -34,6 +34,7 @@ describe.skipIf(!database)("Postgres source revisions", () => {
         projectId: project.id,
         sourceRevisionId: initialRevision.id,
         imageTag: "eveland/resync:old",
+        observerContract: 3,
         containerName: `eveland-resync-${Date.now()}`,
         internalPort: 3000,
         hostPort: 41995,

@@ -11,18 +11,16 @@ import {
 } from "@evelandhq/db";
 import { publicDeployment } from "./app-public-projections.js";
 import type { ApiApp, AppOptions } from "./app-types.js";
-import { aliasSchema, deploymentListQuerySchema, routeTargetsSchema } from "./app-schemas.js";
+import { deploymentListQuerySchema, routeTargetsSchema } from "./app-schemas.js";
 import { invalidateGatewayAfterCommit, publicGatewayUrl } from "./app-support.js";
 
 // The narrow persistence and configuration ports this slice actually needs.
 export type ProjectDeploymentStore = Pick<
   Store,
   | "enqueueDeploymentArchive"
-  | "ensureAliasRoute"
   | "getDeployment"
   | "getDeploymentRetention"
   | "getProjectHotfixDrift"
-  | "getVariantMetrics"
   | "listDeployments"
   | "listProjectRoutes"
   | "listReleaseSources"
@@ -125,12 +123,6 @@ export function registerProjectDeploymentRoutes(input: {
     });
   });
 
-  app.get("/api/projects/:projectId/variant-metrics", async (c) => {
-    // Aggregated in SQL: this used to load every Session the Project had ever
-    // recorded and fold them on the request path.
-    return c.json({ variants: await store.getVariantMetrics(c.req.param("projectId")) });
-  });
-
   app.post("/api/projects/:projectId/deployments/:deploymentId/promote", async (c) => {
     let route;
     try {
@@ -204,22 +196,5 @@ export function registerProjectDeploymentRoutes(input: {
     const route = await store.updateRouteTargets(c.req.param("routeId"), input.data.targets);
     await invalidateGatewayAfterCommit(options, [route.hostname]);
     return c.json({ route });
-  });
-
-  app.post("/api/projects/:projectId/aliases", async (c) => {
-    const input = aliasSchema.safeParse(await c.req.json().catch(() => null));
-    if (!input.success)
-      return c.json({ error: "Invalid alias route", detail: input.error.flatten() }, 400);
-    const baseDomain = (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost")
-      .split(",")[0]!
-      .trim();
-    const route = await store.ensureAliasRoute(
-      c.req.param("projectId"),
-      input.data.alias,
-      baseDomain,
-      input.data.targets,
-    );
-    await invalidateGatewayAfterCommit(options, [route.hostname]);
-    return c.json({ route }, 201);
   });
 }

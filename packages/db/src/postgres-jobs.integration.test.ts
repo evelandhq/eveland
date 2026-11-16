@@ -60,6 +60,7 @@ describe.skipIf(!databaseUrl)("Postgres job leases", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "archive-concurrency:release",
+      observerContract: 3,
       containerName: "archive-concurrency-release",
       internalPort: 3000,
       hostPort: 41920,

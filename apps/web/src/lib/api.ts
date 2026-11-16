@@ -33,7 +33,6 @@ import type {
   SessionNode as CoreSessionNode,
   SessionTokenUsage as CoreSessionTokenUsage,
   SourceFileRecord,
-  VariantMetric as CoreVariantMetric,
 } from "@evelandhq/core/contracts";
 
 export type Project = CoreProject;
@@ -64,7 +63,6 @@ export type AgentRoute = CoreResolvedAgentRoute;
 export type DeploymentOverview = CoreDeploymentOverview;
 export type HotfixDrift = CoreHotfixDrift;
 export type SourceOrigin = CoreSourceOrigin;
-export type VariantMetric = CoreVariantMetric;
 
 export type SessionTokenUsage = CoreSessionTokenUsage;
 export type SessionEvent = CoreSessionEvent;

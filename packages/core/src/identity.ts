@@ -155,17 +155,6 @@ export type IdentityReturnTarget = {
   updatedAt: string;
 };
 
-export type IdentityOidcCredential = {
-  identityPrincipalId: string;
-  providerConnectionId: string;
-  accessTokenEncrypted: string;
-  refreshTokenEncrypted: string | null;
-  scope: string;
-  accessTokenExpiresAt: string | null;
-  rotationSeq: number;
-  updatedAt: string;
-};
-
 export type IdentitySigningKeyStatus = "active" | "retiring" | "retired";
 
 export type IdentitySigningKey = {

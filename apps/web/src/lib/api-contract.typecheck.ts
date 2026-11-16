@@ -10,7 +10,6 @@ import type {
   DeploymentOverview as CoreDeploymentOverview,
   PublicDeploymentRecord as CorePublicDeploymentRecord,
   ResolvedAgentRoute as CoreResolvedAgentRoute,
-  VariantMetric as CoreVariantMetric,
   PublicJob as CorePublicJob,
   PublicSecret as CorePublicSecret,
   PublicSourceRevision as CorePublicSourceRevision,
@@ -48,7 +47,6 @@ import type {
   DeploymentOverview,
   SourceFile,
   SourceRevision,
-  VariantMetric,
 } from "./api";
 import type { CurrentMember, Invitation, Member } from "./client-api";
 
@@ -88,7 +86,6 @@ type ControlPlaneDomainContracts = [
   Assert<Equal<AgentRoute, CoreResolvedAgentRoute>>,
   Assert<Equal<AgentEndpoints, CoreAgentEndpoints>>,
   Assert<Equal<DeploymentOverview, CoreDeploymentOverview>>,
-  Assert<Equal<VariantMetric, CoreVariantMetric>>,
 ];
 
 export type { ControlPlaneDomainContracts };

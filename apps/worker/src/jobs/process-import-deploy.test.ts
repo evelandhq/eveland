@@ -131,43 +131,6 @@ describe("processNextJob", () => {
     });
   });
 
-  test("a clone records itself as a git sync even when the job predates provenance", async () => {
-    const store = createTestStore();
-    const dataDir = await mkdtemp(path.join(os.tmpdir(), "eveland-provenance-import-"));
-    const gitSource = await createFixtureEveProject();
-    await execa("git", ["init", "--initial-branch=main"], { cwd: gitSource });
-    await execa("git", ["config", "user.email", "worker@example.test"], { cwd: gitSource });
-    await execa("git", ["config", "user.name", "Worker Test"], { cwd: gitSource });
-    await execa("git", ["add", "."], { cwd: gitSource });
-    await execa("git", ["commit", "-m", "fixture"], { cwd: gitSource });
-    const project = await store.createProject({
-      name: "Legacy Sync Agent",
-      importKind: "git",
-      gitUrl: gitSource,
-    });
-    const initialImport = await store.claimNextJob("fixture-import");
-    await store.completeJob(initialImport!.id);
-    // No importKind, no origin: the shape of a job queued by an older API.
-    await store.enqueueJob(project.id, "import_source", { gitUrl: gitSource });
-    const previousDataDir = process.env.EVELAND_DATA_DIR;
-    process.env.EVELAND_DATA_DIR = dataDir;
-    try {
-      await expect(processNextJob(store, "worker-a")).resolves.toBe(true);
-      await expect(store.getCurrentSourceRevision(project.id)).resolves.toMatchObject({
-        kind: "git",
-        commitSha: expect.stringMatching(/^[0-9a-f]{40}$/),
-        origin: "git-sync",
-        baseCommitSha: null,
-        dirty: null,
-        uploadedBy: null,
-      });
-    } finally {
-      if (previousDataDir === undefined) delete process.env.EVELAND_DATA_DIR;
-      else process.env.EVELAND_DATA_DIR = previousDataDir;
-      await rm(dataDir, { recursive: true, force: true });
-    }
-  });
-
   test("saves a pending user Git credential only after a source import succeeds", async () => {
     const store = createTestStore();
     const sourcePath = await createFixtureEveProject();
@@ -313,6 +276,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/live:rel_1",
+      observerContract: 3,
       containerName: "eveland-live",
       internalPort: 3000,
       hostPort: 41010,
@@ -588,6 +552,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:rel_old",
+      observerContract: 3,
       containerName: "eveland-old-container",
       internalPort: 3000,
       hostPort: 41077,
@@ -669,6 +634,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       sourceRevisionId: synced.id,
       imageTag: "eveland/proj:rel_synced",
+      observerContract: 3,
       containerName: "eveland-synced-container",
       internalPort: 3000,
       hostPort: 41090,
@@ -754,6 +720,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:rel_production",
+      observerContract: 3,
       containerName: "eveland-production-container",
       internalPort: 3000,
       hostPort: 41080,
@@ -845,6 +812,7 @@ describe("processNextJob", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "eveland/proj:rel_old",
+      observerContract: 3,
       containerName: "eveland-old-systemd-unit",
       internalPort: 3000,
       hostPort: 41078,
@@ -932,6 +900,7 @@ describe("processNextJob", () => {
           projectId: project.id,
           sourceRevisionId: revision.id,
           imageTag: `image:v${index}`,
+          observerContract: 3,
           containerName: `process-v${index}`,
           internalPort: 3000,
           hostPort: 41200 + index,
@@ -1016,6 +985,7 @@ describe("processNextJob", () => {
           projectId: project.id,
           sourceRevisionId: revision.id,
           imageTag: `retention-race:v${index}`,
+          observerContract: 3,
           containerName: `retention-race-v${index}`,
           internalPort: 3000,
           hostPort: 41220 + index,

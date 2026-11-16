@@ -2,6 +2,7 @@ import { request as httpRequest } from "node:http";
 import { serve } from "@hono/node-server";
 import { describe, expect, test, vi } from "vitest";
 import { createGatewayApp } from "./app.js";
+import { signAffinityCookie } from "./gateway-routing.js";
 import { affinityBucketForRoute } from "@evelandhq/core/routing";
 import {
   activatedSessionPersistenceFailureFixture,
@@ -603,7 +604,7 @@ describe("Gateway", () => {
       method: "POST",
       headers: {
         host: "p-alpha.agent.localhost",
-        "x-eveland-version-key": affinity,
+        cookie: `eveland_affinity=${encodeURIComponent(signAffinityCookie(affinity, affinitySecret))}`,
         "content-type": "application/json",
       },
       body: "{}",
@@ -642,7 +643,7 @@ describe("Gateway", () => {
         method: "POST",
         headers: {
           host: "p-alpha.agent.localhost",
-          "x-eveland-version-key": affinity,
+          cookie: `eveland_affinity=${encodeURIComponent(signAffinityCookie(affinity, affinitySecret))}`,
         },
       },
     );
@@ -673,7 +674,7 @@ describe("Gateway", () => {
       method: "POST",
       headers: {
         host: "p-alpha.agent.localhost",
-        "x-eveland-version-key": affinity,
+        cookie: `eveland_affinity=${encodeURIComponent(signAffinityCookie(affinity, affinitySecret))}`,
         "content-type": "application/json",
       },
       body: "{}",
@@ -708,7 +709,7 @@ describe("Gateway", () => {
         deploymentId: "dep_b",
         variantName: "candidate",
         experimentId: "route_project:r1",
-        affinitySource: "version_key",
+        affinitySource: "cookie",
         affinityFingerprint: expect.stringMatching(/^sha256-[a-f0-9]{64}$/),
       }),
     );

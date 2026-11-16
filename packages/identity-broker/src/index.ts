@@ -97,14 +97,6 @@ export type IdentityBrokerPersistence = {
     notBefore: Date;
     expiresAt: Date;
   }): Promise<IdentitySigningKey>;
-  putIdentityOidcCredential(input: {
-    identityPrincipalId: string;
-    providerConnectionId: string;
-    accessTokenEncrypted: string;
-    refreshTokenEncrypted: string | null;
-    scope: string;
-    accessTokenExpiresAt: Date | null;
-  }): Promise<unknown>;
 };
 
 export type IdentityBrokerOptions = {
@@ -316,7 +308,7 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
         "This identity scope is not allowed.",
       );
     }
-    const finalized = await finalizeIdentity({
+    return finalizeIdentity({
       providerConnectionId: connection.id,
       providerSecurityRevision: connection.securityRevision,
       identity: {
@@ -332,17 +324,6 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
       },
       claims: principalClaims(tokens.claims),
     });
-    await options.store.putIdentityOidcCredential({
-      identityPrincipalId: finalized.principal.id,
-      providerConnectionId: connection.id,
-      accessTokenEncrypted: sealOidcCredentialValue(tokens.accessToken, options.appSecretKey),
-      refreshTokenEncrypted: tokens.refreshToken
-        ? sealOidcCredentialValue(tokens.refreshToken, options.appSecretKey)
-        : null,
-      scope: tokens.scope ?? connection.scopes.join(" "),
-      accessTokenExpiresAt: tokens.accessTokenExpiresAt,
-    });
-    return finalized;
   }
 
   async function resolveOidcExternalRealmId(input: {
@@ -701,19 +682,6 @@ export function openIdentityProviderSecret(sealed: string, appSecretKey: string)
   return decryptSecretValue(
     JSON.parse(sealed) as Parameters<typeof decryptSecretValue>[0],
     identityContextKey(appSecretKey, "provider-secret"),
-  );
-}
-
-export function sealOidcCredentialValue(value: string, appSecretKey: string): string {
-  return JSON.stringify(
-    encryptSecretValue(value, identityContextKey(appSecretKey, "oidc-credential")),
-  );
-}
-
-export function openOidcCredentialValue(sealed: string, appSecretKey: string): string {
-  return decryptSecretValue(
-    JSON.parse(sealed) as Parameters<typeof decryptSecretValue>[0],
-    identityContextKey(appSecretKey, "oidc-credential"),
   );
 }
 
