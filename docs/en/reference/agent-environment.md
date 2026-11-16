@@ -71,7 +71,7 @@ Eve projects statically resolve certain configuration during compilation (`npx e
 - eve starts a connection's sign-in link and a remote agent's callback URL from `WORKFLOW_LOCAL_BASE_URL`. Eveland sets it in every Deployment to the project's public Agent origin, `<scheme>://<project-slug>.<first base domain>[:port]`, so those URLs reach the Agent through the Agent Gateway rather than naming the private loopback port the process listens on.
 - The origin names the project, not one Deployment: the stable route decides which Deployment receives a callback, while the run the callback resumes keeps executing on the Deployment that started it.
 - The variable is reserved: a same-named project or shared entry is overridden.
-- Known limitation: eve 1.0 builds a `createWebhook()` URL from the address the process serves on, not from `WORKFLOW_LOCAL_BASE_URL`, so on Eveland it names a loopback address outside callers cannot reach. Hand callers `process.env.WORKFLOW_LOCAL_BASE_URL` joined with the webhook URL's path (`/.well-known/workflow/v1/webhook/<token>`) instead; the Agent Gateway forwards that path.
+- Known limitation: eve 1.0 builds a `createWebhook()` URL from the address the process serves on, not from `WORKFLOW_LOCAL_BASE_URL`, so on Eveland it names a loopback address outside callers cannot reach. Hand callers `process.env.WORKFLOW_LOCAL_BASE_URL` joined with the webhook URL's path (`/.well-known/workflow/v1/webhook/<token>`) instead; the Agent Gateway forwards that path. [Channels, webhooks, and callbacks](/docs/agents/channels-webhooks#4-workflow-webhooks) shows the code.
 
 ## Deeper reference
 

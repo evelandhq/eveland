@@ -3,7 +3,7 @@ title: 部署第一个 Agent
 description: 导入已有 Eve 项目，构建预览环境，并平滑发布到生产路由。
 ---
 
-在阅读本指南前，请确保平台管理员已完成[生产环境安装与验收](/zh/docs/production/verify)。Eveland 支持标准的 Eve 项目，无需在项目源码中添加平台专有代码。
+在阅读本指南前，请确保平台管理员已完成[生产环境安装与验收](/zh/docs/production/verify)。Eveland 支持标准的单 Agent Eve 项目，无需在项目源码中添加平台专有代码；不支持的功能见[已知限制](/zh/docs/reference/known-limitations)。
 
 ## 1. 确认版本兼容性
 

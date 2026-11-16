@@ -22,7 +22,7 @@ Eveland 遵循**最小权限原则（Principle of Least Privilege）**与**防�
 - **Agent Gateway**：面向公网的唯一入口，仅负责反向代理与流式传输。不持有 Docker Socket，无宿主机文件系统写权限，无法接触解密后的数据库与密钥。
 - **控制面 API**：持有平台状态读写权限，但**无宿主机进程控制权限**，不能直接执行系统命令。
 - **宿主机 Worker**：唯一的特权生命周期编排器。以 root 启动但**无任何公网监听端口**。
-- **Agent 运行实例**：每个部署均运行在各自独立的临时 systemd `DynamicUser` 下，开启严格的文件系统只读保护与隔离沙箱。
+- **Agent 运行实例**：每个部署均运行在各自独立的临时 systemd `DynamicUser` 下，开启严格的文件系统只读保护与隔离沙箱。沙箱命令能看到和访问什么，见 [Agent 沙箱](/zh/docs/agents/sandbox#5-安全边界)。
 
 ---
 
@@ -57,3 +57,4 @@ Eveland 遵循**最小权限原则（Principle of Least Privilege）**与**防�
 - [生产架构概览](/zh/docs/production)：系统组件分层与运行拓扑
 - [配置 Agent 流量与反向代理](/zh/docs/production/networking)：防火墙与端口规划
 - [为什么自研 bubblewrap 沙箱](/zh/docs/reference/design/sandbox)：构建沙箱加固与自检设计决策
+- [Agent 沙箱](/zh/docs/agents/sandbox)：运行时沙箱的边界、限制与网络策略

@@ -22,7 +22,7 @@ Eveland enforces the **principle of least privilege** and defense-in-depth, stri
 - **Agent Gateway**: Public entry point handling reverse proxying and streaming. Holds no Docker socket, no host write access, and has no access to decrypted database passwords or master encryption keys.
 - **Control Plane API**: Manages team data and project configurations. Holds **no host process control privileges** and cannot execute host commands.
 - **Host Worker**: Sole privileged lifecycle controller. Boots as root but **binds no public network listener**.
-- **Agent Deployments**: Each agent runs as an isolated systemd `DynamicUser` with read-only root filesystems and an unprivileged execution sandbox.
+- **Agent Deployments**: Each agent runs as an isolated systemd `DynamicUser` with read-only root filesystems and an unprivileged execution sandbox. What sandboxed commands can see and reach is described in [Agent sandbox](/docs/agents/sandbox#5-security-boundary).
 
 ---
 
@@ -57,3 +57,4 @@ Third-party project code and imported npm dependency trees are treated as untrus
 - [Production architecture](/docs/production): system topology and service layers
 - [Configure Agent traffic](/docs/production/networking): firewall planning and reverse proxy configuration
 - [Why a bubblewrap sandbox](/docs/reference/design/sandbox): build sandbox isolation and self-check decisions
+- [Agent sandbox](/docs/agents/sandbox): the runtime sandbox boundary, limits, and network policy

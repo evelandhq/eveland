@@ -57,6 +57,7 @@ Eveland 托管 Eve `>=1.0.0 <1.1.0`，已验证版本为 `1.0.0`。整个 1.x �
 
 ## 深入参考
 
+- [已知限制](/zh/docs/reference/known-limitations)：Eveland 不支持的 Eve 功能
 - [源码导入](/zh/docs/reference/source-import)：预检验证与依赖扫描
 - [部署第一个 Agent](/zh/docs/agents/first-deployment)：项目导入与构建快速上手
 - [升级与回滚](/zh/docs/operations/upgrades)：平台更新与 Eve 依赖生命周期

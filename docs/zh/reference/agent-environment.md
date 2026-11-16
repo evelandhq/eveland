@@ -71,7 +71,7 @@ Eve 项目在打包（`npx eve build`）时会静态解析部分配置（例如�
 - eve 从 `WORKFLOW_LOCAL_BASE_URL` 开始生成 Connection 的登录链接和远程 Agent 的回调 URL。Eveland 在每个 Deployment 中把它设为项目的公开 Agent Origin，即 `<scheme>://<project-slug>.<第一个 Base Domain>[:port]`，这些 URL 因而经 Agent Gateway 到达 Agent，而不是指向进程监听的私有 Loopback 端口。
 - 这个 Origin 指向项目而不是某个 Deployment：由稳定 Route 决定哪个 Deployment 接收回调，而回调恢复的 Run 仍在启动它的 Deployment 上执行。
 - 该变量属于保留层：项目或共享环境中的同名变量会被覆盖。
-- 已知限制：eve 1.0 用进程监听的地址生成 `createWebhook()` URL，而不是 `WORKFLOW_LOCAL_BASE_URL`，因此在 Eveland 上它指向外部调用方无法访问的 Loopback 地址。请改为把 `process.env.WORKFLOW_LOCAL_BASE_URL` 与 Webhook URL 的路径（`/.well-known/workflow/v1/webhook/<token>`）拼接后交给调用方；Agent Gateway 会转发这个路径。
+- 已知限制：eve 1.0 用进程监听的地址生成 `createWebhook()` URL，而不是 `WORKFLOW_LOCAL_BASE_URL`，因此在 Eveland 上它指向外部调用方无法访问的 Loopback 地址。请改为把 `process.env.WORKFLOW_LOCAL_BASE_URL` 与 Webhook URL 的路径（`/.well-known/workflow/v1/webhook/<token>`）拼接后交给调用方；Agent Gateway 会转发这个路径。示例代码见 [Channel、Webhook 与回调](/zh/docs/agents/channels-webhooks#4-workflow-webhook)。
 
 ## 相关参考
 

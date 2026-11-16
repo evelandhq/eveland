@@ -1,4 +1,10 @@
 {
   "title": "Deploy agents",
-  "pages": ["first-deployment", "secrets-connections", "releases-routing"]
+  "pages": [
+    "first-deployment",
+    "secrets-connections",
+    "releases-routing",
+    "channels-webhooks",
+    "sandbox"
+  ]
 }
