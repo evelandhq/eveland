@@ -11,7 +11,6 @@ import type {
   PublicSecret,
   ReleaseRecord,
   RuntimeKind,
-  ScheduleRecord,
   Session,
   SessionEvent,
   SessionNode,
@@ -327,32 +326,6 @@ export function jobRowToJob(row: {
     createdAt: timestampToIso(row.createdAt),
     updatedAt: timestampToIso(row.updatedAt),
   } as Job;
-}
-
-export function scheduleRowToSchedule(row: {
-  id: string;
-  projectId: string;
-  name: string;
-  kind: string;
-  cron: string | null;
-  timezone: string | null;
-  enabled: boolean;
-  executable: boolean;
-  sourcePath: string;
-  nextRunAt: Date | null;
-}): ScheduleRecord {
-  return {
-    id: row.id,
-    projectId: row.projectId,
-    name: row.name,
-    kind: row.kind as ScheduleRecord["kind"],
-    cron: row.cron,
-    timezone: row.timezone,
-    enabled: row.enabled,
-    executable: row.executable,
-    sourcePath: row.sourcePath,
-    nextRunAt: timestampToIso(row.nextRunAt),
-  };
 }
 
 export function projectScheduleRowToProjectSchedule(row: {
@@ -758,7 +731,7 @@ export function releaseRowToRelease(row: {
   projectId: string;
   sourceRevisionId: string;
   imageTag: string;
-  observerContract: number | null;
+  observerContract: number;
   summary: unknown;
   workflowWorldKind: string;
   workflowWorldPackage: string | null;

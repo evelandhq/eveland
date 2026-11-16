@@ -15,7 +15,6 @@ import {
   projectScheduleRowToProjectSchedule,
   projectSchedulerTargetRowToProjectSchedulerTarget,
   releaseRowToRelease,
-  scheduleRowToSchedule,
   scheduleRunRowToScheduleRun,
   scheduleVersionRowToScheduleVersion,
   sessionRowToSession,
@@ -30,7 +29,6 @@ import {
   scheduleRunSessions,
   scheduleRuns,
   scheduleVersions,
-  schedules,
   sessionEvents,
   sessions,
   sourceRevisions,
@@ -52,15 +50,6 @@ import {
 
 export function createPostgresScheduleStore({ db }: PostgresStoreContext): ScheduleStore {
   return {
-    async listSchedules(projectId) {
-      const rows = await db
-        .select()
-        .from(schedules)
-        .where(eq(schedules.projectId, projectId))
-        .orderBy(schedules.name);
-      return rows.map(scheduleRowToSchedule);
-    },
-
     async recordScheduleVersions(input) {
       for (const definition of input.definitions) {
         validateScheduleDefinitionFields({

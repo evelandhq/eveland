@@ -31,6 +31,7 @@ async function createArchiveFixture(store: Store) {
         projectId: project.id,
         sourceRevisionId: revision.id,
         imageTag: `fixture:archive-${index}`,
+        observerContract: 3,
         containerName: `fixture-archive-${index}`,
         internalPort: 3000,
         hostPort: 42_100 + index,

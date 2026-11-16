@@ -116,46 +116,6 @@ function sortedBreakdown<T extends UsageTotals>(rows: T[]): T[] {
 
 export function createPostgresUsageStore({ db }: PostgresStoreContext): UsageStore {
   return {
-    async getVariantMetrics(projectId) {
-      const rows = await db
-        .select({
-          deploymentId: sessions.deploymentId,
-          experimentId: sessions.experimentId,
-          variantName: sql<string>`coalesce(${sessions.variantName}, 'unassigned')`,
-          sessions: sql<number>`count(*)::int`,
-          success: sql<number>`count(*) filter (where ${sessions.status} = 'completed')::int`,
-          failure: sql<number>`count(*) filter (where ${sessions.status} = 'failed')::int`,
-          tokens: sql<number>`coalesce(sum(
-            ${sessions.inputTokens} + ${sessions.outputTokens}
-              + ${sessions.cacheReadTokens} + ${sessions.cacheWriteTokens}
-          ), 0)::double precision`,
-          costUsd: sql<number>`coalesce(sum(${sessions.costUsd}), 0)::double precision`,
-          // Latency only counts Sessions that finished, matching the previous
-          // per-row guard; a negative clock skew still floors at zero.
-          averageLatencyMs: sql<number>`coalesce(avg(
-            greatest(0, extract(epoch from (${sessions.completedAt} - ${sessions.startedAt})) * 1000)
-          ) filter (where ${sessions.completedAt} is not null), 0)::double precision`,
-        })
-        .from(sessions)
-        .where(eq(sessions.projectId, projectId))
-        .groupBy(
-          sessions.deploymentId,
-          sessions.experimentId,
-          sql`coalesce(${sessions.variantName}, 'unassigned')`,
-        );
-      return rows.map((row) => ({
-        deploymentId: row.deploymentId,
-        experimentId: row.experimentId,
-        variantName: row.variantName,
-        sessions: row.sessions,
-        success: row.success,
-        failure: row.failure,
-        tokens: row.tokens,
-        costUsd: row.costUsd,
-        averageLatencyMs: row.averageLatencyMs,
-      }));
-    },
-
     async getUsageAnalytics(input): Promise<UsageAnalytics> {
       const range = input.range;
       const window = usageWindow(range, input.now ?? new Date());

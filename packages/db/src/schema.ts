@@ -683,28 +683,6 @@ export const identityLoginTransactions = pgTable(
   ],
 );
 
-export const identityOidcCredentials = pgTable(
-  "identity_oidc_credentials",
-  {
-    identityPrincipalId: text("identity_principal_id")
-      .notNull()
-      .references(() => identityPrincipals.id, { onDelete: "cascade" }),
-    providerConnectionId: text("provider_connection_id")
-      .notNull()
-      .references(() => identityProviderConnections.id, { onDelete: "cascade" }),
-    accessTokenEncrypted: text("access_token_encrypted").notNull(),
-    refreshTokenEncrypted: text("refresh_token_encrypted"),
-    scope: text("scope").notNull(),
-    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
-    rotationSeq: integer("rotation_seq").notNull().default(0),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.identityPrincipalId, table.providerConnectionId] }),
-    check("identity_oidc_credentials_rotation_check", sql`${table.rotationSeq} >= 0`),
-  ],
-);
-
 export const identitySigningKeys = pgTable(
   "identity_signing_keys",
   {
@@ -949,8 +927,9 @@ export const releases = pgTable(
       .notNull()
       .references(() => sourceRevisions.id),
     imageTag: text("image_tag").notNull(),
-    // Null marks releases built before the observer delivery contract existed.
-    observerContract: integer("observer_contract"),
+    // The observer delivery contract baked in at build time; activation warns
+    // when it is older than the platform's.
+    observerContract: integer("observer_contract").notNull(),
     // Build-derived summary projected from eve's discovery manifest. Release-
     // scoped: the same source revision can be rebuilt into releases with
     // different resolved dependencies. Null for releases whose manifest could
@@ -1383,7 +1362,6 @@ export const scheduleRunSessions = pgTable(
       .notNull()
       .references(() => sessions.id, { onDelete: "cascade" }),
     status: text("status").notNull().default("running"),
-    lastObservedAt: timestamp("last_observed_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

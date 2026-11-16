@@ -22,7 +22,6 @@ const persistence = {
   listIdentitySigningKeys: unsupported,
   getActiveIdentitySigningKey: unsupported,
   createIdentitySigningKey: unsupported,
-  putIdentityOidcCredential: unsupported,
 } satisfies IdentityBrokerPersistence;
 
 test("accepts the minimal Identity Broker persistence port", () => {

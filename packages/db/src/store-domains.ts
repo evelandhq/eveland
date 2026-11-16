@@ -79,7 +79,6 @@ import type {
 import type {
   ExternalRealmKind,
   IdentityLoginTransaction,
-  IdentityOidcCredential,
   IdentityPrincipal,
   ExternalRealmResolution,
   IdentityProviderConnection,
@@ -443,27 +442,6 @@ export interface IdentityStore {
   }): Promise<IdentityReturnTarget>;
   listIdentityReturnTargets(): Promise<IdentityReturnTarget[]>;
   getIdentityReturnTargetByKey(key: string): Promise<IdentityReturnTarget | null>;
-  putIdentityOidcCredential(input: {
-    identityPrincipalId: string;
-    providerConnectionId: string;
-    accessTokenEncrypted: string;
-    refreshTokenEncrypted: string | null;
-    scope: string;
-    accessTokenExpiresAt: Date | null;
-  }): Promise<IdentityOidcCredential>;
-  getIdentityOidcCredential(
-    identityPrincipalId: string,
-    providerConnectionId: string,
-  ): Promise<IdentityOidcCredential | null>;
-  rotateIdentityOidcCredential(input: {
-    identityPrincipalId: string;
-    providerConnectionId: string;
-    expectedRotationSeq: number;
-    accessTokenEncrypted: string;
-    refreshTokenEncrypted: string | null;
-    scope: string;
-    accessTokenExpiresAt: Date | null;
-  }): Promise<IdentityOidcCredential | null>;
   createIdentitySigningKey(input: {
     id?: string;
     algorithm: "ES256";
@@ -591,10 +569,8 @@ export interface DeploymentStore {
     projectId: string;
     sourceRevisionId: string;
     imageTag: string;
-    // Omitted records the release as legacy (null): its baked observer
-    // predates the delivery contract. Real builds always pass the current
-    // contract via ReleaseBuildResult.
-    observerContract?: number;
+    /** The observer delivery contract baked into the Release at build time. */
+    observerContract: number;
     /**
      * Build-derived summary from eve's discovery manifest. Release-scoped
      * because the same immutable source revision can be rebuilt into releases
@@ -776,23 +752,6 @@ export interface SessionStore {
 }
 
 export interface UsageStore {
-  /**
-   * Per-variant rollup for a Project's experiment view. Aggregated in SQL:
-   * the route used to fold every Session the Project had ever recorded.
-   */
-  getVariantMetrics(projectId: string): Promise<
-    Array<{
-      deploymentId: string | null;
-      experimentId: string | null;
-      variantName: string;
-      sessions: number;
-      success: number;
-      failure: number;
-      tokens: number;
-      costUsd: number;
-      averageLatencyMs: number;
-    }>
-  >;
   getUsageAnalytics(input: {
     range: UsageRange;
     projectId?: string;
@@ -802,7 +761,6 @@ export interface UsageStore {
 }
 
 export interface ScheduleStore {
-  listSchedules(projectId: string): Promise<ScheduleRecord[]>;
   recordScheduleVersions(input: {
     projectId: string;
     sourceRevisionId: string;
@@ -924,7 +882,6 @@ export interface RuntimeStore {
    * candidate. Leaving the live statuses releases the claim automatically.
    */
   reserveRuntimeInstancePort(runtimeInstanceId: string, port: number): Promise<boolean>;
-  getActivationLease(leaseId: string): Promise<ActivationLease | null>;
   renewActivationLease(
     leaseId: string,
     expiresAt: Date,

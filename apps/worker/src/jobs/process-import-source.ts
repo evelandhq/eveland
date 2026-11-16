@@ -77,9 +77,8 @@ export async function handleImportSourceJob(
   await store.recordSourceRevision({
     projectId: job.projectId,
     ...scan,
-    // A clone is a git sync whatever the payload says (older jobs say
-    // nothing); an upload's channel is only known to whoever enqueued it.
-    origin: job.payload.origin ?? (commitSha !== null ? "git-sync" : null),
+    // Whoever enqueued the import knows how the source arrived.
+    origin: job.payload.origin ?? null,
     baseCommitSha: job.payload.baseCommitSha ?? null,
     dirty: job.payload.dirty ?? null,
     uploadedBy: job.payload.uploadedBy ?? null,

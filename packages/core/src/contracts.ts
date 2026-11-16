@@ -225,8 +225,9 @@ export type ImportSourceJobPayload = {
   promoteAfterDeploy?: boolean;
   /**
    * Source provenance, recorded verbatim on the revision the import creates.
-   * All optional: imports enqueued before provenance existed carry none, and
-   * an upload from a directory that is not a git checkout has no base commit.
+   * A git sync always says `git-sync`; an upload names its channel when the
+   * enqueuer knows it, and one from a directory that is not a git checkout
+   * has no base commit.
    */
   origin?: SourceOrigin;
   baseCommitSha?: string | null;
@@ -443,7 +444,7 @@ export type ReleaseRecord = {
   // Observer delivery contract embedded at build time; null for releases
   // built before the contract was recorded (their baked observer goes stale
   // as the platform moves and needs a rebuild to refresh).
-  observerContract: number | null;
+  observerContract: number;
   // Build-derived summary from eve's discovery manifest; null when the
   // manifest could not be read or the release predates the column.
   summary: Record<string, unknown> | null;
@@ -582,19 +583,6 @@ export type DeploymentOverview = {
   hotfixDrift: HotfixDrift | null;
 };
 
-/** Per-variant rollup behind the experiment view. */
-export type VariantMetric = {
-  deploymentId: string | null;
-  experimentId: string | null;
-  variantName: string;
-  sessions: number;
-  success: number;
-  failure: number;
-  averageLatencyMs: number;
-  tokens: number;
-  costUsd: number;
-};
-
 /** Gateway-resolved public addresses for a Project's Agent. */
 export type AgentEndpoints = {
   stable: string | null;
@@ -613,7 +601,7 @@ export type SessionBinding = {
   requestId: string;
   remoteIp: string | null;
   affinityFingerprint: string | null;
-  affinitySource: "cookie" | "version_key" | "generated" | null;
+  affinitySource: "cookie" | "generated" | null;
   createdAt: string;
   updatedAt: string;
 };

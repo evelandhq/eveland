@@ -73,16 +73,13 @@ export function affinityKey(
 ): {
   key: string;
   fingerprint: string;
-  source: "cookie" | "version_key" | "generated";
+  source: "cookie" | "generated";
   cookieValue: string | null;
 } {
   const cookie = headers.get("cookie")?.match(/(?:^|;\s*)eveland_affinity=([^;]+)/)?.[1];
   const decodedCookie = cookie ? safeDecodeURIComponent(cookie) : null;
   const verifiedCookie = decodedCookie ? verifyAffinityCookie(decodedCookie, secret) : null;
   if (verifiedCookie) return affinityResult(verifiedCookie, "cookie", null);
-
-  const versionKey = headers.get("x-eveland-version-key")?.trim();
-  if (versionKey) return affinityResult(versionKey, "version_key", null);
 
   const key = randomBytes(32).toString("base64url");
   return affinityResult(key, "generated", signAffinityCookie(key, secret));
@@ -98,7 +95,7 @@ function safeDecodeURIComponent(value: string): string | null {
 
 function affinityResult(
   key: string,
-  source: "cookie" | "version_key" | "generated",
+  source: "cookie" | "generated",
   cookieValue: string | null,
 ) {
   return {

@@ -22,6 +22,7 @@ const INVITATION_DURATION_MS = 7 * 24 * 60 * 60 * 1_000;
 const PASSWORD_RESET_DURATION_MS = 24 * 60 * 60 * 1_000;
 const PASSWORD_RESET_IDENTIFIER_PREFIX = "eveland-password-reset:";
 const DEFAULT_ORGANIZATION_ID = "team_local";
+const BOOTSTRAP_ADMIN_ID = "user_local_admin";
 const DEVICE_CODE_PENDING_LIMIT = 100;
 const DEFAULT_ORGANIZATION_SLUG = "eveland";
 const organizationAccessControl = createAccessControl(defaultStatements);
@@ -127,23 +128,24 @@ export function createBetterAuthRuntime(options: BetterAuthRuntimeOptions) {
   async function bootstrapDefaultAdmin(input: { email: string; name: string; password: string }) {
     const email = input.email.trim().toLowerCase();
     const context = await auth.$context;
+    // The bootstrap admin is seeded once, under a fixed id that also owns
+    // every project row. Once it exists, a changed EVELAND_ADMIN_EMAIL does
+    // not rename or duplicate it: the account is managed in the Dashboard.
     let existing = await context.internalAdapter.findUserByEmail(email, { includeAccounts: true });
     if (!existing) {
-      const legacyOwner = await context.internalAdapter.findUserById("user_local_admin");
-      if (legacyOwner) {
-        const user = await context.internalAdapter.updateUser(legacyOwner.id, {
-          email,
-          name: input.name,
-          role: "admin",
-        });
-        existing = { user, accounts: await context.internalAdapter.findAccounts(user.id) };
+      const seeded = await context.internalAdapter.findUserById(BOOTSTRAP_ADMIN_ID);
+      if (seeded) {
+        existing = {
+          user: seeded,
+          accounts: await context.internalAdapter.findAccounts(seeded.id),
+        };
       }
     }
     let user = existing?.user;
     if (!user) {
       user = await context.internalAdapter.createUser(
         {
-          id: "user_local_admin",
+          id: BOOTSTRAP_ADMIN_ID,
           email,
           emailVerified: false,
           name: input.name,

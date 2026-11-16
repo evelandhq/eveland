@@ -126,27 +126,28 @@ describe("Deployment observability policy", () => {
       files: [],
       schedules: [],
     });
-    // No observerContract: mirrors every release built before the column existed.
-    const legacyDeployment = await store.recordDeployment({
+    const staleDeployment = await store.recordDeployment({
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "fixture:stale-observer",
+      observerContract: 2,
       containerName: "fixture-stale-observer",
       internalPort: 3000,
       hostPort: 41996,
       runtimeKind: "docker",
     });
-    const legacyRelease = await store.getRelease(legacyDeployment.releaseId);
+    const staleRelease = await store.getRelease(staleDeployment.releaseId);
 
     await warnStaleObserverRelease(store, {
       projectId: project.id,
-      deploymentId: legacyDeployment.id,
-      release: legacyRelease!,
+      deploymentId: staleDeployment.id,
+      release: staleRelease!,
     });
 
     const runtimeLogs = await store.listLogs(project.id, "runtime");
     expect(runtimeLogs).toHaveLength(1);
-    expect(runtimeLogs[0]!.line).toContain(legacyRelease!.id);
+    expect(runtimeLogs[0]!.line).toContain(staleRelease!.id);
+    expect(runtimeLogs[0]!.line).toContain("contract 2 < 3");
     expect(runtimeLogs[0]!.line).toContain("Rebuild the release");
 
     const currentDeployment = await store.recordDeployment({
@@ -192,6 +193,7 @@ describe("Deployment observability policy", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "fixture:live-policy",
+      observerContract: 3,
       containerName: "fixture-live-policy",
       internalPort: 3000,
       hostPort: 41995,
