@@ -1,3 +1,4 @@
+import { primaryAgentBaseDomain } from "@evelandhq/core/routing";
 import { OBSERVER_RUNTIME_CONTRACT } from "@evelandhq/agent-observer";
 import type { Job } from "@evelandhq/core/contracts";
 import {
@@ -336,7 +337,7 @@ export async function handleBuildDeployJob(
     const materializedRoutes = await store.ensureDeploymentRoutes(
       project.id,
       deployment.id,
-      (process.env.EVELAND_AGENT_BASE_DOMAINS ?? "agent.localhost").split(",")[0]!.trim(),
+      primaryAgentBaseDomain(process.env),
     );
     if (job.payload.promoteAfterDeploy === true) {
       options.signal?.throwIfAborted();

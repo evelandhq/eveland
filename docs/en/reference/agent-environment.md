@@ -66,6 +66,13 @@ Eve projects statically resolve certain configuration during compilation (`npx e
 - `EVELAND_MODEL_GATEWAY_KIND` and `EVELAND_MODEL_GATEWAY_URL` belong to the platform reserved layer and are always present: when the project uses the instance's Model Gateway they carry the gateway kind and address; otherwise they are empty. A same-named project or shared entry is overridden, so a project cannot aim the platform-injected provider at another gateway.
 - The key is not reserved: it is the project's own `AI_GATEWAY_API_KEY` secret, and the platform never supplies one. The full rules are in the [Model Gateway contract](/docs/reference/model-gateway).
 
+## 6. Public callback origin (`WORKFLOW_LOCAL_BASE_URL`)
+
+- eve starts a connection's sign-in link and a remote agent's callback URL from `WORKFLOW_LOCAL_BASE_URL`. Eveland sets it in every Deployment to the project's public Agent origin, `<scheme>://<project-slug>.<first base domain>[:port]`, so those URLs reach the Agent through the Agent Gateway rather than naming the private loopback port the process listens on.
+- The origin names the project, not one Deployment: the stable route decides which Deployment receives a callback, while the run the callback resumes keeps executing on the Deployment that started it.
+- The variable is reserved: a same-named project or shared entry is overridden.
+- Known limitation: eve 1.0 builds a `createWebhook()` URL from the address the process serves on, not from `WORKFLOW_LOCAL_BASE_URL`, so on Eveland it names a loopback address outside callers cannot reach. Hand callers `process.env.WORKFLOW_LOCAL_BASE_URL` joined with the webhook URL's path (`/.well-known/workflow/v1/webhook/<token>`) instead; the Agent Gateway forwards that path.
+
 ## Deeper reference
 
 - [Secrets and Connections](/docs/agents/secrets-connections): developer guide to credentials and interactive auth
