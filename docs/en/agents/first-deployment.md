@@ -3,7 +3,7 @@ title: Deploy your first agent
 description: Import an existing Eve project, build a preview environment, and promote it to production.
 ---
 
-Before following this guide, ensure your platform administrator has completed [production verification](/docs/production/verify). Eveland natively deploys standard Eve projects without requiring proprietary modifications to your codebase.
+Before following this guide, ensure your platform administrator has completed [production verification](/docs/production/verify). Eveland deploys standard single-agent Eve projects without platform-specific changes to your code; what it does not host is listed in [Known limitations](/docs/reference/known-limitations).
 
 ## 1. Verify framework compatibility
 

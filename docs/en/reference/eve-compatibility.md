@@ -57,6 +57,7 @@ The [Model Gateway](/docs/reference/model-gateway) depends on Eve behavior that 
 
 ## Deeper reference
 
+- [Known limitations](/docs/reference/known-limitations): Eve features Eveland does not host
 - [Source import](/docs/reference/source-import): preflight validation and dependency scanning
 - [Deploy your first agent](/docs/agents/first-deployment): project import and build quickstart
 - [Upgrade and rollback](/docs/operations/upgrades): platform updates and Eve dependency lifecycle
