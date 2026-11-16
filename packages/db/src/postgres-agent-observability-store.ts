@@ -2,7 +2,6 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { createId } from "@evelandhq/core/ids";
 import {
   parseModelUsageEvent,
-  parseUnobservedChildUsage,
   parseUnreportedModelRun,
   scheduleExecutionErrorFromEveEvent,
   scheduleExecutionStatusFromEveEvent,
@@ -553,68 +552,13 @@ async function ingestPostgresAgentEventOnce(
       }
     }
 
-    const position = recordValue(eventRecord?.meta)?.position;
-
-    // A child that runs without the observer hook (a file-form subagent)
-    // reports nothing itself, so this node's record of what the child spent
-    // is the only report of it: it counts once, on the child's node. The
-    // observer names that child; any other re-reported spend stays with the
-    // child that recorded it.
-    const childUsage = observation.unobservedChild
-      ? parseUnobservedChildUsage(type, payload, position)
-      : null;
-    if (childUsage && observation.unobservedChild) {
-      const child = await unobservedChildNode(tx, {
-        projectId: deployment.projectId,
-        rootSessionId: sessionRow!.id,
-        parent: node!,
-        eveSessionId: observation.unobservedChild.eveSessionId,
-        agentName: observation.unobservedChild.agentName,
-        deploymentId: observation.deploymentId,
-      });
-      const [insertedUsage] = child
-        ? await tx
-            .insert(modelUsageEvents)
-            .values({
-              id: createId("usage"),
-              sessionId: sessionRow!.id,
-              sessionNodeId: child.id,
-              eveSessionId: child.eveSessionId,
-              agentId: child.agentId,
-              agentName: child.agentName,
-              turnId: childUsage.turnId,
-              runKey: childUsage.runKey,
-              modelId: null,
-              finishReason: null,
-              inputTokens: childUsage.inputTokens,
-              outputTokens: childUsage.outputTokens,
-              cacheReadTokens: childUsage.cacheReadTokens,
-              cacheWriteTokens: childUsage.cacheWriteTokens,
-              costUsd: childUsage.costUsd,
-              usageReported: childUsage.usageReported,
-            })
-            .onConflictDoNothing()
-            .returning()
-        : [];
-      if (insertedUsage) {
-        await tx
-          .update(sessions)
-          .set({
-            ...sessionUsageIncrement(childUsage),
-            ...(childUsage.usageReported
-              ? { usageReportedSteps: sql`${sessions.usageReportedSteps} + 1` }
-              : { usageMissingSteps: sql`${sessions.usageMissingSteps} + 1` }),
-          })
-          .where(eq(sessions.id, sessionRow!.id));
-      }
-    }
-
     // Provider usage from `usage.recorded`, and a completed model run that is
     // owed a record. That run is projected as missing usage under its run
     // key, so a run that never reports counts as missing, and its record
     // reconciles the same row whichever arrives first; nothing is estimated.
     // A run's key names the commit line (see `runUsageKey`), so an attempt
     // eve discarded keeps its own row.
+    const position = recordValue(eventRecord?.meta)?.position;
     const usage =
       parseModelUsageEvent(type, payload, scope, position) ??
       parseUnreportedModelRun(type, payload, scope, position);
@@ -696,55 +640,6 @@ async function ingestPostgresAgentEventOnce(
       duplicate: false,
     };
   });
-}
-
-/**
- * The node of a child `parent` delegated to, for spend the parent reported
- * on its behalf. The parent's `child.opened` may arrive after the record, so
- * the record creates the child's unresolved node as `child.opened` would. A
- * node that exists under another parent is not this parent's child: its
- * spend is not this record's to count.
- */
-async function unobservedChildNode(
-  tx: StoreDatabase["db"],
-  input: {
-    projectId: string;
-    rootSessionId: string;
-    parent: typeof sessionNodes.$inferSelect;
-    eveSessionId: string;
-    agentName: string | null;
-    deploymentId: string;
-  },
-): Promise<typeof sessionNodes.$inferSelect | null> {
-  const [existing] = await tx
-    .select()
-    .from(sessionNodes)
-    .where(
-      and(
-        eq(sessionNodes.projectId, input.projectId),
-        eq(sessionNodes.eveSessionId, input.eveSessionId),
-      ),
-    )
-    .limit(1);
-  if (existing) return existing.parentNodeId === input.parent.id ? existing : null;
-  const [created] = await tx
-    .insert(sessionNodes)
-    .values({
-      id: createId("node"),
-      rootSessionId: input.rootSessionId,
-      projectId: input.projectId,
-      eveSessionId: input.eveSessionId,
-      parentNodeId: input.parent.id,
-      parentEveSessionId: input.parent.eveSessionId,
-      startedDeploymentId: input.deploymentId,
-      lastObservedDeploymentId: input.deploymentId,
-      agentName: input.agentName,
-      channelKind: "subagent",
-      resolutionStatus: "unresolved",
-      status: "running",
-    })
-    .returning();
-  return created ?? null;
 }
 
 /**

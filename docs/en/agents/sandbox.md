@@ -9,7 +9,8 @@ Every eve sandbox on Eveland, the one behind the built-in `bash`, `read_file`, a
 
 - An authored `agent/sandbox` module keeps working. Its `prepare` step and its `defineSandbox()` selector run unchanged, and the workspace seeds under `agent/sandbox/workspace/**` are copied in.
 - Every built-in provider (`DefaultSandbox`, `DockerSandbox`, `VercelSandbox`, `JustBashSandbox`) builds the bubblewrap environment instead, so provider-specific options such as an image or a Dockerfile are ignored.
-- The build fails if any sandbox was prepared on another provider: an environment built in a helper file rather than the sandbox module, a custom provider from `eve/sandbox/provider`, or a sandbox shipped by an Extension.
+- A directory-form subagent without a sandbox module of its own, the project's or an installed Extension's, gets one that opens the bubblewrap environment.
+- The build fails if any sandbox was prepared on another provider: an environment built in a helper file rather than the sandbox module, a custom provider from `eve/sandbox/provider`, a sandbox shipped by an Extension, or the sandbox of a file-form subagent (`subagents/<name>.ts`, the project's or an Extension's). eve gives a file-form subagent its own default sandbox and no slot to replace it, so give such a subagent a directory instead (`subagents/<name>/agent.ts`).
 
 ## 2. What commands see
 

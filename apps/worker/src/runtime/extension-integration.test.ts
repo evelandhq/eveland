@@ -9,6 +9,8 @@ import { injectObserverHooks } from "@evelandhq/agent-observer";
 import { injectSchedulerAdapter, readSchedulerDefinitions } from "@evelandhq/agent-scheduler";
 import { afterEach, expect, test } from "vitest";
 import { injectExtensionIntegrator } from "./extension-integration.js";
+import { injectSandboxModules } from "./sandbox-inject.js";
+import { resolveProviderDistDir } from "./select.js";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
@@ -175,6 +177,47 @@ test("builds Extension schedules and observed Extension subagents with the real 
     await stopEveStart(child);
     await new Promise<void>((resolve) => redeemServer.close(() => resolve()));
   }
+}, 120_000);
+
+test("puts an installed Extension's directory-form subagents on the platform sandbox", async () => {
+  const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-extension-sandbox-"));
+  roots.push(releaseDir);
+  const extensionPackageRoot = path.join(releaseDir, "packages/crm");
+  await writeFixtureExtension(extensionPackageRoot);
+  await execFileAsync(process.execPath, [eveBin, "extension", "build"], {
+    cwd: extensionPackageRoot,
+  });
+  await writeConsumer(releaseDir, extensionPackageRoot);
+
+  // The release tree's own slots, then the installed Extension, as a build runs them.
+  await injectSandboxModules({ releaseDir, providerDistDir: resolveProviderDistDir() });
+  await injectObserverHooks({ releaseDir });
+  await injectSchedulerAdapter({ releaseDir });
+  const integratorPath = await injectExtensionIntegrator(releaseDir);
+  await execFileAsync(process.execPath, [eveBin, "info", "--json"], { cwd: releaseDir });
+  await execFileAsync(process.execPath, [integratorPath], { cwd: releaseDir });
+  await execFileAsync(process.execPath, [eveBin, "info", "--json"], { cwd: releaseDir });
+
+  const compiled = JSON.parse(
+    await readFile(path.join(releaseDir, ".eve/compile/compiled-agent-manifest.json"), "utf8"),
+  ) as {
+    sandbox: { sourceId: string };
+    subagents: Array<{ name: string; agent: { sandbox: { sourceId: string } } }>;
+  };
+  const sandboxOf = (name: string) =>
+    compiled.subagents.find((subagent) => subagent.name === name)?.agent.sandbox.sourceId;
+  expect(compiled.sandbox.sourceId).toBe("sandbox.js");
+  // The directory-form subagent now loads the generated module; without it,
+  // eve gives it its own default sandbox, which the Release check refuses.
+  expect(sandboxOf("crm__reviewer")).toBe("sandbox.js");
+  await expect(
+    readFile(
+      path.join(extensionPackageRoot, "dist/extension/subagents/reviewer/sandbox.js"),
+      "utf8",
+    ),
+  ).resolves.toContain("../../../../../../.eveland/sandbox-platform/platform.js");
+  // A file-form subagent has no sandbox slot of its own to fill.
+  expect(sandboxOf("crm__quick")).toBe("eve:defaults:sandbox.ts");
 }, 120_000);
 
 /**

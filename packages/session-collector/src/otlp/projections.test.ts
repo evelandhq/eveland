@@ -214,56 +214,6 @@ describe("OTLP Agent event projection", () => {
     });
   });
 
-  test("carries the unobserved child a re-reported usage record belongs to", () => {
-    const usageLog = (attributes: unknown[]) => ({
-      resourceLogs: [
-        {
-          resource: {
-            attributes: [
-              attribute("eveland.telemetry.domain", "agent"),
-              attribute("eveland.deployment.credential", "credential_dep_1"),
-            ],
-          },
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  timeUnixNano: "1784808000000000000",
-                  attributes: [
-                    attribute("eveland.event.id", "event_1"),
-                    attribute("eveland.event.fingerprint", "fingerprint_1"),
-                    attribute("eveland.eve.session.id", "eve_parent"),
-                    ...attributes,
-                  ],
-                  body: anyValue({
-                    type: "usage.recorded",
-                    data: { kind: "model", owner: { callId: "call_1" } },
-                    meta: { position: { line: 4, index: 1 } },
-                  }),
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    });
-
-    const [attributed] = projectAgentEventsFromOtlpLogs(
-      usageLog([
-        attribute("eveland.eve.usage.session.id", "eve_file_child"),
-        attribute("eveland.eve.usage.agent.name", "filechild"),
-      ]),
-      projection,
-    );
-    expect(attributed?.unobservedChild).toEqual({
-      eveSessionId: "eve_file_child",
-      agentName: "filechild",
-    });
-    const [reReported] = projectAgentEventsFromOtlpLogs(usageLog([]), projection);
-    expect(reReported).toBeDefined();
-    expect(reReported?.unobservedChild).toBeUndefined();
-  });
-
   test("ignores non-Agent resources and malformed LogRecords", () => {
     expect(
       projectAgentEventsFromOtlpLogs(

@@ -31,7 +31,6 @@ import {
   transcriptFor,
   type TranscriptMessage,
 } from "./messages.js";
-import type { UnobservedChildSpend } from "./delegations.js";
 import { recordUsage, type AgentTelemetryMetrics } from "./metrics.js";
 import type { ModelCallCapture, ObservedModelCall } from "./model-capture.js";
 import {
@@ -67,8 +66,6 @@ export function mapAgentTelemetryLifecycle(input: {
   now: () => number;
   capture: RuntimeAgentPolicy["capture"];
   modelCapture: ModelCallCapture;
-  /** For a re-reported usage record, the child that spent it when no hook of its own reports it. */
-  unobservedChild?: UnobservedChildSpend;
   /**
    * Hands the caller the per-call model taken for a `usage.recorded`, so the
    * usage log carries it too. It is looked up here, where the owning run is
@@ -213,20 +210,9 @@ export function mapAgentTelemetryLifecycle(input: {
       const span = ownerRunKey ? state.steps.get(ownerRunKey) : undefined;
       if (!ownerRunKey || !span) {
         // Spend no open run owns -- a decision, an auxiliary call, a context
-        // change -- is still this session's, so it is metered on its own. A
-        // child's re-reported spend is metered by the child's observer, unless
-        // the child runs without one: then this record is its only report.
-        if (input.unobservedChild) {
-          recordUsage({
-            data,
-            modelId: undefined,
-            metrics,
-            attributes: {
-              "eveland.gen_ai.usage.kind": asString(data.kind) ?? "unknown",
-              [ATTR_GEN_AI_AGENT_NAME]: input.unobservedChild.agentName,
-            },
-          });
-        } else if (!ownerRunId && !isDelegatedUsageRecord(data)) {
+        // change -- is still this session's, so it is metered on its own; a
+        // child's re-reported spend is metered by the child's observer.
+        if (!ownerRunId && !isDelegatedUsageRecord(data)) {
           recordUsage({
             data,
             modelId: undefined,

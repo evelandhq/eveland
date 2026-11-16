@@ -37,6 +37,7 @@ async function main(): Promise<void> {
     let runtime: ReturnType<typeof createRuntimeAdapterFromEnv> | null = null;
     const processNames: string[] = [];
     let server: ReturnType<typeof serve> | null = null;
+    const probe = await startProbe();
     try {
       runtime = createRuntimeAdapterFromEnv();
       const project = await store.createProject({
@@ -48,6 +49,13 @@ async function main(): Promise<void> {
         project.id,
         "EVE_MOCK_AUTHORED_MODELS",
         sealSecret("1", APP_SECRET_KEY, "project-secret"),
+      );
+      // Where the fixture's thread and A2A channels report which Deployment
+      // handled a request or ran a turn.
+      await store.upsertSecret(
+        project.id,
+        "CHANNEL_PROBE_URL",
+        sealSecret(probe.url, APP_SECRET_KEY, "project-secret"),
       );
       assert.equal(
         await processNextJob(store, "gateway-e2e", { appSecretKey: APP_SECRET_KEY }),
@@ -259,6 +267,103 @@ async function main(): Promise<void> {
         assert.equal(rolledBack?.targets[0]?.deploymentId, deployment.id);
       });
 
+      // A channel conversation under a two-target route: a channel route
+      // carries no session id, so each message follows the weights, and the
+      // turn it continues runs on the Deployment that received it. The
+      // conversation itself carries on across the two Releases.
+      await store.updateDeploymentStatus(deployment.id, "running");
+      await store.updateDeploymentStatus(candidate.id, "running");
+      await store.updateRouteTargets(stableBeforeSplit.id, [
+        { deploymentId: deployment.id, weight: 5_000, variantName: "control" },
+        { deploymentId: candidate.id, weight: 5_000, variantName: "candidate" },
+      ]);
+      await invalidateGateway(gatewayPort, localHost);
+      const split = await store.findProjectRoute(project.id);
+      assert.ok(split);
+      const cookieFor = (target: "control" | "candidate") => {
+        const key = Array.from({ length: 10_000 }, (_, index) => `thread-${index}`).find(
+          (candidateKey) =>
+            affinityBucketForRoute(split.id, split.policyRevision, candidateKey) < 5_000 ===
+            (target === "control"),
+        );
+        assert.ok(key);
+        return `eveland_affinity=${encodeURIComponent(signAffinityCookie(key, "gateway-e2e-affinity-secret"))}`;
+      };
+      const threadPath = `/threads/gateway-e2e-${Date.now()}/messages`;
+      const first = await threadMessage(gatewayPort, localHost, threadPath, cookieFor("control"));
+      assert.equal(first.handledBy, deployment.id, "first channel message took the wrong target");
+      // The fixture's hook runs inside each turn and reports where it ran.
+      const turnSettled = (after?: ProbeFact) =>
+        probe.waitFor(
+          (fact) =>
+            fact.kind === "hook.turn.settled" &&
+            fact.sessionId === first.sessionId &&
+            fact !== after,
+        );
+      const firstTurn = await turnSettled();
+      assert.equal(firstTurn.deploymentId, deployment.id);
+      const second = await threadMessage(
+        gatewayPort,
+        localHost,
+        threadPath,
+        cookieFor("candidate"),
+      );
+      assert.equal(second.handledBy, candidate.id, "second channel message took the wrong target");
+      assert.equal(second.sessionId, first.sessionId, "the thread did not continue its session");
+      const secondTurn = await turnSettled(firstTurn);
+      assert.equal(
+        secondTurn.deploymentId,
+        candidate.id,
+        "a channel turn did not run on the Deployment that received its event",
+      );
+
+      // A2A from a client that keeps no cookies: the context and its tasks
+      // stay on the Deployment that answered the first send, after the other
+      // Deployment is promoted.
+      const a2aStart = await a2aCall(gatewayPort, localHost, "a2a-start", "SendMessage", {
+        message: {
+          messageId: `gateway-e2e-${Date.now()}`,
+          role: "ROLE_USER",
+          parts: [{ text: "Reply briefly." }],
+        },
+      });
+      const startTask = (a2aStart as { task?: { id?: string; contextId?: string } }).task;
+      assert.ok(
+        startTask?.id && startTask.contextId,
+        `A2A send returned no task: ${JSON.stringify(a2aStart)}`,
+      );
+      const owner = (await probe.waitFor((fact) => fact.probe === "a2a-start")).deploymentId;
+      assert.equal(
+        (await store.findSessionBinding(project.id, startTask.contextId))?.deploymentId,
+        owner,
+      );
+      const other = owner === deployment.id ? candidate.id : deployment.id;
+      await store.promoteDeployment(project.id, other);
+      await invalidateGateway(gatewayPort, localHost);
+      const a2aContinue = await a2aCall(gatewayPort, localHost, "a2a-continue", "SendMessage", {
+        message: {
+          messageId: `gateway-e2e-continue-${Date.now()}`,
+          role: "ROLE_USER",
+          contextId: startTask.contextId,
+          parts: [{ text: "Reply briefly again." }],
+        },
+      });
+      const continueTask = (a2aContinue as { task?: { id?: string; contextId?: string } }).task;
+      assert.equal(continueTask?.contextId, startTask.contextId, JSON.stringify(a2aContinue));
+      assert.equal(
+        (await probe.waitFor((fact) => fact.probe === "a2a-continue")).deploymentId,
+        owner,
+        "an A2A send naming its context left the Deployment that started it after promote",
+      );
+      await a2aCall(gatewayPort, localHost, "a2a-get", "GetTask", { id: continueTask!.id });
+      assert.equal(
+        (await probe.waitFor((fact) => fact.probe === "a2a-get")).deploymentId,
+        owner,
+        "A2A GetTask left the Deployment that started its context after promote",
+      );
+      await store.promoteDeployment(project.id, deployment.id);
+      await invalidateGateway(gatewayPort, localHost);
+
       const dockerPort =
         runtime.name === "docker"
           ? await execFileAsync("docker", ["port", candidate.containerName])
@@ -294,7 +399,7 @@ async function main(): Promise<void> {
       assert.equal(production.statusCode, 202, `production Host did not route: ${production.body}`);
 
       console.log(
-        `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 cancel=delivered promoted=1 rolledBack=1 preview=200 create=202 production=202 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
+        `GATEWAY E2E OK runtime=${runtime.name} concurrent=2 split=90/10-to-50/50 zeroWeight=1 pinned=1 cancel=delivered promoted=1 rolledBack=1 channelAcrossReleases=1 a2aPinned=1 preview=200 create=202 production=202 firstChunkMs=${streamed.firstChunkMs} completedMs=${streamed.completedMs}`,
       );
     } finally {
       if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
@@ -306,6 +411,7 @@ async function main(): Promise<void> {
         );
       }
       await workflowRuntime?.stop().catch(() => {});
+      await probe.close();
       await close();
     }
   } finally {
@@ -327,6 +433,95 @@ async function expectBinding(
   assert.equal(binding?.affinitySource, "cookie");
   assert.match(binding?.remoteIp ?? "", /127\.0\.0\.1|::ffff:127\.0\.0\.1/);
   assert.ok(binding?.requestId);
+}
+
+type ProbeFact = {
+  kind?: string;
+  probe?: string;
+  sessionId?: string;
+  deploymentId?: string;
+};
+
+/** Collects what the fixture's channels report about where they ran. */
+async function startProbe(): Promise<{
+  url: string;
+  waitFor: (matches: (fact: ProbeFact) => boolean) => Promise<ProbeFact>;
+  close: () => Promise<void>;
+}> {
+  const facts: ProbeFact[] = [];
+  const probeServer = http.createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => (body += chunk));
+    request.on("end", () => {
+      try {
+        facts.push(JSON.parse(body) as ProbeFact);
+      } catch {
+        // Not a fact; ignore it.
+      }
+      response.statusCode = 204;
+      response.end();
+    });
+  });
+  probeServer.listen(0, "127.0.0.1");
+  await once(probeServer, "listening");
+  const { port } = probeServer.address() as { port: number };
+  return {
+    url: `http://127.0.0.1:${port}/probe`,
+    waitFor: async (matches) => {
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline) {
+        const found = facts.find(matches);
+        if (found) return found;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      throw new Error(`probe fact never arrived; facts=${JSON.stringify(facts)}`);
+    },
+    close: () => new Promise<void>((resolve) => probeServer.close(() => resolve())),
+  };
+}
+
+async function threadMessage(
+  port: number,
+  host: string,
+  path: string,
+  cookie: string,
+): Promise<{ sessionId: string; handledBy: string }> {
+  const response = await gatewayRequest(port, {
+    host,
+    path,
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({ message: "Reply to the thread." }),
+  });
+  assert.equal(response.statusCode, 202, `channel message failed: ${response.body}`);
+  const parsed = JSON.parse(response.body) as { sessionId?: unknown; handledBy?: unknown };
+  assert.ok(
+    typeof parsed.sessionId === "string" && typeof parsed.handledBy === "string",
+    `channel message answered without its session or Deployment: ${response.body}`,
+  );
+  return { sessionId: parsed.sessionId, handledBy: parsed.handledBy };
+}
+
+/** One A2A JSON-RPC call, as a client without cookies sends it. */
+async function a2aCall(
+  port: number,
+  host: string,
+  probe: string,
+  method: string,
+  params: Record<string, unknown>,
+): Promise<unknown> {
+  const response = await gatewayRequest(port, {
+    host,
+    path: "/eve/v1/a2a",
+    method: "POST",
+    headers: { "content-type": "application/json", "a2a-version": "1.0", "x-a2a-probe": probe },
+    body: JSON.stringify({ jsonrpc: "2.0", id: probe, method, params }),
+  });
+  assert.equal(response.statusCode, 200, `A2A ${method} failed: ${response.body}`);
+  const parsed = JSON.parse(response.body) as { result?: unknown; error?: unknown };
+  assert.ok(parsed.result, `A2A ${method} answered an error: ${response.body}`);
+  return parsed.result;
 }
 
 async function invalidateGateway(port: number, host: string): Promise<void> {

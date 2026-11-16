@@ -39,6 +39,18 @@ describe("platformSandboxArtifactsProblem", () => {
     expect(problem).toContain("eve/sandbox/provider");
   });
 
+  test("tells the owner how to move a file-form subagent onto the platform sandbox", () => {
+    const problem = platformSandboxArtifactsProblem(
+      manifest(
+        { nodeId: "__root__", providerName: "bwrap" },
+        { nodeId: "subagents/filechild.ts", providerName: "default" },
+      ),
+    );
+
+    expect(problem).toContain("subagents/filechild.ts (default)");
+    expect(problem).toContain("make such a subagent a directory (subagents/<name>/agent.ts)");
+  });
+
   test.each([null, {}, { entries: [] }, { entries: "nope" }])(
     "refuses a Release with no prepared sandbox at all (%j)",
     (value) => {

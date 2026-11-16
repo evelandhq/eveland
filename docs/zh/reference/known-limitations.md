@@ -13,6 +13,7 @@ Eveland 托管标准的单 Agent Eve 项目。本页列出它不支持的内容�
 | 动态 schedule（`eve/experimental/schedules` 的 `defineDynamicSchedules`）            | 构建失败：`agent/schedules/` 下的每个文件都必须声明静态 `cron`。见[调度](/zh/docs/reference/scheduling)。                                                       |
 | 需要安装系统软件包的扩展，例如 `@eve/agent-browser`、`agent-desktop`、`computer-use` | 它们首次使用时用 `apt`/`dnf` 加 `sudo` 安装 Chromium 或桌面工具。沙箱根文件系统只读、命令以非特权用户运行，因此安装会在运行时失败。                             |
 | 由 Extension 自带、在辅助文件中构建、或来自自定义 provider 的沙箱                    | 构建失败。所有沙箱都运行在平台的 bubblewrap provider 上，见 [Agent 沙箱](/zh/docs/agents/sandbox)。                                                             |
+| 单文件子 Agent（`subagents/<name>.ts`），无论属于项目还是 Extension                  | 构建失败：eve 给每个单文件子 Agent 分配自己的默认沙箱，平台没有可以替换的槽位。请改为目录式子 Agent（`subagents/<name>/agent.ts`）。                            |
 | 域名级或改写请求头的沙箱网络策略                                                     | 被拒绝。沙箱网络只有 `"allow-all"`（默认）和 `"deny-all"` 两种。因此设置了 `github` 的 eve git 扩展也不可用，它需要改写请求头的网络策略。                       |
 | 工具需要沙箱的 keyed `invokeTool` 调用（`toolSessions`）                             | 不支持：eve 从不结束这些沙箱，平台的 provider 也没有为它们设保留上限。                                                                                          |
 | eve evals                                                                            | Eveland 没有 evals 集成。请在本地运行 `eve eval`，或用 `eve eval --url` 指向某个 Deployment 的预览 URL。                                                        |

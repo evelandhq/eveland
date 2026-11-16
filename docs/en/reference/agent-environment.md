@@ -46,18 +46,21 @@ Eve projects statically resolve certain configuration during compilation (`npx e
 
   ```ts
   // agent/memory.ts
-  import { defineMemory } from "eve/memory";
+  import { defaultNamespace, defineMemory } from "eve/memory";
   import { fileMemory } from "eve/memory/file";
   import { byPrincipal } from "eve/memory/scope";
-  import { evelandMemoryBackend } from "eveland/memory";
+  import { evelandMemoryBackend, evelandMemoryNamespace } from "eveland/memory";
 
   export default defineMemory({
     scope: byPrincipal,
+    namespace: evelandMemoryNamespace(defaultNamespace),
     provider: fileMemory({ backend: evelandMemoryBackend() }),
   });
   ```
 
-  Under `eve dev`, where `EVELAND_MEMORY_ROOT` is unset, `evelandMemoryBackend()` steps aside and eve's own local backend applies, so the same file works in both places. Scope memory by principal only once the instance uses `Internal` or `OIDC` identity: under the default `Open` provider every visitor shares one principal.
+  The `namespace` line is what keeps memory across redeploys. Off Vercel, eve's default namespace includes a digest of the directory the application was built in, and every Release builds in its own directory, so without it each redeploy starts with empty memory. `evelandMemoryNamespace()` keeps the agent and slot apart as eve's default does and leaves out the build directory.
+
+  Under `eve dev`, where `EVELAND_MEMORY_ROOT` is unset, `evelandMemoryBackend()` steps aside and eve's own local backend applies, and `evelandMemoryNamespace(defaultNamespace)` uses eve's default namespace, so the same file works in both places. Scope memory by principal only once the instance uses `Internal` or `OIDC` identity: under the default `Open` provider every visitor shares one principal.
 
 - **Tenant isolation**: The Worker binds this to a dedicated host path: `<EVELAND_DATA_DIR>/memory/<projectId>`. The directory persists across redeployments and restarts, and is cleaned up only upon project deletion.
 

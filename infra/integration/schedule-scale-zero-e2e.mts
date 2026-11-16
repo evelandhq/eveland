@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +35,12 @@ const GATEWAY_SERVICE_TOKEN = "schedule-e2e-gateway-service-token-00000000";
 const SCHEDULER_RUNTIME_SECRET = "schedule-e2e-runtime-secret-000000000000";
 const SCHEDULER_DISPATCH_SECRET = "schedule-e2e-dispatch-secret-0000000000";
 const FIXTURE_TEMPLATE = fileURLToPath(new URL("./fixtures/schedule-scale-zero", import.meta.url));
+/**
+ * A daily schedule authored in an IANA zone with a half-hour offset and no
+ * DST, so the instant it is planned for differs from what the same cron
+ * would give in UTC or in any whole-hour zone.
+ */
+const ZONED_SCHEDULE = { key: "zoned", timezone: "Asia/Kolkata", offsetMinutes: 330 } as const;
 type TestStore = Awaited<ReturnType<typeof createPgliteTestStore>>["store"];
 type TestRuntime = ReturnType<typeof createRuntimeAdapterFromEnv>;
 
@@ -56,6 +62,7 @@ async function main(): Promise<void> {
   try {
     const fixture = path.join(fixtureRoot, "source");
     await materializeEveFixtureDirectory(FIXTURE_TEMPLATE, fixture);
+    const zonedDueAt = await writeZonedSchedule(fixture);
 
     process.env.NODE_ENV = "test";
     process.env.EVELAND_HEALTH_TIMEOUT_MS ??= "30000";
@@ -136,9 +143,18 @@ async function main(): Promise<void> {
     assert.ok(release, "schedule fixture Release was not recorded");
     releaseRef = release.imageTag;
     const schedules = await store.listProjectScheduleSummaries(project.id);
-    assert.equal(schedules.length, 1);
-    const schedule = schedules[0]!.schedule;
-    assert.equal(schedule.key, "multi-session");
+    assert.deepEqual(schedules.map((summary) => summary.schedule.key).sort(), [
+      "multi-session",
+      ZONED_SCHEDULE.key,
+    ]);
+    const zoned = schedules.find((summary) => summary.schedule.key === ZONED_SCHEDULE.key)!;
+    // Stored under the name ICU resolves the zone to, which can be an older
+    // alias of the authored one.
+    assert.equal(
+      zoned.version?.timezone,
+      new Intl.DateTimeFormat("en-US", { timeZone: ZONED_SCHEDULE.timezone }).resolvedOptions()
+        .timeZone,
+    );
 
     const gateway = createGatewayApp(store, {
       allowedBaseDomains: ["agent.localhost"],
@@ -209,10 +225,10 @@ async function main(): Promise<void> {
     assert.equal(observed.sessions.length, 2);
     assert.ok(observed.usage.reportedSteps >= 2, "schedule Session usage was not projected");
 
-    const beforeNativeTick = await store.listSessions(project.id);
+    const beforeNativeTick = (await store.listSessionsPage(project.id, { limit: 50 })).items;
     await waitPastNextMinute();
     await projectPendingOtlpLogs(store, otlpReceiver);
-    const afterNativeTick = await store.listSessions(project.id);
+    const afterNativeTick = (await store.listSessionsPage(project.id, { limit: 50 })).items;
     assert.equal(
       afterNativeTick.length,
       beforeNativeTick.length,
@@ -246,8 +262,36 @@ async function main(): Promise<void> {
       deployment.id,
     );
 
+    // The zoned schedule is due at the instant its zone's wall clock reaches
+    // the cron, and not a moment earlier. Planning is driven by the clock
+    // the planner is handed; the per-minute schedule is due at both instants
+    // too, so only the zoned schedule's runs are counted.
+    await store.setProjectSchedulerTarget(
+      project.id,
+      deployment.id,
+      new Date(zonedDueAt.getTime() - 90_000),
+    );
+    const retargeted = (await store.listProjectScheduleSummaries(project.id)).find(
+      (summary) => summary.schedule.key === ZONED_SCHEDULE.key,
+    )!;
+    assert.equal(retargeted.schedule.nextRunAt, zonedDueAt.toISOString());
+    const zonedRuns = async () =>
+      (
+        await store.listScheduleRuns(project.id, {
+          scheduleId: retargeted.schedule.id,
+          trigger: "cron",
+          limit: 10,
+        })
+      ).items;
+    await planDueSchedules(store, { now: new Date(zonedDueAt.getTime() - 1_000), limit: 10 });
+    assert.equal((await zonedRuns()).length, 0, "zoned schedule was planned before its instant");
+    await planDueSchedules(store, { now: zonedDueAt, limit: 10 });
+    const zonedPlanned = await zonedRuns();
+    assert.equal(zonedPlanned.length, 1, "zoned schedule was not planned at its instant");
+    assert.equal(zonedPlanned[0]!.dueAt, zonedDueAt.toISOString());
+
     console.log(
-      `SCHEDULE SCALE TO ZERO E2E OK runtime=${runtime.name} eve=${VERIFIED_EVE_VERSION} dormant=1 cronRuns=1 sessions=2 nativeDuplicates=0 idleStopped=1 continuationWoke=1`,
+      `SCHEDULE SCALE TO ZERO E2E OK runtime=${runtime.name} eve=${VERIFIED_EVE_VERSION} dormant=1 cronRuns=1 sessions=2 nativeDuplicates=0 idleStopped=1 continuationWoke=1 zonedDueAt=${zonedDueAt.toISOString()}`,
     );
   } catch (error) {
     primaryFailed = true;
@@ -392,6 +436,25 @@ async function projectPendingOtlpLogs(
       await candidateStore.ingestAgentEvent(observation);
     }
   }
+}
+
+/**
+ * Authors the zoned schedule for a wall-clock time about twelve hours away,
+ * so its first instant can never fall inside the per-minute schedule's
+ * planning window above. Returns that instant, worked out from the zone's
+ * fixed offset rather than by the code under test.
+ */
+async function writeZonedSchedule(fixture: string): Promise<Date> {
+  const dueAt = new Date(Date.now() + 12 * 3_600_000);
+  dueAt.setUTCSeconds(0, 0);
+  const utcMinuteOfDay = dueAt.getUTCHours() * 60 + dueAt.getUTCMinutes();
+  const localMinuteOfDay = (utcMinuteOfDay + ZONED_SCHEDULE.offsetMinutes) % 1_440;
+  const cron = `${localMinuteOfDay % 60} ${Math.floor(localMinuteOfDay / 60)} * * *`;
+  await writeFile(
+    path.join(fixture, "agent/schedules", `${ZONED_SCHEDULE.key}.md`),
+    `---\ncron: "${cron}"\ntimezone: "${ZONED_SCHEDULE.timezone}"\n---\n\nRun the zoned fixture schedule.\n`,
+  );
+  return dueAt;
 }
 
 async function waitPastNextMinute(): Promise<void> {
