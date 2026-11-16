@@ -115,7 +115,8 @@ describe("processNextJob", () => {
 
     await expect(
       processNextJob(spyingStore, "worker-a", {
-        dropProjectWorkflowWorld: async (_env, projectId) => {
+        evelandWorkflowWorldUrl: "postgres://platform@host:5432/eveland_workflow",
+        dropEvelandWorkflowTenant: async (_worldUrl, projectId) => {
           calls.push(`dropWorld:${projectId}`);
         },
       }),
@@ -137,7 +138,8 @@ describe("processNextJob", () => {
 
     await expect(
       processNextJob(store, "worker-a", {
-        dropProjectWorkflowWorld: async () => {
+        evelandWorkflowWorldUrl: "postgres://platform@host:5432/eveland_workflow",
+        dropEvelandWorkflowTenant: async () => {
           throw new Error("workflow database is unreachable");
         },
       }),

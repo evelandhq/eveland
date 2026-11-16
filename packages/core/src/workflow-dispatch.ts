@@ -6,7 +6,6 @@ import type { WorkflowDispatcherRegistration } from "./contracts.js";
  * after them is diagnostics.
  */
 export const WORKFLOW_UNAVAILABLE = "workflow_unavailable";
-export const WORKFLOW_MIGRATION_REQUIRED = "workflow_migration_required";
 
 export const WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS = 60_000;
 

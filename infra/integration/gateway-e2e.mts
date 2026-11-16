@@ -14,6 +14,7 @@ import { materializeEveFixtureDirectory } from "../../packages/core/src/server/e
 import { affinityBucketForRoute } from "../../packages/core/src/routing.js";
 import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
+import { signAffinityCookie } from "../../apps/gateway/src/gateway-routing.js";
 import { processNextJob } from "../../apps/worker/src/jobs/process.js";
 import { createRuntimeAdapterFromEnv } from "../../apps/worker/src/runtime/select.js";
 import { startWorkflowRuntime, type WorkflowRuntime } from "./workflow-runtime.mts";
@@ -115,11 +116,15 @@ async function main(): Promise<void> {
           9_000,
       );
       assert.ok(candidateAffinity);
+      // The Gateway keys weighted routing by its signed affinity cookie.
+      const affinityCookie = `eveland_affinity=${encodeURIComponent(
+        signAffinityCookie(candidateAffinity, "gateway-e2e-affinity-secret"),
+      )}`;
       const created = await gatewayRequest(gatewayPort, {
         host: localHost,
         path: "/eve/v1/session",
         method: "POST",
-        headers: { "content-type": "application/json", "x-eveland-version-key": candidateAffinity },
+        headers: { "content-type": "application/json", cookie: affinityCookie },
         body: JSON.stringify({ message: "Ask the researcher to verify Gateway streaming." }),
       });
       assert.equal(created.statusCode, 202, `session create failed: ${created.body}`);
@@ -137,7 +142,7 @@ async function main(): Promise<void> {
         host: localHost,
         path: "/eve/v1/session",
         method: "POST",
-        headers: { "content-type": "application/json", "x-eveland-version-key": candidateAffinity },
+        headers: { "content-type": "application/json", cookie: affinityCookie },
         body: JSON.stringify({ message: "Start a second turn for cancellation routing." }),
       });
       assert.equal(cancellable.statusCode, 202, `cancellable session failed: ${cancellable.body}`);
@@ -175,7 +180,7 @@ async function main(): Promise<void> {
         host: localHost,
         path: "/eve/v1/session",
         method: "POST",
-        headers: { "content-type": "application/json", "x-eveland-version-key": candidateAffinity },
+        headers: { "content-type": "application/json", cookie: affinityCookie },
         body: JSON.stringify({ message: "Verify zero-weight routing." }),
       });
       assert.equal(
@@ -325,7 +330,7 @@ async function expectBinding(
   assert.equal(binding?.deploymentId, deploymentId);
   assert.equal(binding?.experimentId, experimentId);
   assert.equal(binding?.trigger, "api");
-  assert.equal(binding?.affinitySource, "version_key");
+  assert.equal(binding?.affinitySource, "cookie");
   assert.match(binding?.remoteIp ?? "", /127\.0\.0\.1|::ffff:127\.0\.0\.1/);
   assert.ok(binding?.requestId);
 }

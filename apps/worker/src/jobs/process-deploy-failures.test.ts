@@ -3,7 +3,6 @@ import { describe, expect, test, vi } from "vitest";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { processNextJob } from "./process.js";
 import { type RuntimeAdapter } from "../runtime/types.js";
-import { deriveProjectWorkflowUrl } from "../runtime/workflow-world-bootstrap.js";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -645,23 +644,15 @@ describe("processNextJob", () => {
     const evelandWorldUrl = "postgres://eveland:eveland@host.docker.internal:5432/eveland_workflow";
     const worldClusterIdentity = "cluster:7234567890123456789/eveland_workflow";
     const ensuredTenants: string[] = [];
-    const ensuredLegacyProjects: string[] = [];
     await expect(
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
         identityIssuer: "https://control.example.com",
         identityJwksUrl: "http://api:4000/.well-known/jwks.json",
-        // A lingering rollout flag or legacy database must not resurrect a
-        // legacy build: the build-selection semantics are gone.
-        workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
         evelandWorkflowWorldUrl: evelandWorldUrl,
         worldClusterIdentity,
         ensureEvelandWorkflowTenant: async (_worldUrl, projectId) => {
           ensuredTenants.push(projectId);
-        },
-        ensureProjectWorkflowWorld: async (env, projectId) => {
-          ensuredLegacyProjects.push(projectId);
-          return deriveProjectWorkflowUrl(env.WORKFLOW_POSTGRES_URL!, projectId);
         },
         runtime: {
           name: "docker",
@@ -701,9 +692,6 @@ describe("processNextJob", () => {
       EVELAND_IDENTITY_ISSUER: "https://control.example.com",
       EVELAND_IDENTITY_JWKS_URL: "http://api:4000/.well-known/jwks.json",
     });
-    // A shared-world deployment gets no per-project legacy database.
-    expect(runEnv.WORKFLOW_POSTGRES_URL).toBeUndefined();
-    expect(ensuredLegacyProjects).toEqual([]);
     expect(ensuredTenants).toEqual([project.id]);
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       status: "deployed",
@@ -789,11 +777,9 @@ describe("processNextJob", () => {
     });
     await store.enqueueJob(project.id, "build_deploy");
 
-    // The legacy database alone no longer unblocks a production deploy.
     await expect(
       processNextJob(store, "worker-a", {
         nodeEnv: "production",
-        workflowPostgresUrl: "postgres://eveland:eveland@host.docker.internal:5432/eveland",
         runtime: {
           name: "docker",
           async buildRelease() {
@@ -1137,7 +1123,6 @@ describe("processNextJob", () => {
     await expect(
       processNextJob(store, "worker-a", {
         nodeEnv: "development",
-        workflowPostgresUrl: "",
         runtime: {
           name: "docker",
           async buildRelease(input) {

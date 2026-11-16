@@ -11,7 +11,6 @@ import {
   GATEWAY_PORT,
   IDENTITY_JWKS_URL_DOCKER_FALLBACK,
   OTLP_ENDPOINT_FALLBACK,
-  POSTGRES_DEFAULT_PORT,
   PUBLIC_ORIGIN_FALLBACK,
   SANDBOX_INTERNAL_PORT,
   WEB_INTERNAL_URL_FALLBACK,
@@ -528,20 +527,6 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "120000",
   ),
   {
-    name: "WORKFLOW_POSTGRES_URL",
-    components: ["worker"],
-    sensitivity: "url",
-    purpose:
-      "Legacy per-project workflow database base URL. Only needed while legacy Deployments are still being terminated; external-only installs never set it.",
-  },
-  {
-    name: "WORKFLOW_POSTGRES_BOOTSTRAP_URL",
-    components: ["worker"],
-    sensitivity: "url",
-    purpose: "Worker-reachable URL used to bootstrap the durable workflow database.",
-    fallback: (env) => resolveWorkflowBootstrapUrl(env),
-  },
-  {
     name: "WORKFLOW_WORLD_URL",
     components: ["api", "worker", "workflow-dispatcher"],
     sensitivity: "url",
@@ -556,12 +541,6 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     purpose:
       "Host-reachable URL for the shared workflow database. Set when deployments reach Postgres by a different name than the platform does (e.g. host.docker.internal under Docker Desktop); defaults to WORKFLOW_WORLD_URL.",
   },
-  entry(
-    "EVELAND_WORKFLOW_RUNNER",
-    ["worker"],
-    'Workflow runner mode. Only "external" is supported; any other value fails worker startup closed.',
-    "external",
-  ),
   entry(
     "EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_TTL_MS",
     ["api", "worker"],
@@ -975,34 +954,6 @@ function displayValue(value: string, sensitivity: ConfigurationEntry["sensitivit
   }
 }
 
-function resolveWorkflowBootstrapUrl(env: Environment): ResolvedValue | undefined {
-  const workflowUrl = nonEmpty(env.WORKFLOW_POSTGRES_URL);
-  if (!workflowUrl) return undefined;
-  const databaseUrl = nonEmpty(env.DATABASE_URL);
-  if (databaseUrl && isHostDatabaseAlias(workflowUrl, databaseUrl))
-    return derivedValue(databaseUrl);
-  return derivedValue(workflowUrl);
-}
-
-function isHostDatabaseAlias(workflowUrl: string, databaseUrl: string): boolean {
-  try {
-    const workflow = new URL(workflowUrl);
-    const database = new URL(databaseUrl);
-    const port = (url: URL) => url.port || String(POSTGRES_DEFAULT_PORT);
-    return (
-      workflow.hostname.toLowerCase() === "host.docker.internal" &&
-      workflow.protocol === database.protocol &&
-      workflow.username === database.username &&
-      workflow.password === database.password &&
-      port(workflow) === port(database) &&
-      workflow.pathname === database.pathname &&
-      workflow.search === database.search
-    );
-  } catch {
-    return false;
-  }
-}
-
 function entry(
   name: string,
   components: EvelandComponent[],
@@ -1019,10 +970,6 @@ function urlEntry(
   fallback?: string,
 ): ConfigurationDefinition {
   return { name, components, purpose, fallback, sensitivity: "url" };
-}
-
-function nonEmpty(value: string | undefined): string | undefined {
-  return value?.trim() ? value : undefined;
 }
 
 function joinPath(root: string, child: string): string {

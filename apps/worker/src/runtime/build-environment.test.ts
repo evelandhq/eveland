@@ -46,14 +46,14 @@ describe("selectBuildVariables", () => {
       EVELAND_PROJECT_ID: "proj_someone_elses",
       MODEL_NAME: "configured-model",
       WORKFLOW_POSTGRES_MAX_POOL_SIZE: "500",
-      WORKFLOW_POSTGRES_URL: "postgres://attacker@host:5432/db",
+      WORKFLOW_WORLD_URL: "postgres://attacker@host:5432/db",
     });
 
     expect(selected.variables).toEqual({ MODEL_NAME: "configured-model" });
     expect(selected.rejectedKeys).toEqual([
       "EVELAND_PROJECT_ID",
       "WORKFLOW_POSTGRES_MAX_POOL_SIZE",
-      "WORKFLOW_POSTGRES_URL",
+      "WORKFLOW_WORLD_URL",
     ]);
   });
 

@@ -286,13 +286,13 @@ describe("writeGeneratedDockerfile", () => {
   test("installs the platform-owned world without changing the project package manifest or lock", async () => {
     const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
     const dockerfilePath = await writeGeneratedDockerfile(buildDir, {
-      packageName: "@workflow/world-postgres",
-      packageVersion: "5.0.0-beta.34",
+      packageName: "@evelandhq/workflow-world",
+      packageVersion: "1.0.0",
     });
     const contents = await readFile(dockerfilePath, "utf8");
 
     expect(contents).toContain(
-      "npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.34",
+      "npm install --no-save --package-lock=false --ignore-scripts @evelandhq/workflow-world@1.0.0",
     );
     expect(contents.indexOf("npm install --no-save")).toBeLessThan(
       contents.indexOf("npx eve build"),
@@ -1116,7 +1116,7 @@ describe("docker deployment secrets", () => {
       processName: "eveland-proj_sec-dep_sec1",
       releaseRef: "eveland/proj_sec:rel_1",
       port: 43200,
-      env: { OPENAI_API_KEY: "sk-secret-value", WORKFLOW_POSTGRES_URL: "postgres://u:p@host/db" },
+      env: { OPENAI_API_KEY: "sk-secret-value", WORKFLOW_WORLD_URL: "postgres://u:p@host/db" },
       commandContext: { hasLockfile: true },
       sandboxCacheDir: "/host/sandbox/proj_sec",
       memoryRootDir: "/host/memory/proj_sec",
@@ -1138,7 +1138,7 @@ describe("docker deployment secrets", () => {
       "eveland-proj_sec-dep_sec1.env",
     );
     await expect(readFile(envFilePath, "utf8")).resolves.toBe(
-      "OPENAI_API_KEY=sk-secret-value\nWORKFLOW_POSTGRES_URL=postgres://u:p@host/db\n",
+      "OPENAI_API_KEY=sk-secret-value\nWORKFLOW_WORLD_URL=postgres://u:p@host/db\n",
     );
     const { mode } = await stat(envFilePath);
     expect(mode & 0o777).toBe(0o600);

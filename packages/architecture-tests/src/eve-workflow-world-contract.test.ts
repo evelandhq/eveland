@@ -31,7 +31,6 @@ const require = createRequire(import.meta.url);
  */
 const RESOLUTION_ANCHORS: Record<string, string> = {
   "@evelandhq/workflow-world": "apps/worker",
-  "@workflow/world-postgres": "apps/worker",
   eve: "packages/agent-observer",
 };
 
@@ -125,10 +124,6 @@ const worldManifest = readJson(path.join(worldRoot, "package.json")) as {
   version: string;
   dependencies: Record<string, string>;
 };
-const postgresWorldRoot = resolveInstalledPackageRoot("@workflow/world-postgres");
-const postgresWorldManifest = readJson(path.join(postgresWorldRoot, "package.json")) as {
-  version: string;
-};
 
 /**
  * The spec version the shared World actually DECLARES, read out of its own
@@ -164,33 +159,23 @@ function declaredWorldSpecVersion(): number {
 }
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
-  test("pins both platform worlds and the spec version each one declares", () => {
+  test("pins the platform world and the spec version it declares", () => {
     expect(worldManifest.version).toBe("1.0.0");
-    expect(postgresWorldManifest.version).toBe("5.0.0-beta.34");
 
-    // Both reviewed @workflow graphs stay recorded: the legacy World's, and
-    // the one the shared World bundles. See the comment above the list. pnpm
-    // honors only the first exclusion naming a package, so each package's
-    // versions share one union entry.
+    // The reviewed @workflow graph the shared World bundles stays recorded;
+    // see the comment above the list.
     const workspace = readSource("pnpm-workspace.yaml");
     const utilsExclusion = /^ {2}- "@workflow\/utils@([^"]+)"$/m.exec(workspace)?.[1];
-    expect(utilsExclusion?.split(" || ")).toEqual(
-      expect.arrayContaining(["5.0.0-beta.8", worldManifest.dependencies["@workflow/utils"]]),
-    );
+    expect(utilsExclusion).toBe(worldManifest.dependencies["@workflow/utils"]);
 
     const { SPEC_VERSION_CURRENT: sharedSpecVersion } = require(
       require.resolve("@workflow/world", { paths: [worldRoot] }),
     ) as { SPEC_VERSION_CURRENT: number };
-    const { SPEC_VERSION_CURRENT: postgresSpecVersion } = require(
-      require.resolve("@workflow/world", { paths: [postgresWorldRoot] }),
-    ) as { SPEC_VERSION_CURRENT: number };
     // Capability and declaration, asserted separately because they differ:
     // the shared World's `@workflow/world` reports 8 as its current spec while
-    // the World declares the single orchestrator (9) eve 1.0 asks for. The
-    // legacy World stays on slot identity.
+    // the World declares the single orchestrator (9) eve 1.0 asks for.
     expect(sharedSpecVersion).toBe(8);
     expect(declaredWorldSpecVersion()).toBe(9);
-    expect(postgresSpecVersion).toBe(6);
   });
 
   // The controls moved out of .env.example when it slimmed down to the
@@ -299,16 +284,6 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       `^${worldManifest.version}`,
     );
 
-    const postgresInjected =
-      /PLATFORM_WORKFLOW_WORLD = \{\s*packageName: "@workflow\/world-postgres",\s*packageVersion: "([^"]+)"/.exec(
-        injectionSource,
-      );
-    expect(
-      postgresInjected,
-      "could not find PLATFORM_WORKFLOW_WORLD in workflow-world.ts",
-    ).not.toBeNull();
-    expect(postgresInjected![1]).toBe(postgresWorldManifest.version);
-
     // The attestation every new Release carries must name the generation the
     // installed World declares by default, or the activation gate would admit
     // Releases on a number these tests never verified against any eve line.
@@ -329,7 +304,6 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       readSource("docs/zh/reference/eve-compatibility.md"),
     ]) {
       expect(documentation).toContain(`@evelandhq/workflow-world@${worldManifest.version}`);
-      expect(documentation).toContain(`@workflow/world-postgres@${postgresWorldManifest.version}`);
     }
   });
 

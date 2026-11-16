@@ -1,9 +1,8 @@
 import type { Store } from "@evelandhq/db";
 
-import { dropEvelandWorkflowTenant } from "../../runtime/eveland-workflow-world-bootstrap.js";
+import { dropEvelandWorkflowTenant } from "../../runtime/workflow-world-bootstrap.js";
 import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 import { createRuntimeAdapterForKind } from "../../runtime/select.js";
-import { dropProjectWorkflowWorld } from "../../runtime/workflow-world-bootstrap.js";
 import { removeManagedProjectFiles } from "../process-support.js";
 import type { ProcessJobOptions } from "../process-types.js";
 import type { RuntimeJob } from "./types.js";
@@ -66,14 +65,12 @@ export async function handleDeleteProjectJob(
     removedReleases.add(releaseKey);
   }
 
-  // The project's derived workflow database goes with the project. Dropped
-  // before deleteProject so a failed drop leaves a retryable project row.
-  await (options.dropProjectWorkflowWorld ?? dropProjectWorkflowWorld)(process.env, job.projectId);
-
-  // Same for the platform world, where the project owns partitions rather than
-  // a database. DROP TABLE on a partition reclaims the space immediately, which
-  // is the whole reason the big tables are partitioned by tenant.
-  const evelandWorldUrl = resolveWorkflowWorldPlatformUrl(process.env);
+  // The project's partitions in the shared World go with the project. DROP
+  // TABLE on a partition reclaims the space immediately, which is the whole
+  // reason the big tables are partitioned by tenant. Dropped before
+  // deleteProject so a failed drop leaves a retryable project row.
+  const evelandWorldUrl =
+    options.evelandWorkflowWorldUrl ?? resolveWorkflowWorldPlatformUrl(process.env);
   if (evelandWorldUrl) {
     await (options.dropEvelandWorkflowTenant ?? dropEvelandWorkflowTenant)(
       evelandWorldUrl,

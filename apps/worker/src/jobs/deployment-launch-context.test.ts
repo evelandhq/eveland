@@ -62,7 +62,6 @@ describe("deployment launch context", () => {
       const options = {
         appSecretKey,
         nodeEnv: "development",
-        workflowPostgresUrl: "",
       };
 
       const prerequisites = await resolveDeploymentLaunchPrerequisites({
@@ -97,7 +96,6 @@ describe("deployment launch context", () => {
           sourcePath,
           options: {
             nodeEnv: "development",
-            workflowPostgresUrl: "",
           },
         }),
       ).resolves.toMatchObject({

@@ -163,7 +163,7 @@ describe("api app", () => {
 
     expect(activation.status).toBe(409);
     const body = (await activation.json()) as { error: string };
-    expect(body.error).toMatch(/^workflow_migration_required: /);
+    expect(body.error).toMatch(/^workflow_unavailable: /);
     expect(body.error).toContain("storage spec 4");
   });
 

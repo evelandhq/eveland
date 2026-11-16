@@ -167,9 +167,7 @@ export async function handleBuildDeployJob(
       commandContext: launchPrerequisites.commandContext,
       buildVariables,
       ...(options.signal ? { signal: options.signal } : {}),
-      // Every new Release unconditionally bakes in the shared workflow world;
-      // the legacy per-project world and the rollout flag that selected it are
-      // no longer build options.
+      // Every new Release bakes in the shared workflow world.
       workflowWorld: EVELAND_WORKFLOW_WORLD,
       modelCatalogCacheFile: path.join(dataDir, MODEL_CATALOG_CACHE_RELATIVE_PATH),
     });

@@ -272,6 +272,5 @@ describe("Eve compatibility repository contract", () => {
       );
     }
     expect(spec).not.toMatch(/@evelandhq\/workflow-world@\d/);
-    expect(spec).not.toMatch(/@workflow\/world-postgres@\d/);
   });
 });

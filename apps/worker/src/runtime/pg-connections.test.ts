@@ -9,7 +9,7 @@ describe("samplePgInstanceConnections", () => {
     const samples = await samplePgInstanceConnections(
       {
         DATABASE_URL: "postgres://eveland:secret@localhost:5432/eveland",
-        WORKFLOW_POSTGRES_URL: "postgres://eveland:secret@localhost:5432/eveland",
+        WORKFLOW_WORLD_URL: "postgres://eveland:secret@localhost:5432/eveland",
       },
       {
         queryInstance: async (url) => {
@@ -23,23 +23,11 @@ describe("samplePgInstanceConnections", () => {
     expect(queried).toHaveLength(1);
   });
 
-  test("treats a host.docker.internal workflow alias of DATABASE_URL as the same instance", async () => {
-    const samples = await samplePgInstanceConnections(
-      {
-        DATABASE_URL: "postgres://eveland:secret@localhost:5432/eveland",
-        WORKFLOW_POSTGRES_URL: "postgres://eveland:secret@host.docker.internal:5432/eveland",
-      },
-      { queryInstance: async () => usage },
-    );
-
-    expect(samples).toEqual([{ role: "shared", agentPoolSize: 10, ...usage }]);
-  });
-
   test("reports a control/workflow pair for split instances with pool size on the workflow side", async () => {
     const samples = await samplePgInstanceConnections(
       {
         DATABASE_URL: "postgres://eveland:secret@localhost:5432/eveland",
-        WORKFLOW_POSTGRES_URL: "postgres://wf:secret@db.internal:5433/eveland",
+        WORKFLOW_WORLD_URL: "postgres://wf:secret@db.internal:5433/eveland",
         WORKFLOW_POSTGRES_MAX_POOL_SIZE: "5",
       },
       { queryInstance: async () => usage },
@@ -56,8 +44,8 @@ describe("samplePgInstanceConnections", () => {
     await samplePgInstanceConnections(
       {
         DATABASE_URL: "postgres://eveland:secret@localhost:5432/eveland",
-        WORKFLOW_POSTGRES_URL: "postgres://wf:secret@host.docker.internal:5432/workflows",
-        WORKFLOW_POSTGRES_BOOTSTRAP_URL: "postgres://wf:secret@127.0.0.1:5433/workflows",
+        WORKFLOW_WORLD_URL: "postgres://wf:secret@host.docker.internal:5432/workflows",
+        WORKFLOW_WORLD_BOOTSTRAP_URL: "postgres://wf:secret@127.0.0.1:5433/workflows",
       },
       {
         queryInstance: async (url) => {
@@ -75,7 +63,7 @@ describe("samplePgInstanceConnections", () => {
     const samples = await samplePgInstanceConnections(
       {
         DATABASE_URL: "postgres://eveland:secret@localhost:5432/eveland",
-        WORKFLOW_POSTGRES_URL: "postgres://wf:secret@db.internal:5433/eveland",
+        WORKFLOW_WORLD_URL: "postgres://wf:secret@db.internal:5433/eveland",
       },
       {
         queryInstance: async (url) => {

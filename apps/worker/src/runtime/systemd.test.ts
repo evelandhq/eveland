@@ -323,12 +323,12 @@ describe("buildReleaseBuildCommand", () => {
         hasLockfile: true,
         packageManager: "pnpm",
       },
-      { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
+      { packageName: "@evelandhq/workflow-world", packageVersion: "1.0.0" },
     );
 
     expect(command).toContain("pnpm install --frozen-lockfile --config.minimum-release-age=0");
     expect(command).toContain(
-      "pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 @workflow/world-postgres@5.0.0-beta.34",
+      "pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 @evelandhq/workflow-world@1.0.0",
     );
     expect(command).toContain("trap");
     expect(command).not.toMatch(/(^|&& )npm install/);
@@ -341,7 +341,7 @@ describe("buildReleaseBuildCommand", () => {
     };
     const command = buildReleaseBuildCommand(
       { hasLockfile: true, packageManager: "pnpm" },
-      { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
+      { packageName: "@evelandhq/workflow-world", packageVersion: "1.0.0" },
       true,
       pnpmStore,
     );
@@ -354,14 +354,14 @@ describe("buildReleaseBuildCommand", () => {
       `pnpm install --frozen-lockfile --config.minimum-release-age=0 ${storeArgs} && `,
     );
     expect(command).toContain(
-      `pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 ${storeArgs} @workflow/world-postgres@5.0.0-beta.34`,
+      `pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 ${storeArgs} @evelandhq/workflow-world@1.0.0`,
     );
   });
 
   test("the shared pnpm store never leaks into an npm build", () => {
     const command = buildReleaseBuildCommand(
       { hasLockfile: true },
-      { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
+      { packageName: "@evelandhq/workflow-world", packageVersion: "1.0.0" },
       true,
       { storeDir: "/data/npm-cache/_pnpm-store", cacheDir: "/data/npm-cache/_pnpm-cache" },
     );
@@ -373,10 +373,10 @@ describe("buildReleaseBuildCommand", () => {
     expect(
       buildReleaseBuildCommand(
         { hasLockfile: true },
-        { packageName: "@workflow/world-postgres", packageVersion: "5.0.0-beta.34" },
+        { packageName: "@evelandhq/workflow-world", packageVersion: "1.0.0" },
       ),
     ).toBe(
-      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @workflow/world-postgres@5.0.0-beta.34 && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json > .eveland/eve-info.json",
+      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @evelandhq/workflow-world@1.0.0 && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json > .eveland/eve-info.json",
     );
   });
 
@@ -438,7 +438,7 @@ describe("buildReleaseBuildEnvironment", () => {
  * `buildReleaseBuildEnvironment` returning a complete environment only keeps
  * worker secrets out while its caller also passes `extendEnv: false` -- execa
  * extends `process.env` by default, and this process holds APP_SECRET_KEY,
- * DATABASE_URL and WORKFLOW_POSTGRES_URL. That pairing used to be self-evident
+ * DATABASE_URL and WORKFLOW_WORLD_URL. That pairing used to be self-evident
  * from one inline literal beside the execa call; now that the environment is
  * built elsewhere, only this asserts it.
  */
@@ -1234,7 +1234,7 @@ describe("createSystemdAdapter buildRelease (build user handover)", () => {
 
   test("passes extendEnv:false and only PATH/npm_config_cache/EVE_TELEMETRY_DISABLED in the build env, excluding worker secrets even when process.env carries them", async () => {
     vi.mocked(execa).mockClear();
-    const secretEnvKeys = ["APP_SECRET_KEY", "DATABASE_URL", "WORKFLOW_POSTGRES_URL"] as const;
+    const secretEnvKeys = ["APP_SECRET_KEY", "DATABASE_URL", "WORKFLOW_WORLD_URL"] as const;
     const originalValues = secretEnvKeys.map((key) => process.env[key]);
     secretEnvKeys.forEach((key) => {
       process.env[key] = `secret-value-for-${key}`;

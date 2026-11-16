@@ -1,16 +1,16 @@
 import type { PgInstanceConnectionSample } from "@evelandhq/core/instance-health";
 import { POSTGRES_DEFAULT_PORT } from "@evelandhq/core/ports";
 import postgres from "postgres";
-import { resolveBootstrapPostgresUrl } from "./workflow-world-bootstrap.js";
+import { resolveWorkflowWorldPlatformUrl } from "@evelandhq/core/workflow-world-url";
 
 /**
  * pg_stat_activity and max_connections are instance-wide, so what matters is
- * the set of distinct Postgres instances behind DATABASE_URL and
- * WORKFLOW_POSTGRES_URL: one "shared" budget when both point at the same
- * instance (the documented single-box default), a "control"/"workflow" pair
- * when the operator has split them. The workflow URL is resolved through the
- * bootstrap address first because the deployment-facing address (e.g.
- * host.docker.internal) may not be reachable from the worker process.
+ * the set of distinct Postgres instances behind DATABASE_URL and the shared
+ * World's database: one "shared" budget when both point at the same instance
+ * (the documented single-box default), a "control"/"workflow" pair when the
+ * operator has split them. The World is reached through its bootstrap address
+ * first because the deployment-facing address (e.g. host.docker.internal) may
+ * not be reachable from the worker process.
  */
 export type PgConnectionSamplerDeps = {
   queryInstance: (url: string) => Promise<{ usedConnections: number; maxConnections: number }>;
@@ -26,9 +26,7 @@ export async function samplePgInstanceConnections(
   deps: PgConnectionSamplerDeps = defaultDeps,
 ): Promise<PgInstanceConnectionSample[] | null> {
   const controlUrl = env.DATABASE_URL;
-  const workflowUrl = env.WORKFLOW_POSTGRES_URL
-    ? resolveBootstrapPostgresUrl(env, env.WORKFLOW_POSTGRES_URL)
-    : undefined;
+  const workflowUrl = resolveWorkflowWorldPlatformUrl(env);
   const agentPoolSize = resolveAgentPoolSize(env.WORKFLOW_POSTGRES_MAX_POOL_SIZE);
 
   const targets: Array<{
@@ -61,8 +59,8 @@ export async function samplePgInstanceConnections(
 
 /**
  * Mirrors the default the worker injects into deployments as
- * WORKFLOW_POSTGRES_MAX_POOL_SIZE — without an explicit bound,
- * @workflow/world-postgres falls back to pg's implicit pool max of 10.
+ * WORKFLOW_POSTGRES_MAX_POOL_SIZE — without an explicit bound, the World's pg
+ * pool falls back to pg's implicit max of 10.
  */
 function resolveAgentPoolSize(raw: string | undefined): number {
   const parsed = Number.parseInt(raw ?? "", 10);

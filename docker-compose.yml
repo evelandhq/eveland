@@ -206,7 +206,6 @@ services:
       # address below.
       WORKFLOW_WORLD_URL: postgres://eveland:eveland@host.docker.internal:17310/eveland_workflow
       WORKFLOW_WORLD_BOOTSTRAP_URL: postgres://eveland:eveland@postgres:5432/eveland_workflow
-      EVELAND_WORKFLOW_RUNNER: ${EVELAND_WORKFLOW_RUNNER:-external}
       WORKFLOW_WORLD_STREAM_COMPACTION: ${WORKFLOW_WORLD_STREAM_COMPACTION:-on}
       EVELAND_DATA_DIR: /workspace/.eveland-data
       # docker run bind mounts are resolved by the host daemon, not inside this container.
