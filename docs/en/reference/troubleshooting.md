@@ -59,7 +59,7 @@ This guide is organized by observed symptom. Before troubleshooting, inspect ove
    ```bash
    sudo journalctl -u eveland-<projectSlug>-<deploymentId>.service -n 100 --no-pager
    ```
-2. Confirm that the process responds to `GET http://127.0.0.1:<port>/eve/v1/health`.
+2. Confirm that `GET http://127.0.0.1:<port>/eve/v1/health` returns HTTP 200 with `{ "ok": true }`. Any other answer keeps the Deployment from becoming ready. A 404 usually means an authored `agent/channels/eve.ts` replaced the eve channel with `defineChannel(...)`, which drops the health route; use `eveChannel(...)` to keep it.
 
 ---
 

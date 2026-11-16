@@ -13,22 +13,81 @@ async function listen(server: http.Server): Promise<number> {
 }
 
 describe("waitForHttpHealth", () => {
-  test("resolves when the server answers, even with a non-200 status", async () => {
-    const server = http.createServer((_req, res) => {
-      res.statusCode = 404;
-      res.end("not found");
-    });
+  async function withServer(
+    handler: http.RequestListener,
+    body: (port: number) => Promise<void>,
+  ): Promise<void> {
+    const server = http.createServer(handler);
     const port = await listen(server);
-
     try {
-      await expect(
-        waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 2000 }),
-      ).resolves.toBeUndefined();
+      await body(port);
     } finally {
+      server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
       );
     }
+  }
+
+  test("resolves on eve's health answer: HTTP 200 with ok: true", async () => {
+    const paths: string[] = [];
+    await withServer(
+      (req, res) => {
+        paths.push(req.url ?? "");
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ ok: true, status: "ready", workflowId: "wf" }));
+      },
+      async (port) => {
+        await expect(
+          waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 2000 }),
+        ).resolves.toBeUndefined();
+      },
+    );
+    expect(paths).toEqual(["/eve/v1/health"]);
+  });
+
+  // A responder is not a ready Deployment: a 404 means the process serves no
+  // eve health route, a 500 that it is failing, and a 200 without `ok: true`
+  // is not eve's answer. Each keeps the gate closed until the deadline, and the
+  // error names what the process last said.
+  test.each([
+    ["a 404", 404, JSON.stringify({ ok: false, error: "not found" }), /last answered HTTP 404/],
+    ["a 500", 500, "boom", /last answered HTTP 500/],
+    ["a 200 without ok: true", 200, JSON.stringify({ ok: false }), /without \{ ok: true \}/],
+    ["a 200 that is not JSON", 200, "ok", /without \{ ok: true \}/],
+  ])("does not accept %s", async (_label, status, payload, message) => {
+    await withServer(
+      (_req, res) => {
+        res.statusCode = status;
+        res.end(payload);
+      },
+      async (port) => {
+        await expect(
+          waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 700 }),
+        ).rejects.toThrow(message);
+      },
+    );
+  });
+
+  test("keeps polling past a not-yet-ready answer and resolves once eve reports ok", async () => {
+    let calls = 0;
+    await withServer(
+      (_req, res) => {
+        calls += 1;
+        if (calls < 3) {
+          res.statusCode = 503;
+          res.end();
+          return;
+        }
+        res.end(JSON.stringify({ ok: true, status: "ready" }));
+      },
+      async (port) => {
+        await expect(
+          waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 5000 }),
+        ).resolves.toBeUndefined();
+      },
+    );
+    expect(calls).toBe(3);
   });
 
   test("rejects with the last connection error when nothing listens", async () => {
@@ -79,7 +138,7 @@ describe("waitForHttpHealth", () => {
 
     const server = http.createServer((_req, res) => {
       res.statusCode = 200;
-      res.end("ok");
+      res.end(JSON.stringify({ ok: true, status: "ready" }));
     });
     await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
 

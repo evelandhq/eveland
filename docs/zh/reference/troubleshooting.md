@@ -59,7 +59,7 @@ description: 常见生产部署、构建、网络路由、冷启动、定时任�
    ```bash
    sudo journalctl -u eveland-<projectSlug>-<deploymentId>.service -n 100 --no-pager
    ```
-2. 确认 Agent 进程是否能正常响应 `GET http://127.0.0.1:<port>/eve/v1/health`。
+2. 确认 `GET http://127.0.0.1:<port>/eve/v1/health` 返回 HTTP 200 且 body 为 `{ "ok": true }`。其他任何响应都会让 Deployment 无法就绪。404 通常说明作者的 `agent/channels/eve.ts` 用 `defineChannel(...)` 替换了 eve channel，从而丢掉了健康检查路由；改用 `eveChannel(...)` 即可保留。
 
 ---
 

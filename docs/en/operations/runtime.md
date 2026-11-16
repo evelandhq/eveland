@@ -27,12 +27,12 @@ Incoming request / Cron schedule / Workflow step
 
 ## 2. Deployment execution model and security
 
-| Phase      | Execution Environment & Isolation                 | Key Actions                                                                                                                                                          |
-| :--------- | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Build**  | Unprivileged `eveland-build` + bubblewrap sandbox | Executes `npm ci` and `npx eve build` in a restricted sandbox. Worker credentials and database keys are stripped from the environment.                               |
-| **Run**    | Ephemeral systemd `DynamicUser` service           | Binds exclusively to private loopback (`127.0.0.1:18000–18999`) with `ProtectSystem=strict` and `PrivateTmp`. Secrets arrive via root-owned `0600` files.            |
-| **Health** | Local HTTP probe                                  | Worker polls `http://127.0.0.1:<port>/eve/v1/health`. If health checks time out, recent journal output and masked diagnostics are captured before stopping the unit. |
-| **Idle**   | Process stopped, metadata preserved               | Memory is released. Immutable release artifacts, routes, and session affinities persist.                                                                             |
+| Phase      | Execution Environment & Isolation                 | Key Actions                                                                                                                                                                                                     |
+| :--------- | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Build**  | Unprivileged `eveland-build` + bubblewrap sandbox | Executes `npm ci` and `npx eve build` in a restricted sandbox. Worker credentials and database keys are stripped from the environment.                                                                          |
+| **Run**    | Ephemeral systemd `DynamicUser` service           | Binds exclusively to private loopback (`127.0.0.1:18000–18999`) with `ProtectSystem=strict` and `PrivateTmp`. Secrets arrive via root-owned `0600` files.                                                       |
+| **Health** | Local HTTP probe                                  | Worker polls `http://127.0.0.1:<port>/eve/v1/health` until it answers 200 with `{ "ok": true }`. If health checks time out, recent journal output and masked diagnostics are captured before stopping the unit. |
+| **Idle**   | Process stopped, metadata preserved               | Memory is released. Immutable release artifacts, routes, and session affinities persist.                                                                                                                        |
 
 ---
 
