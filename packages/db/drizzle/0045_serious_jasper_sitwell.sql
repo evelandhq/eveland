@@ -1,1 +1,0 @@
-ALTER TABLE "worker_heartbeats" ADD COLUMN "max_concurrent_heavy_jobs" integer;

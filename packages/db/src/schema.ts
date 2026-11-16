@@ -1395,7 +1395,6 @@ export const sessionNodes = pgTable(
     modelId: text("model_id"),
     observedModelId: text("observed_model_id"),
     eveVersion: text("eve_version"),
-    remoteUrl: text("remote_url"),
     resolutionStatus: text("resolution_status").notNull().default("observed"),
     status: text("status").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1427,7 +1426,7 @@ export const modelUsageEvents = pgTable(
      * the commit line) or context change, or its stream position. See
      * `ModelUsage.runKey` in `@evelandhq/core/eve`.
      */
-    runKey: text("run_key"),
+    runKey: text("run_key").notNull(),
     modelId: text("model_id"),
     finishReason: text("finish_reason"),
     inputTokens: bigint("input_tokens", { mode: "number" }),
@@ -1505,10 +1504,8 @@ export const logs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // Every log read is project-scoped and ordered/anchored on seq; the old
-    // (project_id, created_at) index served the created_at ordering that no
-    // query emits any more and is dropped in migration 0060. The typed index
-    // exists because the CLI's default read is type-filtered ("runtime"):
+    // Every log read is project-scoped and ordered/anchored on seq, so no index
+    // orders by created_at. The typed index exists because the CLI's default read is type-filtered ("runtime"):
     // with only the untyped index, a sparse type makes the database walk
     // arbitrarily many rows of other types to fill a small limit.
     index("logs_project_seq_idx").on(table.projectId, table.seq),

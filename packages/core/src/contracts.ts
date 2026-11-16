@@ -327,11 +327,11 @@ export type SourceRevision = {
   /**
    * For uploads made from a git checkout: the commit the working tree was
    * based on, and whether it carried uncommitted changes. Null when the
-   * uploader could not tell (no git, not a checkout, older CLI).
+   * uploader could not tell (no git, not a checkout, or a CLI that did not report it).
    */
   baseCommitSha: string | null;
   dirty: boolean | null;
-  /** The user who uploaded the source; null for git syncs and older rows. */
+  /** The user who uploaded the source; null for git syncs and uploads recorded without one. */
   uploadedBy: string | null;
   sourcePath: string;
   summary: Record<string, unknown>;
@@ -448,8 +448,8 @@ export type ReleaseRecord = {
   // manifest could not be read or the release predates the column.
   summary: Record<string, unknown> | null;
   workflow: ReleaseWorkflowAttestation;
-  // Whether release preparation injected the Model Gateway provider (eve 1.0
-  // and later). Without it the Release calls models exactly as authored, and
+  // Whether release preparation injected the Model Gateway provider. Without
+  // it the Release calls models exactly as authored, and
   // a Model Gateway change reaches it only through a rebuild.
   modelGatewayProvider: boolean;
   createdAt: string;
@@ -639,7 +639,6 @@ export type SessionNode = {
   /** The model the Agent process was last observed actually calling. */
   observedModelId: string | null;
   eveVersion: string | null;
-  remoteUrl: string | null;
   resolutionStatus: "observed" | "unresolved";
   status: SessionStatus;
   createdAt: string;
@@ -665,7 +664,7 @@ export type ModelUsageEvent = {
   agentName: string | null;
   turnId: string;
   /** The key the record is deduplicated by; see `ModelUsage.runKey` in `@evelandhq/core/eve`. */
-  runKey: string | null;
+  runKey: string;
   /** The model observed actually serving this step; null before the capture existed. */
   modelId: string | null;
   finishReason: string | null;

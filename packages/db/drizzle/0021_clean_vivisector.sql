@@ -1,1 +1,0 @@
-ALTER TABLE "platform_secret_profile_bindings" ADD CONSTRAINT "platform_secret_profile_bindings_connection_scope_check" CHECK ("platform_secret_profile_bindings"."consumer" <> 'agent-connection' or "platform_secret_profile_bindings"."deployment_id" is null);

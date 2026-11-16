@@ -1,6 +1,5 @@
-// Re-exported rather than redeclared: this file used to carry its own copy of
-// the union, which then silently drifted from the canonical list in
-// build-info.ts when a new component was added.
+// Re-exported rather than redeclared, so the union cannot drift from the
+// canonical list in build-info.ts when a new component is added.
 export type { EvelandComponent } from "./build-info.js";
 import type { EvelandComponent } from "./build-info.js";
 import {
@@ -241,8 +240,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
   },
   {
     // No code-level default: an Identity origin allowlist must always be an
-    // explicit operator decision (previously defaulted to a fictional
-    // http://localhost:3010 chat origin outside production).
+    // explicit operator decision, never a guessed development origin.
     ...entry(
       "EVELAND_IDENTITY_ALLOWED_ORIGINS",
       ["api"],

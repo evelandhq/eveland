@@ -675,8 +675,8 @@ export function createPostgresProjectStore(
 
     async deleteProject(projectId) {
       // Wrapped in a transaction: this cascade is ~12 sequential statements, and
-      // a crash partway through previously left a half-deleted project -- e.g.
-      // the delete_project job's own row (deleted a few statements before the
+      // a crash partway through would leave a half-deleted project -- e.g. the
+      // delete_project job's own row (deleted a few statements before the
       // projects row) gone while the projects row it targets survives, losing
       // the retry trail. All-or-nothing keeps a crash mid-cascade a no-op.
       return db.transaction(async (tx) => {

@@ -37,10 +37,10 @@ export type PostgresStoreContext = {
  *
  * The loss of one RuntimeInstance is projected by two store methods in two
  * domains -- schedule executions and running sessions -- in separate
- * transactions. Their result previously depended on call order: the schedule
- * pass flips sessions to failed, and the session pass filters on
- * `status = 'running'`, so running them the other way round appended a second
- * runtime_lost event to every scheduled session. Deduplicating here makes the
+ * transactions. Without deduplication the result would depend on call order:
+ * the schedule pass flips sessions to failed, and the session pass filters on
+ * `status = 'running'`, so running them the other way round would append a
+ * second runtime_lost event to every scheduled session. Deduplicating here makes the
  * projection order-independent instead of leaving an unwritten contract
  * between two interfaces (pinned by the both-orders test in
  * session-store.test.ts).
@@ -120,8 +120,8 @@ export async function insertJobRowTx<Type extends JobType>(
  * Points a Project's scheduler at a Deployment and recomputes every schedule's
  * next run from that Deployment's Release. Shared by the ScheduleStore's
  * `setProjectSchedulerTarget` and by `promoteDeployment`, which must apply the
- * same effect inside its own promotion transaction -- previously a verbatim
- * copy that could drift from the canonical one.
+ * same effect inside its own promotion transaction; one implementation keeps
+ * the two from drifting apart.
  */
 export async function applySchedulerTargetTx(
   tx: StoreDatabase["db"],
@@ -340,11 +340,10 @@ export type SessionEventInsert = Omit<typeof sessionEvents.$inferInsert, "index"
 /**
  * Appends a Session event, assigning the next per-Session `index`.
  *
- * `index` is the replay/transcript ordering key, and every caller used to
- * derive it from a `count(*)` read: two concurrent appends read the same count
- * and inserted the same index, silently corrupting event order (and, in
- * appendSessionEvent's case, transferring every existing row of the Session on
- * each append).
+ * `index` is the replay/transcript ordering key. Deriving it from a `count(*)`
+ * read would let two concurrent appends read the same count and insert the
+ * same index, silently corrupting event order (and would transfer every
+ * existing row of the Session on each append).
  *
  * The parent Session row is locked first so appends to one Session serialize
  * while different Sessions never contend. That lock order -- sessions before

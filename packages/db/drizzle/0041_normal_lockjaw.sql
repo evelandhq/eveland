@@ -1,1 +1,0 @@
-ALTER TABLE "users" ADD COLUMN "display_timezone" text;

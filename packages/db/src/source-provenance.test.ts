@@ -32,7 +32,7 @@ describe("source revision provenance", () => {
       envVars: [],
       files: [],
     });
-    // A revision recorded without provenance (older worker, plain directory)
+    // A revision recorded without provenance (a plain directory upload)
     // reads back as unknown rather than failing or inventing an origin.
     const legacy = await store.recordSourceRevision({
       projectId: project.id,
