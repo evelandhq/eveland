@@ -24,7 +24,6 @@ describe.skipIf(!database)("Postgres schedule state", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const [entry] = await store.recordScheduleVersions({
         projectId: project.id,
@@ -204,7 +203,9 @@ describe.skipIf(!database)("Postgres schedule state", () => {
           eveSessionIds: ["eve_postgres_schedule"],
         }),
       ).resolves.toMatchObject({ status: "running", completedAt: null });
-      await expect(store.listSessions(project.id)).resolves.toContainEqual(
+      await expect(
+        store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+      ).resolves.toContainEqual(
         expect.objectContaining({
           eveSessionId: "eve_postgres_schedule",
           scheduleId: run.scheduleId,
@@ -266,7 +267,6 @@ describe.skipIf(!database)("Postgres schedule state", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const containerName = `postgres-adoption-${Date.now()}`;
       const deployment = await store.recordDeployment({

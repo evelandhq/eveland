@@ -29,7 +29,6 @@ async function storeWithLiveDeployment(status?: "draining") {
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   const deployment = await store.recordDeployment({
     releaseId: "rel_drift",

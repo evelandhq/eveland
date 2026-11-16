@@ -25,7 +25,6 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const first = await store.recordDeployment({
         projectId: project.id,
@@ -92,7 +91,6 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: first.id,
@@ -130,7 +128,6 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -171,10 +168,14 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
     ).resolves.toMatchObject({
       targets: [expect.objectContaining({ deploymentId: deployment.id, status: "running" })],
     });
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({ trigger: "api", routeId: stable!.id, deploymentId: deployment.id }),
     ]);
-    const [session] = await store.listSessions(project.id);
+    const [session] = await store
+      .listSessionsPage(project.id, { limit: 100 })
+      .then((page) => page.items);
     await expect(store.listSessionNodes(session!.id)).resolves.toHaveLength(2);
 
     const playground = await store.createSession({
@@ -267,7 +268,9 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
     await store.ingestAgentEvent(
       envelope(candidate.id, "eve_experiment_candidate", null, "experiment-candidate"),
     );
-    await expect(store.listSessions(project.id)).resolves.toContainEqual(
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toContainEqual(
       expect.objectContaining({
         eveSessionId: "eve_experiment_candidate",
         deploymentId: candidate.id,
@@ -312,7 +315,6 @@ describe.skipIf(!database)("Postgres Gateway routing", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -399,7 +401,6 @@ describe.skipIf(!database)("Postgres deployment recording atomicity", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const first = await store.recordDeployment({
       projectId: project.id,

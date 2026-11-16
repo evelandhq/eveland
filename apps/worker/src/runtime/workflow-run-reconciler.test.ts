@@ -18,7 +18,6 @@ async function fixtureProject(store: ReturnType<typeof createTestStore>, name: s
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   return { project, revision };
 }

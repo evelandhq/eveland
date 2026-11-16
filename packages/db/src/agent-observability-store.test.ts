@@ -30,7 +30,9 @@ describe("Agent observability ingestion repository", () => {
     const replay = await store.ingestAgentEvent(completedStep);
 
     expect(replay.duplicate).toBe(true);
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(session).toMatchObject({
       trigger: "direct_http",
       status: "running",
@@ -77,7 +79,9 @@ describe("Agent observability ingestion repository", () => {
       }),
     );
 
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     const [node] = await store.listSessionNodes(session!.id);
     expect(node).toMatchObject({ modelId: "openai/gpt-5", observedModelId: "openai/gpt-6" });
     expect(await store.listModelUsageEvents(session!.id)).toMatchObject([
@@ -126,7 +130,9 @@ describe("Agent observability ingestion repository", () => {
         }),
       ]),
     );
-    await expect(store.listSessions(projectId)).resolves.toHaveLength(1);
+    await expect(
+      store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items),
+    ).resolves.toHaveLength(1);
   });
 
   test("a settled turn leaves the Session waiting, not completed", async () => {
@@ -134,7 +140,9 @@ describe("Agent observability ingestion repository", () => {
     await store.ingestAgentEvent(
       envelope(deploymentId, { event: { type: "turn.started", data: { turnId: "turn_1" } } }),
     );
-    let [session] = await store.listSessions(projectId);
+    let [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(session?.status).toBe("running");
 
     await store.ingestAgentEvent(
@@ -144,7 +152,7 @@ describe("Agent observability ingestion repository", () => {
         event: { type: "turn.settled", data: { turnId: "turn_1", outcome: "completed" } },
       }),
     );
-    [session] = await store.listSessions(projectId);
+    [session] = await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items);
     expect(session?.status).toBe("waiting");
     expect(session?.completedAt).toBeNull();
   });
@@ -284,7 +292,9 @@ describe("Agent observability ingestion repository", () => {
       status: "succeeded",
       completedAt: expect.any(String),
     });
-    await expect(store.listSessions(projectId)).resolves.toEqual(
+    await expect(
+      store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           eveSessionId: "eve_topic_product",
@@ -420,7 +430,9 @@ describe("Agent observability ingestion repository", () => {
       status: "succeeded",
       completedAt: expect.any(String),
     });
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(session).toMatchObject({ status: "waiting_approval" });
   });
 
@@ -449,7 +461,9 @@ describe("Agent observability ingestion repository", () => {
       );
     }
 
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(session).toMatchObject({ status: "waiting_approval", completedAt: null });
     await expect(store.listSessionNodes(session!.id)).resolves.toEqual([
       expect.objectContaining({ status: "waiting_approval" }),
@@ -473,7 +487,9 @@ describe("Agent observability ingestion repository", () => {
       }),
     );
 
-    let [session] = await store.listSessions(projectId);
+    let [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     let remote = (await store.listSessionNodes(session!.id)).find(
       (node) => node.eveSessionId === "eve_remote",
     );
@@ -492,7 +508,7 @@ describe("Agent observability ingestion repository", () => {
       }),
     );
 
-    [session] = await store.listSessions(projectId);
+    [session] = await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items);
     remote = (await store.listSessionNodes(session!.id)).find(
       (node) => node.eveSessionId === "eve_remote",
     );
@@ -518,7 +534,9 @@ describe("Agent observability ingestion repository", () => {
       }),
     );
 
-    const sessions = await store.listSessions(projectId);
+    const sessions = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(sessions).toHaveLength(1);
     const nodes = await store.listSessionNodes(sessions[0]!.id);
     expect(nodes).toHaveLength(2);
@@ -561,7 +579,9 @@ describe("Agent observability ingestion repository", () => {
     // are the legitimate transient overlap and must not be constrained.
     await store.createSession({ projectId, deploymentId, trigger: "playground" });
     await store.createSession({ projectId, deploymentId, trigger: "playground" });
-    await expect(store.listSessions(projectId)).resolves.toHaveLength(3);
+    await expect(
+      store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items),
+    ).resolves.toHaveLength(3);
   });
 
   test("merges Agent telemetry into a pre-existing Playground session without weakening provenance", async () => {
@@ -576,7 +596,9 @@ describe("Agent observability ingestion repository", () => {
     const ingested = await store.ingestAgentEvent(envelope(deploymentId));
 
     expect(ingested.session.id).toBe(gatewaySession.id);
-    await expect(store.listSessions(projectId)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         id: gatewaySession.id,
         trigger: "playground",
@@ -592,7 +614,6 @@ describe("Agent observability ingestion repository", () => {
       deploymentId,
       trigger: "playground",
     });
-    await store.appendSessionEvent(gatewaySession.id, "message", { role: "user" });
     const observed = await store.ingestAgentEvent(envelope(deploymentId));
     expect(observed.session.id).not.toBe(gatewaySession.id);
 
@@ -606,14 +627,14 @@ describe("Agent observability ingestion repository", () => {
       trigger: "playground",
       rootNodeId: observed.node.id,
     });
-    await expect(store.listSessions(projectId)).resolves.toHaveLength(1);
+    await expect(
+      store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items),
+    ).resolves.toHaveLength(1);
     await expect(store.listSessionNodes(gatewaySession.id)).resolves.toHaveLength(1);
     // A merge re-parents the observed Session's events onto the surviving one.
-    // Both numbered their events from zero, so they must be renumbered rather
-    // than merely re-pointed: `index` is the replay ordering key.
-    const mergedEvents = await store.listSessionEvents(gatewaySession.id);
-    expect(mergedEvents).toHaveLength(2);
-    expect(mergedEvents.map((event) => event.index)).toEqual([0, 1]);
+    await expect(store.listSessionEvents(gatewaySession.id)).resolves.toMatchObject([
+      { index: 0, type: "session.started" },
+    ]);
   });
 
   test("stores the agent-reported failure message on the failed Session", async () => {
@@ -779,55 +800,99 @@ describe("Agent observability ingestion repository", () => {
     ).resolves.toBe(false);
   });
 
-  test("a placeholder merge folds every usage counter onto the surviving session", async () => {
+  test("a subagent re-parent folds every usage counter and renumbers events onto the surviving session", async () => {
     const { store, projectId, deploymentId } = await createStore();
-    const gatewaySession = await store.createSession({
-      projectId,
-      deploymentId,
-      trigger: "playground",
+    const usage = (runId: string, usageFields: Record<string, number>) => ({
+      type: "usage.recorded",
+      scope: { turnId: "turn_1", runId },
+      data: { kind: "model", owner: { runId }, usage: usageFields },
     });
-    await store.recordModelUsage(gatewaySession.id, {
-      turnId: "turn_gateway",
-      runKey: "run:r1",
-      finishReason: "stop",
-      inputTokens: 10,
-      outputTokens: 20,
-      cacheReadTokens: 1,
-      cacheWriteTokens: 2,
-      costUsd: 0.5,
-      usageReported: true,
-    });
-    const observed = await store.ingestAgentEvent(envelope(deploymentId));
-    await store.recordModelUsage(observed.session.id, {
-      turnId: "turn_observed",
-      runKey: "run:r2",
-      finishReason: "stop",
-      inputTokens: 100,
-      outputTokens: 200,
-      cacheReadTokens: 10,
-      cacheWriteTokens: 20,
-      costUsd: 1.25,
-      usageReported: false,
+    // The child is observed first as its own root, with reported usage.
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "child-started",
+        eveSessionId: "eve_child",
+      }),
+    );
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "child-usage",
+        eveSessionId: "eve_child",
+        sourceSequence: 2,
+        event: usage("run_child", {
+          inputTokens: 10,
+          outputTokens: 20,
+          cacheReadTokens: 1,
+          cacheWriteTokens: 2,
+          costUsd: 0.5,
+        }),
+      }),
+    );
+    // The parent root reports one run and settles another without a record.
+    await store.ingestAgentEvent(envelope(deploymentId, { telemetryEventId: "root-started" }));
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "root-usage",
+        sourceSequence: 2,
+        event: usage("run_root", {
+          inputTokens: 100,
+          outputTokens: 200,
+          cacheReadTokens: 10,
+          cacheWriteTokens: 20,
+          costUsd: 1.25,
+        }),
+      }),
+    );
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "root-missing",
+        sourceSequence: 3,
+        event: {
+          type: "model.settled",
+          scope: { turnId: "turn_1", runId: "run_missing" },
+          data: { runId: "run_missing", outcome: "completed" },
+        },
+      }),
+    );
+    expect(await store.listSessionsPage(projectId, { limit: 100 })).toMatchObject({
+      items: [{}, {}],
     });
 
-    const completed = await store.completeSession(gatewaySession.id, {
-      status: "completed",
-      eveSessionId: "eve_root",
-    });
+    // The parent opening the child folds the child's root into the parent's.
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "root-child-opened",
+        sourceSequence: 4,
+        event: {
+          type: "child.opened",
+          scope: { turnId: "turn_1" },
+          data: { sessionId: "eve_child", owner: { callId: "call_child" }, name: "researcher" },
+        },
+      }),
+    );
 
+    const {
+      items: [merged, ...others],
+    } = await store.listSessionsPage(projectId, { limit: 100 });
+    expect(others).toEqual([]);
     // Every counter the sessions schema carries must fold across the merge;
     // a counter missing from the fold silently loses usage here.
-    expect(completed).toMatchObject({
+    expect(merged).toMatchObject({
       usage: {
         inputTokens: 110,
         outputTokens: 220,
         cacheReadTokens: 11,
         cacheWriteTokens: 22,
-        reportedSteps: 1,
+        reportedSteps: 2,
         missingSteps: 1,
       },
     });
-    expect(completed?.usage.costUsd).toBeCloseTo(1.75);
+    expect(merged?.usage.costUsd).toBeCloseTo(1.75);
+    // Both roots numbered their events from zero, so the merge must renumber
+    // rather than merely re-point them: `index` is the replay ordering key.
+    const events = await store.listSessionEvents(merged!.id);
+    expect(events.map((event) => event.index)).toEqual(events.map((_, index) => index));
+    expect(events).toHaveLength(6);
   });
 });
 
@@ -908,7 +973,9 @@ describe("v27 (eve 0.84+) observations", () => {
     for (const [line, index, event] of events) {
       await store.ingestAgentEvent(v27(deploymentId, line, index, event));
     }
-    let [session] = await store.listSessions(projectId);
+    let [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(session).toMatchObject({ trigger: "direct_http", status: "waiting_approval" });
 
     // A redelivered record is a duplicate; a call-owned record re-reports a
@@ -964,7 +1031,7 @@ describe("v27 (eve 0.84+) observations", () => {
     ] as const) {
       await store.ingestAgentEvent(v27(deploymentId, line, index, event));
     }
-    [session] = await store.listSessions(projectId);
+    [session] = await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items);
     expect(session).toMatchObject({
       status: "waiting",
       usage: {
@@ -1000,7 +1067,7 @@ describe("v27 (eve 0.84+) observations", () => {
         data: { outcome: "failed", error: { code: "X", message: "agent gave up" } },
       }),
     );
-    [session] = await store.listSessions(projectId);
+    [session] = await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items);
     expect(session).toMatchObject({ status: "failed", error: "agent gave up" });
   });
 
@@ -1047,7 +1114,9 @@ describe("v27 (eve 0.84+) observations", () => {
       );
     }
 
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     const usage = await store.listModelUsageEvents(session!.id);
     expect(usage.map((row) => row.modelId).sort()).toEqual(["actual/first", "actual/second"]);
     const [node] = await store.listSessionNodes(session!.id);
@@ -1113,7 +1182,9 @@ describe("v27 (eve 0.84+) observations", () => {
     for (const [line, index, event] of events) {
       await store.ingestAgentEvent(v27(deploymentId, line, index, event));
     }
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(session?.usage).toMatchObject({ status: "partial", reportedSteps: 1, missingSteps: 1 });
   });
 
@@ -1134,7 +1205,9 @@ describe("v27 (eve 0.84+) observations", () => {
         usage: { inputTokens, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
       },
     });
-    const usageOf = async () => (await store.listSessions(projectId))[0]?.usage;
+    const usageOf = async () =>
+      (await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items))[0]
+        ?.usage;
 
     // A settlement and the record it is owed share one commit (line); only
     // their delivery order varies.
@@ -1170,7 +1243,9 @@ describe("v27 (eve 0.84+) observations", () => {
     }
     expect(await usageOf()).toMatchObject({ reportedSteps: 2, missingSteps: 0, inputTokens: 30 });
 
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     const rows = await store.listModelUsageEvents(session!.id);
     expect(rows).toHaveLength(2);
     expect(rows.find((row) => row.runKey === "run:r1@line:1")).toMatchObject({
@@ -1203,7 +1278,9 @@ describe("v27 (eve 0.84+) observations", () => {
       scope: scope(runId),
       data: { runId, outcome: "completed", finishReason: "stop" },
     });
-    const usageOf = async () => (await store.listSessions(projectId))[0]?.usage;
+    const usageOf = async () =>
+      (await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items))[0]
+        ?.usage;
 
     // eve 1.0.0-rc.11+: a discarded answer's record shares the `model.retried`
     // commit, and the answer that stands shares the `model.settled` one.
@@ -1267,7 +1344,9 @@ describe("v27 (eve 0.84+) observations", () => {
       inputTokens: 310,
       costUsd: 0.75,
     };
-    const usageOf = async () => (await store.listSessions(projectId))[0]?.usage;
+    const usageOf = async () =>
+      (await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items))[0]
+        ?.usage;
     expect(await usageOf()).toMatchObject(expected);
 
     // A replay under new delivery ids lands on the same rows.
@@ -1277,7 +1356,9 @@ describe("v27 (eve 0.84+) observations", () => {
       );
     }
     expect(await usageOf()).toMatchObject(expected);
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(
       (await store.listModelUsageEvents(session!.id)).map((row) => [row.turnId, row.runKey]).sort(),
     ).toEqual([
@@ -1307,7 +1388,9 @@ describe("v27 (eve 0.84+) observations", () => {
         { channelKind: "channel:slack", eveSessionId: "eve_slack" },
       ),
     );
-    const sessions = await store.listSessions(projectId);
+    const sessions = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(
       Object.fromEntries(sessions.map((session) => [session.eveSessionId, session.trigger])),
     ).toMatchObject({
@@ -1389,7 +1472,9 @@ describe("out-of-order delivery", () => {
         event: { type: "session.ended", data: { outcome: "completed" } },
       }),
     );
-    const [terminal] = await store.listSessions(projectId);
+    const [terminal] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(terminal).toMatchObject({ status: "completed" });
 
     // The Collector retries with multiple consumers, so an older event can
@@ -1404,7 +1489,9 @@ describe("out-of-order delivery", () => {
       }),
     );
 
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(session).toMatchObject({ status: "completed" });
     expect(session!.completedAt).not.toBeNull();
     // History stays complete even though the projection ignored it.
@@ -1434,7 +1521,9 @@ describe("out-of-order delivery", () => {
       }),
     );
 
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     expect(session).toMatchObject({ status: "running" });
     expect(session!.completedAt).toBeNull();
   });
@@ -1470,7 +1559,9 @@ describe("out-of-order delivery", () => {
       }),
     );
 
-    const [session] = await store.listSessions(projectId);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
     await expect(store.listSessionNodes(session!.id)).resolves.toEqual([
       expect.objectContaining({ lastObservedDeploymentId: redeployed.id }),
     ]);
@@ -1487,7 +1578,6 @@ async function createStore() {
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   const deployment = await store.recordDeployment({
     projectId: project.id,

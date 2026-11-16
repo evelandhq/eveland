@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { createApp } from "./app.js";
+import { recordObservedModelUsage } from "./app.test-support.js";
 
 describe("usage analytics API", () => {
   test("returns the same scoped analytics contract for workspace and project usage", async () => {
@@ -9,23 +10,17 @@ describe("usage analytics API", () => {
       name: "usage-api-agent",
       importKind: "zip",
     });
-    const session = await store.createSession({
+    await recordObservedModelUsage(store, {
       projectId: project.id,
-      trigger: "api",
-    });
-    await store.recordModelUsage(session.id, {
       eveSessionId: "eve_usage_api",
-      agentId: "agent_usage_api",
-      agentName: "Usage API agent",
-      turnId: "turn_0",
-      runKey: "run:api4",
-      finishReason: "stop",
-      inputTokens: 80,
-      outputTokens: 20,
-      cacheReadTokens: 40,
-      cacheWriteTokens: 5,
-      costUsd: 0.003,
-      usageReported: true,
+      agent: { id: "agent_usage_api", name: "Usage API agent" },
+      usage: {
+        inputTokens: 80,
+        outputTokens: 20,
+        cacheReadTokens: 40,
+        cacheWriteTokens: 5,
+        costUsd: 0.003,
+      },
     });
 
     const app = createApp(store);

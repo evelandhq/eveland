@@ -208,7 +208,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -310,7 +309,6 @@ describe("processNextJob", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const deployment = await store.recordDeployment({
         projectId: project.id,
@@ -392,7 +390,6 @@ describe("processNextJob", () => {
           }),
         },
       ],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -468,7 +465,6 @@ describe("processNextJob", () => {
       summary: { eveVersion: "~1.0.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -527,7 +523,6 @@ describe("processNextJob", () => {
       summary: { eveVersion: "~1.0.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     // No attestation: a historical row that predates release attestation.
     const deployment = await store.recordDeployment({
@@ -590,7 +585,6 @@ describe("processNextJob", () => {
       summary: { eveVersion: "~1.0.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const oldDeployment = await store.recordDeployment({
       projectId: project.id,
@@ -612,7 +606,6 @@ describe("processNextJob", () => {
       summary: { eveVersion: "1.0.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const currentDeployment = await store.recordDeployment({
       projectId: project.id,
@@ -683,7 +676,6 @@ describe("processNextJob", () => {
         },
         { path: "package-lock.json", content: "{}" },
       ],
-      schedules: [],
     });
     const versions = await store.recordScheduleVersions({
       projectId: project.id,
@@ -771,7 +763,9 @@ describe("processNextJob", () => {
       attempt: 1,
     });
     expect(dispatchSchedule).toHaveBeenCalledTimes(1);
-    await expect(store.listSessions(project.id)).resolves.toContainEqual(
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toContainEqual(
       expect.objectContaining({
         eveSessionId: "eve_worker_schedule",
         scheduleRunId: run.id,

@@ -83,7 +83,6 @@ describe("schedule persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
 
     await expect(
@@ -106,7 +105,6 @@ describe("schedule persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
 
     await store.recordScheduleVersions({
@@ -173,7 +171,6 @@ describe("schedule persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.recordScheduleVersions({
       projectId: project.id,
@@ -240,7 +237,6 @@ describe("schedule persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const definition = {
       key: "digest",
@@ -307,7 +303,6 @@ describe("schedule persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.recordScheduleVersions({
       projectId: project.id,
@@ -378,7 +373,9 @@ describe("schedule persistence", () => {
         eveSessionIds: ["eve_schedule_one", "eve_schedule_two"],
       }),
     ).resolves.toMatchObject({ status: "running", completedAt: null });
-    const scheduledSessions = await store.listSessions(project.id);
+    const scheduledSessions = await store
+      .listSessionsPage(project.id, { limit: 100 })
+      .then((page) => page.items);
     expect(scheduledSessions).toHaveLength(2);
     expect(scheduledSessions).toEqual(
       expect.arrayContaining([
@@ -412,7 +409,6 @@ describe("schedule persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const versions = await store.recordScheduleVersions({
       projectId: project.id,
@@ -481,7 +477,9 @@ describe("schedule persistence", () => {
       id: run.id,
       status: "succeeded",
     });
-    await expect(store.listSessions(project.id)).resolves.toEqual([]);
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([]);
   });
 
   test("keeps a successful dispatch running while its returned Session is active", async () => {
@@ -498,7 +496,6 @@ describe("schedule persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const [recorded] = await store.recordScheduleVersions({
       projectId: project.id,
@@ -543,7 +540,9 @@ describe("schedule persistence", () => {
       status: "running",
       completedAt: null,
     });
-    await expect(store.listSessions(project.id)).resolves.toContainEqual(
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toContainEqual(
       expect.objectContaining({
         eveSessionId: "eve_long_running_schedule",
         scheduleRunId: run.id,
@@ -566,7 +565,6 @@ describe("schedule persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const [recorded] = await store.recordScheduleVersions({
       projectId: project.id,
@@ -627,7 +625,6 @@ describe("schedule persistence", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const [recorded] = await store.recordScheduleVersions({
         projectId: project.id,
@@ -720,7 +717,6 @@ describe("schedule persistence", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const recorded = await store.recordScheduleVersions({
       projectId: project.id,
@@ -772,31 +768,27 @@ describe("schedule persistence", () => {
       status: "succeeded",
       eveSessionIds: ["eve_history_one", "eve_history_two"],
     });
-    const linked = await store.listSessions(project.id);
-    await store.recordModelUsage(linked[0]!.id, {
-      eveSessionId: linked[0]!.eveSessionId!,
-      turnId: "turn_1",
-      runKey: "run:r3",
-      inputTokens: 8,
-      outputTokens: 5,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      costUsd: null,
-      finishReason: "stop",
-      usageReported: true,
-    });
-    await store.recordModelUsage(linked[1]!.id, {
-      eveSessionId: linked[1]!.eveSessionId!,
-      turnId: "turn_2",
-      runKey: "run:r4",
-      inputTokens: 3,
-      outputTokens: 2,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      costUsd: null,
-      finishReason: "stop",
-      usageReported: true,
-    });
+    for (const [eveSessionId, inputTokens, outputTokens] of [
+      ["eve_history_one", 8, 5],
+      ["eve_history_two", 3, 2],
+    ] as const) {
+      await store.ingestAgentEvent({
+        telemetryEventId: `${eveSessionId}_usage`,
+        eventFingerprint: `${eveSessionId}_usage`,
+        deploymentId: deployment.id,
+        eveSessionId,
+        parentEveSessionId: null,
+        sourceSequence: 1,
+        agent: { id: null, name: "root", nodeId: "root" },
+        channelKind: "channel:eve",
+        eventAt: "2026-07-15T02:00:01.000Z",
+        event: {
+          type: "usage.recorded",
+          scope: { turnId: "turn_1", runId: "run_1" },
+          data: { kind: "model", owner: { runId: "run_1" }, usage: { inputTokens, outputTokens } },
+        },
+      });
+    }
 
     await expect(store.listProjectScheduleSummaries(project.id)).resolves.toEqual([
       {

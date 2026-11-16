@@ -294,7 +294,6 @@ describe("Built-in OTLP ingest", () => {
       summary: { eveVersion: "0.27.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -323,7 +322,9 @@ describe("Built-in OTLP ingest", () => {
       expect(response.status).toBe(200);
     }
 
-    const [session] = await store.listSessions(project.id);
+    const [session] = await store
+      .listSessionsPage(project.id, { limit: 100 })
+      .then((page) => page.items);
     expect(session).toMatchObject({
       eveSessionId: "eve_session_1",
       usage: {
@@ -402,7 +403,6 @@ describe("Built-in OTLP ingest", () => {
       summary: { eveVersion: "0.27.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const victim = await store.recordDeployment({
       projectId: project.id,
@@ -444,7 +444,9 @@ describe("Built-in OTLP ingest", () => {
         errorMessage: expect.stringContaining("required"),
       },
     });
-    await expect(store.listSessions(project.id)).resolves.toEqual([]);
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([]);
   });
 
   test("answers 503 when projection fails on a well-formed batch so the Collector retries it", async () => {
@@ -783,7 +785,6 @@ describe("external OTLP egress proxy", () => {
       summary: { eveVersion: "0.27.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const attacker = await store.recordDeployment({
       projectId: attackerProject.id,
@@ -806,7 +807,6 @@ describe("external OTLP egress proxy", () => {
       summary: { eveVersion: "0.27.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const victim = await store.recordDeployment({
       projectId: victimProject.id,

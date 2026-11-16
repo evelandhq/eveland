@@ -19,7 +19,6 @@ describe("sweepReleaseRetention", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 5; index += 1) {
@@ -68,7 +67,6 @@ describe("sweepReleaseRetention", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     for (let index = 0; index < 5; index += 1) {
       const deployment = await store.recordDeployment({
@@ -104,7 +102,6 @@ describe("sweepReleaseRetention", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     for (let index = 0; index < 4; index += 1) {
       const deployment = await store.recordDeployment({
@@ -145,7 +142,6 @@ describe("sweepReleaseRetention", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 4; index += 1) {
@@ -210,7 +206,6 @@ describe("sweepReleaseRetention", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployments: DeploymentRecord[] = [];
     for (let index = 0; index < 5; index += 1) {

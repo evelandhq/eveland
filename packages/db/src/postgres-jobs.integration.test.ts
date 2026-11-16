@@ -54,7 +54,6 @@ describe.skipIf(!databaseUrl)("Postgres job leases", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,

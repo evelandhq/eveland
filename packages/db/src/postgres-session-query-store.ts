@@ -14,7 +14,6 @@ import { modelUsageRowToModelUsageEvent } from "./postgres-store-support.js";
 
 type PostgresSessionQueryDomain = Pick<
   SessionStore,
-  | "listSessions"
   | "getSession"
   | "listSessionsPage"
   | "listSessionEvents"
@@ -36,15 +35,6 @@ export function createPostgresSessionQueryStore({
   db,
 }: PostgresStoreContext): PostgresSessionQueryDomain {
   return {
-    async listSessions(projectId) {
-      const rows = await db
-        .select()
-        .from(sessions)
-        .where(eq(sessions.projectId, projectId))
-        .orderBy(desc(sessions.startedAt));
-      return rows.map(sessionRowToSession);
-    },
-
     async getSession(sessionId) {
       const [row] = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
       return row ? sessionRowToSession(row) : null;

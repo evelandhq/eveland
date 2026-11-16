@@ -753,19 +753,6 @@ export type SessionEvent = {
   createdAt: string;
 };
 
-export type ScheduleRecord = {
-  id: string;
-  projectId: string;
-  name: string;
-  kind: "markdown" | "typescript";
-  cron: string | null;
-  timezone: string | null;
-  enabled: boolean;
-  executable: boolean;
-  sourcePath: string;
-  nextRunAt: string | null;
-};
-
 export type ProjectSchedule = {
   id: string;
   projectId: string;

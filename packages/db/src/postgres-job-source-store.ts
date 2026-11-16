@@ -22,7 +22,6 @@ import {
   logs,
   projects,
   runtimeInstances,
-  schedules,
   sourceFiles,
   sourceRevisions,
 } from "./schema.js";
@@ -491,11 +490,10 @@ export function createPostgresJobSourceStore({
     },
 
     async recordSourceRevision(input) {
-      // Recording a revision is all-or-nothing: it replaces the project's
-      // schedules and then repoints the project at the new revision. Run
-      // outside a transaction, a failure between those steps left a project
-      // with no schedules, or a source pointer disagreeing with what is
-      // actually stored.
+      // Recording a revision is all-or-nothing: it stores the revision and its
+      // files and then repoints the project at it. Run outside a transaction,
+      // a failure between those steps left a source pointer disagreeing with
+      // what is actually stored.
       return db.transaction(async (tx) => {
         const [revisionRow] = await tx
           .insert(sourceRevisions)
@@ -526,18 +524,6 @@ export function createPostgresJobSourceStore({
               path: file.path,
               content: file.content,
               size: Buffer.byteLength(file.content),
-            })),
-          );
-        }
-
-        await tx.delete(schedules).where(eq(schedules.projectId, input.projectId));
-        if (input.schedules.length > 0) {
-          await tx.insert(schedules).values(
-            input.schedules.map((schedule) => ({
-              id: createId("sch"),
-              projectId: input.projectId,
-              ...schedule,
-              nextRunAt: schedule.nextRunAt ? new Date(schedule.nextRunAt) : null,
             })),
           );
         }

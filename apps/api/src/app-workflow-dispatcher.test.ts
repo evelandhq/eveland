@@ -49,7 +49,6 @@ async function createDeployableFixture(
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   const deployment = await store.recordDeployment({
     projectId: project.id,
@@ -294,7 +293,6 @@ describe("workflow dispatcher recovery preflight", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,

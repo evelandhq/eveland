@@ -38,7 +38,6 @@ import type {
   SharedAgentEnvironmentRecord,
   RuntimeKind,
   WorkflowDispatcherRegistration,
-  ScheduleRecord,
   ScheduleRun,
   ScheduleRunDetail,
   ScheduleRunListItem,
@@ -60,7 +59,6 @@ import type {
   UsageAnalytics,
   UsageRange,
 } from "@evelandhq/core/contracts";
-import type { ModelUsage } from "@evelandhq/core/eve";
 import type {
   ModelGateway,
   ModelGatewayKind,
@@ -257,7 +255,6 @@ export interface SourceStore {
     summary: Record<string, unknown>;
     envVars: string[];
     files: Array<{ path: string; content: string }>;
-    schedules: Array<Omit<ScheduleRecord, "id" | "projectId">>;
   }): Promise<SourceRevision>;
   listSourceRevisions(projectId: string): Promise<SourceRevision[]>;
   getCurrentSourceRevision(projectId: string): Promise<SourceRevision | null>;
@@ -692,15 +689,6 @@ export interface SessionStore {
     eveSessionId?: string | null;
   }): Promise<Session>;
   getSessionByEveSessionId(projectId: string, eveSessionId: string): Promise<Session | null>;
-  appendSessionEvent(sessionId: string, type: string, payload: unknown): Promise<SessionEvent>;
-  recordModelUsage(
-    sessionId: string,
-    usage: ModelUsage & {
-      eveSessionId?: string;
-      agentId?: string | null;
-      agentName?: string | null;
-    },
-  ): Promise<ModelUsageEvent>;
   completeSession(
     sessionId: string,
     input: {
@@ -714,7 +702,6 @@ export interface SessionStore {
       error?: string | null;
     },
   ): Promise<Session | null>;
-  listSessions(projectId: string): Promise<Session[]>;
   getSession(sessionId: string): Promise<Session | null>;
   listSessionsPage(
     projectId: string,

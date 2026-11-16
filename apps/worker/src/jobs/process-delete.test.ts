@@ -27,7 +27,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       releaseId: "rel_del",
@@ -177,7 +176,6 @@ describe("processNextJob", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const currentRevision = await store.recordSourceRevision({
         projectId: project.id,
@@ -186,7 +184,6 @@ describe("processNextJob", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       });
       const deployment = await store.recordDeployment({
         releaseId: "rel_deep_delete",

@@ -16,7 +16,6 @@ describe("planDueSchedules", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.recordScheduleVersions({
       projectId: project.id,
@@ -80,7 +79,6 @@ describe("planDueSchedules", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.recordScheduleVersions({
       projectId: project.id,

@@ -19,7 +19,6 @@ describe("source revision provenance", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const uploaded = await store.recordSourceRevision({
       projectId: project.id,
@@ -32,7 +31,6 @@ describe("source revision provenance", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     // A revision recorded without provenance (older worker, plain directory)
     // reads back as unknown rather than failing or inventing an origin.
@@ -43,7 +41,6 @@ describe("source revision provenance", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
 
     expect(synced).toMatchObject({
@@ -123,7 +120,6 @@ describe("source revision provenance", () => {
         summary: {},
         envVars: [],
         files: [],
-        schedules: [],
       }),
     ).rejects.toThrow(/Failed query: insert into "source_revisions"/);
   });
@@ -166,7 +162,6 @@ describe("hotfix drift", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     // The first deployment of a project becomes its production deployment
     // without an explicit promote.
@@ -184,7 +179,6 @@ describe("hotfix drift", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const hotfix = await deploy(store, project.id, uploaded.id, 1);
     // A preview of an upload is not drift: production still runs the commit.
@@ -225,7 +219,6 @@ describe("hotfix drift", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await deploy(store, zipProject.id, zipUpload.id, 0);
     await expect(store.getProjectHotfixDrift(zipProject.id)).resolves.toBeNull();
@@ -244,7 +237,6 @@ describe("hotfix drift", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await deploy(store, gitProject.id, legacy.id, 1);
     await expect(store.getProjectHotfixDrift(gitProject.id)).resolves.toBeNull();

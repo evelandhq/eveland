@@ -17,7 +17,6 @@ describe("reapIdleDeployments", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.recordScheduleVersions({
       projectId: project.id,
@@ -100,7 +99,6 @@ describe("reapIdleDeployments", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -177,7 +175,6 @@ describe("reapIdleDeployments", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -274,7 +271,6 @@ describe("reapIdleDeployments", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,

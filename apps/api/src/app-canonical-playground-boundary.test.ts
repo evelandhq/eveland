@@ -123,7 +123,9 @@ describe("canonical Playground API boundary", () => {
         agentAuthEnvelope: expect.any(String),
       }),
     );
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         eveSessionId: "eve_focused_boundary",
         status: "running",
@@ -156,7 +158,9 @@ describe("canonical Playground API boundary", () => {
 
     expect(response.status).toBe(401);
     expect(playgroundProxy).toHaveBeenCalledTimes(2);
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         status: "failed",
         trigger: "playground",
@@ -202,7 +206,9 @@ describe("canonical Playground API boundary", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "Deployment activation failed",
     });
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         status: "failed",
         error:
@@ -236,7 +242,9 @@ describe("canonical Playground API boundary", () => {
     });
 
     expect(response.status).toBe(502);
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         status: "failed",
         error:
@@ -281,7 +289,9 @@ describe("canonical Playground API boundary", () => {
       method: "test-recoverable",
     });
     expect(playgroundProxy).toHaveBeenCalledTimes(2);
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         id: existingSession.id,
         status: "failed",
@@ -362,7 +372,9 @@ describe("canonical Playground create-once operation identity (#407)", () => {
       "op-create-once",
       "op-create-once",
     ]);
-    const sessions = await store.listSessions(project.id);
+    const sessions = await store
+      .listSessionsPage(project.id, { limit: 100 })
+      .then((page) => page.items);
     expect(sessions).toHaveLength(2);
     expect(sessions).toEqual(
       expect.arrayContaining([
@@ -404,7 +416,9 @@ describe("canonical Playground create-once operation identity (#407)", () => {
     expect(response.status).toBe(202);
     expect(playgroundProxy).toHaveBeenCalledTimes(2);
     expect(observedBodies.map((body) => body.operationId)).toEqual(["op-anonymous", undefined]);
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({ status: "running", eveSessionId: "eve_anonymous" }),
     ]);
   });
@@ -427,7 +441,9 @@ describe("canonical Playground create-once operation identity (#407)", () => {
 
     expect(response.status).toBe(400);
     expect(playgroundProxy).not.toHaveBeenCalled();
-    await expect(store.listSessions(project.id)).resolves.toEqual([]);
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([]);
   });
 
   test("closes the placeholder instead of double-tracking an adopted Session", async () => {
@@ -452,7 +468,9 @@ describe("canonical Playground create-once operation identity (#407)", () => {
     expect((await request()).status).toBe(202);
     expect((await request()).status).toBe(202);
 
-    const sessions = await store.listSessions(project.id);
+    const sessions = await store
+      .listSessionsPage(project.id, { limit: 100 })
+      .then((page) => page.items);
     expect(sessions.filter((session) => session.eveSessionId === "eve_shared")).toHaveLength(1);
     expect(sessions).toEqual(
       expect.arrayContaining([

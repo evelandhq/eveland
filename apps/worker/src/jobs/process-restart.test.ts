@@ -29,7 +29,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: ["OPENAI_API_KEY"],
       files: [],
-      schedules: [],
     });
     await store.upsertSecret(
       project.id,
@@ -119,7 +118,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     // No attestation: a historical row that predates release attestation.
     await store.recordDeployment({
@@ -181,7 +179,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       releaseId: "rel_reconciled_restart",
@@ -239,7 +236,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       releaseId: "rel_draining_restart",
@@ -307,7 +303,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       releaseId: "rel_archived_restart",
@@ -379,7 +374,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       releaseId: "rel_failed_restart",
@@ -444,7 +438,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const current = await store.recordDeployment({
       releaseId: "rel_target_current",
@@ -530,7 +523,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const production = await store.recordDeployment({
       releaseId: `rel_${name}_production`,
@@ -637,7 +629,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       releaseId: "rel_systemd",
@@ -708,7 +699,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       releaseId: "rel_restart_fail",
@@ -777,7 +767,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       releaseId: "rel_restart_start_fail",
@@ -843,7 +832,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.enqueueJob(project.id, "restart_deployment");
 
@@ -877,7 +865,6 @@ describe("processNextJob", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.recordDeployment({
       releaseId: "rel_missing",
@@ -941,7 +928,6 @@ describe("processNextJob", () => {
         },
         { path: "package-lock.json", content: "{}" },
       ],
-      schedules: [],
     });
     await store.recordDeployment({
       releaseId: "rel_vanished",

@@ -526,7 +526,6 @@ describe("Eveland Internal Identity routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: chatProject.id,
@@ -548,7 +547,6 @@ describe("Eveland Internal Identity routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
 
     const noChannelProject = await store.createProject({
@@ -562,7 +560,6 @@ describe("Eveland Internal Identity routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const noChannelDeployment = await store.recordDeployment({
       projectId: noChannelProject.id,
@@ -593,7 +590,6 @@ describe("Eveland Internal Identity routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const stoppedDeployment = await store.recordDeployment({
       projectId: stoppedProject.id,
@@ -621,7 +617,6 @@ describe("Eveland Internal Identity routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const unsummarizedDeployment = await store.recordDeployment({
       projectId: unsummarizedProject.id,
@@ -651,7 +646,6 @@ describe("Eveland Internal Identity routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
 
     const response = await app.request("/api/agent-catalog", {

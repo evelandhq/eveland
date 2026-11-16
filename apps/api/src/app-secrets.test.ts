@@ -90,7 +90,6 @@ describe("api app", () => {
       summary: {},
       envVars: ["DEEPSEEK_API_KEY"],
       files: [],
-      schedules: [],
     });
     const stable = await store.recordDeployment({
       projectId: project.id,
@@ -166,7 +165,6 @@ describe("api app", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -311,7 +309,6 @@ describe("api app", () => {
       summary: {},
       envVars: ["DEEPSEEK_API_KEY"],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -383,7 +380,6 @@ describe("api app", () => {
       summary: { instructions: ["agent/instructions.md"] },
       envVars: ["OPENAI_API_KEY"],
       files: [{ path: "agent/instructions.md", content: "You are concise." }],
-      schedules: [],
     });
     const app = createApp(store);
 

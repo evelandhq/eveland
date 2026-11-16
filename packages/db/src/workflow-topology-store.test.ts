@@ -10,7 +10,6 @@ async function createDeployableProject(store: ReturnType<typeof createTestStore>
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   return { project, revision };
 }

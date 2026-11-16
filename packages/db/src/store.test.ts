@@ -185,7 +185,6 @@ describe("SQL Store jobs", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -822,7 +821,7 @@ describe("SQL Store jobs", () => {
     expect(resumed.logs).toEqual([lines[3], lines[4]]);
   });
 
-  test("records current source revision, source files, and schedules", async () => {
+  test("records current source revision and source files", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Source Agent", importKind: "git" });
 
@@ -834,18 +833,6 @@ describe("SQL Store jobs", () => {
       summary: { tools: ["agent/tools/get_weather.ts"] },
       envVars: ["OPENAI_API_KEY"],
       files: [{ path: "agent/instructions.md", content: "You are concise." }],
-      schedules: [
-        {
-          name: "daily",
-          kind: "markdown",
-          cron: "0 8 * * *",
-          timezone: "UTC",
-          enabled: true,
-          executable: true,
-          sourcePath: "agent/schedules/daily.md",
-          nextRunAt: "2026-07-01T08:00:00.000Z",
-        },
-      ],
     });
 
     await expect(store.getProject(project.id)).resolves.toMatchObject({
@@ -861,7 +848,7 @@ describe("SQL Store jobs", () => {
     });
   });
 
-  test("leaves the previous revision and schedules intact when a later step fails", async () => {
+  test("leaves the previous revision intact when a later step fails", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Atomic Source Agent", importKind: "git" });
     const revision = await store.recordSourceRevision({
@@ -872,24 +859,11 @@ describe("SQL Store jobs", () => {
       summary: {},
       envVars: [],
       files: [{ path: "agent/instructions.md", content: "Keep me." }],
-      schedules: [
-        {
-          name: "daily",
-          kind: "markdown",
-          cron: "0 8 * * *",
-          timezone: "UTC",
-          enabled: true,
-          executable: true,
-          sourcePath: "agent/schedules/daily.md",
-          nextRunAt: "2026-07-01T08:00:00.000Z",
-        },
-      ],
     });
 
-    // The import contract is all-or-nothing. Recording a revision deletes the
-    // project's schedules before reinserting them, so a failure after that
-    // point used to leave the project with no schedules and a source pointer
-    // that disagrees with what is actually stored.
+    // The import contract is all-or-nothing: a file that fails to insert after
+    // the revision row exists must not leave a half-recorded revision or a
+    // source pointer that disagrees with what is actually stored.
     await expect(
       store.recordSourceRevision({
         projectId: project.id,
@@ -898,19 +872,7 @@ describe("SQL Store jobs", () => {
         sourcePath: "/tmp/source-bad",
         summary: {},
         envVars: [],
-        files: [],
-        schedules: [
-          {
-            name: "broken",
-            kind: "markdown",
-            cron: "0 9 * * *",
-            timezone: "UTC",
-            enabled: true,
-            executable: true,
-            sourcePath: null as unknown as string,
-            nextRunAt: null,
-          },
-        ],
+        files: [{ path: null as unknown as string, content: "" }],
       }),
     ).rejects.toThrow();
 
@@ -934,7 +896,6 @@ describe("SQL Store jobs", () => {
       summary: {},
       envVars: [],
       files: [{ path: "agent/instructions.md", content: "Old instructions" }],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -955,7 +916,6 @@ describe("SQL Store jobs", () => {
       summary: {},
       envVars: [],
       files: [{ path: "agent/instructions.md", content: "New instructions" }],
-      schedules: [],
     });
 
     await expect(store.getProject(project.id)).resolves.toMatchObject({
@@ -983,7 +943,6 @@ describe("SQL Store jobs", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
 
     const deployment = await store.recordDeployment({
@@ -1022,7 +981,6 @@ describe("SQL Store jobs", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
 
     const deployment = await store.recordDeployment({
@@ -1054,7 +1012,6 @@ describe("SQL Store jobs", () => {
       files: [
         { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.22.6" } }) },
       ],
-      schedules: [],
     });
     const oldDeployment = await store.recordDeployment({
       projectId: project.id,
@@ -1075,7 +1032,6 @@ describe("SQL Store jobs", () => {
       files: [
         { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.34.5" } }) },
       ],
-      schedules: [],
     });
 
     await expect(store.getDeploymentEveVersion(oldDeployment.id)).resolves.toEqual({
@@ -1094,7 +1050,6 @@ describe("SQL Store jobs", () => {
       summary: { eveVersion: "~0.37.0" },
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -1126,7 +1081,6 @@ describe("SQL Store jobs", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -1158,7 +1112,6 @@ describe("SQL Store jobs", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
 
     await expect(store.getSourceRevision(revision.id)).resolves.toMatchObject({
@@ -1179,26 +1132,35 @@ describe("SQL Store jobs", () => {
       summary: {},
       envVars: [],
       files: [{ path: "agent/instructions.md", content: "You are concise." }],
-      schedules: [],
     });
-    const session = await store.createSession({
+    const deployment = await store.recordDeployment({
       projectId: project.id,
-      deploymentId: null,
-      trigger: "playground",
-      scheduleId: null,
+      sourceRevisionId: revision.id,
+      imageTag: "eveland/deletable:rel_1",
+      observerContract: 3,
+      containerName: "eveland-deletable",
+      internalPort: 3000,
+      hostPort: 41003,
+      runtimeKind: "docker",
     });
-    await store.appendSessionEvent(session.id, "message", { role: "user", content: "Hello" });
-    await store.recordModelUsage(session.id, {
-      turnId: "turn_0",
-      runKey: "run:r5",
-      finishReason: "stop",
-      inputTokens: 120,
-      outputTokens: 30,
-      cacheReadTokens: 80,
-      cacheWriteTokens: 10,
-      costUsd: 0.0042,
-      usageReported: true,
+    const { session } = await store.ingestAgentEvent({
+      telemetryEventId: "usage",
+      eventFingerprint: "usage",
+      deploymentId: deployment.id,
+      eveSessionId: "eve_deletable",
+      parentEveSessionId: null,
+      sourceSequence: 1,
+      agent: { id: null, name: "root", nodeId: "root" },
+      channelKind: "channel:eve",
+      eventAt: "2026-07-13T00:00:00.000Z",
+      event: {
+        type: "usage.recorded",
+        scope: { turnId: "turn_0", runId: "run_0" },
+        data: { kind: "model", owner: { runId: "run_0" }, usage: { inputTokens: 120 } },
+      },
     });
+    await expect(store.listSessionEvents(session.id)).resolves.toHaveLength(1);
+    await expect(store.listModelUsageEvents(session.id)).resolves.toHaveLength(1);
 
     await expect(store.deleteProject(project.id)).resolves.toBe(true);
 
@@ -1212,7 +1174,7 @@ describe("SQL Store jobs", () => {
     await expect(store.listModelUsageEvents(session.id)).resolves.toEqual([]);
   });
 
-  test("records a playground session timeline in event order", async () => {
+  test("completes a playground session and projects its status onto the project", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Session Agent", importKind: "zip" });
 
@@ -1222,28 +1184,20 @@ describe("SQL Store jobs", () => {
       trigger: "playground",
       scheduleId: null,
     });
-    await store.appendSessionEvent(session.id, "message", { role: "user", content: "Hello" });
-    await store.appendSessionEvent(session.id, "model_response", { content: "Hi" });
     const completed = await store.completeSession(session.id, {
       status: "completed",
       eveSessionId: "eve_123",
     });
 
-    await expect(store.listSessions(project.id)).resolves.toEqual([
+    await expect(
+      store.listSessionsPage(project.id, { limit: 100 }).then((page) => page.items),
+    ).resolves.toEqual([
       expect.objectContaining({
         id: session.id,
         status: "completed",
         eveSessionId: "eve_123",
         completedAt: expect.any(String),
       }),
-    ]);
-    await expect(store.listSessionEvents(session.id)).resolves.toEqual([
-      expect.objectContaining({
-        index: 0,
-        type: "message",
-        payload: { role: "user", content: "Hello" },
-      }),
-      expect.objectContaining({ index: 1, type: "model_response", payload: { content: "Hi" } }),
     ]);
     await expect(store.getProject(project.id)).resolves.toMatchObject({
       latestSessionStatus: "completed",
@@ -1278,110 +1232,5 @@ describe("SQL Store jobs", () => {
       status: "running",
       error: null,
     });
-  });
-
-  test("records a model step and updates the session token totals", async () => {
-    const store = createTestStore();
-    const project = await store.createProject({ name: "Usage Agent", importKind: "zip" });
-    const session = await store.createSession({
-      projectId: project.id,
-      deploymentId: "dep_usage",
-      trigger: "playground",
-    });
-
-    const usageEvent = await store.recordModelUsage(session.id, {
-      turnId: "turn_0",
-      runKey: "run:r6",
-      finishReason: "stop",
-      inputTokens: 120,
-      outputTokens: 30,
-      cacheReadTokens: 80,
-      cacheWriteTokens: 10,
-      costUsd: 0.0042,
-      usageReported: true,
-    });
-
-    expect(usageEvent).toMatchObject({
-      sessionId: session.id,
-      turnId: "turn_0",
-      runKey: "run:r6",
-      inputTokens: 120,
-    });
-    await expect(store.listSessions(project.id)).resolves.toEqual([
-      expect.objectContaining({
-        usage: {
-          status: "reported",
-          inputTokens: 120,
-          outputTokens: 30,
-          cacheReadTokens: 80,
-          cacheWriteTokens: 10,
-          costUsd: 0.0042,
-          reportedSteps: 1,
-          missingSteps: 0,
-        },
-      }),
-    ]);
-    await expect(store.listModelUsageEvents(session.id)).resolves.toEqual([usageEvent]);
-  });
-
-  test("does not count the same completed model step twice", async () => {
-    const store = createTestStore();
-    const project = await store.createProject({ name: "Replay Agent", importKind: "zip" });
-    const session = await store.createSession({ projectId: project.id, trigger: "playground" });
-    const step = {
-      turnId: "turn_0",
-      runKey: "run:r8",
-      finishReason: "stop",
-      inputTokens: 12,
-      outputTokens: 4,
-      cacheReadTokens: null,
-      cacheWriteTokens: null,
-      costUsd: null,
-      usageReported: true,
-    };
-
-    const first = await store.recordModelUsage(session.id, step);
-    const replayed = await store.recordModelUsage(session.id, step);
-
-    expect(replayed.id).toBe(first.id);
-    await expect(store.listModelUsageEvents(session.id)).resolves.toHaveLength(1);
-    await expect(store.listSessions(project.id)).resolves.toEqual([
-      expect.objectContaining({
-        usage: expect.objectContaining({ inputTokens: 12, outputTokens: 4, reportedSteps: 1 }),
-      }),
-    ]);
-  });
-
-  test("tracks completed steps whose provider omitted token usage", async () => {
-    const store = createTestStore();
-    const project = await store.createProject({ name: "Missing Usage Agent", importKind: "zip" });
-    const session = await store.createSession({ projectId: project.id, trigger: "playground" });
-
-    await store.recordModelUsage(session.id, {
-      turnId: "turn_0",
-      runKey: "run:r9",
-      finishReason: "stop",
-      inputTokens: null,
-      outputTokens: null,
-      cacheReadTokens: null,
-      cacheWriteTokens: null,
-      costUsd: null,
-      usageReported: false,
-    });
-
-    await expect(store.listSessions(project.id)).resolves.toEqual([
-      expect.objectContaining({
-        usage: {
-          status: "missing",
-          inputTokens: 0,
-          outputTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
-          costUsd: null,
-          reportedSteps: 0,
-          missingSteps: 1,
-        },
-      }),
-    ]);
   });
 });

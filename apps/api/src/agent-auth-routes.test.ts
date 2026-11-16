@@ -125,7 +125,6 @@ describe("Agent Auth control-plane routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.recordDeployment({
       projectId: project.id,
@@ -450,7 +449,6 @@ describe("Agent Auth control-plane routes", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     await store.recordDeployment({
       projectId: project.id,
@@ -630,7 +628,6 @@ async function deployedProject(store: ReturnType<typeof createTestStore>, name: 
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   await store.recordDeployment({
     projectId: project.id,

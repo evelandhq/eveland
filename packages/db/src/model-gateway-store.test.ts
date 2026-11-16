@@ -87,7 +87,6 @@ describe("Model Gateway store", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const record = (name: string, modelGatewayProvider?: boolean) =>
       store.recordDeployment({

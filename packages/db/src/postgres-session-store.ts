@@ -1,9 +1,8 @@
 import { createId } from "@evelandhq/core/ids";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { sessionEventRowToSessionEvent, sessionRowToSession } from "./mappers.js";
+import { sessionRowToSession } from "./mappers.js";
 import {
   activationLeases,
-  modelUsageEvents,
   projects,
   scheduleRunSessions,
   scheduleRuns,
@@ -15,9 +14,7 @@ import type { SessionStore } from "./store-domains.js";
 import type { PostgresStoreContext } from "./postgres-store-support.js";
 import {
   appendRuntimeLostEventTx,
-  appendSessionEventRow,
   mergeSessionRows,
-  modelUsageRowToModelUsageEvent,
   retryOnIdentityRace,
   sanitizeStoredErrorText,
   sessionIdentityArbiter,
@@ -27,8 +24,6 @@ type PostgresSessionMutationDomain = Pick<
   SessionStore,
   | "createSession"
   | "getSessionByEveSessionId"
-  | "appendSessionEvent"
-  | "recordModelUsage"
   | "completeSession"
   | "failRunningSessionsForRuntimeInstance"
 >;
@@ -78,94 +73,6 @@ export function createPostgresSessionStore({
         .where(and(eq(sessions.projectId, projectId), eq(sessions.eveSessionId, eveSessionId)))
         .limit(1);
       return row ? sessionRowToSession(row) : null;
-    },
-
-    async appendSessionEvent(sessionId, type, payload) {
-      const row = await db.transaction((tx) =>
-        appendSessionEventRow(tx, {
-          id: createId("evt"),
-          sessionId,
-          type,
-          payload,
-        }),
-      );
-
-      if (!row) {
-        throw new Error("Failed to append session event.");
-      }
-
-      return sessionEventRowToSessionEvent(row);
-    },
-
-    async recordModelUsage(sessionId, usage) {
-      const eveSessionId = usage.eveSessionId ?? sessionId;
-      const runKey = usage.runKey;
-      return db.transaction(async (tx) => {
-        const [inserted] = await tx
-          .insert(modelUsageEvents)
-          .values({
-            id: createId("usage"),
-            sessionId,
-            eveSessionId,
-            agentId: usage.agentId ?? null,
-            agentName: usage.agentName ?? null,
-            turnId: usage.turnId,
-            runKey,
-            finishReason: usage.finishReason,
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            cacheReadTokens: usage.cacheReadTokens,
-            cacheWriteTokens: usage.cacheWriteTokens,
-            costUsd: usage.costUsd,
-            usageReported: usage.usageReported,
-          })
-          .onConflictDoNothing({
-            target: [
-              modelUsageEvents.sessionId,
-              modelUsageEvents.eveSessionId,
-              modelUsageEvents.runKey,
-            ],
-          })
-          .returning();
-
-        if (!inserted) {
-          const [existing] = await tx
-            .select()
-            .from(modelUsageEvents)
-            .where(
-              and(
-                eq(modelUsageEvents.sessionId, sessionId),
-                eq(modelUsageEvents.eveSessionId, eveSessionId),
-                eq(modelUsageEvents.runKey, runKey),
-              ),
-            )
-            .limit(1);
-          if (!existing) {
-            throw new Error("Failed to read the existing model usage event.");
-          }
-          return modelUsageRowToModelUsageEvent(existing);
-        }
-
-        await tx
-          .update(sessions)
-          .set({
-            inputTokens: sql`${sessions.inputTokens} + ${usage.inputTokens ?? 0}`,
-            outputTokens: sql`${sessions.outputTokens} + ${usage.outputTokens ?? 0}`,
-            cacheReadTokens: sql`${sessions.cacheReadTokens} + ${usage.cacheReadTokens ?? 0}`,
-            cacheWriteTokens: sql`${sessions.cacheWriteTokens} + ${usage.cacheWriteTokens ?? 0}`,
-            ...(usage.costUsd === null
-              ? {}
-              : {
-                  costUsd: sql`coalesce(${sessions.costUsd}, 0) + ${usage.costUsd}`,
-                }),
-            ...(usage.usageReported
-              ? { usageReportedSteps: sql`${sessions.usageReportedSteps} + 1` }
-              : { usageMissingSteps: sql`${sessions.usageMissingSteps} + 1` }),
-          })
-          .where(eq(sessions.id, sessionId));
-
-        return modelUsageRowToModelUsageEvent(inserted);
-      });
     },
 
     async completeSession(sessionId, input) {

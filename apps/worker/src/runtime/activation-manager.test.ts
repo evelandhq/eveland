@@ -16,7 +16,6 @@ describe("ensureDeploymentActive", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -106,7 +105,6 @@ describe("ensureDeploymentActive", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -189,7 +187,6 @@ describe("ensureDeploymentActive", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -264,7 +261,6 @@ describe("ensureDeploymentActive", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -331,7 +327,6 @@ describe("ensureDeploymentActive", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -397,7 +392,6 @@ describe("ensureDeploymentActive", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -478,7 +472,6 @@ describe("ensureDeploymentActive", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -537,7 +530,6 @@ describe("ensureDeploymentActive", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -601,7 +593,6 @@ describe("ensureDeploymentActive", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const [recorded] = await store.recordScheduleVersions({
       projectId: project.id,
@@ -665,7 +656,9 @@ describe("ensureDeploymentActive", () => {
       }),
     ).resolves.toBe(1);
 
-    const [session] = await store.listSessions(project.id);
+    const [session] = await store
+      .listSessionsPage(project.id, { limit: 100 })
+      .then((page) => page.items);
     expect(session).toMatchObject({
       eveSessionId: "eve_interrupted_schedule",
       status: "failed",
@@ -772,7 +765,6 @@ async function createRunningScheduleExecution(
     summary: {},
     envVars: [],
     files: [],
-    schedules: [],
   });
   const [recorded] = await store.recordScheduleVersions({
     projectId: project.id,
@@ -850,7 +842,6 @@ describe("port resolution during activation", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -1025,7 +1016,6 @@ describe("archive claim gating", () => {
       summary: {},
       envVars: [],
       files: [],
-      schedules: [],
     });
     const deployment = await store.recordDeployment({
       projectId: project.id,

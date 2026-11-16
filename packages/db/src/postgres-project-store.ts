@@ -23,7 +23,6 @@ import {
   routeTargets,
   scheduleRuns,
   scheduleVersions,
-  schedules,
   secrets,
   sessionBindings,
   sessionEvents,
@@ -723,7 +722,6 @@ export function createPostgresProjectStore(
           await tx.delete(sourceFiles).where(eq(sourceFiles.revisionId, revision.id));
         }
         await tx.delete(sourceRevisions).where(eq(sourceRevisions.projectId, projectId));
-        await tx.delete(schedules).where(eq(schedules.projectId, projectId));
         await tx.delete(jobs).where(eq(jobs.projectId, projectId));
         await tx.delete(secrets).where(eq(secrets.projectId, projectId));
         const deleted = await tx
