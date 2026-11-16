@@ -1,6 +1,6 @@
 # Production overlay for a single-box (Linux) deployment. Every platform process -- API, Agent
-# Gateway, Dashboard, worker, workflow dispatcher -- runs on the host as a systemd service (see
-# docs/en/production/core-services.md). What is left here is the OTLP Collector, plus the bundled
+# Gateway, Dashboard, worker, workflow dispatcher -- runs on the host as a systemd service that
+# eveland-ctl installs. What is left here is the OTLP Collector, plus the bundled
 # Postgres for installations that did not bring their own.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d otel-collector
@@ -23,9 +23,7 @@
 # Why no platform service is here: production runs every Deployment as a host systemd process bound
 # to the host's 127.0.0.1:PORT (loopback, not public), so the Agent Gateway (public proxy + internal
 # Playground) reaches an Agent only from the host's own network namespace -- which is to say, as a
-# host process. Once the front door is a host process, keeping the others in containers buys
-# nothing: each was a stock node image with the host source tree bind-mounted in, re-installing the
-# dependency tree on every start and running as container root. They are systemd units instead
+# host process. The other platform processes are host systemd units too
 # (packages/ctl/src/systemd-mode.ts), and this file gates the base file's development copies behind
 # profiles the production command never enables.
 #
@@ -64,11 +62,9 @@ services:
     profiles: ["bundled-postgres"]
 
   api:
-    # The Platform API is a host systemd unit (eveland-api.service). It was the
-    # last service in the bridge network, and the only reason the installation
-    # needed a second address for the shared workflow database; on the host it
-    # dials the one DSN every other process uses. Gate the base file's
-    # development API behind a profile the production command never enables.
+    # The Platform API is a host systemd unit (eveland-api.service). Gate the
+    # base file's development API behind a profile the production command
+    # never enables.
     profiles: ["dev-api"]
 
   gateway:
@@ -81,7 +77,7 @@ services:
 
   workflow-dispatcher:
     # Exactly one dispatcher may drive the production shared workflow database:
-    # the host systemd service (docs/en/production/workflow-dispatcher.md). Gate
+    # the host systemd service (eveland-workflow-dispatcher.service). Gate
     # the base file's development dispatcher behind a profile the production
     # command never enables so the merged config cannot start a second one.
     profiles: ["dev-dispatcher"]
@@ -93,7 +89,7 @@ services:
     profiles: ["dev-web"]
 
   worker:
-    # Production runs the host systemd Worker (docs/en/production/worker.md).
+    # Production runs the host systemd Worker (eveland-worker.service).
     # Gate the base file's development Worker behind a profile the production
     # command never enables so the merged config cannot start a second one.
     profiles: ["dev-worker"]

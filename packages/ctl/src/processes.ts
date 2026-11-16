@@ -106,11 +106,7 @@ export function processByKey(key: string): ProcessSpec | undefined {
   return PLATFORM_PROCESSES.find((spec) => spec.key === key);
 }
 
-/**
- * The systemd unit name for a platform process. Worker and dispatcher
- * deliberately converge with the long-documented eveland-worker /
- * eveland-workflow-dispatcher service names from infra/systemd.
- */
+/** The systemd unit name for a platform process. */
 export function systemdUnitName(key: string): string {
   return `eveland-${key}.service`;
 }

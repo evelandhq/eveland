@@ -56,8 +56,6 @@ To stop the check reaching the network, set `EVELAND_UPDATE_CHECK=off` in `etc/e
 
 ## 2. Standard upgrade workflow
 
-### If you used the installer (the normal case)
-
 One command backs up the databases, moves to the newest release, applies migrations, and restarts the platform:
 
 ```bash
@@ -67,27 +65,6 @@ eveland-ctl update
 Pin a specific release with `--version vX.Y.Z`. Re-running `curl -fsSL https://eveland.ai/install.sh | sudo bash` on an installed machine does the same thing — it forwards to `eveland-ctl update`.
 
 Before it touches anything, `update` reads the target release's `CHANGELOG.md` and lists every BREAKING CHANGE between your version and the target, then asks you to confirm. If it cannot read that changelog (the installer's checkout is a blobless clone, so the read itself goes to your git remote), it prints the git error and asks whether to proceed without the summary. Either way, an unanswered question — no terminal, or `--no-prompt` — aborts before the backup. Re-run to retry the read, or check the release notes yourself and pass `--yes`.
-
-### If you installed by hand
-
-For git checkouts and systemd units you manage yourself. (To stop doing this, see [migrating a hand-installed platform onto the installer](/docs/production/install#coming-from-an-older-hand-installed-platform).)
-
-```bash
-# 1. Checkout the target release tag
-cd /opt/eveland
-git fetch --tags origin
-git checkout vX.Y.Z
-
-# 2. Install frozen lockfile and build web dashboard
-pnpm install --frozen-lockfile
-pnpm --filter @evelandhq/web build
-
-# 3. Apply database migrations (must run before restarting services)
-pnpm --filter @evelandhq/api db:migrate
-
-# 4. Restart core systemd services
-sudo systemctl restart eveland-api eveland-gateway eveland-web eveland-worker eveland-workflow-dispatcher
-```
 
 ---
 
@@ -118,7 +95,7 @@ pg_dump -h 127.0.0.1 -p 17310 -U eveland -n workflow eveland \
   | psql -h 127.0.0.1 -p 17310 -U eveland eveland_workflow
 ```
 
-Then point every component at the new database — `EVELAND_WORKFLOW_WORLD_URL` (and `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` where it is set) in `etc/eveland.env`, or in `eveland-worker.env` and `eveland-workflow-dispatcher.env` on a manual systemd install — and start again. Verify with `eveland-ctl doctor`, then drop the old schema once a deploy and a workflow run have both succeeded:
+Then point every component at the new database — `EVELAND_WORKFLOW_WORLD_URL` (and `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` where it is set) in `etc/eveland.env` — and start again. Verify with `eveland-ctl doctor`, then drop the old schema once a deploy and a workflow run have both succeeded:
 
 ```sql
 DROP SCHEMA workflow CASCADE;

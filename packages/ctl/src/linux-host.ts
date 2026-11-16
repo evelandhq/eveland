@@ -3,16 +3,15 @@ import { readFile } from "node:fs/promises";
 import type { ExecCommand, StreamCommand } from "./io.ts";
 
 /**
- * Linux production-host provisioning, run by first boot as root: the
- * productized form of docs/en/production/prerequisites.md. Everything here
- * is what the worker's systemd preflight fails closed on — the sandbox
+ * Linux production-host provisioning, run by first boot as root. Everything
+ * here is what the worker's systemd preflight fails closed on — the sandbox
  * toolchain, the bwrap AppArmor profile, /workspace, the two service users,
  * and the system-PATH node/pnpm that deployment units and sandboxes see.
  * Idempotent: every step checks before it changes.
  */
 
-// docs/en/production/prerequisites.md's apt list — minus docker.io, which
-// is installed separately and only when no docker exists: on a host that
+// The sandbox toolchain's apt packages — minus docker.io, which is installed
+// separately and only when no docker exists: on a host that
 // already runs Docker CE, docker.io conflicts with containerd.io.
 export const HOST_APT_PACKAGES = [
   "apparmor",
@@ -55,8 +54,7 @@ export const HOST_REQUIRED_COMMANDS = [
   "bwrap",
 ];
 
-// docs/en/production/prerequisites.md's bwrap AppArmor profile, verbatim:
-// Ubuntu restricts unprivileged user namespaces and ships no profile for
+// The bwrap AppArmor profile: Ubuntu restricts unprivileged user namespaces and ships no profile for
 // bubblewrap, so both sandboxes (build user, Deployment DynamicUser) would
 // fail without it. The profile grants exactly userns — narrower than
 // flipping the kernel-wide sysctl off.
@@ -214,7 +212,7 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
       "Not running as root: skipping Linux host provisioning (sandbox toolchain, users, /workspace).",
     );
     deps.stderr(
-      "The worker's systemd preflight will fail until the host is prepared — see docs/production/prerequisites.",
+      "The worker's systemd preflight will fail until the host is prepared — run eveland-ctl start as root.",
     );
     return;
   }
@@ -253,7 +251,7 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
     if (missing.length > 0) {
       throw new Error(
         `This host has no apt-get and is missing required commands: ${missing.join(", ")}. ` +
-          "Install them with your package manager (see docs/production/prerequisites) and re-run.",
+          "Install them with your package manager and re-run.",
       );
     }
     const compose = await deps.execCommand(["docker", "compose", "version"], {
@@ -262,7 +260,7 @@ export async function provisionLinuxHost(deps: LinuxHostDeps): Promise<void> {
     if (compose.code !== 0) {
       throw new Error(
         "This host has docker but no `docker compose` (v2). Install Compose v2 with your package " +
-          "manager (see docs/production/prerequisites) and re-run.",
+          "manager and re-run.",
       );
     }
   }

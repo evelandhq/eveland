@@ -40,6 +40,5 @@ Eve 0.83 收窄了这条链：microsandbox 被移除，`DefaultSandbox` 在 `eve
 
 ## 相关参考
 
-- [准备宿主机环境](/zh/docs/production/prerequisites)：bubblewrap 与 AppArmor 详细配置步骤
 - [健康与诊断](/zh/docs/operations/diagnostics)：构建日志中的沙箱自检标记核对
 - [安全模型与权限边界](/zh/docs/operations/security)：系统安全模型与隔离全景

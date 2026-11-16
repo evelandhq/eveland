@@ -32,13 +32,6 @@ describe("supervisor pid record", () => {
     });
   });
 
-  test("a legacy plain-number pidfile still reads, with a null identity", async () => {
-    const layout = await makeLayout();
-    await mkdir(layout.runDir, { recursive: true });
-    await writeFile(supervisorPidPath(layout), "777\n", "utf8");
-    expect(await readSupervisorRecord(layout)).toEqual({ pid: 777, identity: null });
-  });
-
   test("garbage reads as no record", async () => {
     const layout = await makeLayout();
     await mkdir(layout.runDir, { recursive: true });
@@ -68,10 +61,9 @@ describe("verifiedSupervisorPid", () => {
     expect(await verifiedSupervisorPid(layout, async () => null)).toBeNull();
   });
 
-  test("a legacy identity-less record is accepted only when the live command is our supervisor", async () => {
+  test("an identity-less record is accepted only when the live command is our supervisor", async () => {
     const layout = await makeLayout();
-    await mkdir(layout.runDir, { recursive: true });
-    await writeFile(supervisorPidPath(layout), "4242", "utf8");
+    await writeSupervisorRecord(layout, { pid: 4242, identity: null });
     expect(
       await verifiedSupervisorPid(layout, async () => "node bin.ts _supervise --root /x"),
     ).toBe(4242);
