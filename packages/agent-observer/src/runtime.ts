@@ -1,16 +1,10 @@
 import {
   type AgentTelemetryEvent,
   type AgentTelemetryHookContext,
-  type ObserverHookOptions,
   type PrivateAgentTelemetryExporters,
   type PrivateAgentTelemetryRuntime,
   type RuntimeAgentPolicy,
 } from "./runtime/contracts.js";
-import {
-  delegationTracker,
-  type DelegationTracker,
-  type UnobservedChildSpend,
-} from "./runtime/delegations.js";
 import { mapAgentTelemetryLifecycle } from "./runtime/lifecycle.js";
 import { emitAgentTelemetryEventLog, shouldCollectAgentTelemetryEvent } from "./runtime/logs.js";
 import { createAgentTelemetryMetrics } from "./runtime/metrics.js";
@@ -26,13 +20,10 @@ import { asRecord, asString } from "./runtime/values.js";
 export type {
   AgentTelemetryEvent,
   AgentTelemetryHookContext,
-  ObserverHookOptions,
   PrivateAgentTelemetryExporters,
   PrivateAgentTelemetryRuntime,
   RuntimeAgentPolicy,
 } from "./runtime/contracts.js";
-
-const noSubagents: ReadonlySet<string> = new Set();
 
 export function createPrivateAgentTelemetryRuntime(input: {
   policy: RuntimeAgentPolicy;
@@ -41,11 +32,9 @@ export function createPrivateAgentTelemetryRuntime(input: {
   warn?: (error: unknown) => void;
   now?: () => number;
   modelCapture?: ModelCallCapture;
-  delegations?: DelegationTracker;
 }): PrivateAgentTelemetryRuntime {
   const { policy } = input;
   const modelCapture = input.modelCapture ?? modelCallCapture;
-  const delegations = input.delegations ?? delegationTracker;
   const providers = createAgentTelemetryProviders({
     policy,
     exporters: input.exporters,
@@ -59,7 +48,6 @@ export function createPrivateAgentTelemetryRuntime(input: {
   async function capture(
     event: AgentTelemetryEvent,
     context: AgentTelemetryHookContext,
-    hook: ObserverHookOptions = {},
   ): Promise<void> {
     if (stopped || !policy.capture.enabled) return;
     try {
@@ -71,19 +59,11 @@ export function createPrivateAgentTelemetryRuntime(input: {
       }
       const sessionId = asString(context.session?.id);
       if (!sessionId) return;
-      const scope = asRecord(event.scope);
-      const unobservedChild: UnobservedChildSpend | undefined = delegations.observe({
-        sessionId,
-        eventType,
-        data,
-        scope,
-        unobservedSubagents: hook.unobservedSubagents ?? noSubagents,
-      });
       let observedModel: ObservedModelCall | undefined;
       const correlatedSpan = mapAgentTelemetryLifecycle({
         eventType,
         data,
-        scope,
+        scope: asRecord(event.scope),
         sessionId,
         context,
         state,
@@ -92,7 +72,6 @@ export function createPrivateAgentTelemetryRuntime(input: {
         now,
         capture: policy.capture,
         modelCapture,
-        unobservedChild,
         onObservedModel: (observed) => {
           observedModel = observed;
         },
@@ -106,7 +85,6 @@ export function createPrivateAgentTelemetryRuntime(input: {
         logger: providers.logger,
         policy,
         observedModel,
-        unobservedChild,
       });
     } catch (error) {
       input.warn?.(error);

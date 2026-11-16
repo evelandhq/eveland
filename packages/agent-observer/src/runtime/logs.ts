@@ -8,7 +8,6 @@ import type {
   RuntimeAgentPolicy,
 } from "./contracts.js";
 import { commonAttributes } from "./attributes.js";
-import type { UnobservedChildSpend } from "./delegations.js";
 import type { ObservedModelCall } from "./model-capture.js";
 import { asDate, asNonNegativeInteger, asRecord, asString, canonicalJson } from "./values.js";
 
@@ -80,8 +79,6 @@ export function emitAgentTelemetryEventLog(input: {
   logger: ReturnType<LoggerProvider["getLogger"]>;
   policy: RuntimeAgentPolicy;
   observedModel?: ObservedModelCall;
-  /** The child that spent a re-reported usage record, when no hook of its own reports it. */
-  unobservedChild?: UnobservedChildSpend;
 }): void {
   const position = streamPosition(input.context);
   const eventData = asRecord(input.event.data);
@@ -131,12 +128,6 @@ export function emitAgentTelemetryEventLog(input: {
         : {}),
       ...(input.observedModel?.responseModelId
         ? { "eveland.gen_ai.observed.response_model": input.observedModel.responseModelId }
-        : {}),
-      ...(input.unobservedChild
-        ? {
-            "eveland.eve.usage.session.id": input.unobservedChild.sessionId,
-            "eveland.eve.usage.agent.name": input.unobservedChild.agentName,
-          }
         : {}),
     },
   );

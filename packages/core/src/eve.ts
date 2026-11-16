@@ -308,9 +308,8 @@ export function isWorkflowWebhookRoute(pathname: string): boolean {
  *
  * A record that re-reports a child's spend (see
  * {@link isDelegatedUsageRecord}) is left to the child's node, so a session's
- * totals never count the same model call twice (see
- * {@link parseUnobservedChildUsage} for a child that reports nothing itself);
- * every other record counts on the session that recorded it. eve records every usage field (it fills a
+ * totals never count the same model call twice; every other record counts on
+ * the session that recorded it. eve records every usage field (it fills a
  * missing token count with zero), so missing usage is a model run with no
  * record at all rather than a record with gaps.
  */
@@ -390,31 +389,6 @@ export function isDelegatedUsageRecord(data: unknown): boolean {
   if (data.kind === "delegated-late") return true;
   const owner = isEveRecord(data.owner) ? data.owner : null;
   return data.kind === "model" && typeof owner?.callId === "string";
-}
-
-/**
- * A re-reported child spend (see {@link isDelegatedUsageRecord}) when the
- * child runs without the observer hook -- a file-form subagent, which eve gives
- * no hooks slot -- so the parent's record is the only report of what it spent.
- * The record counts on the child's node, keyed by its position on the
- * parent's stream: it carries the child's total for one call, not a run of the
- * child's, so it has no model run to reconcile with.
- */
-export function parseUnobservedChildUsage(
-  type: string,
-  payload: unknown,
-  position?: unknown,
-): ModelUsage | null {
-  if (type !== "usage.recorded" || !isDelegatedUsageRecord(payload)) return null;
-  const parentPosition = positionUsageKey(position);
-  if (parentPosition === null || !isEveRecord(payload)) return null;
-  const runKey = `parent-${parentPosition}`;
-  return {
-    turnId: runKey,
-    runKey,
-    finishReason: null,
-    ...usageFields(isEveRecord(payload.usage) ? payload.usage : null),
-  };
 }
 
 /**

@@ -107,7 +107,7 @@ Eveland private providers
 
 - **Hook**（`hooks/eveland-observer.js`，带 `*` 处理器的 `defineHook`），注入根 Agent
   和每个 directory-form Subagent。它接收每个会话的 stream fact 并导出；Built-in 会话
-  投影读取的正是这些 fact。每个 shim 还列出其 Agent 的 file-form Subagent（见下文）。
+  投影读取的正是这些 fact。
 - **Instrumentation**（`agent/instrumentation/eveland-observer.js`，
   `defineInstrumentation`），只注入根目录。Eve 会把进程内每个会话（包括 Subagent）的
   生命周期事件交给它。observer 用 `model.call.started` 与 `model.call.settled`，按会话与
@@ -127,20 +127,10 @@ global registration，也不对用户 provider 执行 flush 或 shutdown。
 `resolvedExtensions`，把 hook shim 写进 Release `node_modules` 中已安装包内每个有效的
 directory-form Extension Subagent（含嵌套后代与 consumer override）。这个 shim 是写进
 该包的唯一文件：它不携带 runtime 副本，没有平台挂载（因而也没有 policy）时不做任何事。
-Eve 的 file-form Subagent 没有独立 hooks slot，无论本地还是 Extension 来源，其会话的
-transcript 都记录为明确的 coverage gap，不 patch Eve compiled internals；Extension 缺口的完整
-`{kind,path,reason}` 写入 `.eveland/observability/extension-coverage-gaps.json`。
-
-file-form Subagent 的花费仍会计入。它唯一的报告是父会话针对打开该子会话的 Call 写下的
-`usage.recorded`（或父会话按子会话 Task 归属的 `delegated-late` 记录）。每个 hook shim
-按其 Agent 调用的名字列出该 Agent 的 file-form Subagent——本地的用文件名，挂载 Extension
-的用 `<namespace>__<id>`——Extension integration 会重写消费方 Agent 的 shim，补上挂载进来的
-那些。当父会话的 stream 显示一次对这类非 remote Subagent 的调用（`call.requested`）、
-服务它的 Task（`call.started`）以及它打开的子会话（`child.opened`）时，observer 导出父会话
-的该记录，并以 `eveland.eve.usage.session.id` 与 `eveland.eve.usage.agent.name` 标明该子
-会话，同时以子会话的 `gen_ai.agent.name` 计量。某个 Subagent 是否带 hook 在构建 Release 时
-即已确定，因此归属从不取决于事件到达的先后。本进程没有看到其请求的委派（子会话运行期间
-Deployment 重启）保持未归属：其花费不计入，而不是被计入两次。
+Eve 的 file-form Subagent（无论本地还是 Extension 来源）既没有自己的 hooks slot，也没有
+自己的沙箱 slot，包含它的 Release 会被拒绝（见[已知限制](/zh/docs/reference/known-limitations)）。
+Extension integration 仍会把 Extension 缺口 `{kind,path,reason}` 写入
+`.eveland/observability/extension-coverage-gaps.json`。
 
 这一设计残留的 Eve 耦合风险：
 
@@ -149,10 +139,6 @@ Deployment 重启）保持未归属：其花费不计入，而不是被计入两
   `resolvedExtensions` 定位。Eve 1.0.0 不校验 Extension 包内容（包里的 `_manifest.json`
   只记录构建它的 Eve 版本、分发契约和外部依赖），所以写入生效。若某个 Eve 版本校验包完整性
   或改变该 manifest 形状，Extension Subagent 会话会丢失 transcript 与用量，或构建失败。
-- file-form Subagent 的会话会到达根 instrumentation，但 instrumentation 事件不携带
-  stream fact（没有 stream 位置、没有 `content.completed`、没有 `usage.recorded` 的记录
-  类别），而 Built-in 投影需要这些；这些会话的 transcript 仍是 coverage gap，其用量是父会话
-  对每次调用的记录：每次调用一行，没有逐 Run 的模型。
 
 私有 provider 分别产生 traces、logs 和 metrics。三个 signal 共享 Resource 和
 correlation identifiers，但由三个独立 provider 管理。
@@ -391,11 +377,7 @@ eve_session_id)` 与 SessionNode 的同名对一样是唯一索引，两条存�
   `usage.recorded`，按 `run_key` 去重：Model Run 或 Context Change 的记录以其 Owner 为键，Eve 在自身
   Model Step 之外的花费——`decision`（`decide()`、自动选模型、工具审批）与 `auxiliary`（工具发起的
   模型调用）——以其 Stream 位置为键。由 Call 拥有的 `model`
-  记录和 `delegated-late` 记录是在重报子 Session 已记录的花费，因此只由子 Session 计入。file-form
-  Subagent 不记录任何 Eveland 能观测到的内容，所以当 observer 在父会话的记录上标明这样的子会话时，
-  该记录在子会话节点上计入一次，以其在父会话 stream 中的位置为键
-  （`parent-record@line:<line>:<index>`）；父会话的 `child.opened` 尚未到达时，它会创建子会话的
-  unresolved 节点。remote 子会话被重报的花费不计入本项目。Eve 会把缺失的 Token 数填为零，
+  记录和 `delegated-late` 记录是在重报子 Session 已记录的花费，因此只由子 Session 计入；Eve 会把缺失的 Token 数填为零，
   所以用量缺失表现为某个 Model Run 完全没有记录。Model Run 的 `run_key` 同时标明事实所在的
   commit（stream line）。已完成的 Model Run 自其 `model.settled` 起计为缺失，直到其记录到达；Eve
   把该记录写在同一个 commit 里，所以它填充同一 `run_key` 行，无论两者谁先送达，一次 Run 都不会被

@@ -10,8 +10,6 @@ const root = mockModel({
           toolCalls: [
             { name: "dirchild", input: { message: "hello directory child" } },
             { name: "probe__helper", input: { message: "hello extension child" } },
-            { name: "filechild", input: { message: "hello file child" } },
-            { name: "probe__fhelper", input: { message: "hello extension file child" } },
           ],
         }
       : "root done",

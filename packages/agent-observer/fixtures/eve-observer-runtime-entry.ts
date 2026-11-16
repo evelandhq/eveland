@@ -12,5 +12,4 @@ const runtime = createObserverRuntime({
 });
 
 export default runtime.hook;
-export const observerHook = runtime.observerHook;
 export const instrumentation = runtime.instrumentation;
