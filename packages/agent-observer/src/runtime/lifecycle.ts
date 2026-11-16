@@ -46,7 +46,7 @@ import {
 import { asNonNegativeInteger, asRecord, asString, serializeAttribute } from "./values.js";
 
 /**
- * Maps the v27 session protocol (every eve 1.x) onto spans: facts are
+ * Maps eve's session protocol onto spans: facts are
  * `{ type, scope?, data }` envelopes, each item ends with one settled event
  * whose `outcome` says how it ended, a model call is a "run" (`model.started`
  * -> `model.settled`, keyed by `runId`), and provider usage is its own
@@ -252,8 +252,8 @@ export function mapAgentTelemetryLifecycle(input: {
       const kind = asString(data.kind);
       const span = runSpan ?? turnSpan;
       if (!capture.recordOutputs) return span;
-      // From eve 1.0.0-rc.2 a turn can write a part without a model run
-      // (no `runId`); it belongs to the turn's transcript on its own.
+      // A turn can write a part without a model run (no `runId`); it
+      // belongs to the turn's transcript on its own.
       const assistant = () =>
         runKey || !turnKey
           ? stepAssistantFor(state, runKey, turnKey)

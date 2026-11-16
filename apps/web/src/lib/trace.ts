@@ -1,11 +1,7 @@
 import type { TranscriptUsage } from "@evelandhq/core/transcript";
 import type { SessionEvent, SessionNode } from "./api";
 
-/**
- * `runtime` is input Eve authored itself (a background task or subagent
- * wake-up), which opens a turn like a user message but was typed by nobody.
- */
-export type TraceRole = "user" | "runtime" | "assistant" | "reasoning" | "tool" | "lifecycle";
+export type TraceRole = "user" | "assistant" | "reasoning" | "tool" | "lifecycle";
 
 export type TraceRowStatus = "completed" | "failed" | "cancelled" | "pending";
 
@@ -14,7 +10,7 @@ export type TraceRow = {
   id: string;
   eventId: string;
   role: TraceRole;
-  /** Raw event type, e.g. "message.received" or "actions.requested". */
+  /** Raw event type, e.g. "delivery.consumed" or "call.requested". */
   type: string;
   /** 1-based turn ordinal across the whole session; null before the first turn. */
   turn: number | null;
@@ -33,7 +29,7 @@ export type TraceRow = {
   result: unknown;
   errorText: string | null;
   eventAt: string;
-  /** For tool rows: when the matching action.result arrived. */
+  /** For tool rows: when the matching call.settled arrived. */
   endAt: string | null;
   durationMs: number | null;
   usage: TranscriptUsage | null;
@@ -108,132 +104,7 @@ export function buildSessionTrace(
     };
 
     switch (event.type) {
-      case "message.received": {
-        push(event, {
-          ...base,
-          id: event.id,
-          role: payload?.kind === "execution.background_task" ? "runtime" : "user",
-          type: event.type,
-          turn: turnOf(payload),
-          status: null,
-          payload: messageText(payload) || event.payload,
-        });
-        break;
-      }
-      case "message.completed": {
-        push(event, {
-          ...base,
-          id: event.id,
-          role: "assistant",
-          type: event.type,
-          turn: turnOf(payload),
-          status: null,
-          payload: messageText(payload) || event.payload,
-        });
-        break;
-      }
-      case "reasoning.completed": {
-        const text = messageText(payload);
-        if (!text) break;
-        push(event, {
-          ...base,
-          id: event.id,
-          role: "reasoning",
-          type: event.type,
-          turn: turnOf(payload),
-          status: null,
-          payload: text,
-        });
-        break;
-      }
-      case "actions.requested": {
-        const turn = turnOf(payload);
-        const actions = Array.isArray(payload?.actions) ? payload.actions : [];
-        actions.forEach((raw, index) => {
-          const action = asRecord(raw);
-          if (!action) return;
-          const callId = asString(action.callId);
-          const row = push(event, {
-            ...base,
-            id: `${event.id}:${index}`,
-            role: "tool",
-            type: event.type,
-            turn,
-            name: actionName(action),
-            status: "pending",
-            payload: "input" in action ? action.input : null,
-          });
-          if (callId) callRows.set(callId, row);
-        });
-        break;
-      }
-      case "action.result": {
-        const result = asRecord(payload?.result);
-        const status = asString(payload?.status);
-        const failed = status !== null && status !== "completed";
-        const errorText = failed ? (errorMessage(result) ?? errorMessage(payload) ?? status) : null;
-        const callId = asString(result?.callId);
-        const output = result && "output" in result ? result.output : null;
-        const open = callId ? callRows.get(callId) : undefined;
-        if (open) {
-          open.result = output;
-          open.status = failed ? "failed" : "completed";
-          open.errorText = errorText;
-          open.endAt = event.eventAt;
-          open.durationMs = durationBetween(open.eventAt, event.eventAt);
-          open.usage = usageFrom(result?.usage);
-          if (callId) callRows.delete(callId);
-        } else {
-          push(event, {
-            ...base,
-            id: event.id,
-            role: "tool",
-            type: event.type,
-            turn: turnOf(payload),
-            name: result ? actionName(result) : "tool",
-            status: failed ? "failed" : "completed",
-            payload: null,
-            result: output,
-            errorText,
-            usage: usageFrom(result?.usage),
-          });
-        }
-        break;
-      }
-      case "turn.cancelled": {
-        const turn = turnOf(payload);
-        for (const open of callRows.values()) {
-          if (open.turn === turn && open.status === "pending") {
-            open.status = "cancelled";
-            open.errorText = "Turn cancelled";
-          }
-        }
-        push(event, {
-          ...base,
-          id: event.id,
-          role: "lifecycle",
-          type: event.type,
-          turn,
-          status: "cancelled",
-          payload: event.payload,
-        });
-        break;
-      }
-      case "step.completed": {
-        push(event, {
-          ...base,
-          id: event.id,
-          role: "lifecycle",
-          type: event.type,
-          turn: turnOf(payload),
-          status: null,
-          payload: event.payload,
-          usage: usageFrom(payload?.usage),
-        });
-        break;
-      }
-      // v27 (eve 0.84+): the same rows from the v27 vocabulary. The stored
-      // payload is the fact's data, with its owning turn copied in.
+      // The stored payload is the fact's data, with its owning turn copied in.
       case "delivery.consumed": {
         push(event, {
           ...base,
@@ -337,17 +208,17 @@ export function buildSessionTrace(
         break;
       }
       default: {
-        // v26 names a failure in the event type; v27 in a settled outcome.
-        const failedType = event.type.endsWith(".failed") || payload?.outcome === "failed";
+        // A settled item names its failure in its outcome.
+        const failed = payload?.outcome === "failed";
         push(event, {
           ...base,
           id: event.id,
           role: "lifecycle",
           type: event.type,
           turn: turnOf(payload),
-          status: failedType ? "failed" : null,
+          status: failed ? "failed" : null,
           payload: event.payload,
-          errorText: failedType ? errorMessage(payload) : null,
+          errorText: failed ? errorMessage(payload) : null,
         });
         break;
       }
@@ -419,44 +290,25 @@ function infoFor(
   return (nodeId ? nodeInfo.get(nodeId) : undefined) ?? { depth: 0, agentName: null };
 }
 
-function actionName(action: Record<string, unknown>): string {
-  const kind = asString(action.kind) ?? "";
-  return (
-    asString(action.toolName) ??
-    asString(action.name) ??
-    asString(action.subagentName) ??
-    (kind || "tool")
-  );
-}
-
 function durationBetween(start: string, end: string): number | null {
   const startMs = Date.parse(start);
   const endMs = Date.parse(end);
   return Number.isFinite(startMs) && Number.isFinite(endMs) ? Math.max(0, endMs - startMs) : null;
 }
 
+/** The text parts of a delivery, joined. */
 function messageText(payload: Record<string, unknown> | null): string {
-  if (!payload) return "";
-  const direct = asString(payload.message) ?? asString(payload.text) ?? asString(payload.content);
-  if (direct !== null) return direct;
-  if (Array.isArray(payload.parts)) {
-    return payload.parts
-      .map((part) => asString(asRecord(part)?.text))
-      .filter((text): text is string => text !== null)
-      .join("");
-  }
-  return "";
+  if (!Array.isArray(payload?.parts)) return "";
+  return payload.parts
+    .map((part) => asString(asRecord(part)?.text))
+    .filter((text): text is string => text !== null)
+    .join("");
 }
 
+/** The message of a settled item's error (`error: { code, message }`), or its reason. */
 function errorMessage(payload: Record<string, unknown> | null): string | null {
   if (!payload) return null;
-  const error = payload.error;
-  return (
-    asString(error) ??
-    asString(asRecord(error)?.message) ??
-    asString(payload.reason) ??
-    asString(payload.message)
-  );
+  return asString(asRecord(payload.error)?.message) ?? asString(payload.reason);
 }
 
 function usageFrom(value: unknown): TranscriptUsage | null {

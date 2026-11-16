@@ -60,7 +60,7 @@ import type {
   UsageAnalytics,
   UsageRange,
 } from "@evelandhq/core/contracts";
-import type { ModelStepUsage } from "@evelandhq/core/eve";
+import type { ModelUsage } from "@evelandhq/core/eve";
 import type {
   ModelGateway,
   ModelGatewayKind,
@@ -695,10 +695,7 @@ export interface SessionStore {
   appendSessionEvent(sessionId: string, type: string, payload: unknown): Promise<SessionEvent>;
   recordModelUsage(
     sessionId: string,
-    usage: Omit<ModelStepUsage, "runKey" | "stepIndex"> & {
-      /** v26 rows carry a step index; v27 rows a run key instead. */
-      stepIndex: number | null;
-      runKey?: string | null;
+    usage: ModelUsage & {
       eveSessionId?: string;
       agentId?: string | null;
       agentName?: string | null;

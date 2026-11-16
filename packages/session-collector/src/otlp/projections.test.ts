@@ -66,19 +66,16 @@ describe("OTLP Agent event projection", () => {
                       attribute("eveland.eve.parent_session.id", "eve_parent_1"),
                       attribute("eveland.eve.agent.name", "Researcher"),
                       attribute("eveland.eve.agent.node.id", "root"),
-                      attribute("eveland.eve.channel.kind", "http"),
+                      attribute("eveland.eve.channel.kind", "channel:eve"),
                     ],
                     body: anyValue({
-                      type: "step.completed",
+                      type: "usage.recorded",
                       data: {
-                        sequence: 7,
-                        turnId: "turn_1",
-                        stepIndex: 0,
-                        usage: {
-                          inputTokens: 120,
-                          outputTokens: 30,
-                        },
+                        kind: "model",
+                        owner: { runId: "run_1" },
+                        usage: { inputTokens: 120, outputTokens: 30 },
                       },
+                      meta: { position: { line: 0, index: 7 } },
                     }),
                   },
                 ],
@@ -104,25 +101,22 @@ describe("OTLP Agent event projection", () => {
           name: "Researcher",
           nodeId: "root",
         },
-        channelKind: "http",
+        channelKind: "channel:eve",
         eventAt: "2026-07-23T12:00:00.000Z",
         event: {
-          type: "step.completed",
+          type: "usage.recorded",
           data: {
-            sequence: 7,
-            turnId: "turn_1",
-            stepIndex: 0,
-            usage: {
-              inputTokens: 120,
-              outputTokens: 30,
-            },
+            kind: "model",
+            owner: { runId: "run_1" },
+            usage: { inputTokens: 120, outputTokens: 30 },
           },
+          meta: { position: { line: 0, index: 7 } },
         },
       },
     ]);
   });
 
-  test("orders v27 observations by their stream position and keeps the record time", () => {
+  test("orders observations by their stream position and keeps the record time", () => {
     const record = (position: unknown) => ({
       resourceLogs: [
         {
@@ -167,13 +161,12 @@ describe("OTLP Agent event projection", () => {
       eventAt: "2026-11-02T00:00:06.000Z",
       event: { type: "usage.recorded", scope: { turnId: "turn_1", runId: "run_1" } },
     });
+    // An event without a usable position is not one eve's hooks hand over.
+    expect(projectAgentEventsFromOtlpLogs(record({ line: "x" }), projection)).toEqual([]);
+    expect(projectAgentEventsFromOtlpLogs(record({}), projection)).toEqual([]);
     expect(
-      projectAgentEventsFromOtlpLogs(record({ line: "x" }), projection)[0]?.sourceSequence,
-    ).toBeNull();
-    expect(
-      projectAgentEventsFromOtlpLogs(record({ line: 3_000_000, index: 0 }), projection)[0]
-        ?.sourceSequence,
-    ).toBeNull();
+      projectAgentEventsFromOtlpLogs(record({ line: 3_000_000, index: 0 }), projection),
+    ).toEqual([]);
   });
 
   test("carries the observed model from log attributes into the observation", () => {
@@ -200,8 +193,9 @@ describe("OTLP Agent event projection", () => {
                       attribute("eveland.gen_ai.observed.response_model", "gpt-6-2026-01-01"),
                     ],
                     body: anyValue({
-                      type: "step.completed",
-                      data: { turnId: "turn_1", stepIndex: 0 },
+                      type: "usage.recorded",
+                      data: { kind: "model", owner: { runId: "run_1" } },
+                      meta: { position: { line: 1, index: 0 } },
                     }),
                   },
                 ],
@@ -269,7 +263,11 @@ describe("OTLP Agent event projection", () => {
                     attribute("eveland.event.fingerprint", "fingerprint_1"),
                     attribute("eveland.eve.session.id", "eve_session_1"),
                   ],
-                  body: anyValue({ type: "session.started", data: {} }),
+                  body: anyValue({
+                    type: "session.started",
+                    data: {},
+                    meta: { position: { line: 0, index: 0 } },
+                  }),
                 },
               ],
             },

@@ -1,13 +1,12 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { createId } from "@evelandhq/core/ids";
 import {
-  parseStepUsageEvent,
+  parseModelUsageEvent,
   parseUnreportedModelRun,
   scheduleExecutionErrorFromEveEvent,
   scheduleExecutionStatusFromEveEvent,
   sessionErrorFromEveEvent,
   sessionStatusFromEveEvent,
-  unsegmentedRunKey,
 } from "@evelandhq/core/eve";
 import {
   UnmanagedTelemetryResourceError,
@@ -139,8 +138,6 @@ async function ingestPostgresAgentEventOnce(
     // not the status itself -- decides whether an observation may move the
     // projection: an Eve session legitimately goes completed -> running when a
     // continuation resumes it, so terminal states must not simply stick.
-    // Without a source sequence (older Eve builds) there is nothing to order
-    // by, so the previous last-writer-wins behavior is kept.
     const isLatestObservation = node
       ? await isNewestNodeObservation(tx, node.id, observation.sourceSequence)
       : true;
@@ -349,8 +346,8 @@ async function ingestPostgresAgentEventOnce(
 
     const eventRecord = recordValue(observation.event);
     const type = typeof eventRecord?.type === "string" ? eventRecord.type : "event";
-    // v27 (eve 0.84+) names the owners of a fact -- its turn, run, task, or
-    // context change -- on the envelope rather than in its payload. The stored
+    // Eve names the owners of a fact -- its turn, run, task, or context
+    // change -- on the envelope rather than in its payload. The stored
     // payload is the fact's data, so the owning turn is copied into it when
     // the data does not already name one: transcripts and replays group by it.
     const scope = recordValue(eventRecord?.scope);
@@ -378,15 +375,9 @@ async function ingestPostgresAgentEventOnce(
       ? sessionStatusFromEveEvent(type, node.status, payload)
       : null;
     const runtime = type === "session.started" ? recordValue(recordValue(payload)?.runtime) : null;
-    // Eve <=0.32 put the configured model in the session's runtime identity;
-    // 0.33 moved it to `step.started`, where a concrete model is selected, and
-    // v27 (0.84) renamed that event `model.started`. Read every source so
-    // `modelId` is populated across the supported window.
+    // `model.started` names the model eve selected for a run.
     const configuredModelId =
-      stringValue(runtime?.modelId) ??
-      (type === "step.started" || type === "model.started"
-        ? stringValue(recordValue(payload)?.modelId)
-        : null);
+      type === "model.started" ? stringValue(recordValue(payload)?.modelId) : null;
     const [updatedNode] = await tx
       .update(sessionNodes)
       .set({
@@ -430,9 +421,7 @@ async function ingestPostgresAgentEventOnce(
       const now = new Date();
       const executionStatus =
         node.parentNodeId === null
-          ? nonRunning(
-              scheduleExecutionStatusFromEveEvent(type, projectedStatus ?? node.status, payload),
-            )
+          ? nonRunning(scheduleExecutionStatusFromEveEvent(type, payload))
           : null;
       if (executionStatus) {
         await tx
@@ -492,18 +481,12 @@ async function ingestPostgresAgentEventOnce(
       }
     }
 
-    // Eve <= 0.68 announces a delegated child with `subagent.called`
-    // (`childSessionId`); 0.69 replaced it with `agent.started`, whose
-    // `sessionId` names the child; v27 (0.84) renamed that `child.opened`.
-    // `subagent.called` and `agent.started` carry `name` and `remote.url`;
-    // `child.opened` carries `name` only, so a v27 remote child stays an
-    // unresolved node without a URL rather than one Eveland follows.
-    if (type === "subagent.called" || type === "agent.started" || type === "child.opened") {
+    // `child.opened` names the child session a call or task opened. It
+    // carries no remote URL, so a remote child stays an unresolved node that
+    // Eveland never follows.
+    if (type === "child.opened") {
       const subagentPayload = recordValue(payload);
-      const childEveSessionId = stringValue(
-        type === "subagent.called" ? subagentPayload?.childSessionId : subagentPayload?.sessionId,
-      );
-      const remoteUrl = stringValue(recordValue(subagentPayload?.remote)?.url);
+      const childEveSessionId = stringValue(subagentPayload?.sessionId);
       if (childEveSessionId) {
         let [child] = await tx
           .select()
@@ -546,7 +529,6 @@ async function ingestPostgresAgentEventOnce(
               parentNodeId: node!.id,
               parentEveSessionId: node!.eveSessionId,
               agentName: stringValue(subagentPayload?.name) ?? child.agentName,
-              remoteUrl: remoteUrl ?? child.remoteUrl,
               updatedAt: new Date(),
             })
             .where(eq(sessionNodes.id, child.id))
@@ -563,7 +545,6 @@ async function ingestPostgresAgentEventOnce(
             lastObservedDeploymentId: observation.deploymentId,
             agentName: stringValue(subagentPayload?.name),
             channelKind: "subagent",
-            remoteUrl,
             resolutionStatus: "unresolved",
             status: "running",
           });
@@ -571,32 +552,16 @@ async function ingestPostgresAgentEventOnce(
       }
     }
 
-    // Provider usage: v26 `step.completed`, v27 `usage.recorded`, and, for
-    // v27, a completed model run that is owed a record. That run is projected
-    // as missing usage under its run key, so a run that never reports counts
-    // as missing, and its record reconciles the same row whichever arrives
-    // first; nothing is estimated. A run's key names the commit line (see
-    // `runUsageKey`), so an attempt eve discarded keeps its own row.
+    // Provider usage from `usage.recorded`, and a completed model run that is
+    // owed a record. That run is projected as missing usage under its run
+    // key, so a run that never reports counts as missing, and its record
+    // reconciles the same row whichever arrives first; nothing is estimated.
+    // A run's key names the commit line (see `runUsageKey`), so an attempt
+    // eve discarded keeps its own row.
     const position = recordValue(eventRecord?.meta)?.position;
     const usage =
-      parseStepUsageEvent(type, payload, scope, position) ??
+      parseModelUsageEvent(type, payload, scope, position) ??
       parseUnreportedModelRun(type, payload, scope, position);
-    const bareRunKey = usage?.runKey ? unsegmentedRunKey(usage.runKey) : null;
-    if (usage && bareRunKey) {
-      // A run projected before keys named the line holds its row under the
-      // bare key; it stays on that row instead of opening a second one.
-      const [bare] = await tx
-        .select({ id: modelUsageEvents.id })
-        .from(modelUsageEvents)
-        .where(
-          and(
-            eq(modelUsageEvents.sessionNodeId, node!.id),
-            eq(modelUsageEvents.runKey, bareRunKey),
-          ),
-        )
-        .limit(1);
-      if (bare) usage.runKey = bareRunKey;
-    }
     if (usage) {
       const [insertedUsage] = await tx
         .insert(modelUsageEvents)
@@ -608,7 +573,6 @@ async function ingestPostgresAgentEventOnce(
           agentId: node!.agentId,
           agentName: node!.agentName,
           turnId: usage.turnId,
-          stepIndex: usage.stepIndex,
           runKey: usage.runKey,
           modelId: observation.observedModel?.modelId ?? null,
           finishReason: usage.finishReason,
@@ -631,7 +595,7 @@ async function ingestPostgresAgentEventOnce(
               : { usageMissingSteps: sql`${sessions.usageMissingSteps} + 1` }),
           })
           .where(eq(sessions.id, sessionRow!.id));
-      } else if (usage.usageReported && usage.runKey !== null) {
+      } else if (usage.usageReported) {
         // The run was first projected as missing: its record now fills that
         // row in place and moves the run from missing to reported, once.
         const [reconciled] = await tx
@@ -678,16 +642,16 @@ async function ingestPostgresAgentEventOnce(
   });
 }
 
+/**
+ * Every channel's kind is `channel:<name>`, so the HTTP channel and Eveland's
+ * own scheduler channel are told apart by name. A session with no channel
+ * (a subagent, or one whose channel was never observed) is direct HTTP.
+ */
 function triggerFromAgentChannel(channelKind: string | null): SessionTrigger {
-  if (channelKind === "schedule") return "cron";
-  // v27 (eve 0.84+) no longer reads `kindHint`; every channel's kind is
-  // `channel:<name>`, so the HTTP channel and Eveland's own scheduler channel
-  // are told apart by name.
   if (channelKind === "channel:eveland-scheduler") return "cron";
-  if (channelKind === "channel:eve") return "direct_http";
-  if (channelKind?.startsWith("channel:")) return "channel";
-  if (channelKind && channelKind !== "http" && channelKind !== "eve") return "webhook";
-  return "direct_http";
+  if (channelKind === "channel:eve" || channelKind === null) return "direct_http";
+  if (channelKind.startsWith("channel:")) return "channel";
+  return "webhook";
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -708,9 +672,8 @@ function stringValue(value: unknown): string | null {
 async function isNewestNodeObservation(
   tx: StoreDatabase["db"],
   sessionNodeId: string,
-  sourceSequence: number | null | undefined,
+  sourceSequence: number,
 ): Promise<boolean> {
-  if (sourceSequence === null || sourceSequence === undefined) return true;
   const [row] = await tx
     .select({ value: sql<number | null>`max(${sessionEvents.sourceSequence})` })
     .from(sessionEvents)

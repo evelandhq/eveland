@@ -644,7 +644,6 @@ export function createPostgresScheduleStore({ db }: PostgresStoreContext): Sched
                   .limit(1);
                 executionStatus = scheduleExecutionStatusFromEveEvent(
                   boundary?.type,
-                  existing.status,
                   boundary?.payload,
                 );
                 executionError =

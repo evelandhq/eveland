@@ -665,9 +665,7 @@ export type ModelUsageEvent = {
   agentId: string | null;
   agentName: string | null;
   turnId: string;
-  /** The v26 step index; null for a v27 (eve 0.84+) record, which a model run owns. */
-  stepIndex: number | null;
-  /** The v27 owner of the record (`run:<runId>` or `change:<changeId>`); null for v26. */
+  /** The key the record is deduplicated by; see `ModelUsage.runKey` in `@evelandhq/core/eve`. */
   runKey: string | null;
   /** The model observed actually serving this step; null before the capture existed. */
   modelId: string | null;

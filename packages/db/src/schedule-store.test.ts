@@ -776,7 +776,7 @@ describe("schedule persistence", () => {
     await store.recordModelUsage(linked[0]!.id, {
       eveSessionId: linked[0]!.eveSessionId!,
       turnId: "turn_1",
-      stepIndex: 0,
+      runKey: "run:r3",
       inputTokens: 8,
       outputTokens: 5,
       cacheReadTokens: 0,
@@ -788,7 +788,7 @@ describe("schedule persistence", () => {
     await store.recordModelUsage(linked[1]!.id, {
       eveSessionId: linked[1]!.eveSessionId!,
       turnId: "turn_2",
-      stepIndex: 0,
+      runKey: "run:r4",
       inputTokens: 3,
       outputTokens: 2,
       cacheReadTokens: 0,

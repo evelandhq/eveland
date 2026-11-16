@@ -55,35 +55,32 @@ function node(id: string, parentNodeId: string | null, agentName: string | null)
 }
 
 describe("buildSessionTrace", () => {
-  test("classifies rows, pairs tool results onto the request row, and numbers turns", () => {
+  const delivery = (turnId: string, text: string, options = {}) =>
+    event("delivery.consumed", { turnId, parts: [{ kind: "text", text }] }, options);
+  const reply = (turnId: string, value: string, options = {}) =>
+    event("content.completed", { turnId, kind: "text", phase: "reply", value }, options);
+  const call = (turnId: string, callId: string, name: string, options = {}) =>
+    event(
+      "call.requested",
+      { turnId, callId, capability: { kind: "tool", name }, input: { city: "b" } },
+      options,
+    );
+
+  test("classifies rows, pairs settled calls onto the request row, and numbers turns", () => {
     const trace = buildSessionTrace(
       [
         event("session.started", { runtime: { agentId: "root" } }),
         event("turn.started", { turnId: "turn_0" }),
-        event("message.received", { message: "hi", turnId: "turn_0" }),
-        event("actions.requested", {
-          actions: [
-            { callId: "call_1", kind: "tool-call", toolName: "get_weather", input: { city: "b" } },
-          ],
-          turnId: "turn_0",
-        }),
+        delivery("turn_0", "hi"),
+        call("turn_0", "call_1", "get_weather"),
         event(
-          "action.result",
-          {
-            result: {
-              callId: "call_1",
-              kind: "tool-result",
-              output: "Sunny",
-              usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
-            },
-            status: "completed",
-            turnId: "turn_0",
-          },
+          "call.settled",
+          { turnId: "turn_0", callId: "call_1", outcome: "completed", output: "Sunny" },
           { atMs: 250 },
         ),
-        event("message.completed", { message: "It is sunny.", turnId: "turn_0" }),
-        event("turn.completed", { turnId: "turn_0" }),
-        event("message.received", { message: "again", turnId: "turn_1" }),
+        reply("turn_0", "It is sunny."),
+        event("turn.settled", { turnId: "turn_0", outcome: "completed" }),
+        delivery("turn_1", "again"),
       ],
       [],
     );
@@ -108,79 +105,18 @@ describe("buildSessionTrace", () => {
       durationMs: 250,
       turn: 1,
     });
-    expect(tool?.usage?.outputTokens).toBe(2);
 
     expect(trace.rows.at(-1)?.turn).toBe(2);
     const preTurn = trace.rows[0]!;
     expect(preTurn.turn).toBeNull();
   });
 
-  test("attributes a background task wake-up to the runtime, not the user", () => {
-    const trace = buildSessionTrace(
-      [
-        event("message.received", { message: "start", turnId: "turn_0" }),
-        event("turn.completed", { turnId: "turn_0" }),
-        // Eve 0.61+ marks input it authored itself.
-        event("message.received", {
-          kind: "execution.background_task",
-          message: "Background task finished",
-          turnId: "turn_1",
-        }),
-        event("message.completed", { message: "done", turnId: "turn_1" }),
-      ],
-      [],
-    );
-
-    expect(trace.rows.map((row) => row.role)).toEqual([
-      "user",
-      "lifecycle",
-      "runtime",
-      "assistant",
-    ]);
-    expect(trace.rows[2]).toMatchObject({
-      type: "message.received",
-      turn: 2,
-      payload: "Background task finished",
-    });
-  });
-
-  test("marks failed results and keeps unmatched results as their own rows", () => {
-    const trace = buildSessionTrace(
-      [
-        event("actions.requested", {
-          actions: [{ callId: "call_1", kind: "tool-call", toolName: "read", input: {} }],
-          turnId: "turn_0",
-        }),
-        event("action.result", {
-          result: { callId: "call_1", kind: "tool-result", output: null },
-          status: "failed",
-          error: { message: "ENOENT" },
-          turnId: "turn_0",
-        }),
-        event("action.result", {
-          result: { callId: "call_orphan", kind: "tool-result", toolName: "grep", output: "hit" },
-          status: "completed",
-          turnId: "turn_0",
-        }),
-      ],
-      [],
-    );
-
-    expect(trace.rows).toHaveLength(2);
-    expect(trace.rows[0]).toMatchObject({ status: "failed", errorText: "ENOENT" });
-    expect(trace.rows[1]).toMatchObject({ role: "tool", name: "grep", result: "hit" });
-  });
-
   test("attributes subagent rows with depth and agent name", () => {
     const trace = buildSessionTrace(
       [
-        event("message.received", { message: "root", turnId: "turn_0" }, { sessionNodeId: "n1" }),
-        event(
-          "message.completed",
-          { message: "child reply", turnId: "turn_0" },
-          { sessionNodeId: "n2" },
-        ),
-        event("message.completed", { message: "detached", turnId: "turn_0" }),
+        delivery("turn_0", "root", { sessionNodeId: "n1" }),
+        reply("turn_0", "child reply", { sessionNodeId: "n2" }),
+        reply("turn_0", "detached"),
       ],
       [node("n1", null, "root-agent"), node("n2", "n1", "Explore")],
     );
@@ -193,11 +129,8 @@ describe("buildSessionTrace", () => {
   test("cancelling a turn cancels its pending tool rows", () => {
     const trace = buildSessionTrace(
       [
-        event("actions.requested", {
-          actions: [{ callId: "call_1", kind: "tool-call", toolName: "bash", input: {} }],
-          turnId: "turn_0",
-        }),
-        event("turn.cancelled", { turnId: "turn_0" }),
+        call("turn_0", "call_1", "bash"),
+        event("turn.settled", { turnId: "turn_0", outcome: "cancelled" }),
       ],
       [],
     );
@@ -205,10 +138,8 @@ describe("buildSessionTrace", () => {
     expect(trace.rows[0]).toMatchObject({ status: "cancelled", errorText: "Turn cancelled" });
     expect(trace.rows[1]).toMatchObject({ role: "lifecycle", status: "cancelled" });
   });
-});
 
-describe("buildSessionTrace on v27 (eve 0.84+) facts", () => {
-  test("builds user, reasoning, tool, usage, and assistant rows and pairs settled calls", () => {
+  test("builds user, reasoning, tool, usage, and assistant rows and records failures", () => {
     const trace = buildSessionTrace(
       [
         event("turn.started", { turnId: "turn_1" }),

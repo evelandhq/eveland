@@ -24,188 +24,6 @@ function event(
 }
 
 describe("buildTranscriptTurns", () => {
-  test("groups a turn with user message, paired tool call, assistant reply, and usage", () => {
-    const turns = buildTranscriptTurns([
-      event("session.started", { runtime: { agentId: "root", eveVersion: "0.22.1" } }),
-      event("turn.started", { turnId: "turn_0" }),
-      event("message.received", {
-        message: "What is the weather?",
-        parts: [{ type: "text", text: "What is the weather?" }],
-        turnId: "turn_0",
-      }),
-      event("actions.requested", {
-        actions: [
-          {
-            callId: "call_1",
-            kind: "tool-call",
-            toolName: "get_weather",
-            input: { city: "Berlin" },
-          },
-        ],
-        stepIndex: 0,
-        turnId: "turn_0",
-      }),
-      event("action.result", {
-        result: {
-          callId: "call_1",
-          kind: "tool-result",
-          output: "Sunny, 24C",
-          usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
-        },
-        status: "completed",
-        stepIndex: 0,
-        turnId: "turn_0",
-      }),
-      event("step.completed", {
-        finishReason: "tool-calls",
-        usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 5, cacheWriteTokens: 0 },
-        turnId: "turn_0",
-      }),
-      event("message.completed", {
-        finishReason: "stop",
-        message: "It is sunny.",
-        turnId: "turn_0",
-      }),
-      event("step.completed", {
-        finishReason: "stop",
-        usage: { inputTokens: 50, outputTokens: 30, cacheReadTokens: 0, cacheWriteTokens: 0 },
-        turnId: "turn_0",
-      }),
-      event("turn.completed", { turnId: "turn_0" }),
-    ]);
-
-    expect(turns).toHaveLength(1);
-    const turn = turns[0]!;
-    expect(turn.turnId).toBe("turn_0");
-    expect(turn.userMessage).toBe("What is the weather?");
-    expect(turn.assistantMessage).toBe("It is sunny.");
-    expect(turn.status).toBe("completed");
-    expect(turn.usage).toEqual({
-      inputTokens: 150,
-      outputTokens: 50,
-      cacheReadTokens: 5,
-      cacheWriteTokens: 0,
-    });
-    expect(turn.items.map((item) => item.kind)).toEqual(["user", "tool", "assistant"]);
-
-    const calls = turnToolCalls(turn);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      callId: "call_1",
-      name: "get_weather",
-      isSubagent: false,
-      input: { city: "Berlin" },
-      output: "Sunny, 24C",
-      status: "completed",
-      usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
-    });
-  });
-
-  test("does not render a runtime-authored background task wake-up as user input", () => {
-    const turns = buildTranscriptTurns([
-      event("message.received", { message: "Start the report", turnId: "turn_0" }),
-      event("message.completed", { message: "Working on it", turnId: "turn_0" }),
-      event("turn.completed", { turnId: "turn_0" }),
-      // eve 0.61+ marks input it authored itself; eve's own reducer skips these.
-      event(
-        "message.received",
-        {
-          kind: "execution.background_task",
-          message: "Background task finished: report.pdf",
-          turnId: "turn_1",
-        },
-        { second: 5 },
-      ),
-      event(
-        "message.completed",
-        { message: "The report is ready", turnId: "turn_1" },
-        { second: 6 },
-      ),
-      event("turn.completed", { turnId: "turn_1" }, { second: 7 }),
-    ]);
-
-    expect(turns).toHaveLength(2);
-    expect(turns[0]!.userMessage).toBe("Start the report");
-    expect(turns[1]).toMatchObject({
-      turnId: "turn_1",
-      startedAt: at(5),
-      userMessage: null,
-      assistantMessage: "The report is ready",
-      status: "completed",
-    });
-    expect(turns[1]!.items.map((item) => item.kind)).toEqual(["assistant"]);
-  });
-
-  test("keeps unanswered tool calls pending and separates turns by turnId", () => {
-    const turns = buildTranscriptTurns([
-      event("message.received", { message: "First", turnId: "turn_0" }),
-      event("message.completed", { message: "First reply", turnId: "turn_0" }),
-      event("turn.completed", { turnId: "turn_0" }),
-      event("message.received", { message: "Second", turnId: "turn_1" }),
-      event("actions.requested", {
-        actions: [{ callId: "call_9", kind: "tool-call", name: "slow_tool", input: {} }],
-        turnId: "turn_1",
-      }),
-    ]);
-
-    expect(turns).toHaveLength(2);
-    expect(turns[0]!.status).toBe("completed");
-    expect(turns[1]!.status).toBe("incomplete");
-    expect(turnToolCalls(turns[1]!)[0]).toMatchObject({
-      name: "slow_tool",
-      status: "pending",
-      output: null,
-    });
-  });
-
-  test("records Eve 0.27.0 cancelled turns and settles pending calls", () => {
-    const turns = buildTranscriptTurns([
-      event("message.received", { message: "Long task", turnId: "turn_0" }),
-      event("actions.requested", {
-        actions: [
-          {
-            callId: "call_1",
-            kind: "subagent-call",
-            subagentName: "researcher",
-            input: { topic: "Eve" },
-          },
-        ],
-        turnId: "turn_0",
-      }),
-      event("turn.cancelled", { sequence: 3, turnId: "turn_0" }),
-    ]);
-
-    expect(turns[0]!.status).toBe("cancelled");
-    expect(turns[0]!.items.at(-1)).toMatchObject({ kind: "system", label: "Turn cancelled" });
-    expect(turnToolCalls(turns[0]!)[0]).toMatchObject({
-      status: "cancelled",
-      errorText: "Turn cancelled",
-    });
-  });
-
-  test("falls back to text parts and records failures as system items", () => {
-    const turns = buildTranscriptTurns([
-      event("message.received", {
-        parts: [
-          { type: "text", text: "Hi " },
-          { type: "text", text: "there" },
-        ],
-        turnId: "turn_0",
-      }),
-      event("turn.failed", { error: { message: "model exploded" }, turnId: "turn_0" }),
-    ]);
-
-    expect(turns[0]!.userMessage).toBe("Hi there");
-    expect(turns[0]!.status).toBe("failed");
-    expect(turns[0]!.items.at(-1)).toMatchObject({
-      kind: "system",
-      label: "Turn failed",
-      text: "model exploded",
-    });
-  });
-});
-
-describe("buildTranscriptTurns on v27 (eve 0.84+) facts", () => {
   const at = "2026-11-02T00:00:00.000Z";
   const fact = (type: string, payload: Record<string, unknown>) => ({ type, payload, eventAt: at });
 
@@ -315,7 +133,32 @@ describe("buildTranscriptTurns on v27 (eve 0.84+) facts", () => {
     });
   });
 
-  test("records v27 failures, cancellations, sign-ins, and the child a call opened", () => {
+  test("keeps unanswered calls pending and separates turns by turnId", () => {
+    const turns = buildTranscriptTurns([
+      fact("delivery.consumed", { turnId: "turn_0", parts: [{ kind: "text", text: "First" }] }),
+      fact("content.completed", { turnId: "turn_0", kind: "text", phase: "reply", value: "Done" }),
+      fact("turn.settled", { turnId: "turn_0", outcome: "completed" }),
+      fact("delivery.consumed", { turnId: "turn_1", parts: [{ kind: "text", text: "Second" }] }),
+      fact("call.requested", {
+        turnId: "turn_1",
+        callId: "call_9",
+        capability: { kind: "tool", name: "slow_tool" },
+        input: {},
+      }),
+    ]);
+
+    expect(turns.map((turn) => [turn.turnId, turn.userMessage, turn.status])).toEqual([
+      ["turn_0", "First", "completed"],
+      ["turn_1", "Second", "incomplete"],
+    ]);
+    expect(turnToolCalls(turns[1]!)[0]).toMatchObject({
+      name: "slow_tool",
+      status: "pending",
+      output: null,
+    });
+  });
+
+  test("records failures, cancellations, sign-ins, and the child a call opened", () => {
     const turns = buildTranscriptTurns([
       fact("call.requested", {
         turnId: "turn_1",
@@ -376,40 +219,44 @@ describe("buildTranscriptTurns on v27 (eve 0.84+) facts", () => {
 });
 
 describe("groupTranscriptItems", () => {
+  const delivery = (text: string, second = 0) =>
+    event("delivery.consumed", { turnId: "turn_0", parts: [{ kind: "text", text }] }, { second });
+  const reply = (value: string, second: number) =>
+    event(
+      "content.completed",
+      { turnId: "turn_0", kind: "text", phase: "reply", value },
+      { second },
+    );
+  const call = (callId: string, name: string, second: number) =>
+    event(
+      "call.requested",
+      { turnId: "turn_0", callId, capability: { kind: "tool", name }, input: {} },
+      { second },
+    );
+  const settled = (callId: string, outcome: string, second: number, error?: string) =>
+    event(
+      "call.settled",
+      {
+        turnId: "turn_0",
+        callId,
+        outcome,
+        ...(error ? { error: { code: "E", message: error } } : { output: "Found it" }),
+      },
+      { second },
+    );
+
   test("collapses consecutive reasoning and tool items into one activity group", () => {
     const [turn] = buildTranscriptTurns([
-      event("message.received", { message: "Investigate it", turnId: "turn_0" }),
+      delivery("Investigate it"),
       event(
-        "reasoning.completed",
-        { message: "I should inspect the repository.", turnId: "turn_0" },
+        "content.completed",
+        { turnId: "turn_0", kind: "reasoning", value: "I should inspect the repository." },
         { second: 1 },
       ),
-      event(
-        "actions.requested",
-        {
-          actions: [
-            {
-              callId: "call_1",
-              kind: "tool-call",
-              toolName: "search",
-              input: { query: "SessionReplay" },
-            },
-          ],
-          turnId: "turn_0",
-        },
-        { second: 2 },
-      ),
-      event(
-        "action.result",
-        { result: { callId: "call_1", output: "Found it" }, status: "completed", turnId: "turn_0" },
-        { second: 3 },
-      ),
-      event(
-        "message.completed",
-        { message: "Here is what I found.", turnId: "turn_0" },
-        { second: 4 },
-      ),
-      event("turn.completed", { turnId: "turn_0" }, { second: 5 }),
+      call("call_1", "search", 2),
+      settled("call_1", "completed", 3),
+      reply("Here is what I found.", 4),
+      event("turn.settled", { turnId: "turn_0", outcome: "completed" }, { second: 5 }),
     ]);
 
     expect(groupTranscriptItems(turn!)).toEqual([
@@ -431,28 +278,10 @@ describe("groupTranscriptItems", () => {
 
   test("keeps separate activity groups on either side of an assistant message", () => {
     const [turn] = buildTranscriptTurns([
-      event("message.received", { message: "Start", turnId: "turn_0" }),
-      event(
-        "actions.requested",
-        {
-          actions: [{ callId: "call_1", kind: "tool-call", toolName: "first", input: {} }],
-          turnId: "turn_0",
-        },
-        { second: 1 },
-      ),
-      event(
-        "message.completed",
-        { message: "Intermediate update", turnId: "turn_0" },
-        { second: 2 },
-      ),
-      event(
-        "actions.requested",
-        {
-          actions: [{ callId: "call_2", kind: "tool-call", toolName: "second", input: {} }],
-          turnId: "turn_0",
-        },
-        { second: 3 },
-      ),
+      delivery("Start"),
+      call("call_1", "first", 1),
+      reply("Intermediate update", 2),
+      call("call_2", "second", 3),
     ]);
 
     expect(groupTranscriptItems(turn!).map((item) => item.kind)).toEqual([
@@ -471,21 +300,14 @@ describe("groupTranscriptItems", () => {
 
   test("marks an activity group failed when one of its tools fails", () => {
     const [turn] = buildTranscriptTurns([
-      event("message.received", { message: "Try it", turnId: "turn_0" }),
-      event("actions.requested", {
-        actions: [{ callId: "call_1", kind: "tool-call", toolName: "deploy", input: {} }],
-        turnId: "turn_0",
-      }),
+      delivery("Try it"),
+      call("call_1", "deploy", 0),
+      settled("call_1", "failed", 1, "boom"),
       event(
-        "action.result",
-        {
-          result: { callId: "call_1", error: { message: "boom" } },
-          status: "failed",
-          turnId: "turn_0",
-        },
-        { second: 1 },
+        "turn.settled",
+        { turnId: "turn_0", outcome: "failed", error: { code: "E", message: "boom" } },
+        { second: 2 },
       ),
-      event("turn.failed", { error: { message: "boom" }, turnId: "turn_0" }, { second: 2 }),
     ]);
 
     expect(groupTranscriptItems(turn!)).toMatchObject([{}, { kind: "activity", status: "failed" }]);
@@ -493,16 +315,9 @@ describe("groupTranscriptItems", () => {
 
   test("keeps trailing activity running until the turn settles", () => {
     const [turn] = buildTranscriptTurns([
-      event("message.received", { message: "Keep going", turnId: "turn_0" }),
-      event("actions.requested", {
-        actions: [{ callId: "call_1", kind: "tool-call", toolName: "search", input: {} }],
-        turnId: "turn_0",
-      }),
-      event(
-        "action.result",
-        { result: { callId: "call_1", output: "Found" }, status: "completed", turnId: "turn_0" },
-        { second: 1 },
-      ),
+      delivery("Keep going"),
+      call("call_1", "search", 0),
+      settled("call_1", "completed", 1),
     ]);
 
     expect(groupTranscriptItems(turn!)).toMatchObject([
@@ -516,6 +331,7 @@ describe("buildSessionTranscript", () => {
   const nodes: TranscriptSourceNode[] = [
     {
       id: "node_root",
+      eveSessionId: "eve_root",
       parentNodeId: null,
       nodeId: null,
       agentId: "main",
@@ -524,69 +340,66 @@ describe("buildSessionTranscript", () => {
     },
     {
       id: "node_child",
+      eveSessionId: "eve_child",
       parentNodeId: "node_root",
-      nodeId: "subagents/researcher",
+      nodeId: null,
       agentId: null,
       agentName: "researcher",
       status: "completed",
     },
   ];
+  const root = { sessionNodeId: "node_root" };
+  const child = { sessionNodeId: "node_child" };
 
   const events: TranscriptSourceEvent[] = [
     event(
-      "message.received",
-      { message: "Ask the researcher.", turnId: "turn_0" },
-      { sessionNodeId: "node_root" },
+      "delivery.consumed",
+      { turnId: "turn_0", parts: [{ kind: "text", text: "Ask the researcher." }] },
+      root,
     ),
     event(
-      "actions.requested",
+      "call.requested",
       {
-        actions: [
-          {
-            callId: "call_r",
-            kind: "subagent-call",
-            name: "researcher",
-            nodeId: "subagents/researcher",
-            subagentName: "researcher",
-            input: { q: "streaming" },
-          },
-        ],
         turnId: "turn_0",
+        callId: "call_r",
+        capability: { kind: "agent", name: "researcher" },
+        input: { q: "streaming" },
       },
-      { sessionNodeId: "node_root", second: 1 },
+      { ...root, second: 1 },
     ),
     event(
-      "message.received",
-      { message: "Verify streaming.", turnId: "turn_0" },
-      { sessionNodeId: "node_child", second: 2 },
+      "child.opened",
+      { turnId: "turn_0", sessionId: "eve_child", owner: { callId: "call_r" }, name: "researcher" },
+      { ...root, second: 1 },
     ),
     event(
-      "message.completed",
-      { message: "Verified.", turnId: "turn_0" },
-      { sessionNodeId: "node_child", second: 3 },
+      "delivery.consumed",
+      { turnId: "turn_c", parts: [{ kind: "text", text: "Verify streaming." }] },
+      { ...child, second: 2 },
     ),
     event(
-      "action.result",
+      "content.completed",
+      { turnId: "turn_c", kind: "text", phase: "reply", value: "Verified." },
+      { ...child, second: 3 },
+    ),
+    event(
+      "call.settled",
+      { turnId: "turn_0", callId: "call_r", outcome: "completed", output: "Verified." },
+      { ...root, second: 4 },
+    ),
+    event(
+      "content.completed",
       {
-        result: {
-          callId: "call_r",
-          kind: "subagent-result",
-          output: "Verified.",
-          subagentName: "researcher",
-        },
-        status: "completed",
         turnId: "turn_0",
+        kind: "text",
+        phase: "reply",
+        value: "The researcher verified streaming.",
       },
-      { sessionNodeId: "node_root", second: 4 },
-    ),
-    event(
-      "message.completed",
-      { message: "The researcher verified streaming.", turnId: "turn_0" },
-      { sessionNodeId: "node_root", second: 5 },
+      { ...root, second: 5 },
     ),
   ];
 
-  test("nests the subagent node transcript under the matching subagent call", () => {
+  test("nests a child session's transcript under the call that opened it", () => {
     const transcript = buildSessionTranscript(events, nodes);
 
     expect(transcript.root?.agentName).toBe("Main agent");
@@ -594,19 +407,17 @@ describe("buildSessionTranscript", () => {
 
     const rootCalls = transcript.root!.turns.flatMap(turnToolCalls);
     expect(rootCalls).toHaveLength(1);
-    expect(rootCalls[0]!.isSubagent).toBe(true);
-    expect(rootCalls[0]!.child?.agentName).toBe("researcher");
+    expect(rootCalls[0]).toMatchObject({ isSubagent: true, output: "Verified." });
+    expect(rootCalls[0]!.child?.sessionNodeId).toBe("node_child");
     expect(rootCalls[0]!.child?.turns[0]).toMatchObject({
       userMessage: "Verify streaming.",
       assistantMessage: "Verified.",
     });
   });
 
-  test("keeps unmatched subagent nodes as detached transcripts", () => {
+  test("keeps a child no call opened as a detached transcript", () => {
     const transcript = buildSessionTranscript(
-      events.filter(
-        (candidate) => candidate.type !== "actions.requested" && candidate.type !== "action.result",
-      ),
+      events.filter((candidate) => candidate.type !== "child.opened"),
       nodes,
     );
 
@@ -616,150 +427,25 @@ describe("buildSessionTranscript", () => {
 
   test("preserves unresolved remote subagent state for the replay UI", () => {
     const transcript = buildSessionTranscript(
-      [events[0]!, events[1]!],
-      [
-        nodes[0]!,
-        {
-          ...nodes[1]!,
-          resolutionStatus: "unresolved",
-          remoteUrl: "https://remote.example/sessions/eve_child",
-        },
-      ],
+      events.filter((candidate) => candidate.sessionNodeId === "node_root"),
+      [nodes[0]!, { ...nodes[1]!, resolutionStatus: "unresolved" }],
     );
 
     expect(turnToolCalls(transcript.root!.turns[0]!)[0]!.child).toMatchObject({
       resolutionStatus: "unresolved",
-      remoteUrl: "https://remote.example/sessions/eve_child",
+      turns: [],
     });
-  });
-
-  test("nests an Eve 0.69 agent task's child and shows its settled reply, not the receipt", () => {
-    // 0.69: the agent is requested as a plain tool call, its result is a
-    // text receipt, the child is announced by `agent.started`, and the reply
-    // arrives on `task.settled`.
-    const v069Nodes: TranscriptSourceNode[] = [
-      { ...nodes[0]!, eveSessionId: "eve_root" },
-      { ...nodes[1]!, eveSessionId: "eve_child", nodeId: null },
-      {
-        ...nodes[1]!,
-        id: "node_other",
-        eveSessionId: "eve_other",
-        agentName: "reviewer",
-        nodeId: null,
-      },
-    ];
-    const root = { sessionNodeId: "node_root" };
-    const v069Events: TranscriptSourceEvent[] = [
-      event("message.received", { message: "Ask the researcher.", turnId: "turn_0" }, root),
-      event(
-        "actions.requested",
-        {
-          actions: [
-            {
-              callId: "call_r",
-              kind: "tool-call",
-              toolName: "researcher",
-              input: { message: "q" },
-            },
-            { callId: "call_v", kind: "tool-call", toolName: "reviewer", input: { message: "r" } },
-          ],
-          turnId: "turn_0",
-        },
-        { ...root, second: 1 },
-      ),
-      ...(["call_r", "call_v"] as const).flatMap((callId, index) => [
-        event(
-          "task.started",
-          {
-            callId,
-            kind: "agent",
-            name: callId === "call_r" ? "researcher" : "reviewer",
-            taskId: `task_${index}`,
-            turnId: "turn_0",
-          },
-          { ...root, second: 1 },
-        ),
-        event(
-          "action.result",
-          {
-            result: { callId, kind: "tool-result", output: `Started task task_${index}.` },
-            status: "completed",
-            turnId: "turn_0",
-          },
-          { ...root, second: 1 },
-        ),
-      ]),
-      // The second call's child announces itself first.
-      event(
-        "agent.started",
-        {
-          callId: "call_v",
-          name: "reviewer",
-          sessionId: "eve_other",
-          taskId: "task_1",
-          turnId: "turn_0",
-        },
-        { ...root, second: 2 },
-      ),
-      event(
-        "agent.started",
-        {
-          callId: "call_r",
-          name: "researcher",
-          sessionId: "eve_child",
-          taskId: "task_0",
-          turnId: "turn_0",
-        },
-        { ...root, second: 2 },
-      ),
-      event(
-        "message.received",
-        { message: "Verify streaming.", turnId: "turn_c" },
-        { sessionNodeId: "node_child", second: 3 },
-      ),
-      event(
-        "task.settled",
-        {
-          callId: "call_r",
-          output: "Verified.",
-          status: "completed",
-          taskId: "task_0",
-          turnId: "turn_0",
-        },
-        { ...root, second: 4 },
-      ),
-      event(
-        "task.settled",
-        {
-          callId: "call_v",
-          error: { message: "reviewer crashed" },
-          status: "failed",
-          taskId: "task_1",
-          turnId: "turn_0",
-        },
-        { ...root, second: 4 },
-      ),
-    ];
-
-    const transcript = buildSessionTranscript(v069Events, v069Nodes);
-
-    expect(transcript.detached).toHaveLength(0);
-    const [researcher, reviewer] = transcript.root!.turns.flatMap(turnToolCalls);
-    expect(researcher).toMatchObject({
-      isSubagent: true,
-      output: "Verified.",
-      status: "completed",
-      errorText: null,
-    });
-    expect(researcher!.child?.sessionNodeId).toBe("node_child");
-    expect(researcher!.child?.turns[0]?.userMessage).toBe("Verify streaming.");
-    expect(reviewer).toMatchObject({ status: "failed", errorText: "reviewer crashed" });
-    expect(reviewer!.child?.sessionNodeId).toBe("node_other");
   });
 
   test("builds a root transcript from bare events when no nodes were recorded", () => {
     const transcript = buildSessionTranscript(
-      [event("message.received", { message: "Hello", turnId: "turn_0" }, { sessionNodeId: null })],
+      [
+        event(
+          "delivery.consumed",
+          { turnId: "turn_0", parts: [{ kind: "text", text: "Hello" }] },
+          { sessionNodeId: null },
+        ),
+      ],
       [],
     );
 
