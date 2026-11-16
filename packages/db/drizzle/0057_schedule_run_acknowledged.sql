@@ -1,1 +1,0 @@
-ALTER TABLE "schedule_runs" ADD COLUMN "acknowledged_at" timestamp with time zone;

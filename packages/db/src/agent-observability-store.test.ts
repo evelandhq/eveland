@@ -495,7 +495,6 @@ describe("Agent observability ingestion repository", () => {
     );
     expect(remote).toMatchObject({
       agentName: "remote-researcher",
-      remoteUrl: null,
       resolutionStatus: "unresolved",
     });
 
@@ -1058,7 +1057,6 @@ describe("v27 (eve 0.84+) observations", () => {
     expect(nodes.find((node) => node.eveSessionId === "eve_child")).toMatchObject({
       agentName: "researcher",
       resolutionStatus: "unresolved",
-      remoteUrl: null,
     });
 
     await store.ingestAgentEvent(

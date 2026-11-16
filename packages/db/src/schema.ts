@@ -1395,7 +1395,6 @@ export const sessionNodes = pgTable(
     modelId: text("model_id"),
     observedModelId: text("observed_model_id"),
     eveVersion: text("eve_version"),
-    remoteUrl: text("remote_url"),
     resolutionStatus: text("resolution_status").notNull().default("observed"),
     status: text("status").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1427,7 +1426,7 @@ export const modelUsageEvents = pgTable(
      * the commit line) or context change, or its stream position. See
      * `ModelUsage.runKey` in `@evelandhq/core/eve`.
      */
-    runKey: text("run_key"),
+    runKey: text("run_key").notNull(),
     modelId: text("model_id"),
     finishReason: text("finish_reason"),
     inputTokens: bigint("input_tokens", { mode: "number" }),

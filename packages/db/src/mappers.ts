@@ -550,7 +550,6 @@ export function sessionNodeRowToSessionNode(row: {
   modelId: string | null;
   observedModelId: string | null;
   eveVersion: string | null;
-  remoteUrl: string | null;
   resolutionStatus: string;
   status: string;
   createdAt: Date;
