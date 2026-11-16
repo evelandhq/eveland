@@ -37,6 +37,9 @@ Invoking `eveland login` initiates an RFC 8628 device authorization flow:
 
 1. The CLI requests a device code, prints the user code, and opens the browser to `/device`;
 2. A logged-in team member authorizes the request in the dashboard, issuing an opaque, revocable access token with `deploy` and `observe` scopes;
+   - `deploy` creates projects, uploads and syncs source, builds, promotes, restarts, and manages project environment variables.
+   - `observe` reads projects, endpoints, deployments, jobs, logs, usage, schedules and schedule runs, the session list, and a single session's transcript, nodes, and usage. It reads nothing else: not secrets, source files, Model Gateway or agent-auth configuration, or the Playground.
+   - Neither scope reaches member administration or the operator surface, whatever the approving member's role.
 3. Tokens are encrypted per origin under `~/.config/eveland/credentials/` (mode `0600`). In headless CI/CD environments, supply `EVELAND_TOKEN` in the environment.
 
 ---
