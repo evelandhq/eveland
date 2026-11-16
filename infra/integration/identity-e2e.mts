@@ -68,7 +68,7 @@ import { createApp } from "../../apps/api/src/app.js";
 import { createControlPlaneAuthRuntime } from "../../apps/api/src/app.test-support.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { createApiIdentityClient } from "../../apps/gateway/src/identity-client.js";
-import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import { sealSecret } from "../../packages/core/src/server/sealed-secret.js";
 import { GATEWAY_PORT, PUBLIC_ORIGIN_FALLBACK } from "../../packages/core/src/ports.js";
 import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
 import { createPgliteTestStore } from "../../packages/db/src/test-store.js";
@@ -210,7 +210,7 @@ async function main(): Promise<void> {
     await store.upsertSecret(
       project.id,
       "EVE_MOCK_AUTHORED_MODELS",
-      JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
+      sealSecret("1", APP_SECRET_KEY, "project-secret"),
     );
     const jobOptions = {
       appSecretKey: APP_SECRET_KEY,

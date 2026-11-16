@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import { sealSecret } from "../../packages/core/src/server/sealed-secret.js";
 import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
 import {
   deriveAgentTelemetrySecret,
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
       await store.upsertSecret(
         project.id,
         "EVE_MOCK_AUTHORED_MODELS",
-        JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
+        sealSecret("1", APP_SECRET_KEY, "project-secret"),
       );
 
       assert.equal(

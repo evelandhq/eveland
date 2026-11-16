@@ -3,7 +3,7 @@ import {
   type ExternalDestinationConfig,
   type ObservabilityPolicy,
 } from "@evelandhq/core/observability";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { describe, expect, test, vi } from "vitest";
 import {
   createExternalDestinationHealthReconciler,
@@ -137,5 +137,5 @@ describe("external observability destination health", () => {
 });
 
 function encrypted(config: ExternalDestinationConfig): string {
-  return JSON.stringify(encryptSecretValue(JSON.stringify(config), appSecretKey));
+  return sealSecret(JSON.stringify(config), appSecretKey, "observability-destination");
 }

@@ -1,17 +1,11 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  randomBytes,
-  randomUUID,
-} from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type {
   AgentAuthCredential,
   AgentAuthTransaction,
   AgentConnection,
 } from "@evelandhq/core/contracts";
+import { openSecret, sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { verifyOidc } from "eve/channels/auth";
 import * as oidc from "openid-client";
 import {
@@ -994,60 +988,15 @@ function sealTransaction(
   appSecretKey: string,
   stateHash: string,
 ): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", transactionKey(appSecretKey), iv);
-  cipher.setAAD(Buffer.from(JSON.stringify(["transaction", stateHash])));
-  const ciphertext = Buffer.concat([
-    cipher.update(JSON.stringify(transaction), "utf8"),
-    cipher.final(),
+  return sealSecret(JSON.stringify(transaction), appSecretKey, "agent-auth-transaction", [
+    stateHash,
   ]);
-  return JSON.stringify({
-    version: 1,
-    algorithm: "aes-256-gcm",
-    iv: iv.toString("base64"),
-    authTag: cipher.getAuthTag().toString("base64"),
-    ciphertext: ciphertext.toString("base64"),
-  });
 }
 
 function openTransaction(value: string, appSecretKey: string, stateHash: string): OidcTransaction {
-  const parsed = JSON.parse(value) as {
-    version?: unknown;
-    algorithm?: unknown;
-    iv?: unknown;
-    authTag?: unknown;
-    ciphertext?: unknown;
-  };
-  if (
-    parsed.version !== 1 ||
-    parsed.algorithm !== "aes-256-gcm" ||
-    typeof parsed.iv !== "string" ||
-    typeof parsed.authTag !== "string" ||
-    typeof parsed.ciphertext !== "string"
-  ) {
-    throw new Error("Invalid sealed OIDC transaction.");
-  }
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    transactionKey(appSecretKey),
-    Buffer.from(parsed.iv, "base64"),
-  );
-  decipher.setAAD(Buffer.from(JSON.stringify(["transaction", stateHash])));
-  decipher.setAuthTag(Buffer.from(parsed.authTag, "base64"));
   return JSON.parse(
-    Buffer.concat([
-      decipher.update(Buffer.from(parsed.ciphertext, "base64")),
-      decipher.final(),
-    ]).toString("utf8"),
+    openSecret(value, appSecretKey, "agent-auth-transaction", [stateHash]),
   ) as OidcTransaction;
-}
-
-function transactionKey(appSecretKey: string): Buffer {
-  const utf8 = Buffer.from(appSecretKey, "utf8");
-  const normalized = utf8.length === 32 ? utf8 : Buffer.from(appSecretKey, "base64");
-  if (normalized.length !== 32)
-    throw new Error("APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.");
-  return createHmac("sha256", normalized).update("eveland:agent-auth:transaction:v1").digest();
 }
 
 function validateDiscoveredEndpoints(

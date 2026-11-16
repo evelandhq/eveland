@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { DEFAULT_TEAM_ID } from "@evelandhq/db";
 import { createTestStore } from "@evelandhq/db/vitest";
-import { decryptSecretValue, type EncryptedSecret } from "@evelandhq/core/server/secrets";
+import { openSecret } from "@evelandhq/core/server/sealed-secret";
 import { createApp } from "./app.js";
 
 const appSecretKey = "0123456789abcdef0123456789abcdef";
@@ -113,14 +113,14 @@ describe("observability settings", () => {
     expect(JSON.stringify(createdBody)).not.toContain("elastic-secret-api-key");
 
     const stored = await store.getObservabilityPolicy(DEFAULT_TEAM_ID);
-    const encrypted = JSON.parse(
-      stored.externalDestinations[0]!.encryptedConfig,
-    ) as EncryptedSecret;
-    expect(JSON.parse(decryptSecretValue(encrypted, appSecretKey))).toMatchObject({
-      kind: "elastic",
-      endpoint: "https://elastic.example.com:8200",
-      authorization: { value: "elastic-secret-api-key" },
-    });
+    const sealed = stored.externalDestinations[0]!.encryptedConfig;
+    expect(JSON.parse(openSecret(sealed, appSecretKey, "observability-destination"))).toMatchObject(
+      {
+        kind: "elastic",
+        endpoint: "https://elastic.example.com:8200",
+        authorization: { value: "elastic-secret-api-key" },
+      },
+    );
 
     const disabled = await app.request(
       `/api/system/observability/destinations/${stored.externalDestinations[0]!.id}`,
@@ -218,9 +218,10 @@ describe("observability settings", () => {
     const stored = await store.getObservabilityPolicy(DEFAULT_TEAM_ID);
     expect(
       JSON.parse(
-        decryptSecretValue(
-          JSON.parse(stored.externalDestinations[0]!.encryptedConfig) as EncryptedSecret,
+        openSecret(
+          stored.externalDestinations[0]!.encryptedConfig,
           appSecretKey,
+          "observability-destination",
         ),
       ),
     ).toEqual({

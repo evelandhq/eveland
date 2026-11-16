@@ -10,7 +10,7 @@ import { serve } from "../../apps/gateway/node_modules/@hono/node-server/dist/in
 import { createApp } from "../../apps/api/src/app.js";
 import { createApiActivationClient } from "../../apps/gateway/src/activation-client.js";
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
-import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
+import { sealSecret } from "../../packages/core/src/server/sealed-secret.js";
 import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
 import { VERIFIED_EVE_VERSION } from "../../packages/core/src/eve-compatibility.js";
 import {
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
     await store.upsertSecret(
       project.id,
       "EVE_MOCK_AUTHORED_MODELS",
-      JSON.stringify(encryptSecretValue("1", APP_SECRET_KEY)),
+      sealSecret("1", APP_SECRET_KEY, "project-secret"),
     );
     assert.equal(
       await processNextJob(store, "schedule-e2e", jobOptions),

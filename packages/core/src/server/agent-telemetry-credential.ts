@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-
-const secretDerivationContext = "eveland:agent-telemetry-credential:v1";
+import { deriveAppSecretKey } from "./sealed-secret.js";
 
 export type AgentTelemetryCredential = {
   deploymentId: string;
@@ -8,12 +7,12 @@ export type AgentTelemetryCredential = {
 };
 
 /**
- * Derives the credential signing key from `APP_SECRET_KEY`. The context string
- * keeps this key separate from the secret-encryption use of the same input, so
- * agent telemetry attribution needs no additional deployment configuration.
+ * Derives the credential signing key from `APP_SECRET_KEY` under its own
+ * purpose, separate from every sealing key, so agent telemetry attribution
+ * needs no additional deployment configuration.
  */
 export function deriveAgentTelemetrySecret(appSecretKey: string): string {
-  return createHmac("sha256", appSecretKey).update(secretDerivationContext).digest("base64url");
+  return deriveAppSecretKey(appSecretKey, "agent-telemetry-credential").toString("base64url");
 }
 
 export function createAgentTelemetryCredential(

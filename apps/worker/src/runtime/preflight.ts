@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import { assertValidSecretKey } from "@evelandhq/core/server/secrets";
+import { assertValidAppSecretKey } from "@evelandhq/core/server/sealed-secret";
 import { access, mkdir as fsMkdir, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -283,7 +283,7 @@ export async function assertWorkerPreflight(
   env: NodeJS.ProcessEnv,
   overrides: Partial<PreflightDeps> = {},
 ): Promise<void> {
-  assertValidSecretKey(env.APP_SECRET_KEY ?? devSecretKey);
+  assertValidAppSecretKey(env.APP_SECRET_KEY ?? devSecretKey);
   assertSchedulerPreflight(env);
   const runtimeKind = resolveRuntimeKind(env);
   const deps: PreflightDeps = { ...defaultDeps(env), ...overrides };

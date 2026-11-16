@@ -1,4 +1,4 @@
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { describe, expect, test } from "vitest";
 
@@ -51,7 +51,7 @@ describe("composeDeploymentEnv public callback origin", () => {
     await store.upsertSecrets(project.id, [
       {
         key: "WORKFLOW_LOCAL_BASE_URL",
-        value: JSON.stringify(encryptSecretValue("https://attacker.example", options.appSecretKey)),
+        value: sealSecret("https://attacker.example", options.appSecretKey, "project-secret"),
         kind: "variable",
       },
     ]);

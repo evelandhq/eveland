@@ -1,6 +1,6 @@
 import type { Job, SharedAgentEnvironmentRecord } from "@evelandhq/core/contracts";
 import { toPublicJob } from "@evelandhq/core/jobs";
-import { encryptSecretValue } from "@evelandhq/core/server/secrets";
+import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import type { Store } from "@evelandhq/db";
 import {
   batchSecretSchema,
@@ -29,12 +29,11 @@ export function registerSecretRoutes(input: {
     if (!parsed.success) {
       return c.json({ error: "Invalid secret input", issues: parsed.error.issues }, 400);
     }
-    const encrypted = encryptSecretValue(parsed.data.value, appSecretKey);
     const projectId = c.req.param("projectId");
     const secret = await store.upsertSecret(
       projectId,
       parsed.data.key,
-      JSON.stringify(encrypted),
+      sealSecret(parsed.data.value, appSecretKey, "project-secret"),
       parsed.data.kind,
     );
     const jobs = await enqueueLiveDeploymentRestarts(projectId);
@@ -75,7 +74,7 @@ export function registerSecretRoutes(input: {
       parsed.data.entries.map((entry) => ({
         key: entry.key,
         kind: entry.kind,
-        value: JSON.stringify(encryptSecretValue(entry.value, appSecretKey)),
+        value: sealSecret(entry.value, appSecretKey, "project-secret"),
       })),
     );
     const jobs = await enqueueLiveDeploymentRestarts(projectId);
@@ -92,7 +91,7 @@ export function registerSecretRoutes(input: {
       key: parsed.data.key,
       kind: parsed.data.kind,
       ...(parsed.data.value !== undefined
-        ? { encryptedValue: JSON.stringify(encryptSecretValue(parsed.data.value, appSecretKey)) }
+        ? { encryptedValue: sealSecret(parsed.data.value, appSecretKey, "project-secret") }
         : {}),
     });
     if (!secret) return c.json({ error: "Environment entry not found" }, 404);
@@ -134,7 +133,7 @@ export function registerSecretRoutes(input: {
         encryptedValue:
           entry.value === undefined
             ? previous!.encryptedValue
-            : JSON.stringify(encryptSecretValue(entry.value, appSecretKey)),
+            : sealSecret(entry.value, appSecretKey, "shared-agent-environment"),
       };
     });
     if (entries.some((entry) => entry === null)) {

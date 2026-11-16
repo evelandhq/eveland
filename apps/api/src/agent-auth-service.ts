@@ -13,7 +13,7 @@ import { openAgentAuthConfig, sealAgentAuthConfig } from "@evelandhq/agent-auth/
 import type { AgentAuthSecretReference } from "@evelandhq/core/agent-auth";
 import type { AgentConnection } from "@evelandhq/core/contracts";
 import { createId } from "@evelandhq/core/ids";
-import { decryptSecretValue, type EncryptedSecret } from "@evelandhq/core/server/secrets";
+import { openSecret } from "@evelandhq/core/server/sealed-secret";
 import type { AgentAuthStore, SecretStore } from "@evelandhq/db";
 
 export type AgentAuthServiceStore = OidcAuthorizationCodePersistence &
@@ -80,7 +80,7 @@ export function createAgentAuthService(options: AgentAuthServiceOptions) {
       throw new Error("The configured Playground authentication secret reference is unavailable.");
     }
     try {
-      return decryptSecretValue(JSON.parse(encryptedValue) as EncryptedSecret, appSecretKey);
+      return openSecret(encryptedValue, appSecretKey, "project-secret");
     } catch {
       throw new Error(
         "The configured Playground authentication secret reference cannot be decrypted.",

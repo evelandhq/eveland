@@ -1,12 +1,4 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  generateKeyPairSync,
-  randomBytes,
-  sign,
-} from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import {
   callerTokenAudience,
   identityAppTokenAudience,
@@ -23,7 +15,11 @@ import {
   type ResolvedExternalIdentity,
 } from "@evelandhq/core/identity";
 import type { Project } from "@evelandhq/core/contracts";
-import { decryptSecretValue, encryptSecretValue } from "@evelandhq/core/server/secrets";
+import {
+  assertValidAppSecretKey,
+  openSecret,
+  sealSecret,
+} from "@evelandhq/core/server/sealed-secret";
 import {
   oidcProviderConfig,
   principalClaims,
@@ -124,7 +120,7 @@ export type IdentityBrokerOptions = {
 };
 
 export function createIdentityBroker(options: IdentityBrokerOptions) {
-  assertStrongAppSecretKey(options.appSecretKey);
+  assertValidAppSecretKey(options.appSecretKey);
   const now = options.now ?? (() => new Date());
   const identitySessionTtlSeconds = options.identitySessionTtlSeconds ?? 30 * 24 * 60 * 60;
   const callerTokenTtlSeconds = options.callerTokenTtlSeconds ?? 60;
@@ -669,26 +665,14 @@ export function createIdentityBroker(options: IdentityBrokerOptions) {
 
 /**
  * Sealing for the OIDC client secret at rest. The API's admin routes seal on
- * write and the broker opens on use, so the derivation lives here once; the
- * context string keeps the key separate from every other APP_SECRET_KEY use.
+ * write and the broker opens on use, so the purpose is named here once.
  */
 export function sealIdentityProviderSecret(value: string, appSecretKey: string): string {
-  return JSON.stringify(
-    encryptSecretValue(value, identityContextKey(appSecretKey, "provider-secret")),
-  );
+  return sealSecret(value, appSecretKey, "identity-provider-secret");
 }
 
 export function openIdentityProviderSecret(sealed: string, appSecretKey: string): string {
-  return decryptSecretValue(
-    JSON.parse(sealed) as Parameters<typeof decryptSecretValue>[0],
-    identityContextKey(appSecretKey, "provider-secret"),
-  );
-}
-
-function identityContextKey(appSecretKey: string, context: string): string {
-  return createHmac("sha256", appSecretKey)
-    .update(`eveland:identity:${context}:v1`)
-    .digest("base64");
+  return openSecret(sealed, appSecretKey, "identity-provider-secret");
 }
 
 /**
@@ -828,58 +812,11 @@ async function ensureActiveSigningKey(options: IdentityBrokerOptions, current: D
 }
 
 function sealPrivateKey(value: string, appSecretKey: string, keyId: string): string {
-  const key = identitySigningEncryptionKey(appSecretKey);
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  cipher.setAAD(Buffer.from(`eveland:identity:signing-key:v1:${keyId}`));
-  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  return JSON.stringify({
-    version: 1,
-    iv: iv.toString("base64url"),
-    authTag: cipher.getAuthTag().toString("base64url"),
-    ciphertext: ciphertext.toString("base64url"),
-  });
+  return sealSecret(value, appSecretKey, "identity-signing-key", [keyId]);
 }
 
 function openPrivateKey(value: string, appSecretKey: string, keyId: string): string {
-  const parsed = JSON.parse(value) as {
-    version: number;
-    iv: string;
-    authTag: string;
-    ciphertext: string;
-  };
-  if (parsed.version !== 1) throw new Error("Unsupported Identity signing key.");
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    identitySigningEncryptionKey(appSecretKey),
-    Buffer.from(parsed.iv, "base64url"),
-  );
-  decipher.setAAD(Buffer.from(`eveland:identity:signing-key:v1:${keyId}`));
-  decipher.setAuthTag(Buffer.from(parsed.authTag, "base64url"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(parsed.ciphertext, "base64url")),
-    decipher.final(),
-  ]).toString("utf8");
-}
-
-// Same strength rule as every other APP_SECRET_KEY consumer (core/server
-// secrets, agent-auth sealed credential/config/transaction): 32 utf8 bytes,
-// or base64 of a 32-byte value.
-function assertStrongAppSecretKey(appSecretKey: string): void {
-  const utf8 = Buffer.from(appSecretKey, "utf8");
-  if (utf8.length === 32) return;
-  const decoded = Buffer.from(appSecretKey, "base64");
-  if (decoded.length === 32) return;
-  throw new Error("APP_SECRET_KEY must be 32 bytes or a base64 encoded 32-byte value.");
-}
-
-function identitySigningEncryptionKey(appSecretKey: string): Buffer {
-  // Deliberately derives from the raw string (not the base64-decoded bytes
-  // like the other envelope homes): v1 signing-key envelopes were sealed this
-  // way, and changing the derivation input would orphan every persisted
-  // Identity signing key. Normalize only alongside a versioned envelope
-  // migration when the sealed-envelope implementations are unified.
-  return createHmac("sha256", appSecretKey).update("eveland:identity:signing-key:v1").digest();
+  return openSecret(value, appSecretKey, "identity-signing-key", [keyId]);
 }
 
 function encodeJson(value: unknown): string {
