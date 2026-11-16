@@ -1,1 +1,0 @@
-ALTER TABLE "schedule_versions" ADD COLUMN "timezone" text DEFAULT 'UTC' NOT NULL;

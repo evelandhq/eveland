@@ -1,1 +1,0 @@
-ALTER TABLE "projects" DROP COLUMN "next_schedule_at";

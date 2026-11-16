@@ -19,7 +19,6 @@ export type TranscriptSourceNode = {
   agentName: string | null;
   status?: string | null;
   resolutionStatus?: string | null;
-  remoteUrl?: string | null;
 };
 
 export type TranscriptUsage = {
@@ -81,7 +80,6 @@ export type TranscriptNode = {
   nodeId: string | null;
   status: string | null;
   resolutionStatus: string | null;
-  remoteUrl: string | null;
   turns: TranscriptTurn[];
 };
 
@@ -111,7 +109,6 @@ export function buildSessionTranscript(
       nodeId: node.nodeId,
       status: node.status ?? null,
       resolutionStatus: node.resolutionStatus ?? null,
-      remoteUrl: node.remoteUrl ?? null,
       turns: buildTranscriptTurns(nodeEvents),
     });
   }
@@ -125,7 +122,6 @@ export function buildSessionTranscript(
       nodeId: null,
       status: null,
       resolutionStatus: null,
-      remoteUrl: null,
       turns: buildTranscriptTurns(events),
     };
   }

@@ -46,7 +46,6 @@ function node(id: string, parentNodeId: string | null, agentName: string | null)
     modelId: null,
     observedModelId: null,
     eveVersion: null,
-    remoteUrl: null,
     resolutionStatus: "observed",
     status: "completed",
     createdAt: new Date(0).toISOString(),

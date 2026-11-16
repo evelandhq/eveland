@@ -1,1 +1,0 @@
-DROP TABLE "identity_realm_project_grants" CASCADE;

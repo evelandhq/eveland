@@ -639,7 +639,6 @@ export type SessionNode = {
   /** The model the Agent process was last observed actually calling. */
   observedModelId: string | null;
   eveVersion: string | null;
-  remoteUrl: string | null;
   resolutionStatus: "observed" | "unresolved";
   status: SessionStatus;
   createdAt: string;
@@ -665,7 +664,7 @@ export type ModelUsageEvent = {
   agentName: string | null;
   turnId: string;
   /** The key the record is deduplicated by; see `ModelUsage.runKey` in `@evelandhq/core/eve`. */
-  runKey: string | null;
+  runKey: string;
   /** The model observed actually serving this step; null before the capture existed. */
   modelId: string | null;
   finishReason: string | null;
