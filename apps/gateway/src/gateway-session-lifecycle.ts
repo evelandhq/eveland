@@ -13,7 +13,7 @@ import {
 // symmetrically in gateway-transport.)
 const MAX_SESSION_METADATA_BYTES = PLAYGROUND_MAX_TRANSPORT_BYTES;
 import { isSessionBindingActive, type SessionBindingIdlePolicy } from "@evelandhq/core/routing";
-import { mcpInvocationIdFromValue } from "./gateway-durable-routing.js";
+import { a2aTaskFromValue, mcpInvocationIdFromValue } from "./gateway-durable-routing.js";
 
 export type GatewaySessionBindingRepository = {
   findSessionBinding(projectId: string, eveSessionId: string): Promise<SessionBinding | null>;
@@ -99,11 +99,17 @@ export async function applyGatewaySessionResponse(input: {
   repository: GatewaySessionBindingRepository;
   projectId: string;
   request: EveSessionRequest | null;
+  /** Whether the request was routed by an active binding. */
+  bound?: boolean;
   upstream: Response;
   target: GatewaySessionTarget;
   provenance: GatewaySessionProvenance;
 }): Promise<void> {
   const { request, upstream } = input;
+  if (request?.kind === "a2a_send" && upstream.ok) {
+    await applyA2aSendResponse(input);
+    return;
+  }
   if (!request || !upstream.ok || (request.kind !== "initial" && request.kind !== "mcp_start")) {
     return;
   }
@@ -126,6 +132,81 @@ export async function applyGatewaySessionResponse(input: {
     ...input.target,
     ...provenance,
   });
+}
+
+/**
+ * An A2A send that started a context binds that context (the eve session)
+ * and its first task to the Deployment that answered; a send routed by its
+ * context's binding binds the new task it started to the same Deployment.
+ * A send that named an unbound context binds nothing, as an unbound
+ * continuation does not. An existing binding is never overwritten: a retried
+ * start that eve answers with the same task elsewhere must not move it.
+ */
+async function applyA2aSendResponse(input: {
+  repository: GatewaySessionBindingRepository;
+  projectId: string;
+  request: EveSessionRequest | null;
+  bound?: boolean;
+  upstream: Response;
+  target: GatewaySessionTarget;
+  provenance: GatewaySessionProvenance;
+}): Promise<void> {
+  const starts = input.request?.sessionId === null;
+  if (!starts && !input.bound) return;
+  if (declaredLengthExceedsMetadataCap(input.upstream)) return;
+  const task = await a2aResponseTask(input.upstream.clone());
+  if (!task) return;
+  const ids = starts ? [task.contextId, task.taskId] : [task.taskId];
+  for (const eveSessionId of ids) {
+    if (await input.repository.findSessionBinding(input.projectId, eveSessionId)) continue;
+    await input.repository.bindSession({
+      projectId: input.projectId,
+      eveSessionId,
+      ...input.target,
+      ...bindingProvenance(input.provenance),
+    });
+  }
+}
+
+/**
+ * The task an A2A send answered with: the JSON result, or the first event of
+ * an SSE stream, which eve opens with the task. The stream is read only up
+ * to that event, so the client's stream is not held back until the task ends.
+ */
+async function a2aResponseTask(
+  response: Response,
+): Promise<{ taskId: string; contextId: string } | null> {
+  if (isJsonResponse(response)) {
+    const text = await readBodyWithin(response.body, MAX_SESSION_METADATA_BYTES);
+    return text === null ? null : a2aTaskFromValue(parseEveJsonObject(text));
+  }
+  if (!response.headers.get("content-type")?.includes("text/event-stream") || !response.body) {
+    return null;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return null;
+      total += value.byteLength;
+      buffered += decoder.decode(value, { stream: true });
+      const lines = buffered.split(/\r?\n/);
+      buffered = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const task = a2aTaskFromValue(parseEveJsonObject(line.slice("data:".length).trimStart()));
+        if (task) return task;
+      }
+      if (total > MAX_SESSION_METADATA_BYTES) return null;
+    }
+  } finally {
+    // Fire-and-forget, as in readBodyWithin: a tee branch's cancel settles
+    // only when the client's branch finishes.
+    void reader.cancel("A2A task read").catch(() => undefined);
+  }
 }
 
 function bindingProvenance(
