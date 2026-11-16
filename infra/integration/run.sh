@@ -128,10 +128,9 @@ limactl shell "$VM" -- sudo bash -c "
     EVELAND_DATA_DIR=/var/lib/eveland-data EVELAND_AGENT_BASE_DOMAINS=agent.localhost \
     corepack pnpm exec tsx infra/integration/schedule-scale-zero-e2e.mts
 
-  # The bwrap backend's own contract test used to run here, when the backend was
-  # a workspace package. It now ships from evelandhq/sandbox-bwrap, which runs it
-  # under these same systemd constraints via that repo's infra/smoke.sh. What
-  # Eveland still owns is the end-to-end proof below.
+  # The bwrap backend's own contract test runs in evelandhq/sandbox-bwrap, under
+  # these same systemd constraints, via that repo's infra/smoke.sh. What Eveland
+  # owns is the end-to-end proof below.
 
   # End-to-end proof: an imported eve project gets a working bwrap sandbox it
   # never declared, and a redeploy preserves the durable session workspace.

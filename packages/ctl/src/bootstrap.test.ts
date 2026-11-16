@@ -241,9 +241,9 @@ describe("runBootstrapConfig", () => {
   });
 
   test("the external-database answer is recorded before the configuration it describes", async () => {
-    // The two writes are not atomic. A crash between them used to leave a
-    // rendered eveland.env with no record, and the resume defaulted to
-    // "bundled" — starting a second cluster beside the operator's own and
+    // The two writes are not atomic. Written the other way round, a crash
+    // between them would leave a rendered eveland.env with no record, and the
+    // resume would default to "bundled" — starting a second cluster beside the operator's own and
     // pointing every later `update` backup at the empty one.
     const dsn = "postgres://user:pw@db.example.com:5432/eveland";
     const { deps, layout } = await makeDeps({

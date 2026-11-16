@@ -75,9 +75,8 @@ export function composeInfraServices(database: DatabaseMode): string[] {
   );
 }
 
-// No process installs its dependencies at start any more, so this is a
-// startup budget rather than the fifteen minutes an in-container
-// `pnpm install` plus `next build` used to need.
+// No process installs its dependencies or builds at start, so this is a
+// startup budget, not an install-and-build budget.
 export const SYSTEMD_READINESS_DEADLINE_MS = 180_000;
 export const SYSTEMD_READINESS_POLL_MS = 500;
 
@@ -651,8 +650,8 @@ export async function reconcileHostOwnership(
   const { io } = context;
   const owned: Array<{ path: string; owner: string; mode: string }> = [
     {
-      // The Dashboard's own uid, not the API's: the two units no longer share
-      // an identity, and only `next start` writes here.
+      // The Dashboard's own uid, not the API's: the two units have separate
+      // identities, and only `next start` writes here.
       path: path.join(context.repoRootDir, "apps/web/.next"),
       owner: `${WEB_SERVICE_USER}:${WEB_SERVICE_USER}`,
       mode: "0755",
@@ -722,9 +721,9 @@ export async function installSystemdArtifacts(
   // update): the system-PATH node links AND corepack's pnpm shim that
   // deployment units rely on follow the pin, exactly like the units below
   // bake the new bin dir in.
-  // Before the units that name them: an installation from before a service
-  // had its own identity meets those units for the first time on an update,
-  // and a unit whose User= does not exist fails to start.
+  // Before the units that name them: a unit whose User= does not exist fails
+  // to start, and an update can bring a unit whose service account this host
+  // does not have yet.
   await ensureHostServiceAccounts({
     execCommand: context.execCommand,
     repoRootDir: context.repoRootDir,

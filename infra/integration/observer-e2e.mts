@@ -237,9 +237,8 @@ async function runDirectTurn(hostPort: number): Promise<string> {
   assert.ok(stream.ok && stream.body, `session stream failed (${stream.status})`);
   const reader = stream.body.getReader();
   const decoder = new TextDecoder();
-  // The delegated child run outlives the root turn under eve 0.51 through
-  // 0.68, so the read runs to the end of the whole delegation, not to the root
-  // turn's boundary.
+  // The delegated child runs inside the root turn, so the read runs until the
+  // root turn settles after the child opened (see delegated-turn.ts).
   const watch = watchDelegatedTurn({ subagentName: "researcher" });
   const deadline = Date.now() + DELEGATED_TURN_BUDGET_MS;
   let buffer = "";

@@ -200,7 +200,7 @@ async function main(): Promise<void> {
         `${stableBeforeSplit.id}:r4`,
       );
 
-      // Eve 0.48 answers the create with 202 as soon as the shared World has
+      // eve answers the create with 202 as soon as the shared World has
       // accepted the run, before the dispatcher has activated the Deployment
       // and the first turn has started; a cancel that races that window is a
       // legitimate `no_active_turn`. Attach to the durable stream and wait for
@@ -270,19 +270,13 @@ async function main(): Promise<void> {
           `Agent port was publicly bound: ${dockerPort.stdout}`,
         );
 
-      // This used to assert 401: the fixture ran localDev(), which authorized on
-      // the request Host, so a spoofed `x-forwarded-host: localhost` reaching
-      // the Agent would have authenticated and the 401 proved the Gateway had
-      // rebuilt the forwarding headers. Eve 0.30's localDev() ignores Host
-      // entirely, so nothing downstream can be fooled by a Host spoof any more
-      // and the assertion would pass for a reason unrelated to what it guarded.
-      //
-      // The invariant itself lives in the Gateway, and that is where it is now
-      // asserted -- apps/gateway/src/app.test.ts drives a real upstream that
-      // echoes its received headers and checks the Agent is never handed a
-      // loopback authority, nor client-supplied forwarding headers. What stays
-      // worth proving end to end is that a non-localhost production Host routes
-      // at all, which the previous shape could not distinguish from a 401.
+      // eve's localDev() ignores the request Host, so a Host spoof cannot fool
+      // anything downstream and a 401 here would prove nothing about forwarding
+      // headers. That invariant lives in the Gateway and is asserted there --
+      // apps/gateway/src/app.test.ts drives a real upstream that echoes its
+      // received headers and checks the Agent is never handed a loopback
+      // authority, nor client-supplied forwarding headers. What is worth proving
+      // end to end is that a non-localhost production Host routes at all.
       await store.reconcileAgentRoutes("agents.example.com");
       const productionRoute = await store.findProjectRoute(project.id);
       assert.ok(productionRoute);

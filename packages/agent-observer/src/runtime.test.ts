@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 /**
- * One commit line of a v27 stream, as eve 1.0 hands it to a `*` hook: every
+ * One commit line of a session stream, as eve hands it to a `*` hook: every
  * fact in order, each with the same line and its own index.
  */
 type Fact = { type: string; scope?: Record<string, string>; data: Record<string, unknown> };
@@ -193,7 +193,7 @@ describe("private Agent telemetry runtime", () => {
     expect(metrics.getMetrics()).toEqual([]);
   });
 
-  test("maps v27 turn, model run, usage, and call lifecycles to the same span tree", async () => {
+  test("maps turn, model run, usage, and call lifecycles to the same span tree", async () => {
     const { runtime, traces, metrics, commit } = harness({
       recordInputs: true,
       recordOutputs: true,
@@ -249,7 +249,7 @@ describe("private Agent telemetry runtime", () => {
     );
   });
 
-  test("keeps inputs and outputs out of v27 logs and spans unless the policy records them", async () => {
+  test("keeps inputs and outputs out of logs and spans unless the policy records them", async () => {
     const { runtime, traces, logs, commit } = harness();
     await runOneTurn(commit);
     await runtime.forceFlush();
@@ -273,7 +273,7 @@ describe("private Agent telemetry runtime", () => {
     });
   });
 
-  test("stamps v27 logs with the stream position, record time, and a position fingerprint", async () => {
+  test("stamps logs with the stream position, record time, and a position fingerprint", async () => {
     const { runtime, logs, commit } = harness();
     await runOneTurn(commit);
     await runtime.forceFlush();
@@ -302,7 +302,7 @@ describe("private Agent telemetry runtime", () => {
     expect(new Set(fingerprints).size).toBe(fingerprints.length);
   });
 
-  test("records failed v27 turns and sessions from their outcome", async () => {
+  test("records failed turns and sessions from their outcome", async () => {
     const { runtime, traces, logs, commit } = harness();
     await commit({ type: "turn.started", scope: turn, data: { turnId: "turn_1", follows: null } });
     await commit({
@@ -336,7 +336,7 @@ describe("private Agent telemetry runtime", () => {
     });
   });
 
-  test("collects v27 reasoning only when outputs are recorded and skips progress records", async () => {
+  test("collects reasoning only when outputs are recorded and skips progress records", async () => {
     const reasoning: Fact = {
       type: "content.completed",
       scope: { ...turn, runId: "run_1" },
@@ -360,7 +360,7 @@ describe("private Agent telemetry runtime", () => {
   });
 
   test("keeps content its turn wrote without a model run, and a turn-owned call, under the turn", async () => {
-    // eve 1.0.0-rc.2 lets a turn write content (no `runId`) and own a call
+    // eve lets a turn write content (no `runId`) and own a call
     // (`owner: { turnId }`) without a model run.
     const { runtime, traces, commit } = harness({ recordInputs: true, recordOutputs: true });
     await commit(
@@ -418,7 +418,7 @@ describe("private Agent telemetry runtime", () => {
     expect(String(run?.attributes["gen_ai.input.messages"])).toContain("Turn-written note");
   });
 
-  test("carries the observed per-call model into the v27 usage log, not only the span", async () => {
+  test("carries the observed per-call model into the usage log, not only the span", async () => {
     // The stream's `model.started` names the model eve selected; the provider
     // call eve's instrumentation reports names the model that actually ran,
     // and the Built-in projection must learn that one from the usage log.
@@ -643,7 +643,7 @@ describe("private Agent telemetry runtime", () => {
     ]);
   });
 
-  test("never lets a malformed v27 event escape the capture", async () => {
+  test("never lets a malformed event escape the capture", async () => {
     const { runtime, commit } = harness();
     await expect(
       commit(

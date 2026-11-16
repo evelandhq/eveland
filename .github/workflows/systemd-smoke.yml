@@ -83,7 +83,7 @@ jobs:
           # Deployment units run with a plain system PATH, so the toolchain the
           # sandbox self-check probes must live there -- not in the runner's
           # per-user setup-pnpm/setup-node directories. Same corepack install
-          # the Lima guest performs; Node 25+ no longer bundles corepack.
+          # the Lima guest performs; Node 25+ does not bundle corepack.
           sudo npm install --global corepack@0.36.0
           sudo corepack enable
           sudo corepack install --global pnpm@11.7.0
@@ -125,10 +125,9 @@ jobs:
             EVELAND_RUNTIME=systemd EVELAND_BUILD_SANDBOX=bwrap EVELAND_DATA_DIR=/var/lib/eveland-data \
             pnpm --filter @evelandhq/worker exec tsx src/integration/systemd-smoke.ts
 
-      # The bwrap backend's own contract test used to run here, when the backend was
-      # a workspace package. It now ships from evelandhq/sandbox-bwrap, which runs it
-      # in its own CI and, under these same systemd constraints, via that repo's
-      # infra/smoke.sh. What Eveland still owns is the integration below: that an
+      # The bwrap backend's own contract test runs in evelandhq/sandbox-bwrap's CI
+      # and, under these same systemd constraints, via that repo's infra/smoke.sh.
+      # What Eveland owns is the integration below: that an
       # imported project gets a working sandbox it never declared, exercised against
       # the vendored backend under the real systemd runtime.
 

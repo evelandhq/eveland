@@ -7,18 +7,18 @@
 // Release Please parses each commit on `main` with `@conventional-commits/parser`.
 // When a message fails to parse it logs the error, SKIPS the commit, and the
 // workflow still exits 0. The change silently vanishes from CHANGELOG.md and
-// from the GitHub Release, and nothing anywhere goes red. Two production
-// incidents so far:
+// from the GitHub Release, and nothing anywhere goes red. Two shapes that
+// drop a change this way:
 //
-//   * v0.43.0 — `feat(sdk): add eveland/memory (#404)` was dropped because its
-//     BODY contained `fileMemory({ backend: evelandMemoryBackend() })`. Empty
-//     parens abort the parse in some nestings — a standalone `foo()` often
-//     survives, so there is no rule of thumb to apply by eye.
-//   * v0.49.0 — `feat!(observability): …` was dropped, taking the release's
-//     only BREAKING CHANGE with it. Conventional Commits puts the `!` AFTER the
-//     scope (`feat(observability)!:`); `feat!(scope):` is a syntax error.
+//   * Empty parens in the BODY, such as
+//     `fileMemory({ backend: evelandMemoryBackend() })`, abort the parse in
+//     some nestings — a standalone `foo()` often survives, so there is no rule
+//     of thumb to apply by eye.
+//   * `feat!(scope): …` — Conventional Commits puts the `!` AFTER the scope
+//     (`feat(scope)!:`); `feat!(scope):` is a syntax error, and the commit's
+//     BREAKING CHANGE goes with it.
 //
-// Both were noticed by hand, after the fact. Neither is catchable by a
+// Neither is catchable by a
 // hand-written regex, which is why this calls the real parser instead of
 // approximating it: whatever Release Please rejects, this rejects.
 //

@@ -102,7 +102,7 @@ describe("Agent Auth provider registry", () => {
     );
   });
 
-  test("interoperates with Eve 0.27 HTTP Basic normalization and challenge metadata", async () => {
+  test("interoperates with eve's HTTP Basic normalization and challenge metadata", async () => {
     const registry = registryWithOidc();
     const credential = await resolve(registry, "basic", {
       username: "ali\u0301ce",

@@ -11,11 +11,10 @@ import { repoRoot } from "./scan-support.js";
  * whose files are each individually correct and whose Collector still cannot
  * reach the API.
  *
- * That is not hypothetical. #462 left `4000` in the base file after the 17300
- * move; the fix pointed the base file's Collector at the API by Compose service
- * name, which is right for a containerized API and unresolvable for the
- * host-native quickstart the README documents in the very same commit. Both
- * failures are silent -- the Collector retries forever, and the Dashboard
+ * The base file's Collector reaches the API by Compose service name, which is
+ * right for a containerized API and unresolvable for the host-native
+ * quickstart unless the native overlay is merged too (#462). Such failures are
+ * silent -- the Collector retries forever, and the Dashboard
  * reports a stale Worker heartbeat, which reads as a Worker that will not
  * start.
  *

@@ -1,4 +1,4 @@
-// End-to-end proof of the eve 0.30 / Identity Provider handoff (#269 + #271):
+// End-to-end proof of the Identity Provider handoff (#269 + #271):
 // a REAL imported Agent whose eve channel authenticates with the workspace
 // SDK's evelandIdentity() -- and nothing else -- deployed through the real
 // build_deploy pipeline and driven through the real Gateway against the real

@@ -18,7 +18,7 @@
 # EVELAND_PUBLIC_ORIGIN unless individually overridden.
 #
 # Deployed agent data lives under /var/lib/eveland on the host, which every platform unit and every
-# Deployment now reads at that one absolute path -- no bind mount, and no second view of it.
+# Deployment reads at that one absolute path -- no bind mount, and no second view of it.
 #
 # Why no platform service is here: production runs every Deployment as a host systemd process bound
 # to the host's 127.0.0.1:PORT (loopback, not public), so the Agent Gateway (public proxy + internal

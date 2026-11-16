@@ -71,7 +71,7 @@ evelandIdentity({ logger: (message, fields) => log.debug(message, fields) });
 
 # `eveland/memory`
 
-Eve 0.45 introduced first-class memory. Its default provider, `fileMemory()`,
+Eve has first-class memory. Its default provider, `fileMemory()`,
 resolves storage from the environment — process-local during `eve dev`, Vercel
 Blob on Vercel — and **requires an explicit backend everywhere else, including
 every Eveland deployment**. This entry point supplies that backend:

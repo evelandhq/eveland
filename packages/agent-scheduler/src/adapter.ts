@@ -263,11 +263,10 @@ function findConcreteDefaultExport(sourceFile: ts.SourceFile): ts.Expression | u
 // surfaces the first rejection as the dispatch failure, and holds the response
 // until all handler work settles. `from(address)` owns session creation on this
 // channel, and the authored handler receives `to(channel, target)` whose
-// `.send` is wrapped so every started Session is collected. (Eve 0.31 replaced
-// the continuation-token operations this used to branch on; every minor in the
-// supported window now speaks fixed-session addressing.)
+// `.send` is wrapped so every started Session is collected. Every minor in the
+// supported window speaks fixed-session addressing.
 //
-// Eve 0.33 changed the default send policy to `"steer"`, which cancels and
+// Eve's default send policy is `"steer"`, which cancels and
 // replaces a turn already running on the target session. A schedule is a
 // background actor, so every supported Eve line explicitly asks for `"queue"`.
 // An authored handler still wins because its own options are spread last.

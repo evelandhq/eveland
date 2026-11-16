@@ -27,8 +27,8 @@ import { defaultTcpProbe, type TcpProbe } from "./net-probe.ts";
 import { detectDockerBridgeHost } from "./docker-bridge.ts";
 
 /**
- * `eveland-ctl doctor`: every check this installation has historically been
- * bitten by, collected in one pass (all problems at once, not first-failure)
+ * `eveland-ctl doctor`: every check for a failure installations hit in
+ * practice, collected in one pass (all problems at once, not first-failure)
  * so one run gives the whole repair list. Checks are dependency-injected and
  * each maps to a concrete incident class: port hijacks, proxy injection,
  * global libvips breaking sharp, placeholder secrets shipped to production.
