@@ -21,3 +21,25 @@ describe("secret generation", () => {
     expect(password).not.toBe(generateAdminPassword());
   });
 });
+
+describe("admin password sampling", () => {
+  // 256 is not a multiple of the 56-character alphabet, so `byte % 56` made
+  // the first 32 characters likelier than the rest. Bytes past the last whole
+  // multiple are drawn again instead.
+  test("draws again for bytes that would bias the alphabet", () => {
+    const draws: Buffer[] = [Buffer.alloc(20, 255), Buffer.alloc(20, 1)];
+    const password = generateAdminPassword(() => draws.shift() ?? Buffer.alloc(20, 1));
+    expect(password).toBe("b".repeat(20));
+  });
+
+  test("keeps every accepted byte", () => {
+    expect(
+      generateAdminPassword(() => Buffer.from(Array.from({ length: 20 }, (_, i) => 223 - i))),
+    ).toBe(
+      Array.from(
+        { length: 20 },
+        (_, i) => "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"[(223 - i) % 56],
+      ).join(""),
+    );
+  });
+});

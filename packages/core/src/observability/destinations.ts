@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { trimTrailingSlashes } from "@evelandhq/core/ids";
 import {
   OBSERVABILITY_SIGNALS,
   TELEMETRY_DOMAINS,
@@ -85,7 +86,7 @@ const externalHttpUrlSchema = z.url().superRefine((endpoint, context) => {
 
 export function langfuseOtlpTracesEndpoint(baseUrl: string): string {
   const endpoint = new URL(baseUrl);
-  endpoint.pathname = `${endpoint.pathname.replace(/\/+$/, "")}/api/public/otel/v1/traces`;
+  endpoint.pathname = `${trimTrailingSlashes(endpoint.pathname)}/api/public/otel/v1/traces`;
   endpoint.search = "";
   endpoint.hash = "";
   return endpoint.toString();

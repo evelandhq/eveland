@@ -611,3 +611,26 @@ function request(token: string, url = "https://agent.example/eve/v1/session"): R
     headers: { authorization: `Bearer ${token}` },
   });
 }
+
+describe("parseEvelandAuthenticationChallenge on crafted headers", () => {
+  // An unterminated quoted value of escaped characters once backtracked
+  // exponentially; the challenge comes from a remote server.
+  test("gives up on an unterminated escaped value in linear time", () => {
+    const started = performance.now();
+    expect(parseEvelandAuthenticationChallenge(`Bearer realm="${"\\!".repeat(24)}`)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  test("still unescapes quoted parameter values", () => {
+    expect(
+      parseEvelandAuthenticationChallenge(
+        'Bearer realm="eveland", project_id="proj_1", display_name="Say \\"hi\\"", authorization_uri="https://eveland.example/login"',
+      ),
+    ).toEqual({
+      kind: "eveland",
+      url: "https://eveland.example/login",
+      projectId: "proj_1",
+      displayName: 'Say "hi"',
+    });
+  });
+});

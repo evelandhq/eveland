@@ -71,6 +71,19 @@ describe("inspectEveProject", () => {
     expect(result.capabilities).toEqual({ eveChat: false });
   });
 
+  // A channel file of repeated unclosed import braces once made the eveChat
+  // probe scan quadratically.
+  test("probes a crafted channel file in linear time", () => {
+    const started = performance.now();
+    const result = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+      { path: "agent/channels/eve.ts", content: "import{".repeat(20_000) },
+    ]);
+    expect(result.capabilities).toEqual({ eveChat: false });
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
   test("uses Eve's authored skill extensions in the source summary", () => {
     const result = inspectEveProject([
       { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }) },

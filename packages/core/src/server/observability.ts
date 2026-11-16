@@ -10,6 +10,7 @@ import { lookup as defaultLookup } from "node:dns/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { BlockList, isIP, type LookupFunction } from "node:net";
+import { trimTrailingSlashes } from "@evelandhq/core/ids";
 
 const destinationResponseLimitBytes = 1024 * 1024;
 const defaultDestinationTimeoutMs = 10_000;
@@ -165,7 +166,7 @@ function destinationSignalRequest(
       },
     };
   }
-  const endpoint = `${config.endpoint.replace(/\/+$/, "")}/v1/${signal}`;
+  const endpoint = `${trimTrailingSlashes(config.endpoint)}/v1/${signal}`;
   if (config.kind === "elastic") {
     return {
       url: new URL(endpoint),

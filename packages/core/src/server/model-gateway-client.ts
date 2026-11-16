@@ -8,6 +8,8 @@
  * message with the key masked.
  */
 
+import { trimTrailingSlashes } from "@evelandhq/core/ids";
+
 const REQUEST_TIMEOUT_MS = 15_000;
 
 type FetchLike = typeof fetch;
@@ -112,11 +114,4 @@ export async function listGatewayModelIds(input: {
   return data
     .map((entry) => (entry as { id?: unknown } | null)?.id)
     .filter((id): id is string => typeof id === "string");
-}
-
-/** Drops trailing slashes without a regex (`/\/+$/` backtracks polynomially). */
-function trimTrailingSlashes(value: string): string {
-  let end = value.length;
-  while (end > 0 && value[end - 1] === "/") end -= 1;
-  return value.slice(0, end);
 }

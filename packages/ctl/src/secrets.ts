@@ -24,10 +24,16 @@ const PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456
  * (no 0/O, 1/l/I), long enough to be strong and short enough to retype.
  */
 export function generateAdminPassword(random: (size: number) => Buffer = randomBytes): string {
-  const bytes = random(20);
+  // Rejection sampling: a byte at or past the last whole multiple of the
+  // alphabet's length would favor its first characters, so it is drawn again.
+  const acceptBelow = 256 - (256 % PASSWORD_ALPHABET.length);
   let password = "";
-  for (const byte of bytes) {
-    password += PASSWORD_ALPHABET[byte % PASSWORD_ALPHABET.length];
+  while (password.length < 20) {
+    for (const byte of random(20 - password.length)) {
+      if (byte >= acceptBelow) continue;
+      password += PASSWORD_ALPHABET[byte % PASSWORD_ALPHABET.length];
+      if (password.length === 20) break;
+    }
   }
   return password;
 }

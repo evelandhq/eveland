@@ -27,8 +27,19 @@ export function slugifyProjectName(input: string): string {
   return slug;
 }
 
+/**
+ * `value` without its trailing slashes. A loop rather than `/\/+$/`, which
+ * rescans every run of slashes that does not end the input and so takes
+ * quadratic time on a crafted one.
+ */
+export function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 export function inferProjectSlugFromGitUrl(input: string): string | null {
-  const trimmed = input.trim().replace(/\/+$/g, "");
+  const trimmed = trimTrailingSlashes(input.trim());
   if (!trimmed) return null;
 
   let pathname: string;
@@ -67,10 +78,7 @@ export function normalizeGitHttpHost(input: string): string | null {
 // optional port, or the same with an https:// prefix — and returns the same
 // normalized form normalizeGitHttpHost derives from a repository URL.
 export function normalizeGitCredentialHost(input: string): string | null {
-  const bare = input
-    .trim()
-    .replace(/^https:\/\//i, "")
-    .replace(/\/+$/, "");
+  const bare = trimTrailingSlashes(input.trim().replace(/^https:\/\//i, ""));
   if (!bare || /[/@\\\s?#]/.test(bare)) return null;
   return normalizeGitHttpHost(`https://${bare}`);
 }

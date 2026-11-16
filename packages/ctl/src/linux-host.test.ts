@@ -191,7 +191,7 @@ describe("provisionLinuxHost", () => {
       "-y",
       "docker-compose-plugin",
     ]);
-    expect(ceNoCompose.streamCalls.some((argv) => argv.includes("docker.io"))).toBe(false);
+    expect(ceNoCompose.streamCalls.flat()).not.toContain("docker.io");
 
     // Ubuntu's docker.io without Compose: docker-compose-v2.
     const ioNoCompose = await makeDeps({
