@@ -23,12 +23,11 @@ import {
   type RuntimeAdapter,
   type RuntimeCommandContext,
 } from "../runtime/types.js";
-import { ensureEvelandWorkflowTenant } from "../runtime/eveland-workflow-world-bootstrap.js";
+import { ensureEvelandWorkflowTenant } from "../runtime/workflow-world-bootstrap.js";
 import {
   resolveWorkflowWorldDeploymentUrl,
   resolveWorkflowWorldPlatformUrl,
 } from "@evelandhq/core/workflow-world-url";
-import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-deployment-config.js";
 
 import {
@@ -197,12 +196,11 @@ export function errorMessage(error: unknown): string {
 }
 
 /**
- * Without an explicit bound, @workflow/world-postgres falls back to pg's
- * implicit pool default (10) — per-deployment connection consumption then
- * scales invisibly with the number of running deployments until the workflow
- * Postgres instance hits max_connections (FATAL 53300). The default keeps
- * pg's 10; operators tune the fleet-wide value via the worker's
- * WORKFLOW_POSTGRES_MAX_POOL_SIZE.
+ * Without an explicit bound, the World's pg pool falls back to pg's implicit
+ * default (10) -- per-deployment connection consumption then scales invisibly
+ * with the number of running deployments until the workflow Postgres instance
+ * hits max_connections (FATAL 53300). The default keeps pg's 10; operators
+ * tune the fleet-wide value via the worker's WORKFLOW_POSTGRES_MAX_POOL_SIZE.
  */
 const defaultWorkflowMaxPoolSize = 10;
 
@@ -260,41 +258,11 @@ export async function composeDeploymentEnv(
 ): Promise<{ env: Record<string, string>; secretValues: string[] }> {
   const nodeEnv = options.nodeEnv ?? workerEnv.NODE_ENV;
   const isProduction = nodeEnv === "production";
-  const workflowPostgresUrl = options.workflowPostgresUrl ?? workerEnv.WORKFLOW_POSTGRES_URL;
-  // Every new build bakes in the shared world, so the only launches that still
-  // get a legacy per-project database are the ones a caller explicitly marks
-  // `legacy_project` — the legacy termination flow, never a fresh deploy. The
-  // decision is the caller's persisted knowledge of the Deployment, not this
-  // worker's current global environment.
-  const usesLegacyWorld = options.workflowWorldKind === "legacy_project";
-  // Legacy world: each project gets its own physical workflow database derived
-  // from the platform base URL. A single shared database let any runtime claim
-  // any project's queued turns and re-enqueue every project's active runs on
-  // startup, so the database is created and bootstrapped here, before any
-  // process starts with its URL.
-  //
-  // The platform world closes both doors with a tenant column instead, so a
-  // project on it gets no per-project database — provisioning one would leave an
-  // empty database behind for every project on the new world.
-  const ensureWorld = options.ensureProjectWorkflowWorld ?? ensureProjectWorkflowWorld;
-  const projectWorkflowUrl =
-    workflowPostgresUrl && usesLegacyWorld
-      ? await ensureWorld({ ...workerEnv, WORKFLOW_POSTGRES_URL: workflowPostgresUrl }, projectId)
-      : undefined;
-  // The platform world's equivalent: migrations plus this tenant's partitions.
-  // Partitions must exist before the first write — there is deliberately no
-  // DEFAULT partition, so an unprovisioned tenant fails loudly rather than
-  // having its rows land somewhere unreclaimable.
-  //
-  // Deliberately NOT gated on the rollout flag. The flag chooses what the *next
-  // build* bakes in, but this function runs on every launch, and a deployment's
-  // world is fixed at build time. Gating here meant that turning the flag off
-  // stopped injecting the world URL for a bundle that still imports the
-  // multi-tenant world — which then fell back to the legacy single-tenant
-  // database, one with no tenant_id column and no partitions. Injecting
-  // whenever the platform has a world configured keeps an already-built
-  // deployment pointed at the right database until it is rebuilt, which is what
-  // makes the documented rollback ("flag off, then rebuild") actually safe.
+  // The shared World needs this tenant's partitions before the first write --
+  // there is deliberately no DEFAULT partition, so an unprovisioned tenant
+  // fails loudly rather than having its rows land somewhere unreclaimable.
+  // Every launch provisions them, because a project's first launch can be a
+  // restart or a cold activation as well as a deploy.
   // Injected into the deployment: the container's view of the database.
   const evelandWorldUrl =
     options.evelandWorkflowWorldUrl ?? resolveWorkflowWorldDeploymentUrl(workerEnv);
@@ -365,16 +333,6 @@ export async function composeDeploymentEnv(
       : {}),
     ...(identityIssuer ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") } : {}),
     ...(identityJwksUrl ? { EVELAND_IDENTITY_JWKS_URL: identityJwksUrl } : {}),
-    // The pool size is reserved alongside the URL: connection capacity on the
-    // shared workflow Postgres instance is platform-planned
-    // (max_connections ≈ pool size × concurrent deployments), so a project
-    // must not be able to raise its own share of it.
-    ...(projectWorkflowUrl
-      ? {
-          WORKFLOW_POSTGRES_URL: projectWorkflowUrl,
-          WORKFLOW_POSTGRES_MAX_POOL_SIZE: resolveWorkflowMaxPoolSize(workerEnv),
-        }
-      : {}),
     ...(schedulerRuntimeSecret ? { EVELAND_SCHEDULER_RUNTIME_SECRET: schedulerRuntimeSecret } : {}),
     ...(schedulerRedeemUrl ? { EVELAND_SCHEDULER_REDEEM_URL: schedulerRedeemUrl } : {}),
     ...(isProduction ? { NODE_ENV: "production" } : {}),
@@ -387,10 +345,7 @@ export async function composeDeploymentEnv(
   const secretValues = [
     ...Object.values(secrets),
     ...Object.values(sharedEnvironment),
-    ...(workflowPostgresUrl ? [workflowPostgresUrl] : []),
-    ...(projectWorkflowUrl ? [projectWorkflowUrl] : []),
-    // Carries credentials like the other two connection strings, so it is
-    // masked out of build and runtime logs the same way.
+    // Carries credentials, so it is masked out of build and runtime logs.
     ...(evelandWorldUrl ? [evelandWorldUrl] : []),
     ...(schedulerRuntimeSecret ? [schedulerRuntimeSecret] : []),
   ];

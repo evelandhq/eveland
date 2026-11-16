@@ -263,7 +263,7 @@ export function buildReleaseBuildCommand(
  *
  * execa extends `process.env` by default, so the caller pairs this with
  * `extendEnv: false`: that pairing is what keeps `APP_SECRET_KEY`,
- * `DATABASE_URL`, `WORKFLOW_POSTGRES_URL` and every other worker secret out of
+ * `DATABASE_URL`, `WORKFLOW_WORLD_URL` and every other worker secret out of
  * a build whose lifecycle scripts can read `/proc/self/environ`. `PATH` and
  * `npm_config_cache` both survive runuser's user switch unmodified, so they
  * can ride here; see ./build-environment.ts for the variables.

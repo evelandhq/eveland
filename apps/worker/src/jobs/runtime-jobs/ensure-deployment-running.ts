@@ -83,7 +83,7 @@ export async function handleEnsureDeploymentRunningJob(
     runtimeKind: runtime.name,
     sourcePath: revision.sourcePath,
     ...recoverableSource,
-    options: { ...options, workflowWorldKind: launchDecision.workflowWorldKind },
+    options,
   });
   await ensureDeploymentLaunchSandbox(launchPrerequisites);
   const launchContext = await materializeDeploymentLaunchContext({

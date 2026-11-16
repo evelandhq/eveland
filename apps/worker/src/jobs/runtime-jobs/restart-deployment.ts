@@ -131,7 +131,7 @@ export async function handleRestartDeploymentJob(
     deploymentId: deployment.id,
     runtimeKind: adapter.name,
     sourcePath: revision.sourcePath,
-    options: { ...options, workflowWorldKind: launchDecision.workflowWorldKind },
+    options,
   });
 
   await adapter.stopProcess(deployment.containerName);

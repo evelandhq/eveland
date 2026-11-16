@@ -7,7 +7,6 @@ export type ProcessJobOptions = {
   appSecretKey?: string;
   allocateHostPort?: () => number | Promise<number>;
   waitForDeployment?: (input: { host: string; port: number; timeoutMs: number }) => Promise<void>;
-  workflowPostgresUrl?: string;
   /**
    * The memory root path as the deployed process will see it, reserved into
    * the environment as EVELAND_MEMORY_ROOT. The launch context passes Docker's
@@ -15,18 +14,6 @@ export type ProcessJobOptions = {
    * the worker-visible `<EVELAND_DATA_DIR>/memory/<projectId>` default.
    */
   memoryRootDir?: string;
-  /**
-   * Which workflow world the Deployment being launched was built against.
-   * Defaults to `shared` — the only kind new builds produce. Only the legacy
-   * termination flow passes `legacy_project`, which provisions and injects the
-   * per-project legacy database.
-   */
-  workflowWorldKind?: "shared" | "legacy_project";
-  ensureProjectWorkflowWorld?: (
-    env: NodeJS.ProcessEnv,
-    projectId: string,
-  ) => Promise<string | undefined>;
-  dropProjectWorkflowWorld?: (env: NodeJS.ProcessEnv, projectId: string) => Promise<void>;
   /** Deployments of a project that still own a non-terminal workflow run. */
   listDeploymentsWithActiveWorkflowRuns?: (
     worldUrl: string | undefined,

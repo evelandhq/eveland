@@ -31,12 +31,12 @@ function heartbeatBody(overrides: Record<string, unknown> = {}) {
 async function createDeployableFixture(
   store: ReturnType<typeof createTestStore>,
   workflowWorld?: {
-    worldKind: "shared" | "legacy_project" | "unknown";
+    worldKind: "shared" | "unknown";
     worldPackage: string | null;
     worldVersion: string | null;
     storageSpec: number | null;
     dispatchProtocol: number | null;
-    enqueueCapability: "per_run_queue_v1" | "unscoped" | "unknown";
+    enqueueCapability: "per_run_queue_v1" | "unknown";
   },
 ) {
   const project = await store.createProject({ name: "Dispatcher Gate Agent", importKind: "zip" });
@@ -221,12 +221,12 @@ describe("workflow_step activation gating", () => {
     );
   });
 
-  test("an unattested or enqueue-incapable release is terminal workflow_migration_required, not a timeout", async () => {
+  test("an unattested or undispatchable release is terminal, not a timeout", async () => {
     const store = createTestStore();
     const unattested = await createDeployableFixture(store);
-    const unscoped = await createDeployableFixture(store, {
+    const otherSpec = await createDeployableFixture(store, {
       ...sharedAttestation,
-      enqueueCapability: "unscoped",
+      storageSpec: 8,
     });
     const outsideWindow = await createDeployableFixture(store, {
       ...sharedAttestation,
@@ -242,11 +242,11 @@ describe("workflow_step activation gating", () => {
       body: heartbeatBody({ state: "ready", readyAt: new Date().toISOString() }),
     });
 
-    for (const deployment of [unattested, unscoped, outsideWindow]) {
+    for (const deployment of [unattested, otherSpec, outsideWindow]) {
       const response = await activate(app, deployment.id);
       expect(response.status).toBe(409);
       const body = (await response.json()) as { error: string };
-      expect(body.error).toContain("workflow_migration_required");
+      expect(body.error).toContain("workflow_unavailable");
     }
   });
 

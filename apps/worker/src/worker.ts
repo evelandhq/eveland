@@ -27,8 +27,7 @@ import {
 import { nonOverlapping, startJobPump } from "./runtime/job-pump.js";
 import { assertWorkerPreflight } from "./runtime/preflight.js";
 import { assertWorkflowTopologyPreflight } from "./runtime/workflow-topology-preflight.js";
-import { bootstrapWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
-import { bootstrapEvelandWorkflowWorld } from "./runtime/eveland-workflow-world-bootstrap.js";
+import { bootstrapEvelandWorkflowWorld } from "./runtime/workflow-world-bootstrap.js";
 import { reapIdleDeployments } from "./runtime/idle-reaper.js";
 import { createOrphanProcessReaper } from "./runtime/orphan-reaper.js";
 import { sweepReleaseRetention } from "./runtime/release-reaper.js";
@@ -115,7 +114,6 @@ const reconcileObservability = createWorkerObservabilityReconciler([
 try {
   await assertWorkerPreflight(process.env);
   assertWorkflowTopologyPreflight(process.env);
-  await bootstrapWorkflowWorld(process.env);
   if (await bootstrapEvelandWorkflowWorld(process.env)) {
     console.log("Shared workflow-world database schema is ready.");
   }

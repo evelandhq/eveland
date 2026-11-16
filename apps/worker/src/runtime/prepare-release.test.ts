@@ -126,8 +126,8 @@ export default {
     sourcePath,
     buildDir,
     workflowWorld: {
-      packageName: "@workflow/world-postgres",
-      packageVersion: "5.0.0-beta.34",
+      packageName: "@evelandhq/workflow-world",
+      packageVersion: "1.0.0",
     },
   });
 
@@ -139,7 +139,7 @@ export default {
     readFile(path.join(buildDir, "agent", "eveland-authored-agent.ts"), "utf8"),
   ).resolves.toBe(authoredConfig);
   await expect(readFile(path.join(buildDir, "agent", "agent.ts"), "utf8")).resolves.toMatch(
-    /world:\s*"@workflow\/world-postgres"/,
+    /world:\s*"@evelandhq\/workflow-world"/,
   );
   await expect(readFile(path.join(buildDir, "agent", "agent.ts"), "utf8")).resolves.toContain(
     'from "./eveland-authored-agent.ts"',
@@ -170,15 +170,15 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
     sourcePath,
     buildDir,
     workflowWorld: {
-      packageName: "@workflow/world-postgres",
-      packageVersion: "5.0.0-beta.34",
+      packageName: "@evelandhq/workflow-world",
+      packageVersion: "1.0.0",
     },
   });
 
   expect(result.workflowWorld).toEqual({ agentConfigPath: "agent/agent.ts" });
   const generated = await readFile(path.join(buildDir, "agent", "agent.ts"), "utf8");
   expect(generated).toContain('model: "anthropic/claude-sonnet-5"');
-  expect(generated).toContain('world: "@workflow/world-postgres"');
+  expect(generated).toContain('world: "@evelandhq/workflow-world"');
   await expect(readFile(path.join(sourcePath, "agent", "agent.ts"), "utf8")).rejects.toMatchObject({
     code: "ENOENT",
   });
@@ -205,8 +205,8 @@ test("wraps every Eve-supported authored agent module extension", async () => {
       sourcePath,
       buildDir,
       workflowWorld: {
-        packageName: "@workflow/world-postgres",
-        packageVersion: "5.0.0-beta.34",
+        packageName: "@evelandhq/workflow-world",
+        packageVersion: "1.0.0",
       },
     });
 

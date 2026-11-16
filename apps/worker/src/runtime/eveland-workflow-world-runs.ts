@@ -10,8 +10,7 @@ import postgres from "postgres";
  * schema keeps a partial index over exactly this predicate.
  *
  * Returns an empty set when the world is not configured, which keeps this safe
- * to call unconditionally during the run-out — a project still on
- * world-postgres simply contributes no protected deployments here. A configured
+ * to call unconditionally. A configured
  * world that fails to answer is different: failing open would silently
  * unprotect deployments, so the error propagates and the caller's sweep skips
  * this tick instead of archiving blind.

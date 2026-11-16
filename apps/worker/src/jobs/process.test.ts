@@ -571,7 +571,7 @@ describe("processNextJob", () => {
     // starting a process or waiting out an activation timeout.
     await expect(store.getRuntimeInstance(claim.runtimeInstance.id)).resolves.toMatchObject({
       status: "failed",
-      lastError: expect.stringContaining("workflow_migration_required"),
+      lastError: expect.stringContaining("workflow_unavailable"),
     });
   });
 

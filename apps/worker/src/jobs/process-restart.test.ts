@@ -159,7 +159,7 @@ describe("processNextJob", () => {
     expect(runtimeCalls).toEqual([]);
     await expect(store.listLogs(project.id, "deploy")).resolves.toContainEqual(
       expect.objectContaining({
-        line: expect.stringContaining("workflow_migration_required"),
+        line: expect.stringContaining("workflow_unavailable"),
       }),
     );
   });

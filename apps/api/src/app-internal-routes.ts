@@ -155,39 +155,21 @@ export function registerInternalRoutes(input: {
       }
       if (!release) return c.json({ error: "Deployment activation Release is missing" }, 409);
       const { workflow } = release;
-      if (workflow.worldKind !== "shared") {
+      // A Release this platform cannot dispatch to is terminal (409): no
+      // retry makes it activatable, so the dispatcher dead-letters the run.
+      const refusal =
+        workflow.worldKind !== "shared" || workflow.enqueueCapability !== "per_run_queue_v1"
+          ? "was not built with the shared World"
+          : !isSupportedWorkflowStorageSpec(workflow.storageSpec)
+            ? `attests storage spec ${String(workflow.storageSpec)}, which this platform does not serve`
+            : workflow.dispatchProtocol === null ||
+                workflow.dispatchProtocol < registration!.protocolMin ||
+                workflow.dispatchProtocol > registration!.protocolMax
+              ? `speaks dispatch protocol ${String(workflow.dispatchProtocol)}, outside the dispatcher window ${String(registration!.protocolMin)}-${String(registration!.protocolMax)}`
+              : null;
+      if (refusal !== null || workflow.dispatchProtocol === null) {
         return c.json(
-          {
-            error: `workflow_migration_required: Release ${release.id} is ${workflow.worldKind}, not a shared-world build`,
-          },
-          409,
-        );
-      }
-      if (workflow.enqueueCapability !== "per_run_queue_v1") {
-        return c.json(
-          {
-            error: `workflow_migration_required: Release ${release.id} enqueue capability is ${workflow.enqueueCapability}; shared recovery requires per_run_queue_v1`,
-          },
-          409,
-        );
-      }
-      if (!isSupportedWorkflowStorageSpec(workflow.storageSpec)) {
-        return c.json(
-          {
-            error: `workflow_migration_required: Release ${release.id} storage spec ${String(workflow.storageSpec)} is outside the supported window`,
-          },
-          409,
-        );
-      }
-      if (
-        workflow.dispatchProtocol === null ||
-        workflow.dispatchProtocol < registration!.protocolMin ||
-        workflow.dispatchProtocol > registration!.protocolMax
-      ) {
-        return c.json(
-          {
-            error: `workflow_migration_required: Release ${release.id} speaks dispatch protocol ${String(workflow.dispatchProtocol)}, outside the dispatcher window ${String(registration!.protocolMin)}-${String(registration!.protocolMax)}`,
-          },
+          { error: `workflow_unavailable: Release ${release.id} ${refusal}; rebuild it` },
           409,
         );
       }

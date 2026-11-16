@@ -7,7 +7,7 @@
  * injected workflow world, forge its own project id, or raise its share of the
  * shared Postgres connection budget. Nothing rejects these names at write time
  * -- an operator may declare an entry called `NODE_ENV` or
- * `WORKFLOW_POSTGRES_URL` -- so the runtime defends itself by precedence.
+ * `WORKFLOW_WORLD_URL` -- so the runtime defends itself by precedence.
  *
  * A Release build has no equivalent layer, which is why the list is exported
  * here rather than living inline: a build that adopted the project's value for
@@ -95,11 +95,9 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   // carrying it would strip the project's own build toolchain out of the
   // install that `npx eve build` then runs against.
   NODE_ENV: ["NODE_ENV"],
-  // Read by both worlds: connection capacity on the workflow Postgres instance
+  // Read by the World: connection capacity on the workflow Postgres instance
   // is platform-planned (max_connections ~ pool size x running Deployments).
   WORKFLOW_POSTGRES_MAX_POOL_SIZE: ["WORKFLOW_POSTGRES_MAX_POOL_SIZE"],
-  // The per-project legacy database name is derived from the platform base URL.
-  WORKFLOW_POSTGRES_URL: ["WORKFLOW_POSTGRES_URL"],
 };
 
 export const RESERVED_RUNTIME_ENVIRONMENT_KEYS: readonly string[] = Object.keys(

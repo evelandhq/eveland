@@ -936,8 +936,8 @@ export const releases = pgTable(
     // not be read or predates this column.
     summary: jsonb("summary"),
     // Immutable workflow attestation from what release preparation actually
-    // injected. No defaults: every writer must state provenance; historical
-    // rows backfilled as 'unknown' never launch again.
+    // injected. No defaults: every writer must state provenance; anything but
+    // a 'shared' attestation never launches.
     workflowWorldKind: text("workflow_world_kind").notNull(),
     workflowWorldPackage: text("workflow_world_package"),
     workflowWorldVersion: text("workflow_world_version"),

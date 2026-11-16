@@ -375,18 +375,17 @@ export type PublicSourceRevision = Omit<SourceRevision, "sourcePath">;
 
 /**
  * Which durable workflow World a Release was actually built against. `unknown`
- * marks historical Releases whose artifact has not been classified; it blocks
- * activation, restart, and archive rather than letting a launch guess.
+ * marks a Release whose build injected no shared World; it blocks activation,
+ * restart, and archive rather than letting a launch guess.
  */
-export type WorkflowWorldKind = "shared" | "legacy_project" | "unknown";
+export type WorkflowWorldKind = "shared" | "unknown";
 
 /**
  * Whether the Release's deployment-side enqueue path scopes every Graphile job
  * to the per-run `wfrun:<tenant>:<run>` queue. Only `per_run_queue_v1` owners
- * may be activated or recovered by the external dispatcher; `unscoped`/`unknown`
- * owners never launch because they would keep producing unserialized jobs.
+ * may be activated or recovered by the external dispatcher.
  */
-export type WorkflowEnqueueCapability = "per_run_queue_v1" | "unscoped" | "unknown";
+export type WorkflowEnqueueCapability = "per_run_queue_v1" | "unknown";
 
 /**
  * Immutable build-time attestation of the workflow topology baked into a

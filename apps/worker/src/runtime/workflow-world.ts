@@ -8,21 +8,14 @@ import {
 } from "./package-manager.js";
 
 /**
- * The world every deployment has been built with until now: one physical
- * database per project, orchestration running inside the agent process.
- */
-export const PLATFORM_WORKFLOW_WORLD = {
-  packageName: "@workflow/world-postgres",
-  packageVersion: "5.0.0-beta.34",
-} as const;
-
-/**
- * The platform's own world: one shared database, tenancy as a column, and an
- * optional external runner so durable timers survive the idle reaper.
+ * The platform's world: one shared database, tenancy as a column, and the
+ * external dispatcher driving every run, so durable timers survive the idle
+ * reaper.
  *
- * The version must equal the one `apps/worker` itself depends on — CI runs the
- * eve↔world contract tests against the installed copy, so injecting any other
- * version would ship one the gate never saw. Asserted by workflow-world.test.ts.
+ * The version must equal the one `apps/worker` itself depends on: CI runs the
+ * eve/World contract tests against the installed copy, so injecting any other
+ * version would ship one the gate never saw. Asserted by
+ * eve-workflow-world-contract.test.ts.
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
@@ -42,12 +35,11 @@ export type WorkflowWorldBuildConfig = {
  * declares.
  */
 const EVELAND_WORKFLOW_WORLD_STORAGE_SPEC = 9;
-const SLOT_IDENTITY_WORKFLOW_STORAGE_SPEC = 6;
 const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = 1;
 
 /**
  * Maps the injected world package onto the Release's immutable workflow
- * attestation. Runner mode is a launch-time input and deliberately absent.
+ * attestation. Any other package attests `unknown`, which no launch accepts.
  */
 export function deriveWorkflowWorldAttestation(
   config: WorkflowWorldBuildConfig,
@@ -62,16 +54,6 @@ export function deriveWorkflowWorldAttestation(
       enqueueCapability: "per_run_queue_v1",
     };
   }
-  if (config.packageName === PLATFORM_WORKFLOW_WORLD.packageName) {
-    return {
-      worldKind: "legacy_project",
-      worldPackage: config.packageName,
-      worldVersion: config.packageVersion,
-      storageSpec: SLOT_IDENTITY_WORKFLOW_STORAGE_SPEC,
-      dispatchProtocol: null,
-      enqueueCapability: "unscoped",
-    };
-  }
   return {
     worldKind: "unknown",
     worldPackage: config.packageName,
@@ -80,28 +62,6 @@ export function deriveWorkflowWorldAttestation(
     dispatchProtocol: null,
     enqueueCapability: "unknown",
   };
-}
-
-/**
- * The runner mode injected into every deployment: `external` only.
- *
- * Every new build bakes in the shared world and leaves claiming to the single
- * external dispatcher. `embedded` let multiple deployments of one project
- * claim and replay each other's runs (issue #278), so an explicit request for
- * it is a configuration error — it must fail closed here, never silently fall
- * back to a topology the platform no longer provisions.
- */
-export function resolveWorkflowRunnerMode(env: NodeJS.ProcessEnv): "external" {
-  const runner = env.EVELAND_WORKFLOW_RUNNER;
-  if (runner === undefined || runner === "" || runner === "external") return "external";
-  if (runner === "embedded") {
-    throw new Error(
-      'EVELAND_WORKFLOW_RUNNER=embedded is not supported: the embedded runner lets concurrent deployments of one project claim each other\'s workflow runs. Unset it or set "external".',
-    );
-  }
-  throw new Error(
-    `Invalid EVELAND_WORKFLOW_RUNNER "${runner}": the only supported runner mode is "external".`,
-  );
 }
 
 export type WorkflowWorldInjectionResult = {

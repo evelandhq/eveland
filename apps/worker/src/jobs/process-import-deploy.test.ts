@@ -335,7 +335,6 @@ describe("processNextJob", () => {
     await expect(
       processNextJob(store, "worker-a", {
         appSecretKey: secretKey,
-        workflowPostgresUrl: "",
         runtime: {
           name: "docker",
           async buildRelease(input) {
@@ -499,7 +498,6 @@ describe("processNextJob", () => {
     let startCommandContext: unknown;
     await expect(
       processNextJob(store, "worker-a", {
-        workflowPostgresUrl: "",
         runtime: {
           name: "docker",
           async buildRelease(input) {

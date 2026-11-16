@@ -1,6 +1,5 @@
 import { encryptSecretValue } from "@evelandhq/core/server/secrets";
 import { createTestStore } from "@evelandhq/db/vitest";
-import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -9,7 +8,6 @@ import {
 } from "../runtime/reserved-environment.js";
 import { composeDeploymentEnv } from "./process-support.js";
 
-const workflowPostgresUrl = "postgres://platform@host:5432/eveland";
 const evelandWorldUrl = "postgres://platform@host:5432/eveland_workflow";
 
 const baseOptions = {
@@ -25,30 +23,8 @@ const encrypt = (value: string) =>
   JSON.stringify(encryptSecretValue(value, baseOptions.appSecretKey));
 
 /**
- * Every platform-owned runtime name for a Deployment still on the legacy
- * per-project world. Only the legacy termination path launches with this kind;
- * no new build ever selects it.
- */
-async function composeOnWorldPostgres() {
-  return composeDeploymentEnv(
-    createTestStore(),
-    "proj_reserved",
-    {
-      ...baseOptions,
-      workflowWorldKind: "legacy_project",
-      workflowPostgresUrl,
-      ensureProjectWorkflowWorld: async () => `${workflowPostgresUrl}_wf_proj_reserved`,
-    },
-    {},
-  );
-}
-
-/**
- * The same, for a Deployment on the shared platform world — the only kind new
- * builds produce. The two sets are mutually exclusive by design — a project on
- * the platform world gets no per-project database, and so no
- * `WORKFLOW_POSTGRES_URL` — which is why the exported list is the union of
- * both rather than what either one produces.
+ * Every platform-owned runtime name for a Deployment on the shared platform
+ * world, the only kind new builds produce.
  */
 async function composeOnEvelandWorld() {
   return composeDeploymentEnv(
@@ -56,7 +32,6 @@ async function composeOnEvelandWorld() {
     "proj_reserved",
     {
       ...baseOptions,
-      workflowPostgresUrl,
       evelandWorkflowWorldUrl: evelandWorldUrl,
       ensureEvelandWorkflowTenant: async () => {},
       // The launch context passes the runtime-visible path (here: Docker's
@@ -78,14 +53,11 @@ describe("reserved runtime environment names", () => {
   // so a name added to one side and not the other fails here rather than
   // silently letting a project's value into the next build.
   test("the exported list is exactly what composeDeploymentEnv reserves", async () => {
-    const [legacy, platform] = await Promise.all([
-      composeOnWorldPostgres(),
-      composeOnEvelandWorld(),
-    ]);
+    const platform = await composeOnEvelandWorld();
 
     // The project has no environment entries, so every remaining name in the
-    // composed environments came from the reserved layer.
-    const reserved = new Set([...Object.keys(legacy.env), ...Object.keys(platform.env)]);
+    // composed environment came from the reserved layer.
+    const reserved = new Set(Object.keys(platform.env));
     expect([...reserved].sort()).toEqual([...RESERVED_RUNTIME_ENVIRONMENT_KEYS].sort());
   });
 
@@ -144,7 +116,7 @@ describe("reserved runtime environment names", () => {
   });
 
   test("a project entry never wins against a reserved name at runtime", async () => {
-    const { env } = await composeOnWorldPostgres();
+    const { env } = await composeOnEvelandWorld();
 
     expect(env.NODE_ENV).toBe("production");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
@@ -153,10 +125,7 @@ describe("reserved runtime environment names", () => {
     // The platform scheduler dispatches every authored schedule; eve's own
     // cron would run each one a second time.
     expect(env.EVE_SCHEDULES_DISABLED).toBe("1");
-    expect(env.WORKFLOW_POSTGRES_URL).toBe(`${workflowPostgresUrl}_wf_proj_reserved`);
-    // No memoryRootDir option here, so the reserved value is the derived
-    // worker-visible default: <EVELAND_DATA_DIR>/memory/<projectId>.
-    expect(env.EVELAND_MEMORY_ROOT).toBe(path.resolve(".eveland-data", "memory", "proj_reserved"));
+    expect(env.WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
   });
 
   test("a project entry cannot retarget the shared World under the World's own names", async () => {
@@ -205,9 +174,6 @@ describe("reserved runtime environment names", () => {
     expect(env.EVELAND_SANDBOX_MAX_OUTPUT_BYTES).toBe("16777216");
     expect(env.EVELAND_MEMORY_ROOT).toBe("/var/lib/eveland-memory");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
-    // Provisioning a per-project database here would leave an empty one behind
-    // for every project on the new world.
-    expect(env.WORKFLOW_POSTGRES_URL).toBeUndefined();
     // The shared world URL carries credentials like the other connection
     // strings and must be masked out of logs the same way.
     expect(secretValues).toContain(evelandWorldUrl);

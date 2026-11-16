@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 
 import { composeDeploymentEnv } from "./process-support.js";
 
-const workflowPostgresUrl = "postgres://platform@host.docker.internal:5432/eveland";
+const worldUrl = "postgres://platform@host.docker.internal:5432/eveland_workflow";
 
 async function composeWithWorkflowWorld(workerEnv: NodeJS.ProcessEnv) {
   const store = createTestStore();
@@ -12,11 +12,8 @@ async function composeWithWorkflowWorld(workerEnv: NodeJS.ProcessEnv) {
     "proj_pool",
     {
       appSecretKey: "eveland-test-secret-key-00000000",
-      // Only the legacy termination flow still launches with the per-project
-      // world; the pool-size budget rides along with that URL.
-      workflowWorldKind: "legacy_project",
-      workflowPostgresUrl,
-      ensureProjectWorkflowWorld: async () => `${workflowPostgresUrl}_wf_proj_pool`,
+      evelandWorkflowWorldUrl: worldUrl,
+      ensureEvelandWorkflowTenant: async () => {},
     },
     workerEnv,
   );
@@ -53,7 +50,7 @@ describe("composeDeploymentEnv workflow pool size", () => {
       {},
     );
 
-    expect(result.env.WORKFLOW_POSTGRES_URL).toBeUndefined();
+    expect(result.env.WORKFLOW_WORLD_URL).toBeUndefined();
     expect(result.env.WORKFLOW_POSTGRES_MAX_POOL_SIZE).toBeUndefined();
   });
 });
