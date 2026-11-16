@@ -38,8 +38,8 @@ describe("delegated turn watch", () => {
     expect(watch.settled).toBe(true);
   });
 
-  test("an eve 1.0 (v27) agent call settles when the root turn settles after child.opened", () => {
-    // Commit lines captured from an eve 1.0.0-rc.1 root session delegating to
+  test("an agent call settles when the root turn settles after child.opened", () => {
+    // Commit lines captured from an eve root session delegating to
     // the directory-form researcher (EVE_MOCK_AUTHORED_MODELS=1): the child
     // runs inside the root turn, so the turn settles after the child opened.
     const watch = watchDelegatedTurn({ subagentName: "researcher" });

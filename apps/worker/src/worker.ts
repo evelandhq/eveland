@@ -293,7 +293,7 @@ const jobQueueListener = await listenForQueuedJobs(storeFactory.database, () =>
 });
 
 // A Git preflight clones and scans inline — minutes-scale on a large repo or
-// slow network, the only unbounded work the control loop used to await. Its
+// slow network, so the control loop does not await it. Its
 // own single-slot pump keeps a slow clone from pausing the reconcilers (the
 // tick guard skips overlapping runs) while still draining any preflight
 // backlog back-to-back. Repeat-processing safety comes from the DB claim and

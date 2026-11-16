@@ -77,7 +77,7 @@ describe("Gateway", () => {
     ).resolves.toBeUndefined();
   });
 
-  test("preserves Eve 0.27.7 bounded stream query and durable tail header", async () => {
+  test("preserves eve's bounded stream query and durable tail header", async () => {
     let upstreamPath: string | undefined;
     const upstream = await startUpstream((request, response) => {
       upstreamPath = request.url;
@@ -334,10 +334,9 @@ describe("Gateway", () => {
       }),
     ]);
     await expect(continuation.text()).resolves.toBe("proxied:/eve/v1/session/eve_bound");
-    // This assertion used to expect the request to be proxied. eve's Workflow
-    // queue handler authenticates nothing beyond three `x-vqs-*` headers, so
-    // proxying it meant anyone who could reach a project's public hostname could
-    // drive that project's workflow and step invocations.
+    // eve's Workflow queue handler authenticates nothing beyond three `x-vqs-*`
+    // headers, so proxying it would let anyone who could reach a project's
+    // public hostname drive that project's workflow and step invocations.
     expect(workflow.status).toBe(404);
   });
 
@@ -383,7 +382,7 @@ describe("Gateway", () => {
       affinitySecret,
     });
 
-    // eve 0.48 registers `createWebhook()` URLs on GET/POST/PUT/PATCH/DELETE;
+    // eve registers `createWebhook()` URLs on GET/POST/PUT/PATCH/DELETE;
     // the token is the only credential (an unknown one answers 404 upstream),
     // so the Gateway forwards exactly this shape like any public request.
     for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {

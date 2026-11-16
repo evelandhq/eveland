@@ -912,7 +912,7 @@ describe("processNextJob", () => {
     const importJob = await store.claimNextJob("worker-a");
     await store.completeJob(importJob!.id);
     // A real temp dir, then removed -- the revision's sourcePath row still
-    // points at it, but nothing exists there anymore on disk.
+    // points at it, but nothing exists there on disk.
     const vanishedSourcePath = await mkdtemp(path.join(os.tmpdir(), "eveland-vanished-"));
     await rm(vanishedSourcePath, { recursive: true, force: true });
     const revision = await store.recordSourceRevision({

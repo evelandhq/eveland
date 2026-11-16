@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 // Tinted pills, one tone per severity: green for settled-good, blue for live,
 // amber for waiting-on-a-human, red for failures, grey for everything inert.
 // Live and failed states carry a dot so they stay findable when the tint is
-// subtle. The `data-variant` attribute keeps the old severity semantics for
+// subtle. The `data-variant` attribute carries the Badge severity variant for
 // tests and callers; the tone classes own the paint.
 const variantByStatus: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   running: "secondary",

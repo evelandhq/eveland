@@ -286,8 +286,8 @@ export function buildReleaseBuildEnvironment(input: {
       ...selected.variables,
       PATH: input.pathValue,
       npm_config_cache: input.npmCacheDir,
-      // `npx eve build` and `npx eve info` are CLI commands; from eve 0.52.0
-      // the CLI reports usage unless told not to, and with HOME at releaseDir
+      // `npx eve build` and `npx eve info` are CLI commands; eve's CLI
+      // reports usage unless told not to, and with HOME at releaseDir
       // it would also write its telemetry identity into the Release. Reserved
       // (see ./reserved-environment.ts), so `selected` can never carry it.
       EVE_TELEMETRY_DISABLED: "1",
@@ -489,8 +489,8 @@ export function createSystemdAdapter(
 
       // Hand the release and the shared npm cache to the unprivileged build user
       // before any third-party lifecycle script (npm ci/npx eve build) runs. The
-      // npm cache may still be root-owned from installs that predate this change
-      // (or from an earlier build that failed before its own handover), so this
+      // npm cache may still be root-owned (for instance from an earlier build that
+      // failed before its own handover), so this
       // chown cannot be conditional on prior ownership -- a recursive chown on
       // every build is the accepted correctness-first cost of not tracking cache
       // ownership state separately.
@@ -546,8 +546,8 @@ export function createSystemdAdapter(
             );
 
       // The artifact-access group needs write access to the release: eve's
-      // default local workflow world writes .eve/.workflow-data/ (pre-0.24.4:
-      // .workflow-data/) into the working directory, and each dynamic runtime
+      // default local workflow world writes .eve/.workflow-data/ into the
+      // working directory, and each dynamic runtime
       // user receives this group only inside its own masked mount namespace.
       // The group is named rather than left to `user:`'s login-group
       // shorthand: uutils chown (Ubuntu 26.04's default) ignores the empty

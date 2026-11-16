@@ -285,7 +285,7 @@ fi
 pnpm_version() { pnpm --version 2>/dev/null | sed 's/^v//' | head -1 || true; }
 if [ "$(pnpm_version)" != "$PNPM_PIN" ]; then
   # No pnpm, or a pnpm from the shell that is not the pinned one (Node 25+
-  # no longer bundles corepack): install the pinned pnpm into the managed node
+  # does not bundle corepack): install the pinned pnpm into the managed node
   # prefix, which leads PATH here and in the shims.
   note "pnpm@$PNPM_PIN not on PATH (found: $(pnpm_version | sed 's/^$/none/')) — installing it via npm"
   "$NODE_BIN_DIR/npm" install -g "pnpm@$PNPM_PIN"

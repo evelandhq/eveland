@@ -6,7 +6,7 @@ import type { Store } from "@evelandhq/db";
 
 /**
  * Spawns the REAL dispatcher app (`apps/workflow-dispatcher`) for the live
- * harnesses. A bare `startDispatcherService` is no longer a valid stand-in:
+ * harnesses. A bare `startDispatcherService` is not a valid stand-in:
  * exact activation is bound to the registered dispatcher instance, so a
  * dispatcher that never heartbeats a registration cannot activate anything —
  * the harness must run the same launcher production runs.

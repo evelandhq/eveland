@@ -2,12 +2,12 @@
  * When a smoke may stop reading the root session stream of a turn that
  * delegates to a subagent.
  *
- * The session stream (protocol v27) sends commit lines whose `facts` carry
+ * The session stream sends commit lines whose `facts` carry
  * the events. The agent call is a `call.requested` whose capability kind is
  * `agent`; `child.opened` (with the agent's `name`) is the delegation proof --
  * a `task.started` alone is not, since the call can fail before the child
  * opens; the child runs inside the root turn, whose single `turn.settled`
- * reports the outcome. One captured 1.0.0-rc.1 root stream:
+ * reports the outcome. One captured root stream:
  *
  *   call.requested   { capability: { kind: "agent", name: "researcher" } }
  *   task.started

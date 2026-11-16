@@ -52,9 +52,7 @@ export type ScheduleRunDetail = ScheduleRun & {
 };
 
 // Pinned to the core wire shapes (api-contract.typecheck.ts asserts the
-// equality): the deployment domain previously hand-wrote these and had
-// already drifted -- Deployment lost updatedAt, and AgentRoute described
-// narrower targets than the API actually returns.
+// equality), so these types cannot drift from what the API actually returns.
 export type AgentEndpoints = CoreAgentEndpoints;
 export type Deployment = CorePublicDeployment;
 export type AgentRoute = CoreResolvedAgentRoute;

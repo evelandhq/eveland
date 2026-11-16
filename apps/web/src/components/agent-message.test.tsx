@@ -66,7 +66,7 @@ function renderMessage(
 }
 
 describe("AgentMessage", () => {
-  test("answers a call's approval with the v27 interaction id", async () => {
+  test("answers a call's approval with its interaction id", async () => {
     const onAnswers = vi.fn();
     const { rerender } = renderMessage([toolPart("running")]);
     const trigger = () => screen.getByRole("button", { name: /deploy/i });
@@ -449,7 +449,7 @@ describe("a question that settles while the page watches", () => {
 });
 
 describe("Playground helpers", () => {
-  test("maps every v27 call state onto a tool header state", () => {
+  test("maps every eve call state onto a tool header state", () => {
     expect(toolHeaderState("streaming")).toBe("input-streaming");
     expect(toolHeaderState("approval")).toBe("approval-requested");
     expect(toolHeaderState("running")).toBe("input-available");

@@ -4,15 +4,14 @@ type GenerateOptions = Parameters<MockLanguageModelV3["doGenerate"]>[0];
 type GenerateResult = Awaited<ReturnType<MockLanguageModelV3["doGenerate"]>>;
 
 /**
- * The tool each test Connection exposes, by Connection name. Since eve 0.69
- * the model never sees a discovered tool in its tool list: it finds it with a
- * search tool and calls it through an execute tool. Through eve 0.75 those
- * are `connection_search({ connection, query })` and
- * `connection_execute({ connection, tool, input })`, naming the tool by its
- * own (unqualified) name; from 0.76 they are eve's catalog tools
- * `eve__search({ query })` and `eve__tool({ name, input })`, and every
- * connection tool is named `<connection>__<tool>`. The model reads which
- * generation it is on from the tool list it is offered.
+ * The tool each test Connection exposes, by Connection name. The model never
+ * sees a discovered tool in its tool list: it finds it with eve's catalog
+ * search tool `eve__search({ query })` and calls it through
+ * `eve__tool({ name, input })`, and every connection tool is named
+ * `<connection>__<tool>`. The model also recognizes the unqualified
+ * `connection_search({ connection, query })` /
+ * `connection_execute({ connection, tool, input })` pair, and reads which pair
+ * it has from the tool list it is offered.
  */
 const CONNECTION_TOOLS = {
   warehouse: "getConnectionStatus",
@@ -58,8 +57,8 @@ export function connectionTestModel(): MockLanguageModelV3 {
     const tool = CONNECTION_TOOLS[connection];
     const qualifiedTool = `${connection}__${tool}`;
 
-    // A Connection call or a delegation came back: the flow is done. On eve
-    // 0.69 a delegation first answers with its task receipt; the turn then
+    // A Connection call or a delegation came back: the flow is done. A
+    // delegation first answers with its task receipt; the turn then
     // holds for the child and calls the model again with its result, which
     // falls through to the same closing text below.
     if (
