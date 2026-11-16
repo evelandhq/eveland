@@ -18,7 +18,7 @@ description: 登录、Projects、Settings、项目页与 Logs 等 Dashboard 各�
 
 ## Projects (/projects)
 
-展示用户全部项目：项目名称；当前部署状态；最近一次更新时间；当前 Eve 版本（落后于最新支持版本或不受支持时以红色显示，信息提示说明升级目标）；最近 Session 状态；下一次 Schedule 时间（如有，按个人 Display timezone 显示，当天只显示 24 小时制的 `HH:mm`，其他日期显示 `MM-DD HH:mm`）。支持新建项目、删除项目、进入项目。
+展示用户全部项目：项目名称；当前部署状态；最近一次更新时间；当前 Eve 版本（构建实际安装的版本；尚未构建时为声明的范围）；最近 Session 状态；下一次 Schedule 时间（如有，按个人 Display timezone 显示，当天只显示 24 小时制的 `HH:mm`，其他日期显示 `MM-DD HH:mm`）。支持新建项目、删除项目、进入项目。
 
 Session 的 `waiting` 表示对话已空闲、可接收下一条消息，并不代表有待处理的人工交互。项目应显示为 `Idle` 或 `Scheduled`（仍服从部署状态与未审阅定时任务失败的优先级），活动说明为 `Ready for next message`。只有 `waiting_approval` 才显示橘色的人工处理提示。30 天历史条采用相同区分：失败 Session 优先于待处理人工交互，普通空闲对话既不将当天染成橘色，也不计入 awaiting 数量。成功率和 p95 耗时仍只统计终态 Session；可以继续对话不等于整个 Session 已完成。
 
@@ -30,7 +30,7 @@ Project 删除是永久、异步操作。用户必须输入完整 Project 名称
 
 主 Workspace 外壳只应用于 Projects、Deployments 与 Usage。左上角显示 Eveland Logo；左下角显示当前用户头像、姓名和邮箱。整行是单一的 Account Dropdown trigger，菜单提供 Settings 和 Sign out。
 
-Project 详情路由使用独立的 Project 外壳：左上角返回 Projects，其余 Sidebar 只包含当前 Project 的导航；底部上下文区展示当前 Deployment 状态与 Eve 版本，而不是用户信息。当前 Eve 版本标记为健康；较旧但受支持或不受支持的版本通过 Tooltip 给出升级提示。Settings 路由同样使用独立外壳：左上角返回 Workspace，Sidebar 内容按 Personal 与 System 分组，底部不显示用户信息。
+Project 详情路由使用独立的 Project 外壳：左上角返回 Projects，其余 Sidebar 只包含当前 Project 的导航；底部上下文区展示当前 Deployment 状态与 Eve 版本，而不是用户信息。Settings 路由同样使用独立外壳：左上角返回 Workspace，Sidebar 内容按 Personal 与 System 分组，底部不显示用户信息。
 
 ## Profile (/settings/profile)
 

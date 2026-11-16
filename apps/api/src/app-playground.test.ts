@@ -428,125 +428,44 @@ describe("api app", () => {
     ]);
   });
 
-  test("reports the deployed Eve version and rejects pinned unsupported Playground sessions", async () => {
+  test("reports the deployed Eve version, preferring the build-resolved one", async () => {
     const store = createTestStore();
-    const project = await store.createProject({
-      name: "Old Eve Playground Agent",
-      importKind: "zip",
-    });
+    const project = await store.createProject({ name: "Eve Version Agent", importKind: "zip" });
     const revision = await store.recordSourceRevision({
       projectId: project.id,
       kind: "zip",
-      sourcePath: "/tmp/old-eve-playground-agent",
+      sourcePath: "/tmp/eve-version-agent",
       summary: {},
       envVars: [],
       files: [
-        {
-          path: "package.json",
-          content: JSON.stringify({ dependencies: { eve: "0.22.6" } }),
-        },
+        { path: "package.json", content: JSON.stringify({ dependencies: { eve: "^1.0.0" } }) },
       ],
       schedules: [],
     });
-    const oldDeployment = await store.recordDeployment({
+    const app = createApp(store);
+
+    const declared = await app.request(`/api/projects/${project.id}/eve-version`);
+    expect(declared.status).toBe(200);
+    await expect(declared.json()).resolves.toEqual({
+      eveVersion: { version: "^1.0.0", sourceRevisionId: revision.id },
+    });
+
+    const deployment = await store.recordDeployment({
       projectId: project.id,
       sourceRevisionId: revision.id,
-      imageTag: "eveland/old-eve:release",
-      containerName: "eveland-old-eve",
+      imageTag: "eveland/eve-version:release",
+      containerName: "eveland-eve-version",
       internalPort: 3000,
       hostPort: 41008,
       runtimeKind: "docker",
+      summary: { eveVersionResolved: "1.0.0" },
     });
-    const playgroundProxy = vi.fn(async () =>
-      Response.json(
-        {
-          error: "Unsupported Eve version",
-          detail: 'Unsupported Eve dependency "0.22.6". Eveland requires Eve 1.0.x.',
-        },
-        { status: 409 },
-      ),
-    );
-    const app = createApp(store, { playgroundProxy });
+    await store.ensureDeploymentRoutes(project.id, deployment.id, "agent.localhost");
+    await store.promoteDeployment(project.id, deployment.id);
 
-    const version = await app.request(`/api/projects/${project.id}/eve-version`);
-    expect(version.status).toBe(200);
-    await expect(version.json()).resolves.toEqual({
-      eveVersion: {
-        version: "0.22.6",
-        expected: "1.0.x",
-        supportedRanges: ["1.0.x"],
-        supported: false,
-        sourceRevisionId: revision.id,
-      },
+    const resolved = await app.request(`/api/projects/${project.id}/eve-version`);
+    await expect(resolved.json()).resolves.toEqual({
+      eveVersion: { version: "1.0.0", sourceRevisionId: revision.id },
     });
-
-    const playground = await app.request(`/api/projects/${project.id}/playground/eve/v1/session`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: "hello" }),
-    });
-    expect(playground.status).toBe(409);
-    await expect(playground.json()).resolves.toMatchObject({
-      error: "Unsupported Eve version",
-    });
-    expect(playgroundProxy).toHaveBeenCalledOnce();
-    await expect(store.listSessions(project.id)).resolves.toEqual([
-      expect.objectContaining({ deploymentId: null, status: "failed" }),
-    ]);
-
-    const supportedRevision = await store.recordSourceRevision({
-      projectId: project.id,
-      kind: "zip",
-      sourcePath: "/tmp/current-eve-playground-agent",
-      summary: { eveVersion: "1.0.0-rc.2" },
-      envVars: [],
-      files: [],
-      schedules: [],
-    });
-    const supportedDeployment = await store.recordDeployment({
-      projectId: project.id,
-      sourceRevisionId: supportedRevision.id,
-      imageTag: "eveland/current-eve:release",
-      containerName: "eveland-current-eve",
-      internalPort: 3000,
-      hostPort: 41009,
-      runtimeKind: "docker",
-    });
-    await store.ensureDeploymentRoutes(project.id, supportedDeployment.id, "agent.localhost");
-    await store.promoteDeployment(project.id, supportedDeployment.id);
-    const pinnedOldSession = await store.createSession({
-      projectId: project.id,
-      deploymentId: oldDeployment.id,
-      trigger: "playground",
-    });
-    await store.completeSession(pinnedOldSession.id, {
-      status: "waiting",
-      eveSessionId: "eve_old_pinned",
-    });
-    const pinnedContinuation = await app.request(
-      `/api/projects/${project.id}/playground/eve/v1/session/eve_old_pinned`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          message: "continue",
-        }),
-      },
-    );
-    expect(pinnedContinuation.status).toBe(409);
-    await expect(pinnedContinuation.json()).resolves.toMatchObject({
-      error: "Unsupported Eve version",
-    });
-    const pinnedCancel = await app.request(
-      `/api/projects/${project.id}/playground/eve/v1/session/eve_old_pinned/cancel`,
-      {
-        method: "POST",
-      },
-    );
-    expect(pinnedCancel.status).toBe(409);
-    await expect(pinnedCancel.json()).resolves.toMatchObject({
-      error: "Unsupported Eve version",
-    });
-    expect(playgroundProxy).toHaveBeenCalledOnce();
   });
 });

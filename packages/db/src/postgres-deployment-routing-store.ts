@@ -5,7 +5,7 @@ import type {
 } from "@evelandhq/core/contracts";
 import { claimDeploymentKey, createId } from "@evelandhq/core/ids";
 import { isSessionBindingActive, validateRouteTargets } from "@evelandhq/core/routing";
-import { createEveVersionInfo, readDeclaredEveVersion } from "@evelandhq/core/source";
+import { readDeclaredEveVersion } from "@evelandhq/core/source";
 import { and, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import {
   agentRouteRowToAgentRoute,
@@ -387,7 +387,7 @@ export function createPostgresDeploymentRoutingStore({
           .limit(1);
         if (packageJson) version = readDeclaredEveVersion([packageJson]);
       }
-      return createEveVersionInfo(version, record.sourceRevisionId);
+      return { version, sourceRevisionId: record.sourceRevisionId };
     },
 
     async getDeploymentByContainerName(containerName) {

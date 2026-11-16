@@ -413,7 +413,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
-          resolvedEveVersion: "1.0.0-rc.2",
+          resolvedEveVersion: "1.0.0",
           schedulerDefinitions: [
             {
               key: "crm__sync",
@@ -456,7 +456,7 @@ describe("createDockerAdapter", () => {
     expect(result.log).toContain("Docker sandbox self-check passed");
     expect(result.discovery).toEqual({
       manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
-      resolvedEveVersion: "1.0.0-rc.2",
+      resolvedEveVersion: "1.0.0",
       schedulerDefinitions: [
         {
           key: "crm__sync",
@@ -562,7 +562,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "1.0.0-rc.2",
+          resolvedEveVersion: "1.0.0",
           schedulerDefinitions: [],
         }),
       } as never);
@@ -600,7 +600,7 @@ describe("createDockerAdapter", () => {
         exitCode: 0,
         stdout: JSON.stringify({
           manifest: null,
-          resolvedEveVersion: "1.0.0-rc.2",
+          resolvedEveVersion: "1.0.0",
           schedulerDefinitions: [],
         }),
       } as never);
@@ -1049,7 +1049,7 @@ describe("readImageDiscovery", () => {
       exitCode: 0,
       stdout: JSON.stringify({
         manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
-        resolvedEveVersion: "1.0.0-rc.2",
+        resolvedEveVersion: "1.0.0",
       }),
     } as never);
 

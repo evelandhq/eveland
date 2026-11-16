@@ -1,18 +1,13 @@
 import { describe, expect, test } from "vitest";
-import {
-  createEveVersionInfo,
-  inspectEveProject,
-  isSupportedEveDependency,
-  isUnsupportedEveVersionMessage,
-  unsupportedEveVersionMessage,
-} from "./source.js";
+import { unsupportedEveSpecifierMessage } from "./eve-compatibility.js";
+import { inspectEveProject } from "./source.js";
 
 describe("inspectEveProject", () => {
   test("recognizes nested eve agent layout and summarizes authored slots", () => {
     const result = inspectEveProject([
       {
         path: "package.json",
-        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "1.0.0-rc.2" } }),
+        content: JSON.stringify({ name: "weather-agent", dependencies: { eve: "1.0.0" } }),
       },
       {
         path: "agent/agent.ts",
@@ -38,7 +33,7 @@ describe("inspectEveProject", () => {
     expect(result.valid).toBe(true);
     expect(result.layout).toBe("nested");
     expect(result.projectName).toBe("weather-agent");
-    expect(result.eveVersion).toBe("1.0.0-rc.2");
+    expect(result.eveVersion).toBe("1.0.0");
     expect(result.capabilities).toEqual({ eveChat: true });
     expect(result.summary).toMatchObject({
       agents: ["agent/agent.ts"],
@@ -60,7 +55,7 @@ describe("inspectEveProject", () => {
 
   test("does not declare eveChat for a non-canonical or unrelated Eve channel", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       {
         path: "agent/channels/eve.ts",
@@ -76,7 +71,7 @@ describe("inspectEveProject", () => {
   test("probes a crafted channel file in linear time", () => {
     const started = performance.now();
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       { path: "agent/channels/eve.ts", content: "import{".repeat(20_000) },
     ]);
@@ -86,7 +81,7 @@ describe("inspectEveProject", () => {
 
   test("uses Eve's authored skill extensions in the source summary", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0-rc.2" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
       ...["md", "ts", "cts", "mts", "js", "cjs", "mjs"].map((extension) => ({
         path: `agent/skills/research.${extension}`,
@@ -120,364 +115,24 @@ describe("inspectEveProject", () => {
     );
   });
 
-  test("fails closed with an upgrade diagnostic outside the supported Eve line", () => {
+  test("fails closed with a diagnostic when the declared Eve cannot resolve inside the window", () => {
     const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.22.6" } }) },
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "0.83.3" } }) },
       { path: "agent/instructions.md", content: "You are an agent." },
     ]);
 
     expect(result.valid).toBe(false);
-    expect(result.eveVersion).toBe("0.22.6");
-    expect(result.errors).toContain(
-      'Unsupported Eve dependency "0.22.6". Eveland requires Eve 1.0.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
-    );
+    expect(result.eveVersion).toBe("0.83.3");
+    expect(result.errors).toContain(unsupportedEveSpecifierMessage("0.83.3"));
   });
 
-  test("accepts dependency declarations contained inside the 1.0 compatibility window", () => {
-    for (const version of [
-      "1.0.0-rc.1",
-      "~1.0.0-rc.1",
-      "1.0.0",
-      "~1.0.0",
-      "1.0.4",
-      "1.0",
-      "1.0.x",
-      "1.0.*",
-      " 1.0.0-rc.1 ",
-    ]) {
-      expect(isSupportedEveDependency(version)).toBe(true);
-    }
-    // A caret on a major above zero spans every later minor, and a prerelease
-    // tag only qualifies an exact patch, so neither pins one verified line.
-    for (const version of [
-      "^1.0.0",
-      "^1.0.0-rc.1",
-      "1",
-      "1.x",
-      "1.1.0",
-      "~1.1.0",
-      "1.0.x-rc.1",
-      "1.0-rc.1",
-      "2.0.0",
-      "1.0.0-rc.1 || 0.83.3",
-      ">=1.0.0-rc.0 <1.1.0",
-    ]) {
-      expect(isSupportedEveDependency(version), version).toBe(false);
-    }
-    // The window is a set of verified lines, not "everything at or above the
-    // floor": 0.83.x, the former floor and the last v26 line, retired on
-    // 2026-11-04 (v0.66.0 had carried 1.0 since 2026-11-02); 0.84.x through
-    // 0.91.x speak the same v27 protocol as 1.0 but were skipped on
-    // 2026-11-02 when 1.0 entered, and 0.81.x, the former
-    // floor, retired that day (v0.65.0 had carried 0.83 since 2026-10-27);
-    // 0.82.x sits inside the hull and was skipped on 2026-10-27 when
-    // 0.83 entered, and 0.79.x, the former floor, retired that day (v0.64.0
-    // had carried 0.81 since 2026-10-21); 0.80.x was skipped on 2026-10-21 when
-    // 0.81 entered, and 0.76.x, the former floor, retired that day (v0.63.0
-    // had carried 0.79 since 2026-10-14); 0.77.x and 0.78.x were skipped on
-    // 2026-10-14 when 0.79 entered; 0.74.x, the former floor, retired that day
-    // (v0.62.0 had carried 0.76 since 2026-10-10); 0.75.x retired on
-    // 2026-10-10 when 0.76
-    // replaced it, before any release carried it; 0.68.x, the former floor,
-    // retired on 2026-10-09 when 0.75 entered (v0.61.0 had carried 0.74 since
-    // the day before); 0.73.x retired
-    // on 2026-10-08 when 0.74
-    // replaced it, before any release carried it; 0.72.x retired the same way
-    // earlier that day when 0.73 replaced it; 0.70.x retired the same way
-    // on 2026-10-07 when 0.72 replaced it, and 0.71.x was skipped that day; 0.69.x retired on 2026-10-02 when 0.70 replaced it, the same way;
-    // 0.62.x is below the floor
-    // (retired the same day when 0.69 entered), 0.58.x retired on 2026-09-23 when the window slid to 0.62,
-    // 0.55.x retired on 2026-09-19 (when 0.62 entered), 0.54.x
-    // retired on 2026-09-16 (when 0.56
-    // entered a window that was already two lines wide), 0.52.x and 0.53.x
-    // retired together on 2026-09-15, 0.50.x/0.51.x on 2026-09-12, 0.49.x on
-    // 2026-09-07, 0.48.x was never verified (skipped when 0.49.0 superseded
-    // it), 0.45.x/0.46.x/0.47.x are further below, 0.56.x and 0.57.x were
-    // skipped on 2026-09-17 before any release carried them, 0.59.x, 0.60.x and
-    // 0.61.x were skipped on 2026-09-19 the same way, 0.63.x, 0.64.x, and
-    // 0.65.x sit inside the hull but were skipped on 2026-09-23 and
-    // 2026-09-24, 0.66.x retired on 2026-09-26 two days after it entered (no
-    // release carried it), 0.67.x retired the same way on 2026-09-29, and
-    // and 0.84.x through 0.91.x are rejected like any other skipped line.
-    for (const version of [
-      "0.30.8",
-      "0.31.3",
-      "0.32.5",
-      "0.33.3",
-      "0.34.0",
-      "0.35.0",
-      "0.36.0",
-      "0.37.1",
-      "0.38.3",
-      "0.39.0",
-      "0.39.3",
-      "^0.39.0",
-      "0.39.x",
-      "0.40.0",
-      "^0.40.0",
-      "0.40.x",
-      "0.41.0",
-      "0.42.0",
-      "^0.42.0",
-      "0.42.x",
-      ">=0.62.0",
-      ">=0.62.0 <0.64.0",
-      ">=0.62.0 <0.65.0",
-      ">=0.62.0 <0.66.1",
-      ">=0.62.0 <0.67.0",
-      ">=0.62.0 <0.68.0",
-      ">=0.62.0 <0.69.0",
-      ">=0.58.0 <0.63.0",
-      ">=0.68.0",
-      ">=0.68.0 <0.70.0",
-      ">=0.68.0 <0.71.0",
-      ">=0.68.0 <0.73.0",
-      ">=0.68.0 <0.74.0",
-      ">=0.68.0 <0.75.0",
-      ">=0.74.0",
-      ">=0.74.0 <0.76.0",
-      ">=0.74.0 <0.77.0",
-      ">=0.76.0 <0.80.0",
-      ">=0.79.0 <0.82.0",
-      ">=0.81.0 <0.84.0",
-      "0.81.1",
-      "~0.81.1",
-      "^0.81.1",
-      "0.81",
-      "0.81.x",
-      "0.83.3",
-      "~0.83.3",
-      "^0.83.3",
-      "0.83",
-      "0.83.x",
-      ">=0.83.0 <0.84.0",
-      "0.84.0",
-      "0.85.0",
-      "0.87.0",
-      "0.90.0",
-      "0.91.0",
-      "~0.91.0",
-      "^0.91.0",
-      "0.91.x",
-      "0.79.0",
-      "~0.79.0",
-      "^0.79.0",
-      "0.79.x",
-      "0.82.x",
-      "0.84.0",
-      "0.76.0",
-      "~0.76.0",
-      "^0.76.0",
-      "0.76",
-      "0.76.x",
-      "0.74.0",
-      "~0.74.0",
-      "^0.74.0",
-      "0.74.x",
-      "0.78.0",
-      "~0.78.0",
-      "0.78.x",
-      "0.75.1",
-      "~0.75.1",
-      "^0.75.1",
-      "0.75.x",
-      "0.68.0",
-      "~0.68.0",
-      "^0.68.0",
-      "0.68.x",
-      "0.43.0",
-      "~0.43.0",
-      "0.43.x",
-      "0.44.4",
-      "^0.44.4",
-      "0.44.x",
-      "0.45.2",
-      "^0.45.2",
-      "0.45.x",
-      "0.46.0",
-      "^0.46.0",
-      "0.46.x",
-      "0.48.0",
-      "^0.48.0",
-      "0.48.x",
-      "0.47.7",
-      "^0.47.7",
-      "0.47.x",
-      "0.49.0",
-      "~0.49.0",
-      "^0.49.0",
-      "0.49",
-      "0.49.x",
-      // 0.50 and 0.51 were verified and then retired on 2026-09-12, 0.52 and
-      // 0.53 on 2026-09-15, 0.54 on 2026-09-16: a formerly supported line is
-      // rejected exactly like a never-verified one.
-      "0.50.0",
-      "~0.50.0",
-      "^0.50.0",
-      "0.50",
-      "0.50.x",
-      "0.51.1",
-      "~0.51.1",
-      "^0.51.1",
-      "0.51",
-      "0.51.x",
-      "0.52.5",
-      "~0.52.5",
-      "^0.52.5",
-      "0.52",
-      "0.52.x",
-      "0.53.1",
-      "~0.53.1",
-      "^0.53.1",
-      "0.53",
-      "0.53.x",
-      "0.54.5",
-      "~0.54.5",
-      "^0.54.5",
-      "0.54",
-      "0.54.x",
-      "0.56.0",
-      "~0.56.0",
-      "^0.56.0",
-      "0.56",
-      "0.56.x",
-      "0.57.0",
-      "~0.57.0",
-      "^0.57.0",
-      "0.57",
-      "0.57.x",
-      // 0.55 was verified and retired on 2026-09-19, 0.58 on 2026-09-23.
-      "0.58.1",
-      "~0.58.1",
-      "^0.58.1",
-      "0.58",
-      "0.58.x",
-      "0.55.0",
-      "~0.55.0",
-      "^0.55.0",
-      "0.55",
-      "0.55.x",
-      // Skipped on 2026-09-19.
-      "0.59.1",
-      "~0.59.1",
-      "^0.59.1",
-      "0.59",
-      "0.59.x",
-      "0.60.1",
-      "~0.60.1",
-      "^0.60.1",
-      "0.60",
-      "0.60.x",
-      "0.61.1",
-      "~0.61.1",
-      "^0.61.1",
-      "0.61",
-      "0.61.x",
-      // Skipped inside the hull on 2026-09-23 (0.63, 0.64) and 2026-09-24
-      // (0.65); 0.66 retired inside it on 2026-09-26 and 0.67 on 2026-09-29.
-      "0.63.0",
-      "~0.63.0",
-      "^0.63.0",
-      "0.63",
-      "0.63.x",
-      "0.64.1",
-      "~0.64.1",
-      "^0.64.1",
-      "0.64",
-      "0.64.x",
-      "0.64.*",
-      "0.65.0",
-      "~0.65.0",
-      "^0.65.0",
-      "0.65",
-      "0.65.x",
-      "0.65.*",
-      "0.66.1",
-      "~0.66.1",
-      "^0.66.1",
-      "0.66",
-      "0.66.x",
-      "0.66.*",
-      "0.67.0",
-      "~0.67.0",
-      "^0.67.0",
-      "0.67",
-      "0.67.x",
-      "0.67.*",
-      // Retired on 2026-10-02.
-      "0.62.0",
-      "~0.62.0",
-      "^0.62.0",
-      "0.62",
-      "0.62.x",
-      "0.62.*",
-      // Retired on 2026-10-02, one day after it entered.
-      "0.69.0",
-      "~0.69.0",
-      "^0.69.0",
-      "0.69",
-      "0.69.x",
-      "0.69.*",
-      // Retired on 2026-10-07, five days after it entered.
-      "0.70.0",
-      "~0.70.0",
-      "^0.70.0",
-      "0.70",
-      "0.70.x",
-      "0.70.*",
-      // Skipped on 2026-10-07.
-      "0.71.0",
-      "^0.71.0",
-      "0.71.x",
-      // Retired on 2026-10-08, one day after it entered.
-      "0.72.0",
-      "0.72.1",
-      "~0.72.1",
-      "^0.72.1",
-      "0.72",
-      "0.72.x",
-      "0.72.*",
-      // Retired on 2026-10-08, hours after it entered.
-      "0.73.0",
-      "~0.73.0",
-      "^0.73.0",
-      "0.73",
-      "0.73.x",
-      "0.73.*",
-      "0.77.0",
-      "^0.77.0",
-      "0.80.0",
-      "^0.80.0",
-      "0.80.x",
-      "0.82.0",
-      "^0.82.0",
-      "*",
-      "latest",
-    ]) {
-      expect(isSupportedEveDependency(version)).toBe(false);
-    }
-  });
+  test("accepts the caret range eve init writes", () => {
+    const result = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "^1.0.0" } }) },
+      { path: "agent/instructions.md", content: "You are an agent." },
+    ]);
 
-  test("recognizes its own gate message after it has been reduced to plain text", () => {
-    for (const specifier of ["0.31.1", "^0.31.0", null]) {
-      expect(isUnsupportedEveVersionMessage(unsupportedEveVersionMessage(specifier))).toBe(true);
-    }
-    for (const message of [
-      "Runtime activation timed out after 30000ms.",
-      "Deployment is still draining.",
-      "RuntimeInstance disappeared during activation.",
-    ]) {
-      expect(isUnsupportedEveVersionMessage(message)).toBe(false);
-    }
-  });
-
-  test("reports the sliding compatibility window as structured ranges", () => {
-    expect(createEveVersionInfo("1.0.0-rc.1", "src_1")).toEqual({
-      version: "1.0.0-rc.1",
-      expected: "1.0.x",
-      supportedRanges: ["1.0.x"],
-      supported: true,
-      sourceRevisionId: "src_1",
-    });
+    expect(result.errors).toEqual([]);
+    expect(result.valid).toBe(true);
   });
 });

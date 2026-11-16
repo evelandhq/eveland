@@ -1,7 +1,6 @@
-import { mkdir, readFile, readdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { injectObserverHooks, type ObserverInjectionResult } from "@evelandhq/agent-observer";
-import { eveLineOfSpecifier } from "@evelandhq/core/eve-compatibility";
 import { injectSchedulerAdapter, type SchedulerInjectionResult } from "@evelandhq/agent-scheduler";
 import { execa } from "execa";
 import { injectExtensionIntegrator } from "./extension-integration.js";
@@ -46,10 +45,7 @@ export async function prepareReleaseTree(input: {
     ? await injectWorkflowWorld({ releaseDir: buildDir, config: input.workflowWorld })
     : undefined;
   const scheduler = await injectSchedulerAdapter({ releaseDir: buildDir });
-  const modelGateway = await injectModelGateway({
-    releaseDir: buildDir,
-    eveVersion: eveLineOfSpecifier(await declaredEveSpecifier(buildDir)) ?? "",
-  });
+  const modelGateway = await injectModelGateway({ releaseDir: buildDir });
   const modelCatalog = input.modelCatalogCacheFile
     ? await loadModelCatalog({
         cacheFile: input.modelCatalogCacheFile,
@@ -93,18 +89,6 @@ export function preparedReleaseLogLines(result: PreparedReleaseResult): string[]
     );
   }
   return lines;
-}
-
-async function declaredEveSpecifier(releaseDir: string): Promise<string | null> {
-  try {
-    const manifest = JSON.parse(await readFile(path.join(releaseDir, "package.json"), "utf8")) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    return manifest.dependencies?.eve ?? manifest.devDependencies?.eve ?? null;
-  } catch {
-    return null;
-  }
 }
 
 async function hasExtensionMountSources(releaseDir: string): Promise<boolean> {

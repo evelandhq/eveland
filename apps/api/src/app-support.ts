@@ -14,11 +14,8 @@ import {
   sessionStatusFromEveEvent,
 } from "@evelandhq/core/eve";
 import { assertSafeArchivePath } from "@evelandhq/core/server/archive";
-import {
-  createEveVersionInfo,
-  readDeclaredEveVersion,
-  type EveVersionInfo,
-} from "@evelandhq/core/source";
+import type { EveVersionInfo } from "@evelandhq/core/eve-compatibility";
+import { readDeclaredEveVersion } from "@evelandhq/core/source";
 import {
   ProjectSlugConflictError,
   type DeploymentStore,
@@ -196,7 +193,12 @@ export async function resolveProjectEveVersion(
     ? await store.getDeployment(deploymentId)
     : await store.getCurrentDeployment(projectId);
   if (deployment) {
-    return (await store.getDeploymentEveVersion(deployment.id)) ?? createEveVersionInfo(null, null);
+    return (
+      (await store.getDeploymentEveVersion(deployment.id)) ?? {
+        version: null,
+        sourceRevisionId: null,
+      }
+    );
   }
 
   const revision = await store.getCurrentSourceRevision(projectId);
@@ -208,7 +210,7 @@ export async function resolveProjectEveVersion(
       version = readDeclaredEveVersion([{ path: packageJson.path, content: packageJson.content }]);
   }
 
-  return createEveVersionInfo(version, revision?.id ?? null);
+  return { version, sourceRevisionId: revision?.id ?? null };
 }
 
 export function monitorPlaygroundStream(

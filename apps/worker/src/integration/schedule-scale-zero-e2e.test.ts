@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { LATEST_VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
+import { VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import { materializeEveFixtureDirectory } from "@evelandhq/core/server/eve-fixture";
 import { describe, expect, test } from "vitest";
 
@@ -26,7 +26,7 @@ describe("schedule scale-to-zero integration harness", () => {
       ]);
 
       expect(JSON.parse(fixturePackage)).toMatchObject({
-        dependencies: { eve: LATEST_VERIFIED_EVE_VERSION },
+        dependencies: { eve: VERIFIED_EVE_VERSION },
       });
       expect(integrationScript).toContain("schedule-scale-zero-e2e.mts");
       expect(e2eScript).toContain("SCHEDULE SCALE TO ZERO E2E OK");

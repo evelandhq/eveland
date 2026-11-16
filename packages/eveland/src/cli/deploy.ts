@@ -158,8 +158,8 @@ export async function runDeploy(input: {
   for (const warning of source.warnings) io.print(`Warning: ${warning}`);
   const provenance = await (io.detectProvenance ?? detectGitProvenance)(dir);
   io.print(describeGitProvenance(provenance));
-  const instance = await request<{ eve: { supportedRanges: string[] } }>("/api/instance");
-  const versionProblem = eveSpecifierProblem(source.eveSpecifier, instance.eve.supportedRanges);
+  const instance = await request<{ eve: { supportedRange: string } }>("/api/instance");
+  const versionProblem = eveSpecifierProblem(source.eveSpecifier, instance.eve.supportedRange);
   if (versionProblem) throw new Error(versionProblem);
 
   const slug = projectSlugFrom(

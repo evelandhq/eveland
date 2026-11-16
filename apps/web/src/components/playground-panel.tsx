@@ -44,7 +44,6 @@ import {
   stashPendingSessionCreate,
   type PendingSessionCreate,
 } from "@/lib/playground-session";
-import type { EveVersionInfo } from "@/lib/api";
 import { AgentMessage, type AgentAnswer } from "@/components/agent-message";
 import { PlaygroundAuthenticationSettings } from "@/components/playground-authentication-settings";
 import {
@@ -62,11 +61,9 @@ import {
   peekPendingPlaygroundTurn,
   type PendingPlaygroundMessage,
 } from "@/lib/playground-route-auth";
-import { getEveVersionStatus } from "@/components/eve-version-status";
 
 type PlaygroundPanelProps = {
   projectId: string;
-  eveVersion: EveVersionInfo;
 };
 
 /**
@@ -81,7 +78,7 @@ export function canAnswerInteraction(
   return status !== "resuming" && interaction.status === "open" && interaction.answer === undefined;
 }
 
-export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps) {
+export function PlaygroundPanel({ projectId }: PlaygroundPanelProps) {
   const baseUrl = `/api/projects/${projectId}/playground`;
   const pendingRouteAuthTurn = useRef<PendingPlaygroundMessage | null>(null);
   const leaveResetSent = useRef(false);
@@ -129,17 +126,8 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
   const isBusy = agent.status === "busy";
   const isResuming = agent.status === "resuming";
   const turnIsOpen = activeTurn(agent.view) !== undefined;
-  const versionError = eveVersion.supported
-    ? null
-    : `Detected Eve ${eveVersion.version ?? "Unknown"}; Eveland requires ${eveVersion.expected}. Upgrade the project's eve dependency before deploying.`;
-  const versionUpgradeWarning =
-    getEveVersionStatus(eveVersion) === "upgrade"
-      ? `A newer supported Eve version is available. Upgrade to Eve ${eveVersion.supportedRanges.at(-1)} as soon as possible.`
-      : null;
-  const routeAuthRedirect = versionError ? null : interactionFromClientError(agent.error);
-  const error = routeAuthRedirect
-    ? null
-    : (versionError ?? composerError ?? agent.error?.message ?? null);
+  const routeAuthRedirect = interactionFromClientError(agent.error);
+  const error = routeAuthRedirect ? null : (composerError ?? agent.error?.message ?? null);
 
   const lastMessage = agent.messages.at(-1);
   // The optimistic message waits in `submitted` until eve consumes it; until
@@ -322,15 +310,8 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
           </Alert>
         ) : error ? (
           <Alert className="mb-2" variant="destructive">
-            <AlertTitle>
-              {versionError ? "Eve upgrade required" : "Playground request failed"}
-            </AlertTitle>
+            <AlertTitle>Playground request failed</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : versionUpgradeWarning ? (
-          <Alert className="mb-2" variant="destructive">
-            <AlertTitle>Eve upgrade recommended</AlertTitle>
-            <AlertDescription>{versionUpgradeWarning}</AlertDescription>
           </Alert>
         ) : null}
         {!error && isBusy && isSubmitting ? (
@@ -341,14 +322,13 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
         ) : null}
         <PromptInput
           accept={PLAYGROUND_ATTACHMENT_ACCEPT}
-          globalDrop={eveVersion.supported}
+          globalDrop
           maxFileSize={PLAYGROUND_MAX_FILE_BYTES}
           maxFiles={PLAYGROUND_MAX_FILES}
           multiple
           onError={(inputError) => setComposerError(inputError.message)}
           onSubmit={async ({ files, text }) => {
             if (
-              !eveVersion.supported ||
               isResuming ||
               unresolvedCreate !== null ||
               (text.trim().length === 0 && files.length === 0)
@@ -369,13 +349,13 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
         >
           <ComposerAttachments />
           <PromptInputTextarea
-            disabled={!eveVersion.supported || isResuming || unresolvedCreate !== null}
+            disabled={isResuming || unresolvedCreate !== null}
             onChange={(event) => setHasInputText(event.currentTarget.value.trim().length > 0)}
             placeholder="Ask the deployed agent..."
           />
           <PromptInputFooter>
             <PromptInputTools>
-              <ComposerAttachmentButton disabled={!eveVersion.supported} />
+              <ComposerAttachmentButton />
               <PlaygroundAuthenticationSettings
                 projectId={projectId}
                 tooltip="Configure Playground authentication"
@@ -390,9 +370,7 @@ export function PlaygroundPanel({ projectId, eveVersion }: PlaygroundPanelProps)
               />
             </PromptInputTools>
             <ComposerAction
-              disabled={
-                !eveVersion.supported || isResuming || isCancelling || unresolvedCreate !== null
-              }
+              disabled={isResuming || isCancelling || unresolvedCreate !== null}
               hasInputText={hasInputText}
               isBusy={isBusy || turnIsOpen}
               onCancel={requestCancellation}

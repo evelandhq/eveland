@@ -128,19 +128,14 @@ against the newest Eve in the hosted window.
 contract is the `eve` peer range plus the exports documented above, not a
 platform release number.
 
-That peer range is deliberately wider than the Eve version window Eveland can
-host. This package imports four primitives from `eve/channels/auth`, and they
-have been stable across every line in the window; the platform pins Eve far
-more tightly because it also has to build, sandbox, and stream Agents. Tying
-the two together meant republishing the SDK on every window slide and leaving
-anyone already on a newer Eve with a peer warning that told them nothing. The
-lower bound still follows the window, because an Agent on a line Eveland cannot
-host is not deployable whatever this package supports.
-
-Eve is pre-1.0, so a future minor may still change those four primitives
-without a major bump. This package's tests import them from the newest Eve in
-the window, so CI fails the moment one disappears — but a consumer who upgrades
-Eve ahead of that will not get an install-time warning first. Publishing is a manual, deliberate step; CI verifies
+The peer range is `eve >=1.0.0 <2.0.0`. Its floor is the floor of the Eve
+versions Eveland hosts; its ceiling is Eve's next major, because the
+primitives this package imports from `eve/channels/auth` are stable Eve APIs
+across 1.x. It is deliberately wider than the window the platform hosts, which
+ends at the newest Eve minor Eveland has verified: tying the two together would
+mean republishing the SDK whenever the platform verifies a new minor. This
+package's tests import those primitives from the verified Eve, so CI fails if
+one disappears. Publishing is a manual, deliberate step; CI verifies
 on every commit that the packed tarball installs into a clean project and
 imports cleanly, so the package stays publishable from `main` at any time.
 

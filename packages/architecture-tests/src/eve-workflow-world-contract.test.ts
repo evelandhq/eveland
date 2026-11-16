@@ -2,7 +2,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { EVE_COMPATIBILITY_POLICY } from "@evelandhq/core/eve-compatibility";
 import { readSource, repoRoot } from "./scan-support.js";
 
 /**
@@ -20,8 +19,8 @@ import { readSource, repoRoot } from "./scan-support.js";
  * Neither is a type error, so without this suite an eve bump would fail at
  * deploy time on a real project instead of in CI. The world is resolved from
  * `apps/worker` — the workspace that actually installs the versions the worker
- * injects — and the eve lines from `packages/agent-observer`, which installs
- * every supported line for its own compatibility tests.
+ * injects — and eve from `packages/agent-observer`, which installs the
+ * verified release for its own compatibility tests.
  */
 const require = createRequire(import.meta.url);
 
@@ -34,27 +33,7 @@ const RESOLUTION_ANCHORS: Record<string, string> = {
   "@evelandhq/workflow-world": "apps/worker",
   "@workflow/world-postgres": "apps/worker",
   eve: "packages/agent-observer",
-  "eve-previous": "packages/agent-observer",
 };
-
-/** The supported eve lines, newest first; alias names are pnpm catalog entries. */
-const EVE_LINES = EVE_COMPATIBILITY_POLICY.supportedLines
-  .map(({ dependencyName }) => dependencyName)
-  .reverse();
-
-/**
- * Whether an installed eve release is at or past `floor`. A prerelease counts
- * as its release here: these gates ask which code a line ships, and a 1.0
- * release candidate ships the 1.0 code.
- */
-function eveVersionAtLeast(version: string, floor: readonly [number, number, number]): boolean {
-  const parts = /^(\d+)\.(\d+)\.(\d+)/.exec(version)?.slice(1).map(Number);
-  if (!parts) throw new Error(`unreadable eve version ${version}`);
-  for (let index = 0; index < 3; index += 1) {
-    if (parts[index]! !== floor[index]) return parts[index]! > floor[index]!;
-  }
-  return true;
-}
 
 function resolveInstalled(specifier: string): string {
   const packageName = specifier.startsWith("@")
@@ -248,107 +227,69 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
   // decide-per-install set; the operator reference is where a tuning knob
   // must stay discoverable.
   test("declares deployment affinity, which eve reads as per-Deployment routing", () => {
-    // From 0.76.1 eve treats a World that does not declare
+    // eve treats a World that does not declare
     // `capabilities.deploymentAffinity` as running one eve version at a time:
     // it parks or cancels deliveries for runs another eve version created and
     // ends a session such a run owns instead of resuming it. Eveland runs
     // Deployments on different eve versions side by side and its dispatcher
     // delivers every run to the Deployment recorded on it, so the injected
-    // World must declare the capability, and every line that has the guard
-    // must still key it on that capability.
+    // World must declare the capability, and eve must still key both guards
+    // on it.
     const worldSource = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
     expect([...worldSource.matchAll(/^\s*deploymentAffinity: true,$/gm)]).toHaveLength(1);
 
-    const guardedLines = EVE_LINES.flatMap((line) => {
-      const eveRoot = resolveInstalledPackageRoot(line, "eve");
-      const { version } = readJson(path.join(eveRoot, "package.json")) as { version: string };
-      const runtime = readFileSync(
-        path.join(eveRoot, "dist/src/compiled/@workflow/core/runtime.js"),
-        "utf8",
-      );
-      expect(runtime, `${line} (${version}) runtime affinity guard`).toContain(
-        "capabilities?.deploymentAffinity",
-      );
-      if (!eveVersionAtLeast(version, [0, 76, 1])) return [];
-      const runnableOwner = readFileSync(
-        path.join(eveRoot, "dist/src/execution/session-inbox/runnable-owner.js"),
-        "utf8",
-      );
-      expect(runnableOwner, `${line} (${version}) stranded-session guard`).toContain(
-        "capabilities?.deploymentAffinity===!0",
-      );
-      return [line];
-    });
-    // The newest line carries the guard; if it ever stops reading the
-    // capability, this suite must be revisited rather than pass vacuously.
-    expect(guardedLines).toContain("eve");
+    const eveRoot = resolveInstalledPackageRoot("eve");
+    const runtime = readFileSync(
+      path.join(eveRoot, "dist/src/compiled/@workflow/core/runtime.js"),
+      "utf8",
+    );
+    expect(runtime, "runtime affinity guard").toContain("capabilities?.deploymentAffinity");
+    const runnableOwner = readFileSync(
+      path.join(eveRoot, "dist/src/execution/session-inbox/runnable-owner.js"),
+      "utf8",
+    );
+    expect(runnableOwner, "stranded-session guard").toContain(
+      "capabilities?.deploymentAffinity===!0",
+    );
   });
 
   test("declares hook force-claim, which eve's session handoff keys on", () => {
-    // From 0.81.1 eve moves a session to a fresh run -- after a compaction, or
-    // onto another Deployment -- by force-claiming the session's inbox hooks,
-    // and only when the World declares `capabilities.hookForceClaim` together
-    // with active `hookRetention`. Without them it logs "session handoff
+    // eve moves a session to a fresh run -- after a compaction, or onto
+    // another Deployment -- by force-claiming the session's inbox hooks, and
+    // only when the World declares `capabilities.hookForceClaim` together with
+    // active `hookRetention`. Without them it logs "session handoff
     // unavailable" and leaves the session in its first run for life, where the
     // event log grows until the World's per-run event cap fails it. The
-    // injected World must declare both, and every line whose handoff has the
-    // gate must still key it on them.
+    // injected World must declare both, and eve's handoff must still key its
+    // gate on them.
     const worldSource = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
     expect([...worldSource.matchAll(/^\s*hookForceClaim: true,$/gm)]).toHaveLength(1);
     expect([...worldSource.matchAll(/^\s*hookRetention: \{ active: true \},$/gm)]).toHaveLength(1);
 
-    const gatedLines = EVE_LINES.flatMap((line) => {
-      const eveRoot = resolveInstalledPackageRoot(line, "eve");
-      const { version } = readJson(path.join(eveRoot, "package.json")) as { version: string };
-      const handoffSteps = readFileSync(
-        path.join(eveRoot, "dist/src/execution/session/handoff-steps.js"),
-        "utf8",
-      );
-      if (!eveVersionAtLeast(version, [0, 81, 1])) {
-        // Before 0.81.1 handoff never force-claimed, so it had no gate to key.
-        expect(handoffSteps, `${line} (${version})`).not.toContain("hookForceClaim");
-        return [];
-      }
-      expect(handoffSteps, `${line} (${version}) handoff force-claim gate`).toContain(
-        "hookForceClaim!==!0",
-      );
-      expect(handoffSteps, `${line} (${version}) handoff hook-retention gate`).toContain(
-        "hookRetention?.active!==!0",
-      );
-      return [line];
-    });
-    // The newest line carries the gate; if it ever stops reading the
-    // capability, this suite must be revisited rather than pass vacuously.
-    expect(gatedLines).toContain("eve");
+    const handoffSteps = readFileSync(
+      path.join(resolveInstalledPackageRoot("eve"), "dist/src/execution/session/handoff-steps.js"),
+      "utf8",
+    );
+    expect(handoffSteps, "handoff force-claim gate").toContain("hookForceClaim!==!0");
+    expect(handoffSteps, "handoff hook-retention gate").toContain("hookRetention?.active!==!0");
   });
 
   test("declares atomic start Hooks, which eve needs to start a session", () => {
-    // From 1.0.0-rc.6 eve starts every session with `start({ experimental_hook
-    // })`, claiming the session's channel address, and refuses to start one --
-    // every session, not a feature of some -- on a World that does not declare
+    // eve starts every session with `start({ experimental_hook })`, claiming
+    // the session's channel address, and refuses to start one -- every
+    // session, not a feature of some -- on a World that does not declare
     // `capabilities.atomicStartHook` active. The injected World must declare
-    // it, and the newest line must still key its start on it.
+    // it, and eve must still key its start on it.
     const worldSource = readFileSync(path.join(worldRoot, "dist/index.js"), "utf8");
     expect([...worldSource.matchAll(/^\s*atomicStartHook: \{ active: true \},$/gm)]).toHaveLength(
       1,
     );
 
-    const gatedLines = EVE_LINES.flatMap((line) => {
-      const eveRoot = resolveInstalledPackageRoot(line, "eve");
-      const startClaim = path.join(eveRoot, "dist/src/internal/workflow/start-claim.js");
-      let source: string;
-      try {
-        source = readFileSync(startClaim, "utf8");
-      } catch {
-        // Before rc.6 a session start claimed nothing, so it had no gate.
-        return [];
-      }
-      expect(source, `${line} start-claim gate`).toContain("atomicStartHook?.active!==!0");
-      return [line];
-    });
-    // The newest line carries the gate; if it ever stops reading the
-    // capability, this suite must be revisited rather than pass vacuously.
-    expect(gatedLines).toContain("eve");
+    const startClaim = readFileSync(
+      path.join(resolveInstalledPackageRoot("eve"), "dist/src/internal/workflow/start-claim.js"),
+      "utf8",
+    );
+    expect(startClaim, "start-claim gate").toContain("atomicStartHook?.active!==!0");
   });
 
   test("exposes the bounded-storage controls in the operator reference", () => {
@@ -432,61 +373,57 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
     expect(isDefiniteLineMismatch(line("^6.0.0-beta.1"), line("5.0.1"))).toBe(true);
   });
 
-  for (const line of EVE_LINES) {
-    describe(`against ${line}`, () => {
-      // Non-default names are pnpm catalog aliases for pinned Eve lines.
-      const eveRoot = resolveInstalledPackageRoot(line, "eve");
-      const eveManifest = readJson(path.join(eveRoot, "package.json")) as {
-        version: string;
-        devDependencies?: Record<string, string>;
-        dependencies?: Record<string, string>;
-        peerDependencies?: Record<string, string>;
-      };
+  describe("against the installed eve", () => {
+    const eveRoot = resolveInstalledPackageRoot("eve");
+    const eveManifest = readJson(path.join(eveRoot, "package.json")) as {
+      version: string;
+      devDependencies?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    };
 
-      test("the world declares a @workflow line eve accepts", () => {
-        // Mirrors eve's `assertWorkflowWorldCompatibility`: it reads the first
-        // of `@workflow/core` then `@workflow/world` from the world's manifest
-        // and throws when the major differs, or when both carry prerelease
-        // tags that differ. eve bundles @workflow/* at build time, so its own
-        // declaration lives in devDependencies.
-        const eveWorkflowCore =
-          eveManifest.devDependencies?.["@workflow/core"] ??
-          eveManifest.dependencies?.["@workflow/core"] ??
-          eveManifest.peerDependencies?.["@workflow/core"];
-        expect(
-          eveWorkflowCore,
-          `eve ${eveManifest.version} must declare @workflow/core`,
-        ).toBeTypeOf("string");
+    test("the world declares a @workflow line eve accepts", () => {
+      // Mirrors eve's `assertWorkflowWorldCompatibility`: it reads the first
+      // of `@workflow/core` then `@workflow/world` from the world's manifest
+      // and throws when the major differs, or when both carry prerelease
+      // tags that differ. eve bundles @workflow/* at build time, so its own
+      // declaration lives in devDependencies.
+      const eveWorkflowCore =
+        eveManifest.devDependencies?.["@workflow/core"] ??
+        eveManifest.dependencies?.["@workflow/core"] ??
+        eveManifest.peerDependencies?.["@workflow/core"];
+      expect(eveWorkflowCore, `eve ${eveManifest.version} must declare @workflow/core`).toBeTypeOf(
+        "string",
+      );
 
-        const declared =
-          worldManifest.dependencies["@workflow/core"] ??
-          worldManifest.dependencies["@workflow/world"];
-        expect(declared, "the world must declare a @workflow dependency").toBeTypeOf("string");
+      const declared =
+        worldManifest.dependencies["@workflow/core"] ??
+        worldManifest.dependencies["@workflow/world"];
+      expect(declared, "the world must declare a @workflow dependency").toBeTypeOf("string");
 
-        const world = versionLine(declared!);
-        const eve = versionLine(eveWorkflowCore!);
-        expect(
-          isDefiniteLineMismatch(world, eve),
-          `the world's ${declared} is not on the line eve ${eveManifest.version} bundles (${eveWorkflowCore})`,
-        ).toBe(false);
-      });
-
-      test("the world's specVersion falls inside the range this eve release enforces", () => {
-        const enforced = findEnforcedSpecVersions(path.join(eveRoot, "dist"));
-        expect(
-          enforced,
-          `could not find eve ${eveManifest.version}'s spec-version guard`,
-        ).toBeDefined();
-
-        // The declared number, not the package's current one: eve compares the
-        // `specVersion` the World hands it, and the two have differed before
-        // (0.15.0 through 0.17.0 declared 6 on a package whose current was 7).
-        const declared = declaredWorldSpecVersion();
-        expect(declared).toBeGreaterThanOrEqual(enforced!.min);
-        expect(declared).toBeLessThanOrEqual(enforced!.max);
-      });
+      const world = versionLine(declared!);
+      const eve = versionLine(eveWorkflowCore!);
+      expect(
+        isDefiniteLineMismatch(world, eve),
+        `the world's ${declared} is not on the line eve ${eveManifest.version} bundles (${eveWorkflowCore})`,
+      ).toBe(false);
     });
-  }
+
+    test("the world's specVersion falls inside the range this eve release enforces", () => {
+      const enforced = findEnforcedSpecVersions(path.join(eveRoot, "dist"));
+      expect(
+        enforced,
+        `could not find eve ${eveManifest.version}'s spec-version guard`,
+      ).toBeDefined();
+
+      // The declared number, not the package's current one: eve compares the
+      // `specVersion` the World hands it, and the two have differed before
+      // (0.15.0 through 0.17.0 declared 6 on a package whose current was 7).
+      const declared = declaredWorldSpecVersion();
+      expect(declared).toBeGreaterThanOrEqual(enforced!.min);
+      expect(declared).toBeLessThanOrEqual(enforced!.max);
+    });
+  });
 
   test("the vqs header names the dispatcher hardcodes still match world-local's parser", () => {
     // The dispatcher writes these headers by hand; the world's own

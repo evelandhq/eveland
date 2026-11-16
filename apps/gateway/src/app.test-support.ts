@@ -98,17 +98,6 @@ export function repository(routes: ResolvedAgentRoute[]): GatewayRepository & {
     async getDeployment(deploymentId) {
       return deployments.get(deploymentId) ?? null;
     },
-    async getDeploymentEveVersion(deploymentId) {
-      return deployments.has(deploymentId)
-        ? {
-            version: "1.0.0-rc.2",
-            expected: "1.0.x",
-            supportedRanges: ["1.0.x"],
-            supported: true,
-            sourceRevisionId: `src-${deploymentId}`,
-          }
-        : null;
-    },
     async findSessionBinding(projectId, eveSessionId) {
       return (
         (bindings.find(

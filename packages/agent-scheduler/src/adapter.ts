@@ -7,7 +7,6 @@ import {
   validateReleaseRelativePath,
   validateScheduleDefinitionFields,
 } from "@evelandhq/core/schedules";
-import { isSupportedEveDependency, SUPPORTED_EVE_VERSION_RANGE } from "@evelandhq/core/source";
 import ts from "typescript";
 
 const reservedOriginalSchedule = "__evelandOriginalSchedule";
@@ -26,7 +25,6 @@ export type SchedulerDefinition = {
 };
 
 export type SchedulerInjectionResult = {
-  eveVersion: string;
   channelPath: typeof reservedChannelPath;
   definitions: SchedulerDefinition[];
 };
@@ -46,12 +44,6 @@ export async function injectSchedulerAdapter(input: {
   releaseDir: string;
 }): Promise<SchedulerInjectionResult> {
   const releaseDir = path.resolve(input.releaseDir);
-  const eveVersion = await readDeclaredEveVersion(releaseDir);
-  if (eveVersion === null || !isSupportedEveDependency(eveVersion)) {
-    throw new Error(
-      `The Eveland scheduler adapter supports Eve ${SUPPORTED_EVE_VERSION_RANGE}; found ${eveVersion ?? "no Eve dependency"}. Add or update the version-gated adapter before deploying this Release.`,
-    );
-  }
 
   const channelPath = path.join(releaseDir, reservedChannelPath);
   if (await exists(channelPath)) {
@@ -120,7 +112,7 @@ export async function injectSchedulerAdapter(input: {
   }
 
   await writeSchedulerArtifacts(releaseDir, definitions);
-  return { eveVersion, channelPath: reservedChannelPath, definitions };
+  return { channelPath: reservedChannelPath, definitions };
 }
 
 export async function injectExtensionSchedules(input: {
@@ -647,7 +639,7 @@ function resolveDefinitionExpression(
   }
   if (!ts.isObjectLiteralExpression(candidate)) {
     throw new Error(
-      `Schedule ${sourceFile.fileName} must expose a statically analyzable Eve ${SUPPORTED_EVE_VERSION_RANGE} definition.`,
+      `Schedule ${sourceFile.fileName} must expose a statically analyzable eve schedule definition.`,
     );
   }
   return candidate;
@@ -696,14 +688,6 @@ function assertNoReservedIdentifier(sourceFile: ts.SourceFile, sourcePath: strin
   visit(sourceFile);
 }
 
-async function readDeclaredEveVersion(releaseDir: string): Promise<string | null> {
-  const packageJson = JSON.parse(await readFile(path.join(releaseDir, "package.json"), "utf8")) as {
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  };
-  return packageJson.dependencies?.eve ?? packageJson.devDependencies?.eve ?? null;
-}
-
 async function listScheduleFiles(root: string, relativeDir = ""): Promise<string[]> {
   if (!(await exists(root))) return [];
   const entries = await readdir(path.join(root, relativeDir), { withFileTypes: true });
@@ -750,10 +734,6 @@ async function writeSchedulerArtifacts(
   releaseDir: string,
   definitions: SchedulerDefinition[],
 ): Promise<void> {
-  const eveVersion = await readDeclaredEveVersion(releaseDir);
-  if (eveVersion === null) {
-    throw new Error("Cannot write the scheduler channel: the Release declares no Eve dependency.");
-  }
   const channelPath = path.join(releaseDir, reservedChannelPath);
   const definitionsPath = path.join(releaseDir, SCHEDULER_DEFINITIONS_RELEASE_PATH);
   await mkdir(path.dirname(channelPath), { recursive: true });

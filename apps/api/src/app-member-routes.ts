@@ -1,8 +1,4 @@
-import {
-  LATEST_VERIFIED_EVE_VERSION,
-  SUPPORTED_EVE_VERSION_RANGE,
-  SUPPORTED_EVE_VERSION_RANGES,
-} from "@evelandhq/core/eve-compatibility";
+import { SUPPORTED_EVE_RANGE, VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import type { createBetterAuthRuntime } from "./auth.js";
 import {
   invitationSchema,
@@ -45,11 +41,7 @@ export function registerMemberRoutes(input: {
   // it discloses platform policy, not tenant data.
   app.get("/api/instance", (c) =>
     c.json({
-      eve: {
-        supportedRanges: SUPPORTED_EVE_VERSION_RANGES,
-        expected: SUPPORTED_EVE_VERSION_RANGE,
-        latestVerified: LATEST_VERIFIED_EVE_VERSION,
-      },
+      eve: { supportedRange: SUPPORTED_EVE_RANGE, verifiedVersion: VERIFIED_EVE_VERSION },
     }),
   );
 

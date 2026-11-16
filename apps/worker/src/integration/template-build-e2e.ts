@@ -13,7 +13,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
-import { unsupportedReleaseEveVersionMessage } from "@evelandhq/core/eve-compatibility";
 import type { DeploymentRecord } from "@evelandhq/core/contracts";
 import { createPgliteTestStore } from "@evelandhq/db/test";
 import { processNextJob } from "../jobs/process.js";
@@ -71,13 +70,8 @@ try {
 
   const release = await store.getRelease(deployment.releaseId);
   assert.ok(release, "the deployment must reference a Release");
-  assert.equal(
-    unsupportedReleaseEveVersionMessage(release.summary ?? null),
-    null,
-    "the built release must resolve an in-window eve version",
-  );
-  // The template pins an exact verified version (the compatibility ratchet
-  // decides which line); the build must resolve exactly that pin.
+  // The template pins the exact verified version; the build must resolve
+  // exactly that pin.
   const templatePin = (
     JSON.parse(await readFile(path.join(TEMPLATE_PATH, "package.json"), "utf8")) as {
       dependencies?: { eve?: string };

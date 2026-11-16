@@ -1,8 +1,5 @@
 import { createPgliteTestStore } from "@evelandhq/db/test";
-import {
-  LATEST_VERIFIED_EVE_VERSION,
-  OLDEST_VERIFIED_EVE_VERSION,
-} from "@evelandhq/core/eve-compatibility";
+import { VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import { AGENT_RUNTIME_POLICY_PATH } from "@evelandhq/core/observability";
 import { execa } from "execa";
 import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
@@ -50,7 +47,7 @@ await writeFile(
     {
       name: "eveland-smoke",
       version: "0.0.0",
-      dependencies: { eve: OLDEST_VERIFIED_EVE_VERSION },
+      dependencies: { eve: VERIFIED_EVE_VERSION },
     },
     null,
     2,
@@ -242,7 +239,7 @@ try {
       {
         name: "eveland-smoke-fail",
         version: "0.0.0",
-        dependencies: { eve: LATEST_VERIFIED_EVE_VERSION },
+        dependencies: { eve: VERIFIED_EVE_VERSION },
       },
       null,
       2,

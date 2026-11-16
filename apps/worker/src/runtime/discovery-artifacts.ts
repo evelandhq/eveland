@@ -1,5 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  isSupportedEveVersion,
+  unsupportedEveVersionMessage,
+} from "@evelandhq/core/eve-compatibility";
 import type { ReleaseDiscovery } from "./types.js";
 import {
   parseSchedulerDefinitions,
@@ -32,18 +36,31 @@ export async function readReleaseStaticModelIds(releaseDir: string): Promise<str
   }
 }
 
-export async function readReleaseDiscovery(
-  releaseDir: string,
-): Promise<ReleaseDiscovery | undefined> {
-  let manifest: unknown;
+/**
+ * Refuses a build whose installed eve is outside the hosted window. The
+ * declared specifier only had to be able to resolve inside it (`^1.0.0` may
+ * install a newer, unverified minor), so the version the build actually
+ * installed is what decides whether the Release can exist. An unreadable
+ * version cannot be verified and is refused too.
+ */
+export function assertHostedEveVersion(resolvedEveVersion: string | null): void {
+  if (!isSupportedEveVersion(resolvedEveVersion)) {
+    throw new Error(unsupportedEveVersionMessage(resolvedEveVersion));
+  }
+}
+
+export async function readReleaseDiscovery(releaseDir: string): Promise<ReleaseDiscovery> {
+  const resolvedEveVersion = await readResolvedEveVersion(releaseDir);
+  assertHostedEveVersion(resolvedEveVersion);
+  let manifest: unknown = null;
   try {
     manifest = JSON.parse(
       await readFile(path.join(releaseDir, DISCOVERY_MANIFEST_RELEASE_PATH), "utf8"),
     );
   } catch {
-    return undefined;
+    // Informational: an absent or corrupt manifest records no build summary.
   }
-  return { manifest, resolvedEveVersion: await readResolvedEveVersion(releaseDir) };
+  return { manifest, resolvedEveVersion };
 }
 
 export async function readReleaseSchedulerDefinitions(

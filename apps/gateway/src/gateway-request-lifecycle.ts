@@ -1,4 +1,3 @@
-import { createEveVersionInfo, unsupportedEveVersionMessage } from "@evelandhq/core/source";
 import type { EveSessionRequest } from "@evelandhq/core/eve";
 import type {
   OperationBinding,
@@ -29,8 +28,7 @@ import {
 } from "./gateway-transport.js";
 
 // The request lifecycle shared by the public catch-all and the privileged
-// Playground proxy: buffer the routing body, resolve the target, gate the Eve
-// version, acquire and manage the activation lease, proxy, persist the
+// Playground proxy: buffer the routing body, resolve the target, acquire and manage the activation lease, proxy, persist the
 // session effect (compensating on failure), and wrap the client response.
 // The handlers in app.ts own only what genuinely differs -- route lookup,
 // session-lookup policy, header/provenance construction, and limits.
@@ -41,23 +39,6 @@ export function sessionExpiredResponse(): Response {
 
 export function clientClosedResponse(): Response {
   return Response.json({ error: "Client closed request" }, { status: 499 });
-}
-
-export async function unsupportedDeploymentResponse(
-  repository: GatewayRepository,
-  deploymentId: string,
-): Promise<Response | null> {
-  const eveVersion =
-    (await repository.getDeploymentEveVersion(deploymentId)) ?? createEveVersionInfo(null, null);
-  if (eveVersion.supported) return null;
-  return Response.json(
-    {
-      error: "Unsupported Eve version",
-      detail: unsupportedEveVersionMessage(eveVersion.version),
-      eveVersion,
-    },
-    { status: 409 },
-  );
 }
 
 export function activationKind(
@@ -163,14 +144,6 @@ export async function executeGatewaySessionProxy(input: {
     Boolean(activationClient),
   );
   if (!target) return Response.json({ error: "No running deployment target" }, { status: 503 });
-  // Every public request is version-gated, not only classified Eve session
-  // operations: custom channel routes and webhooks must fail closed with the
-  // same 409 upgrade diagnostic instead of reaching (or waking) an
-  // out-of-window Deployment.
-  {
-    const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
-    if (versionFailure) return versionFailure;
-  }
 
   if (input.operationKey && !input.operationBinding) {
     const claimed = await repository.bindOperation({
@@ -194,8 +167,6 @@ export async function executeGatewaySessionProxy(input: {
       if (!claimedTarget)
         return Response.json({ error: "No running deployment target" }, { status: 503 });
       target = claimedTarget;
-      const versionFailure = await unsupportedDeploymentResponse(repository, target.deploymentId);
-      if (versionFailure) return versionFailure;
     }
   }
 

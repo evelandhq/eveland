@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { SUPPORTED_EVE_VERSION_RANGE } from "@evelandhq/core/eve-compatibility";
 import { describeScheduleCron } from "@evelandhq/core/schedules";
 import { DateTime } from "@/components/date-time";
 import { getScheduleAttention, getScheduleRuns, getSchedules } from "@/lib/server-api";
@@ -72,8 +71,7 @@ export default async function SchedulesPage({
           <EmptyHeader>
             <EmptyTitle>No schedules discovered</EmptyTitle>
             <EmptyDescription>
-              Deploy an Eve {SUPPORTED_EVE_VERSION_RANGE} project with definitions under
-              agent/schedules.
+              Deploy an Eve project with definitions under agent/schedules.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

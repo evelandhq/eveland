@@ -73,9 +73,7 @@ describe("project Playground surface", () => {
     expect(composer()).toContain('aria-label="Stop"');
     // The textarea only locks on version gates, session resume, and an
     // unresolved first create (#407) — never on a running turn.
-    expect(panel).toContain(
-      "disabled={!eveVersion.supported || isResuming || unresolvedCreate !== null}",
-    );
+    expect(panel).toContain("disabled={isResuming || unresolvedCreate !== null}");
     expect(panel).not.toContain("disabled={isBusy");
   });
 

@@ -13,7 +13,7 @@ Projects can be imported via two sources: **Git Repository URLs** or **Zip Archi
 
 - **Phase 1: Source input and Preflight verification**
   - The caller provides a Git URL or uploads an archive. The API generates an ephemeral, expiring `Source Preflight` token (default: 1 hour).
-  - The Worker performs a shallow clone or safe extraction, inspecting project layout and verifying that the Eve framework dependency declared in `package.json` falls within the supported compatibility window.
+  - The Worker performs a shallow clone or safe extraction, inspecting project layout and verifying that the Eve dependency declared in `package.json` can resolve inside the supported version window (the build later checks the version it actually installed).
   - Advancing to the next step requires a passing preflight. Failures remain on the source step with actionable diagnostic reasons.
 - **Phase 2: Project naming and environment configuration**
   - **Name inference**: Derived from the final segment of the Git URL (stripping `.git`) or archive filename, editable by the user.

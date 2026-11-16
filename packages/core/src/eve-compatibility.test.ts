@@ -1,118 +1,56 @@
 import { describe, expect, test } from "vitest";
 import {
-  LATEST_VERIFIED_EVE_VERSION,
-  eveLineOfSpecifier,
-  displayedDeploymentEveRefusal,
-  permanentDeploymentActivationRefusal,
-  unsupportedEveVersionMessage,
-  unsupportedReleaseEveVersionMessage,
+  isSupportedEveSpecifier,
+  isSupportedEveVersion,
+  VERIFIED_EVE_VERSION,
 } from "./eve-compatibility.js";
 
-describe("unsupportedReleaseEveVersionMessage", () => {
-  test("refuses a build-resolved Eve version the supported window slid past", () => {
-    expect(unsupportedReleaseEveVersionMessage({ eveVersionResolved: "0.31.1" })).toBe(
-      unsupportedEveVersionMessage("0.31.1"),
-    );
-  });
-
-  test("passes a supported resolved version", () => {
-    expect(
-      unsupportedReleaseEveVersionMessage({ eveVersionResolved: LATEST_VERIFIED_EVE_VERSION }),
-    ).toBeNull();
-  });
-
-  test("passes a Release without a recorded version through to the deeper launch gate", () => {
-    expect(unsupportedReleaseEveVersionMessage(null)).toBeNull();
-    expect(unsupportedReleaseEveVersionMessage({})).toBeNull();
-    expect(unsupportedReleaseEveVersionMessage({ eveVersionResolved: 42 })).toBeNull();
-    // Declared specifiers describe the source, not the built image; only the
-    // launch path may judge them.
-    expect(unsupportedReleaseEveVersionMessage({ eveVersion: "0.31.1" })).toBeNull();
-  });
-});
-
-describe("permanentDeploymentActivationRefusal", () => {
-  test("refuses a missing Deployment", () => {
-    expect(permanentDeploymentActivationRefusal(null, null)).toBe("Deployment no longer exists.");
-    expect(permanentDeploymentActivationRefusal(undefined, null)).toBe(
-      "Deployment no longer exists.",
-    );
-  });
-
-  test("refuses an archiving or archived Deployment", () => {
-    for (const status of ["archiving", "archived"]) {
-      expect(permanentDeploymentActivationRefusal({ id: "dep_x", status }, null)).toContain(
-        `dep_x is ${status}`,
-      );
+describe("isSupportedEveSpecifier", () => {
+  test("accepts any declared range that can resolve inside the window", () => {
+    for (const specifier of [
+      "^1.0.0",
+      "^1",
+      "~1.0.0",
+      "1.0.0",
+      "1.0.4",
+      "1.0.x",
+      "1.x",
+      ">=1.0.0",
+      "*",
+      " ^1.0.0 ",
+    ]) {
+      expect(isSupportedEveSpecifier(specifier), specifier).toBe(true);
     }
   });
 
-  test("refuses a Release pinned to an out-of-window Eve", () => {
-    expect(
-      permanentDeploymentActivationRefusal(
-        { id: "dep_x", status: "stopped" },
-        { eveVersionResolved: "0.31.1" },
-      ),
-    ).toBe(unsupportedEveVersionMessage("0.31.1"));
-  });
-
-  test("a transiently failed Deployment is NOT permanent — its next activation restarts it", () => {
-    expect(
-      permanentDeploymentActivationRefusal(
-        { id: "dep_x", status: "failed" },
-        { eveVersionResolved: LATEST_VERIFIED_EVE_VERSION },
-      ),
-    ).toBeNull();
-  });
-
-  test("a healthy Deployment with a supported (or unrecorded) Eve passes", () => {
-    expect(
-      permanentDeploymentActivationRefusal(
-        { id: "dep_x", status: "running" },
-        { eveVersionResolved: LATEST_VERIFIED_EVE_VERSION },
-      ),
-    ).toBeNull();
-    expect(
-      permanentDeploymentActivationRefusal({ id: "dep_x", status: "stopped" }, null),
-    ).toBeNull();
+  test("refuses ranges that cannot resolve inside it, and non-range specifiers", () => {
+    for (const specifier of [
+      "0.83.3",
+      "^0.83.0",
+      "1.0.0-rc.2",
+      "2.0.0",
+      "^2.0.0",
+      "latest",
+      "catalog:",
+      "workspace:*",
+      "github:vercel/eve",
+      "",
+    ]) {
+      expect(isSupportedEveSpecifier(specifier), specifier).toBe(false);
+    }
+    expect(isSupportedEveSpecifier(null)).toBe(false);
   });
 });
 
-describe("displayedDeploymentEveRefusal", () => {
-  const retired = { eveVersionResolved: "0.31.1" };
-
-  test("reports the refusal for a Deployment that could still be activated", () => {
-    expect(displayedDeploymentEveRefusal("stopped", retired)).toBe(
-      unsupportedReleaseEveVersionMessage(retired),
-    );
-    expect(displayedDeploymentEveRefusal("running", retired)).not.toBeNull();
-    expect(displayedDeploymentEveRefusal("failed", retired)).not.toBeNull();
-  });
-
-  test("says nothing about a Deployment that can never activate again", () => {
-    // Status refuses these before the version gate is ever reached, so the
-    // upgrade notice would name work nobody can do.
-    expect(displayedDeploymentEveRefusal("archived", retired)).toBeNull();
-    expect(displayedDeploymentEveRefusal("archiving", retired)).toBeNull();
-  });
-
-  test("stays silent for a supported release whatever the status", () => {
-    expect(
-      displayedDeploymentEveRefusal("running", { eveVersionResolved: LATEST_VERIFIED_EVE_VERSION }),
-    ).toBeNull();
-    expect(displayedDeploymentEveRefusal("running", null)).toBeNull();
-  });
-});
-
-describe("eveLineOfSpecifier", () => {
-  test("reads the minor line from every accepted specifier shape", () => {
-    expect(eveLineOfSpecifier("0.83.3")).toBe("0.83");
-    expect(eveLineOfSpecifier("^0.83.3")).toBe("0.83");
-    expect(eveLineOfSpecifier("1.0.0-rc.1")).toBe("1.0");
-    expect(eveLineOfSpecifier("~1.0.2")).toBe("1.0");
-    expect(eveLineOfSpecifier("1.0.x")).toBe("1.0");
-    expect(eveLineOfSpecifier("^1.0.0")).toBeNull();
-    expect(eveLineOfSpecifier("latest")).toBeNull();
-    expect(eveLineOfSpecifier(null)).toBeNull();
+describe("isSupportedEveVersion", () => {
+  test("gates the installed version on the window", () => {
+    expect(isSupportedEveVersion(VERIFIED_EVE_VERSION)).toBe(true);
+    expect(isSupportedEveVersion("1.0.7")).toBe(true);
+    // The ceiling is the next unverified minor; the floor is 1.0.0, so a
+    // release candidate sits below it.
+    expect(isSupportedEveVersion("1.1.0")).toBe(false);
+    expect(isSupportedEveVersion("1.0.0-rc.2")).toBe(false);
+    expect(isSupportedEveVersion("0.83.3")).toBe(false);
+    expect(isSupportedEveVersion(null)).toBe(false);
   });
 });

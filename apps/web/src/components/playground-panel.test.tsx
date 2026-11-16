@@ -3,7 +3,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SessionNotActiveError, SessionStore } from "eve/client";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { EveVersionInfo } from "@/lib/api";
 
 const agent = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -23,14 +22,6 @@ vi.mock("eve/react", () => ({
 }));
 
 import { PlaygroundPanel } from "./playground-panel";
-
-const eveVersion: EveVersionInfo = {
-  version: "1.0.0-rc.1",
-  supported: true,
-  expected: "1.0.x",
-  supportedRanges: ["1.0.x"],
-  sourceRevisionId: null,
-};
 
 // An in-flight first submission: the create request has not answered, so the
 // client holds no session handle yet.
@@ -55,7 +46,7 @@ describe("PlaygroundPanel Stop", () => {
   test("requests durable cancellation through the Eve client before the first create answers", async () => {
     const cancel = vi.fn(() => Promise.resolve({ deliveryId: "d" }));
     firstSubmissionInFlight(cancel);
-    render(<PlaygroundPanel projectId="proj_1" eveVersion={eveVersion} />);
+    render(<PlaygroundPanel projectId="proj_1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
 
@@ -68,7 +59,7 @@ describe("PlaygroundPanel Stop", () => {
   test("a first create that never produced a session leaves nothing to cancel and no error", async () => {
     const cancel = vi.fn(() => Promise.reject(new SessionNotActiveError()));
     firstSubmissionInFlight(cancel);
-    render(<PlaygroundPanel projectId="proj_1" eveVersion={eveVersion} />);
+    render(<PlaygroundPanel projectId="proj_1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
 

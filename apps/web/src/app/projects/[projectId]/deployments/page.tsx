@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { BadgeCheckIcon, TriangleAlertIcon } from "lucide-react";
-import { displayedDeploymentEveRefusal } from "@evelandhq/core/eve-compatibility";
+import { BadgeCheckIcon } from "lucide-react";
 import { DateTime } from "@/components/date-time";
 import { DeploymentActions } from "@/components/deployment-actions";
 import { DeploymentTrafficActions } from "@/components/deployment-traffic-actions";
-import { EveVersionStatus } from "@/components/eve-version-status";
+import { EveVersion } from "@/components/eve-version";
 import { SourceProvenance } from "@/components/source-provenance";
 import { describeSourceProvenance } from "@/lib/source-provenance";
 import { StatusBadge } from "@/components/status-badge";
@@ -109,7 +108,7 @@ export default async function ProjectDeploymentsPage({
             label="Deployment"
             value={<StatusBadge status={project?.deploymentStatus ?? "unknown"} />}
           />
-          <DeploymentFact label="Eve Agent" value={<EveVersionStatus eveVersion={eveVersion} />} />
+          <DeploymentFact label="Eve Agent" value={<EveVersion eveVersion={eveVersion} />} />
           <DeploymentFact
             label="Source revision"
             value={
@@ -166,18 +165,6 @@ export default async function ProjectDeploymentsPage({
             const retention = overview.retention.find(
               (entry) => entry.deployment.id === deployment.id,
             );
-            // The build-recorded refusal for this Deployment's own Release.
-            // The project-level Eve badge reflects only the current
-            // deployment (or source), so a retired Release that activation
-            // now refuses terminally (#425) would otherwise be invisible.
-            // Archived Deployments are excluded inside the helper: activation
-            // refuses them on their status long before it reads the Eve
-            // version, so an upgrade notice there is noise about work nobody
-            // can do.
-            const cannotStart = displayedDeploymentEveRefusal(
-              deployment.status,
-              overview.releaseSummaries[deployment.releaseId] ?? null,
-            );
             // Where this Deployment's source came from: a synced commit, or
             // an upload and what it was based on. Every Release has one; the
             // guard only covers a response from an older API.
@@ -204,16 +191,7 @@ export default async function ProjectDeploymentsPage({
                       </Badge>
                     ) : null}
                     <StatusBadge status={deployment.status} />
-                    {cannotStart ? (
-                      <Badge variant="destructive">
-                        <TriangleAlertIcon data-icon="inline-start" />
-                        Cannot start
-                      </Badge>
-                    ) : null}
                   </div>
-                  {cannotStart ? (
-                    <p className="mt-1 text-xs text-destructive">Cannot start: {cannotStart}</p>
-                  ) : null}
                   {source ? (
                     <p className="mt-1 text-xs text-muted-foreground">
                       <SourceProvenance source={source} recordedAt={source.recordedAt} />
