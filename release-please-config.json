@@ -20,7 +20,14 @@
       "release-type": "node",
       "component": "eveland",
       "include-component-in-tag": true,
-      "bump-minor-pre-major": true
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/templates/starter-agent/package.json",
+          "jsonpath": "$.dependencies.eveland"
+        }
+      ]
     }
   }
 }

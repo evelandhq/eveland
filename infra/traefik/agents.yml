@@ -1,11 +1,17 @@
-# Dynamic Traefik file-provider example. Replace agents.example.com, terminate TLS
-# here, and keep port 17300 private to the host. The same front door also
-# serves the Dashboard and browser API on the platform host, so one wildcard
-# router (agents) plus one host router (platform) covers the whole install.
+# Dynamic Traefik v3 file-provider example. Replace console.example.com and
+# agents.example.com, terminate TLS here, and keep port 17300 private to the
+# host. The same front door serves the Dashboard and browser API on the
+# platform host, so one host router (console) plus one wildcard router
+# (agents) covers the whole install. Neither may expose /internal/*.
 http:
   routers:
+    eveland-console:
+      rule: "Host(`console.example.com`) && !PathPrefix(`/internal`)"
+      entryPoints: [websecure]
+      service: eveland-gateway
+      tls: {}
     eveland-agents:
-      rule: "HostRegexp(`[a-z0-9-]+.agents.example.com`) && !PathPrefix(`/internal`)"
+      rule: 'HostRegexp(`^[a-z0-9-]+\.agents\.example\.com$`) && !PathPrefix(`/internal`)'
       entryPoints: [websecure]
       service: eveland-gateway
       tls: {}

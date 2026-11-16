@@ -1,14 +1,16 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { defaultTemplateDir } from "./init.ts";
+import { repoRoot } from "./scan-support.js";
 
 /**
- * Invariants of the starter template that once broke real imports or would
- * silently degrade a scaffolded project. The eve version window pin lives in
- * architecture-tests (it needs the platform policy); everything here is
- * self-contained.
+ * Invariants of the starter template eveland-ctl seeds as an instance's first
+ * agent, which once broke real imports or would silently degrade the seeded
+ * project. Its eve pin is checked with the rest of the eve window in
+ * eve-compatibility-consistency.test.ts.
  */
+
+const defaultTemplateDir = () => path.join(repoRoot, "templates/starter-agent");
 
 async function listFiles(dir: string, prefix = ""): Promise<string[]> {
   const out: string[] = [];
@@ -49,14 +51,14 @@ describe("starter-agent template", () => {
     expect(files.some((file) => file.startsWith(path.join("agent", "memory")))).toBe(false);
   });
 
-  test("the eve channel keeps its capability-detectable literal shape", async () => {
+  // eve's own channel, so the health route and the chat surface stay, behind
+  // the platform's identity plane.
+  test("the eve channel authenticates through Eveland identity", async () => {
     const channel = await readFile(
       path.join(defaultTemplateDir(), "agent", "channels", "eve.ts"),
       "utf8",
     );
-    // Source import detects the chat capability with these literal patterns.
     expect(channel).toMatch(/from "eve\/channels\/eve"/);
-    expect(channel).toMatch(/export default eveChannel\(/);
     expect(channel).toContain("evelandIdentity()");
   });
 
@@ -66,7 +68,20 @@ describe("starter-agent template", () => {
     ) as { private?: boolean; dependencies?: Record<string, string> };
     expect(manifest.private).toBe(true);
     expect(manifest.dependencies?.eve).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/);
-    expect(manifest.dependencies?.eveland).toMatch(/^\^\d+\.\d+\.\d+$/);
+  });
+
+  // The seeded agent installs the SDK this platform release ships, not a
+  // stale line: a 0.x caret never crosses a minor, so "^0.21.0" kept new
+  // instances on 0.21 long after the SDK moved on. release-please rewrites
+  // the pin in the same release PR that bumps the SDK (extra-files).
+  test("pins the eveland SDK at the version this tree ships", async () => {
+    const manifest = JSON.parse(
+      await readFile(path.join(defaultTemplateDir(), "package.json"), "utf8"),
+    ) as { dependencies?: Record<string, string> };
+    const sdk = JSON.parse(
+      await readFile(path.join(repoRoot, "packages/eveland/package.json"), "utf8"),
+    ) as { version: string };
+    expect(manifest.dependencies?.eveland).toBe(sdk.version);
   });
 
   test("the persona lives on the first line of instructions.md", async () => {

@@ -233,7 +233,7 @@ describe("collectSystemdPreflightIssues", () => {
         (issue) =>
           issue.includes("EVELAND_DATA_DIR") &&
           /not set/i.test(issue) &&
-          issue.includes("/var/lib/eveland"),
+          issue.includes("/opt/eveland/data"),
       ),
     ).toBe(true);
   });

@@ -151,11 +151,11 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
   const dataDir = deps.env.EVELAND_DATA_DIR;
   if (!dataDir) {
     issues.push(
-      'EVELAND_DATA_DIR is not set. Set it to an absolute path (e.g. "/var/lib/eveland") shared by the API container and this worker.',
+      'EVELAND_DATA_DIR is not set. Set it to an absolute path (e.g. "/opt/eveland/data") shared by the API container and this worker.',
     );
   } else if (!path.isAbsolute(dataDir)) {
     issues.push(
-      `EVELAND_DATA_DIR ("${dataDir}") must be an absolute path (e.g. "/var/lib/eveland") shared by the API container and this worker.`,
+      `EVELAND_DATA_DIR ("${dataDir}") must be an absolute path (e.g. "/opt/eveland/data") shared by the API container and this worker.`,
     );
   }
 
