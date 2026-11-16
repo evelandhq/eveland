@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.27.0](https://github.com/evelandhq/eveland/compare/eveland-v0.26.0...eveland-v0.27.0) (2026-11-16)
+
+
+### Features
+
+* verify eve 1.0.0-rc.17 and reject schedules that set a timezone ([#643](https://github.com/evelandhq/eveland/issues/643)) ([f650201](https://github.com/evelandhq/eveland/commit/f6502017a3b0fa25bfbc3735ee43f57158ad893a))
+* verify eve 1.0.0, the line's first stable release ([#648](https://github.com/evelandhq/eveland/issues/648)) ([746d4c8](https://github.com/evelandhq/eveland/commit/746d4c8f4314d0cde7cb32eabb87c10b34dd19d2))
+
+
+### Bug Fixes
+
+* resolve high and critical security alerts ([#646](https://github.com/evelandhq/eveland/issues/646)) ([52ec629](https://github.com/evelandhq/eveland/commit/52ec629a8da04f11fdd7a108aec4e604b9974dd3))
+
 ## [0.26.0](https://github.com/evelandhq/eveland/compare/eveland-v0.25.0...eveland-v0.26.0) (2026-11-13)
 
 
