@@ -6,6 +6,7 @@ import { writeInstallMetadata } from "./bootstrap.ts";
 import { parseEnvFile } from "./env-file.ts";
 import { applianceLayout } from "./home.ts";
 import type { LifecycleIo } from "./io.ts";
+import type { PgJournal } from "./pg-probe.ts";
 import { PLATFORM_PROCESSES } from "./processes.ts";
 import type { Prompter } from "./prompt.ts";
 import { hostUnitsArmedPath } from "./systemd-mode.ts";
@@ -44,6 +45,9 @@ const CHANGELOG_AT_TARGET = `# Changelog
 * old stuff
 `;
 
+/** The `when` of the checkout's baseline migration. */
+const BASELINE_AT = 1_794_823_282_194;
+
 type Harness = Awaited<ReturnType<typeof makeHarness>>;
 
 async function makeHarness(
@@ -62,6 +66,8 @@ async function makeHarness(
     stashRefUnknown?: boolean;
     /** `git stash apply` conflicts. */
     stashApplyFails?: boolean;
+    /** What the configured database's migration journal holds. */
+    journal?: PgJournal;
   } = {},
 ) {
   const home = await mkdtemp(path.join(os.tmpdir(), "eveland-ctl-update-"));
@@ -105,6 +111,17 @@ async function makeHarness(
   await mkdir(path.join(repo, "node_modules"), { recursive: true });
   await mkdir(path.join(repo, "apps/web/.next"), { recursive: true });
   await writeFile(path.join(repo, "apps/web/.next/BUILD_ID"), "x", "utf8");
+  // The checkout's migration journal: its first entry is the baseline.
+  await mkdir(path.join(repo, "packages/db/drizzle/meta"), { recursive: true });
+  await writeFile(
+    path.join(repo, "packages/db/drizzle/meta/_journal.json"),
+    JSON.stringify({
+      version: "7",
+      dialect: "postgresql",
+      entries: [{ idx: 0, version: "7", when: BASELINE_AT, tag: "0000_baseline" }],
+    }),
+    "utf8",
+  );
 
   const out: string[] = [];
   const err: string[] = [];
@@ -148,6 +165,8 @@ async function makeHarness(
     fetchImpl: async () => new Response("{}", { status: 200 }),
     tcpProbe: async () => true,
     pgReady: async () => true,
+    pgJournalProbe: async () =>
+      options.journal ?? { status: "migrated", count: 1, oldestAppliedAt: BASELINE_AT },
     getuid: () => 0,
     systemdUnitDir: unitDir,
     writeTextFile: async (filePath, content) => {
@@ -844,6 +863,54 @@ describe("runFinishUpdate (phase 2, the new checkout's ctl)", () => {
     expect(onDisk.EVELAND_REVISION).toBe("abc0480");
     expect(onDisk.EVELAND_RELEASE_CHANNEL).toBe("stable");
     expect(onDisk.APP_SECRET_KEY).toBe("k");
+  });
+
+  test("a 0.x database (migrations older than the checkout's baseline) is refused before anything moves, pointing at the cutover", async () => {
+    const harness = await makeHarness({
+      supervision: "systemd",
+      journal: { status: "migrated", count: 69, oldestAppliedAt: 1_757_000_000_000 },
+    });
+    const code = await runFinishUpdate(["--from", "0.72.0", "--backup", "/b/x.sql"], harness.io);
+
+    expect(code).toBe(1);
+    const stderr = harness.err.join("\n");
+    expect(stderr).toContain("scripts/cutover-1.0/README.md");
+    expect(stderr).toContain("v0.72.0");
+    expect(stderr).toContain("Nothing in the database was changed");
+    expect(stderr).toContain(harness.layout.runDir);
+    // The baseline never runs on the old database, and nothing of the new
+    // version is put in place: no build, no units, no identity stamp, no start.
+    expect(harness.streamed).toEqual([]);
+    expect(harness.written).toEqual({});
+    expect(harness.timeline).not.toContain("systemctl start");
+    const onDisk = parseEnvFile(await readFile(harness.layout.envFilePath, "utf8"));
+    expect(onDisk.EVELAND_REVISION).toBe("0000000");
+  });
+
+  test("a database already brought to the baseline by the cutover updates normally", async () => {
+    const harness = await makeHarness({
+      journal: { status: "migrated", count: 1, oldestAppliedAt: BASELINE_AT },
+    });
+    harness.io.sendSignal!(4242, "SIGTERM");
+    const code = await runFinishUpdate(["--from", "0.72.0"], harness.io);
+    expect(code, harness.err.join("\n")).toBe(0);
+    expect(harness.streamed).toContainEqual(["pnpm", "--filter", "@evelandhq/api", "db:migrate"]);
+  });
+
+  test("a database whose journal cannot be read is refused rather than migrated blind", async () => {
+    const harness = await makeHarness({
+      journal: { status: "unreachable", detail: "connection refused" },
+    });
+    expect(await runFinishUpdate(FROM, harness.io)).toBe(1);
+    expect(harness.err.join("\n")).toContain("connection refused");
+    expect(harness.streamed).toEqual([]);
+  });
+
+  test("an empty database takes the baseline as its first migration", async () => {
+    const harness = await makeHarness({ journal: { status: "unmigrated" } });
+    harness.io.sendSignal!(4242, "SIGTERM");
+    expect(await runFinishUpdate(FROM, harness.io), harness.err.join("\n")).toBe(0);
+    expect(harness.streamed).toContainEqual(["pnpm", "--filter", "@evelandhq/api", "db:migrate"]);
   });
 
   test("a checkout that is not an exact release tag is stamped edge, not stable", async () => {

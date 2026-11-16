@@ -2,7 +2,7 @@ import type { Palette } from "./color.ts";
 import type { DeadLetterStore } from "./dead-letter-store.ts";
 import type { DispatcherLockStore } from "./dispatcher-lock-store.ts";
 import type { TcpProbe } from "./net-probe.ts";
-import type { PgEnsureDatabase, PgReady } from "./pg-probe.ts";
+import type { PgEnsureDatabase, PgJournalProbe, PgReady } from "./pg-probe.ts";
 import type { Prompter } from "./prompt.ts";
 
 /**
@@ -62,6 +62,8 @@ export type LifecycleIo = {
   pgReady?: PgReady;
   /** Creates a missing database over an existing connection to the same server. */
   pgEnsureDatabase?: PgEnsureDatabase;
+  /** Reads the configured database's migration journal. */
+  pgJournalProbe?: PgJournalProbe;
   /** Reads and resolves dispatch dead letters in the shared workflow world. */
   deadLetters?: DeadLetterStore;
   /** Test seam for `dispatcher-lock`; production uses the Postgres-backed default. */
