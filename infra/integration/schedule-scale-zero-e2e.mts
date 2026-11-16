@@ -209,10 +209,10 @@ async function main(): Promise<void> {
     assert.equal(observed.sessions.length, 2);
     assert.ok(observed.usage.reportedSteps >= 2, "schedule Session usage was not projected");
 
-    const beforeNativeTick = await store.listSessions(project.id);
+    const beforeNativeTick = (await store.listSessionsPage(project.id, { limit: 50 })).items;
     await waitPastNextMinute();
     await projectPendingOtlpLogs(store, otlpReceiver);
-    const afterNativeTick = await store.listSessions(project.id);
+    const afterNativeTick = (await store.listSessionsPage(project.id, { limit: 50 })).items;
     assert.equal(
       afterNativeTick.length,
       beforeNativeTick.length,
