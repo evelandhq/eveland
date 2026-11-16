@@ -80,7 +80,7 @@ describe("job payload contracts", () => {
     expect(() => decodeJobPayload("delete_project", { sourcePaths: ["valid", 42] })).toThrow();
   });
 
-  test("preserves legacy metadata while validating known payload fields", async () => {
+  test("preserves unknown metadata while validating known payload fields", async () => {
     const contracts = await loadJobContracts();
     expect(contracts).toHaveProperty("decodeJobPayload");
     const decodeJobPayload = contracts.decodeJobPayload!;

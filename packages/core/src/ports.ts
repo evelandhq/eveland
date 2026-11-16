@@ -32,8 +32,7 @@ export const API_PORT = 17301;
 /** Dashboard (Next.js), loopback-only behind the front door. */
 export const WEB_PORT = 17302;
 
-/** Reserved for the Model Gateway (unmerged branch; formerly 4090). Nothing
- * on main binds it yet -- the branch remaps here on rebase. */
+/** Reserved in the platform port block; nothing binds it. */
 export const MODEL_GATEWAY_PORT = 17303;
 
 /** Host-side mapping of the Postgres container (loopback-only publish). The
@@ -54,8 +53,8 @@ export const OTEL_AGENT_HOST_HTTP_PORT = 17314;
 export const DOCS_DEV_PORT = 17350;
 
 /** First port of the dynamic agent-deployment range (loopback only; the
- * allocator scans forward from here). Formerly 41000, which sat inside the
- * Linux ephemeral port range and collided with transient outbound sockets. */
+ * allocator scans forward from here). Below the Linux ephemeral port range,
+ * so it cannot collide with transient outbound sockets. */
 export const DEPLOYMENT_PORT_START = 18000;
 
 /**

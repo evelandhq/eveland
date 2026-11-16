@@ -376,7 +376,7 @@ describe("Eve session request classification", () => {
   });
 
   test("carves the Workflow webhook resume route out of the refused namespace", () => {
-    // eve 0.48 serves `createWebhook()` URLs here on every method; the token
+    // eve serves `createWebhook()` URLs here on every method; the token
     // is the credential, so exactly this shape is forwarded as a public request.
     expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v1/webhook/whk_1")).toBe(true);
     expect(Eve.isWorkflowWebhookRoute("/.well-known/workflow/v1/webhook/a.b-c_d")).toBe(true);

@@ -87,7 +87,7 @@ describe("parseUpdateCheck", () => {
     expect(parseUpdateCheck(JSON.stringify({ ...CHECK, breaking: "0.52.0" }))?.breaking).toBeNull();
   });
 
-  test("tolerates missing optional fields written by an older ctl", () => {
+  test("tolerates a check record without its optional fields", () => {
     expect(
       parseUpdateCheck(
         JSON.stringify({ version: "0.51.2", revision: "abc123abc123", channel: "stable" }),

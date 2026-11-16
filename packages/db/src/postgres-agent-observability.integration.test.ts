@@ -184,8 +184,8 @@ describe.skipIf(!database)("Postgres Agent observability ingestion", () => {
 
       // Hold the parent Session lock used by event append so the newer
       // transaction reaches that boundary first, while the older transaction
-      // can still read the stale max(source_sequence). The old implementation
-      // then lets both transactions project and the late lower sequence wins.
+      // can still read the stale max(source_sequence). Without the lock, both
+      // transactions would project and the late lower sequence would win.
       lockTransaction = database!.db.transaction(async (tx) => {
         await tx.execute(sql`select id from sessions where id = ${started.session.id} for update`);
         sessionLockHeld();

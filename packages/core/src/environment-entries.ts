@@ -3,10 +3,9 @@
  *
  * Project secrets, the shared platform environment, and the new-project flow
  * all collect the same key/kind/value entry, and the API validates the same
- * shape again on the way in. The pattern and the normalization used to be
- * spelled out at five sites with three different uniqueness messages, so a
- * policy change (a length cap, allowing lowercase) was a shotgun edit that
- * could leave the client and server disagreeing. Follows the precedent set by
+ * shape again on the way in. Keeping the pattern and the normalization here
+ * means a policy change (a length cap, allowing lowercase) is one edit that
+ * cannot leave the client and server disagreeing. Follows the precedent set by
  * the project-slug rules in ./ids.
  *
  * The rule is shared; the wording around it is not. Each surface keeps its

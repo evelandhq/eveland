@@ -896,8 +896,8 @@ describe("Agent observability ingestion repository", () => {
   });
 });
 
-describe("v27 (eve 0.84+) observations", () => {
-  function v27(
+describe("session stream observations", () => {
+  function streamEvent(
     deploymentId: string,
     line: number,
     index: number,
@@ -905,7 +905,7 @@ describe("v27 (eve 0.84+) observations", () => {
     overrides: Partial<AgentEventObservation> = {},
   ): AgentEventObservation {
     return envelope(deploymentId, {
-      telemetryEventId: `v27_${line}_${index}`,
+      telemetryEventId: `stream_${line}_${index}`,
       eventFingerprint: `position:${line}:${index}`,
       sourceSequence: line * 1000 + index,
       channelKind: "channel:eve",
@@ -914,7 +914,7 @@ describe("v27 (eve 0.84+) observations", () => {
     });
   }
 
-  test("projects status, usage, children, and the terminal outcome from v27 facts", async () => {
+  test("projects status, usage, children, and the terminal outcome from commit facts", async () => {
     const { store, projectId, deploymentId } = await createStore();
     const usage = (runId: string, inputTokens: number) => ({
       type: "usage.recorded",
@@ -971,7 +971,7 @@ describe("v27 (eve 0.84+) observations", () => {
       ],
     ];
     for (const [line, index, event] of events) {
-      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
+      await store.ingestAgentEvent(streamEvent(deploymentId, line, index, event));
     }
     let [session] = await store
       .listSessionsPage(projectId, { limit: 100 })
@@ -981,10 +981,11 @@ describe("v27 (eve 0.84+) observations", () => {
     // A redelivered record is a duplicate; a call-owned record re-reports a
     // child's spend and is left to the child.
     expect(
-      (await store.ingestAgentEvent(v27(deploymentId, 3, 1, usage("run_1", 100)))).duplicate,
+      (await store.ingestAgentEvent(streamEvent(deploymentId, 3, 1, usage("run_1", 100))))
+        .duplicate,
     ).toBe(true);
     await store.ingestAgentEvent(
-      v27(deploymentId, 5, 0, {
+      streamEvent(deploymentId, 5, 0, {
         type: "usage.recorded",
         scope: { turnId: "turn_1" },
         data: {
@@ -1029,7 +1030,7 @@ describe("v27 (eve 0.84+) observations", () => {
         },
       ],
     ] as const) {
-      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
+      await store.ingestAgentEvent(streamEvent(deploymentId, line, index, event));
     }
     [session] = await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items);
     expect(session).toMatchObject({
@@ -1062,7 +1063,7 @@ describe("v27 (eve 0.84+) observations", () => {
     });
 
     await store.ingestAgentEvent(
-      v27(deploymentId, 10, 0, {
+      streamEvent(deploymentId, 10, 0, {
         type: "session.ended",
         data: { outcome: "failed", error: { code: "X", message: "agent gave up" } },
       }),
@@ -1071,14 +1072,14 @@ describe("v27 (eve 0.84+) observations", () => {
     expect(session).toMatchObject({ status: "failed", error: "agent gave up" });
   });
 
-  test("attributes each v27 run's usage to its observed model, not the configured one", async () => {
+  test("attributes each run's usage to its observed model, not the configured one", async () => {
     // Two runs on one node, each answered by a different real model, neither
     // of which is the configured one: the configured-model fallback must not
     // be what makes the usage rows look right.
     const { store, projectId, deploymentId } = await createStore();
     const scope = (runId: string) => ({ turnId: "turn_1", runId });
     await store.ingestAgentEvent(
-      v27(deploymentId, 0, 0, {
+      streamEvent(deploymentId, 0, 0, {
         type: "session.started",
         data: { runtime: { agentId: "a", agentName: "root", eveVersion: "1.0.0-rc.1" } },
       }),
@@ -1089,14 +1090,14 @@ describe("v27 (eve 0.84+) observations", () => {
       ["run_2", "actual/second"],
     ] as const) {
       await store.ingestAgentEvent(
-        v27(deploymentId, line++, 0, {
+        streamEvent(deploymentId, line++, 0, {
           type: "model.started",
           scope: scope(runId),
           data: { runId, modelId: "manifest/model" },
         }),
       );
       await store.ingestAgentEvent(
-        v27(
+        streamEvent(
           deploymentId,
           line++,
           0,
@@ -1123,7 +1124,7 @@ describe("v27 (eve 0.84+) observations", () => {
     expect(node?.observedModelId).toBe("actual/second");
   });
 
-  test("counts a v27 model run with no usage record as missing", async () => {
+  test("counts a model run with no usage record as missing", async () => {
     const { store, projectId, deploymentId } = await createStore();
     const scope = (runId: string) => ({ turnId: "t", runId });
     // A settlement and the record it is owed share one commit (line).
@@ -1180,7 +1181,7 @@ describe("v27 (eve 0.84+) observations", () => {
       ],
     ] as const;
     for (const [line, index, event] of events) {
-      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
+      await store.ingestAgentEvent(streamEvent(deploymentId, line, index, event));
     }
     const [session] = await store
       .listSessionsPage(projectId, { limit: 100 })
@@ -1188,7 +1189,7 @@ describe("v27 (eve 0.84+) observations", () => {
     expect(session?.usage).toMatchObject({ status: "partial", reportedSteps: 1, missingSteps: 1 });
   });
 
-  test("reconciles v27 missing usage with late, early, and replayed records without double counting", async () => {
+  test("reconciles missing usage with late, early, and replayed records without double counting", async () => {
     const { store, projectId, deploymentId } = await createStore();
     const scope = (runId: string) => ({ turnId: "t", runId });
     const settled = (runId: string) => ({
@@ -1212,10 +1213,10 @@ describe("v27 (eve 0.84+) observations", () => {
     // A settlement and the record it is owed share one commit (line); only
     // their delivery order varies.
     // r1 settles and is counted missing until its record arrives late.
-    await store.ingestAgentEvent(v27(deploymentId, 1, 0, settled("r1")));
+    await store.ingestAgentEvent(streamEvent(deploymentId, 1, 0, settled("r1")));
     expect(await usageOf()).toMatchObject({ status: "missing", reportedSteps: 0, missingSteps: 1 });
     await store.ingestAgentEvent(
-      v27(deploymentId, 1, 1, recorded("r1", 10), {
+      streamEvent(deploymentId, 1, 1, recorded("r1", 10), {
         observedModel: { modelId: "actual/model", responseModelId: null },
       }),
     );
@@ -1227,8 +1228,8 @@ describe("v27 (eve 0.84+) observations", () => {
     });
 
     // r2's record arrives before its settlement: the settlement adds nothing.
-    await store.ingestAgentEvent(v27(deploymentId, 2, 1, recorded("r2", 20)));
-    await store.ingestAgentEvent(v27(deploymentId, 2, 0, settled("r2")));
+    await store.ingestAgentEvent(streamEvent(deploymentId, 2, 1, recorded("r2", 20)));
+    await store.ingestAgentEvent(streamEvent(deploymentId, 2, 0, settled("r2")));
     expect(await usageOf()).toMatchObject({ reportedSteps: 2, missingSteps: 0, inputTokens: 30 });
 
     // Replays (new delivery ids for the same facts) change nothing.
@@ -1238,7 +1239,9 @@ describe("v27 (eve 0.84+) observations", () => {
       [2, 0, settled("r2")],
     ] as const) {
       await store.ingestAgentEvent(
-        v27(deploymentId, line, index, event, { telemetryEventId: `replay_${line}_${index}` }),
+        streamEvent(deploymentId, line, index, event, {
+          telemetryEventId: `replay_${line}_${index}`,
+        }),
       );
     }
     expect(await usageOf()).toMatchObject({ reportedSteps: 2, missingSteps: 0, inputTokens: 30 });
@@ -1282,7 +1285,7 @@ describe("v27 (eve 0.84+) observations", () => {
       (await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items))[0]
         ?.usage;
 
-    // eve 1.0.0-rc.11+: a discarded answer's record shares the `model.retried`
+    // A discarded answer's record shares the `model.retried`
     // commit, and the answer that stands shares the `model.settled` one.
     // r1 arrives in order; r2's settled record arrives before its settlement
     // and its retried record last.
@@ -1297,14 +1300,16 @@ describe("v27 (eve 0.84+) observations", () => {
       [5, 0, retried("r2")],
     ] as const;
     for (const [line, index, event] of deliveries) {
-      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
+      await store.ingestAgentEvent(streamEvent(deploymentId, line, index, event));
     }
     const expected = { status: "reported", reportedSteps: 4, missingSteps: 0, inputTokens: 440 };
     expect(await usageOf()).toMatchObject(expected);
 
     for (const [line, index, event] of deliveries) {
       await store.ingestAgentEvent(
-        v27(deploymentId, line, index, event, { telemetryEventId: `replay_${line}_${index}` }),
+        streamEvent(deploymentId, line, index, event, {
+          telemetryEventId: `replay_${line}_${index}`,
+        }),
       );
     }
     expect(await usageOf()).toMatchObject(expected);
@@ -1335,7 +1340,7 @@ describe("v27 (eve 0.84+) observations", () => {
       [3, 1, recorded({ kind: "delegated-late" }, 9000)],
     ] as const;
     for (const [line, index, event] of deliveries) {
-      await store.ingestAgentEvent(v27(deploymentId, line, index, event));
+      await store.ingestAgentEvent(streamEvent(deploymentId, line, index, event));
     }
     const expected = {
       status: "reported",
@@ -1352,7 +1357,9 @@ describe("v27 (eve 0.84+) observations", () => {
     // A replay under new delivery ids lands on the same rows.
     for (const [line, index, event] of deliveries) {
       await store.ingestAgentEvent(
-        v27(deploymentId, line, index, event, { telemetryEventId: `replay_${line}_${index}` }),
+        streamEvent(deploymentId, line, index, event, {
+          telemetryEventId: `replay_${line}_${index}`,
+        }),
       );
     }
     expect(await usageOf()).toMatchObject(expected);
@@ -1414,7 +1421,7 @@ describe("v27 (eve 0.84+) observations", () => {
       [7, 0, recorded({ kind: "model", owner: { callId: "call_dir" } }, 9000), {}],
     ];
     for (const [line, index, event, overrides] of deliveries) {
-      await store.ingestAgentEvent(v27(deploymentId, line, index, event, overrides));
+      await store.ingestAgentEvent(streamEvent(deploymentId, line, index, event, overrides));
     }
     const expected = {
       status: "reported",
@@ -1431,7 +1438,7 @@ describe("v27 (eve 0.84+) observations", () => {
     // A replay under new delivery ids lands on the same rows.
     for (const [line, index, event, overrides] of deliveries) {
       await store.ingestAgentEvent(
-        v27(deploymentId, line, index, event, {
+        streamEvent(deploymentId, line, index, event, {
           ...overrides,
           telemetryEventId: `replay_${line}_${index}`,
         }),
@@ -1464,11 +1471,19 @@ describe("v27 (eve 0.84+) observations", () => {
   test("never counts a parent's record on a session that is not its child", async () => {
     const { store, projectId, deploymentId } = await createStore();
     await store.ingestAgentEvent(
-      v27(deploymentId, 0, 0, { type: "session.started", data: {} }, { eveSessionId: "eve_other" }),
+      streamEvent(
+        deploymentId,
+        0,
+        0,
+        { type: "session.started", data: {} },
+        { eveSessionId: "eve_other" },
+      ),
     );
-    await store.ingestAgentEvent(v27(deploymentId, 0, 0, { type: "session.started", data: {} }));
     await store.ingestAgentEvent(
-      v27(
+      streamEvent(deploymentId, 0, 0, { type: "session.started", data: {} }),
+    );
+    await store.ingestAgentEvent(
+      streamEvent(
         deploymentId,
         1,
         0,
@@ -1492,10 +1507,10 @@ describe("v27 (eve 0.84+) observations", () => {
     }
   });
 
-  test("classifies the v27 scheduler channel as a scheduled trigger", async () => {
+  test("classifies the scheduler channel as a scheduled trigger", async () => {
     const { store, projectId, deploymentId } = await createStore();
     await store.ingestAgentEvent(
-      v27(
+      streamEvent(
         deploymentId,
         0,
         0,
@@ -1504,7 +1519,7 @@ describe("v27 (eve 0.84+) observations", () => {
       ),
     );
     await store.ingestAgentEvent(
-      v27(
+      streamEvent(
         deploymentId,
         0,
         0,
