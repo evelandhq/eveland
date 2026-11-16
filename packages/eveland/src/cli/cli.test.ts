@@ -113,6 +113,31 @@ describe("eveland CLI", () => {
     expect(err.join("\n")).toContain("Not logged in");
   });
 
+  test("names its own version on every request", async () => {
+    const manifest = JSON.parse(
+      await readFile(new URL("../../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    const seen: Array<string | null> = [];
+    const fetchImpl: FetchLike = async (_url, init) => {
+      seen.push(new Headers(init?.headers).get("x-eveland-cli-version"));
+      return jsonResponse(200, MEMBER);
+    };
+    const { io } = await makeIo(fetchImpl, { EVELAND_TOKEN: "ci-token" });
+    expect(await runCli(["whoami", "--origin", "http://localhost:17300"], io)).toBe(0);
+    expect(seen).toEqual([manifest.version]);
+  });
+
+  test("surfaces the platform's answer to an incompatible CLI version", async () => {
+    const description =
+      "eveland CLI 1.9.0 is not compatible with this Eveland platform (2.3.0): the CLI must " +
+      "have the platform's major version, 2. Install eveland@2 (for example `npm install eveland@2`).";
+    const fetchImpl: FetchLike = async () =>
+      jsonResponse(426, { error: "cli_version_unsupported", error_description: description });
+    const { io, err } = await makeIo(fetchImpl, { EVELAND_TOKEN: "ci-token" });
+    expect(await runCli(["whoami", "--origin", "http://localhost:17300"], io)).toBe(1);
+    expect(err).toEqual([description]);
+  });
+
   test("a 401 from the API becomes a login hint, not a stack trace", async () => {
     const fetchImpl: FetchLike = async () =>
       jsonResponse(401, { error: "Authentication required" });

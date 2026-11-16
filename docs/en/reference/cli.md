@@ -28,6 +28,16 @@ npm install eveland
 
 The package provides `eveland/auth` (`evelandIdentity()`), `eveland/memory`, and this CLI. Keep the agent's files in `agent/`, where `eve init` puts them: Eveland deploys one agent per repository from that directory ([Source import](/docs/reference/source-import)).
 
+### Version compatibility
+
+The CLI and the platform must share a major version: an `eveland` 1.x CLI works with any 1.x platform. The CLI sends its version on every request in the `x-eveland-cli-version` header. A platform with a different major version answers before running anything, with HTTP 426 and the `cli_version_unsupported` error, and the CLI prints the reason, for example:
+
+```text
+eveland CLI 1.9.0 is not compatible with this Eveland platform (2.3.0): the CLI must have the platform's major version, 2. Install eveland@2 (for example `npm install eveland@2`).
+```
+
+Requests without the header, such as the Dashboard's, are not checked.
+
 ---
 
 ## 2. Origin resolution order
