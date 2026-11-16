@@ -470,6 +470,13 @@
       "when": 1794816086628,
       "tag": "0066_e6_drop_unread_state",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794817678592,
+      "tag": "0067_drop_model_usage_step_index",
+      "breakpoints": true
     }
   ]
 }

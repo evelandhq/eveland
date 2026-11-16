@@ -16,8 +16,13 @@ describe("Agent observability ingestion repository", () => {
       telemetryEventId: "step",
       sourceSequence: 2,
       event: {
-        type: "step.completed",
-        data: { turnId: "turn_1", stepIndex: 0, usage: { inputTokens: 12, outputTokens: 3 } },
+        type: "usage.recorded",
+        scope: { turnId: "turn_1", runId: "run_1" },
+        data: {
+          kind: "model",
+          owner: { runId: "run_1" },
+          usage: { inputTokens: 12, outputTokens: 3 },
+        },
       },
     });
 
@@ -40,18 +45,34 @@ describe("Agent observability ingestion repository", () => {
     await store.ingestAgentEvent(
       envelope(deploymentId, {
         telemetryEventId: "started",
-        event: { type: "session.started", data: { runtime: { modelId: "openai/gpt-5" } } },
+        event: { type: "session.started", data: {} },
+      }),
+    );
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "model",
+        sourceSequence: 2,
+        event: {
+          type: "model.started",
+          scope: { turnId: "turn_1", runId: "run_1" },
+          data: { runId: "run_1", modelId: "openai/gpt-5" },
+        },
       }),
     );
 
     await store.ingestAgentEvent(
       envelope(deploymentId, {
         telemetryEventId: "step",
-        sourceSequence: 2,
+        sourceSequence: 3,
         observedModel: { modelId: "openai/gpt-6", responseModelId: "gpt-6-2026-01-01" },
         event: {
-          type: "step.completed",
-          data: { turnId: "turn_1", stepIndex: 0, usage: { inputTokens: 12, outputTokens: 3 } },
+          type: "usage.recorded",
+          scope: { turnId: "turn_1", runId: "run_1" },
+          data: {
+            kind: "model",
+            owner: { runId: "run_1" },
+            usage: { inputTokens: 12, outputTokens: 3 },
+          },
         },
       }),
     );
@@ -108,19 +129,19 @@ describe("Agent observability ingestion repository", () => {
     await expect(store.listSessions(projectId)).resolves.toHaveLength(1);
   });
 
-  test("turn.completed is not terminal and session.waiting is the durable turn boundary", async () => {
+  test("a settled turn leaves the Session waiting, not completed", async () => {
     const { store, projectId, deploymentId } = await createStore();
     await store.ingestAgentEvent(
-      envelope(deploymentId, { event: { type: "turn.completed", data: {} } }),
+      envelope(deploymentId, { event: { type: "turn.started", data: { turnId: "turn_1" } } }),
     );
     let [session] = await store.listSessions(projectId);
     expect(session?.status).toBe("running");
 
     await store.ingestAgentEvent(
       envelope(deploymentId, {
-        telemetryEventId: "waiting",
+        telemetryEventId: "settled",
         sourceSequence: 2,
-        event: { type: "session.waiting", data: {} },
+        event: { type: "turn.settled", data: { turnId: "turn_1", outcome: "completed" } },
       }),
     );
     [session] = await store.listSessions(projectId);
@@ -178,9 +199,9 @@ describe("Agent observability ingestion repository", () => {
     await store.ingestAgentEvent(envelope(deploymentId));
     await store.ingestAgentEvent(
       envelope(deploymentId, {
-        telemetryEventId: "waiting",
+        telemetryEventId: "settled",
         sourceSequence: 2,
-        event: { type: "session.waiting", data: {} },
+        event: { type: "turn.settled", data: { turnId: "turn_1", outcome: "completed" } },
       }),
     );
 
@@ -244,7 +265,7 @@ describe("Agent observability ingestion repository", () => {
       envelope(deploymentId, {
         eveSessionId: "eve_topic_product",
         telemetryEventId: "product-completed",
-        event: { type: "turn.completed", data: { turnId: "turn_product" } },
+        event: { type: "turn.settled", data: { turnId: "turn_product", outcome: "completed" } },
       }),
     );
     await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
@@ -256,7 +277,7 @@ describe("Agent observability ingestion repository", () => {
       envelope(deploymentId, {
         eveSessionId: "eve_topic_customer",
         telemetryEventId: "customer-completed",
-        event: { type: "turn.completed", data: { turnId: "turn_customer" } },
+        event: { type: "turn.settled", data: { turnId: "turn_customer", outcome: "completed" } },
       }),
     );
     await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
@@ -267,11 +288,11 @@ describe("Agent observability ingestion repository", () => {
       expect.arrayContaining([
         expect.objectContaining({
           eveSessionId: "eve_topic_product",
-          status: "running",
+          status: "waiting",
         }),
         expect.objectContaining({
           eveSessionId: "eve_topic_customer",
-          status: "running",
+          status: "waiting",
         }),
       ]),
     );
@@ -308,7 +329,7 @@ describe("Agent observability ingestion repository", () => {
       envelope(deploymentId, {
         eveSessionId: "eve_fast_topic",
         telemetryEventId: "fast-completed",
-        event: { type: "turn.completed", data: { turnId: "turn_fast" } },
+        event: { type: "turn.settled", data: { turnId: "turn_fast", outcome: "completed" } },
       }),
     );
 
@@ -326,97 +347,97 @@ describe("Agent observability ingestion repository", () => {
   test.each([
     { arrival: "before", label: "its Observer boundary arrived before dispatch completion" },
     { arrival: "after", label: "dispatch completion came first" },
-  ])(
-    "parks a ScheduleRun on an Eve 0.69 question inside a running call when $label",
-    async ({ arrival }) => {
-      // 0.69 parks the turn with `turn.waiting` instead of ending it with
-      // `session.waiting` when a call it runs asks a question.
-      const { store, projectId, deploymentId } = await createStore();
-      const revision = await store.getCurrentSourceRevision(projectId);
-      if (!revision) throw new Error("Expected source revision fixture.");
-      const [recorded] = await store.recordScheduleVersions({
-        projectId,
-        sourceRevisionId: revision.id,
-        definitions: [
-          {
-            key: "asks-first",
-            kind: "handler",
-            cron: "0 2 * * *",
-            sourcePath: "agent/schedules/asks-first.ts",
-            definitionHash: "b".repeat(64),
-          },
-        ],
-      });
-      if (!recorded) throw new Error("Expected schedule fixture.");
-      await store.setProjectSchedulerTarget(projectId, deploymentId);
-      const run = await store.createManualScheduleRun(
-        projectId,
-        recorded.schedule.id,
-        new Date("2026-10-02T02:00:00.000Z"),
-      );
-      await store.claimScheduleRunActivation(run.id);
-      await store.redeemScheduleRunDispatch(run.id, deploymentId);
-      const ingestQuestion = async () => {
-        await store.ingestAgentEvent(
-          envelope(deploymentId, {
-            eveSessionId: "eve_asks_first",
-            telemetryEventId: "asks-started",
-            event: { type: "turn.started", data: { turnId: "turn_ask" } },
-          }),
-        );
-        await store.ingestAgentEvent(
-          envelope(deploymentId, {
-            eveSessionId: "eve_asks_first",
-            telemetryEventId: "asks-requested",
-            sourceSequence: 2,
-            event: {
-              type: "input.requested",
-              data: { turnId: "turn_ask", requests: [{ requestId: "run_1-ask-0" }] },
-            },
-          }),
-        );
-        await store.ingestAgentEvent(
-          envelope(deploymentId, {
-            eveSessionId: "eve_asks_first",
-            telemetryEventId: "asks-waiting",
-            sourceSequence: 3,
-            event: { type: "turn.waiting", data: { turnId: "turn_ask", sequence: 3 } },
-          }),
-        );
-      };
-
-      if (arrival === "before") await ingestQuestion();
-      const completed = await store.completeScheduleRun(run.id, {
-        status: "succeeded",
-        eveSessionIds: ["eve_asks_first"],
-      });
-      if (arrival === "after") {
-        expect(completed).toMatchObject({ status: "running", completedAt: null });
-        await ingestQuestion();
-      }
-
-      await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
-        status: "succeeded",
-        completedAt: expect.any(String),
-      });
-      const [session] = await store.listSessions(projectId);
-      expect(session).toMatchObject({ status: "waiting_approval" });
-    },
-  );
-
-  test("keeps a held turn waiting for approval after a partial answer", async () => {
-    // Answering one of two pending requests resolves only that one; eve then
-    // re-parks the same turn with `turn.waiting { on: "input" }`.
+  ])("parks a ScheduleRun on a question its turn pauses for when $label", async ({ arrival }) => {
     const { store, projectId, deploymentId } = await createStore();
+    const revision = await store.getCurrentSourceRevision(projectId);
+    if (!revision) throw new Error("Expected source revision fixture.");
+    const [recorded] = await store.recordScheduleVersions({
+      projectId,
+      sourceRevisionId: revision.id,
+      definitions: [
+        {
+          key: "asks-first",
+          kind: "handler",
+          cron: "0 2 * * *",
+          sourcePath: "agent/schedules/asks-first.ts",
+          definitionHash: "b".repeat(64),
+        },
+      ],
+    });
+    if (!recorded) throw new Error("Expected schedule fixture.");
+    await store.setProjectSchedulerTarget(projectId, deploymentId);
+    const run = await store.createManualScheduleRun(
+      projectId,
+      recorded.schedule.id,
+      new Date("2026-10-02T02:00:00.000Z"),
+    );
+    await store.claimScheduleRunActivation(run.id);
+    await store.redeemScheduleRunDispatch(run.id, deploymentId);
+    const ingestQuestion = async () => {
+      await store.ingestAgentEvent(
+        envelope(deploymentId, {
+          eveSessionId: "eve_asks_first",
+          telemetryEventId: "asks-started",
+          event: { type: "turn.started", data: { turnId: "turn_ask" } },
+        }),
+      );
+      await store.ingestAgentEvent(
+        envelope(deploymentId, {
+          eveSessionId: "eve_asks_first",
+          telemetryEventId: "asks-requested",
+          sourceSequence: 2,
+          event: {
+            type: "interaction.opened",
+            data: {
+              turnId: "turn_ask",
+              interactionId: "int_ask",
+              request: { kind: "question", prompt: "Which topic?" },
+            },
+          },
+        }),
+      );
+      await store.ingestAgentEvent(
+        envelope(deploymentId, {
+          eveSessionId: "eve_asks_first",
+          telemetryEventId: "asks-paused",
+          sourceSequence: 3,
+          event: { type: "turn.paused", data: { turnId: "turn_ask" } },
+        }),
+      );
+    };
+
+    if (arrival === "before") await ingestQuestion();
+    const completed = await store.completeScheduleRun(run.id, {
+      status: "succeeded",
+      eveSessionIds: ["eve_asks_first"],
+    });
+    if (arrival === "after") {
+      expect(completed).toMatchObject({ status: "running", completedAt: null });
+      await ingestQuestion();
+    }
+
+    await expect(store.getScheduleRun(run.id)).resolves.toMatchObject({
+      status: "succeeded",
+      completedAt: expect.any(String),
+    });
+    const [session] = await store.listSessions(projectId);
+    expect(session).toMatchObject({ status: "waiting_approval" });
+  });
+
+  test("keeps a paused turn waiting for approval after a partial answer", async () => {
+    // Answering one of two open interactions settles only that one; eve then
+    // pauses the same turn again on the other.
+    const { store, projectId, deploymentId } = await createStore();
+    const opened = (interactionId: string) => ({
+      type: "interaction.opened",
+      data: { turnId: "turn_two", interactionId, request: { kind: "question", prompt: "?" } },
+    });
     const events = [
       { type: "turn.started", data: { turnId: "turn_two" } },
-      { type: "input.requested", data: { turnId: "turn_two", requests: [{ requestId: "q_1" }] } },
-      { type: "input.requested", data: { turnId: "turn_two", requests: [{ requestId: "q_2" }] } },
-      {
-        type: "input.resolved",
-        data: { turnId: "turn_two", resolutions: [{ requestId: "q_1", outcome: "answered" }] },
-      },
-      { type: "turn.waiting", data: { on: "input", turnId: "turn_two", sequence: 5 } },
+      opened("q_1"),
+      opened("q_2"),
+      { type: "interaction.settled", data: { turnId: "turn_two", interactionId: "q_1" } },
+      { type: "turn.paused", data: { turnId: "turn_two" } },
     ];
     for (const [index, event] of events.entries()) {
       await store.ingestAgentEvent(
@@ -430,99 +451,53 @@ describe("Agent observability ingestion repository", () => {
 
     const [session] = await store.listSessions(projectId);
     expect(session).toMatchObject({ status: "waiting_approval", completedAt: null });
-  });
-
-  test("projects an unresolved HITL request as waiting for approval", async () => {
-    const { store, projectId, deploymentId } = await createStore();
-
-    await store.ingestAgentEvent(
-      envelope(deploymentId, {
-        event: {
-          type: "input.requested",
-          data: { requestId: "approval_1", prompt: "Allow deploy?" },
-        },
-      }),
-    );
-    await store.ingestAgentEvent(
-      envelope(deploymentId, {
-        telemetryEventId: "waiting",
-        sourceSequence: 2,
-        event: { type: "session.waiting", data: {} },
-      }),
-    );
-
-    const [session] = await store.listSessions(projectId);
-    expect(session).toMatchObject({ status: "waiting_approval", completedAt: null });
     await expect(store.listSessionNodes(session!.id)).resolves.toEqual([
       expect.objectContaining({ status: "waiting_approval" }),
     ]);
   });
 
-  test.each([
-    {
-      eve: "0.74",
-      event: {
-        type: "subagent.called",
-        data: {
-          childSessionId: "eve_remote",
-          name: "remote-researcher",
-          remote: { url: "https://agents.example.test/eve/v1/session" },
-        },
-      },
-    },
-    {
-      eve: "0.69",
-      event: {
-        type: "agent.started",
-        data: {
-          callId: "call_remote",
-          name: "remote-researcher",
-          sessionId: "eve_remote",
-          streamPath: "/eve/v1/session/eve_root/subagents/call_remote/eve_remote/stream",
-          taskId: "task_remote",
-          turnId: "turn_1",
-          remote: {
-            resolverId: "remote-researcher",
-            url: "https://agents.example.test/eve/v1/session",
+  test("keeps a child unresolved until its own stream is observed", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        event: {
+          type: "child.opened",
+          scope: { turnId: "turn_1" },
+          data: {
+            sessionId: "eve_remote",
+            owner: { callId: "call_remote" },
+            name: "remote-researcher",
+            stream: "/eve/v1/session/eve_root/subagents/call_remote/eve_remote/stream",
           },
         },
-      },
-    },
-  ])(
-    "records a remote subagent URL from Eve $eve as unresolved until its own stream is observed",
-    async ({ event }) => {
-      const { store, projectId, deploymentId } = await createStore();
-      await store.ingestAgentEvent(envelope(deploymentId, { event }));
+      }),
+    );
 
-      let [session] = await store.listSessions(projectId);
-      let remote = (await store.listSessionNodes(session!.id)).find(
-        (node) => node.eveSessionId === "eve_remote",
-      );
-      expect(remote).toMatchObject({
-        agentName: "remote-researcher",
-        remoteUrl: "https://agents.example.test/eve/v1/session",
-        resolutionStatus: "unresolved",
-      });
+    let [session] = await store.listSessions(projectId);
+    let remote = (await store.listSessionNodes(session!.id)).find(
+      (node) => node.eveSessionId === "eve_remote",
+    );
+    expect(remote).toMatchObject({
+      agentName: "remote-researcher",
+      remoteUrl: null,
+      resolutionStatus: "unresolved",
+    });
 
-      await store.ingestAgentEvent(
-        envelope(deploymentId, {
-          telemetryEventId: "remote-started",
-          eveSessionId: "eve_remote",
-          parentEveSessionId: "eve_root",
-          event: { type: "session.started", data: {} },
-        }),
-      );
+    await store.ingestAgentEvent(
+      envelope(deploymentId, {
+        telemetryEventId: "remote-started",
+        eveSessionId: "eve_remote",
+        parentEveSessionId: "eve_root",
+        event: { type: "session.started", data: {} },
+      }),
+    );
 
-      [session] = await store.listSessions(projectId);
-      remote = (await store.listSessionNodes(session!.id)).find(
-        (node) => node.eveSessionId === "eve_remote",
-      );
-      expect(remote).toMatchObject({
-        remoteUrl: "https://agents.example.test/eve/v1/session",
-        resolutionStatus: "observed",
-      });
-    },
-  );
+    [session] = await store.listSessions(projectId);
+    remote = (await store.listSessionNodes(session!.id)).find(
+      (node) => node.eveSessionId === "eve_remote",
+    );
+    expect(remote).toMatchObject({ resolutionStatus: "observed" });
+  });
 
   test("links child-before-parent delivery into one root session tree", async () => {
     const { store, projectId, deploymentId } = await createStore();
@@ -648,7 +623,13 @@ describe("Agent observability ingestion repository", () => {
       envelope(deploymentId, {
         telemetryEventId: "evt_2",
         sourceSequence: 2,
-        event: { type: "session.failed", data: { message: "Tool crashed: boom" } },
+        event: {
+          type: "session.ended",
+          data: {
+            outcome: "failed",
+            error: { code: "TOOL_FAILED", message: "Tool crashed: boom" },
+          },
+        },
       }),
     );
 
@@ -807,7 +788,7 @@ describe("Agent observability ingestion repository", () => {
     });
     await store.recordModelUsage(gatewaySession.id, {
       turnId: "turn_gateway",
-      stepIndex: 0,
+      runKey: "run:r1",
       finishReason: "stop",
       inputTokens: 10,
       outputTokens: 20,
@@ -819,7 +800,7 @@ describe("Agent observability ingestion repository", () => {
     const observed = await store.ingestAgentEvent(envelope(deploymentId));
     await store.recordModelUsage(observed.session.id, {
       turnId: "turn_observed",
-      stepIndex: 0,
+      runKey: "run:r2",
       finishReason: "stop",
       inputTokens: 100,
       outputTokens: 200,
@@ -995,10 +976,10 @@ describe("v27 (eve 0.84+) observations", () => {
       },
     });
     const usageRows = await store.listModelUsageEvents(session!.id);
-    expect(usageRows.map((row) => [row.turnId, row.stepIndex, row.runKey])).toEqual(
+    expect(usageRows.map((row) => [row.turnId, row.runKey])).toEqual(
       expect.arrayContaining([
-        ["turn_1", null, "run:run_1@line:3"],
-        ["turn_1", null, "run:run_2@line:8"],
+        ["turn_1", "run:run_1@line:3"],
+        ["turn_1", "run:run_2@line:8"],
       ]),
     );
     expect(usageRows).toHaveLength(2);
@@ -1306,42 +1287,6 @@ describe("v27 (eve 0.84+) observations", () => {
     ]);
   });
 
-  test("a run first projected under its unpositioned key keeps that key", async () => {
-    const { store, projectId, deploymentId } = await createStore();
-    const scope = { turnId: "t", runId: "r1" };
-    // Projected before run keys carried the commit line: the settlement holds
-    // the run's missing row under `run:r1`.
-    await store.ingestAgentEvent(
-      envelope(deploymentId, {
-        telemetryEventId: "legacy_settled",
-        eventFingerprint: "legacy:settled",
-        channelKind: "channel:eve",
-        event: {
-          type: "model.settled",
-          scope,
-          data: { runId: "r1", outcome: "completed" },
-          meta: {},
-        },
-      }),
-    );
-    await store.ingestAgentEvent(
-      v27(deploymentId, 2, 1, {
-        type: "usage.recorded",
-        scope,
-        data: {
-          kind: "model",
-          owner: { runId: "r1" },
-          usage: { inputTokens: 7, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
-        },
-      }),
-    );
-    const [session] = await store.listSessions(projectId);
-    expect(session?.usage).toMatchObject({ reportedSteps: 1, missingSteps: 0, inputTokens: 7 });
-    expect((await store.listModelUsageEvents(session!.id)).map((row) => row.runKey)).toEqual([
-      "run:r1",
-    ]);
-  });
-
   test("classifies the v27 scheduler channel as a scheduled trigger", async () => {
     const { store, projectId, deploymentId } = await createStore();
     await store.ingestAgentEvent(
@@ -1441,7 +1386,7 @@ describe("out-of-order delivery", () => {
       envelope(deploymentId, {
         telemetryEventId: "completed",
         sourceSequence: 10,
-        event: { type: "session.completed", data: {} },
+        event: { type: "session.ended", data: { outcome: "completed" } },
       }),
     );
     const [terminal] = await store.listSessions(projectId);
@@ -1475,7 +1420,7 @@ describe("out-of-order delivery", () => {
       envelope(deploymentId, {
         telemetryEventId: "completed",
         sourceSequence: 10,
-        event: { type: "session.completed", data: {} },
+        event: { type: "session.ended", data: { outcome: "completed" } },
       }),
     );
 
@@ -1569,7 +1514,7 @@ function envelope(
     parentEveSessionId: null,
     sourceSequence: 1,
     agent: { id: null, name: "root", nodeId: "root" },
-    channelKind: "http",
+    channelKind: "channel:eve",
     eventAt: "2026-07-13T00:00:00.000Z",
     event: { type: "session.started", data: {} },
     ...overrides,

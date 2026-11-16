@@ -264,11 +264,10 @@ Delivery is at-least-once and may arrive out of order, so projection must advanc
 event order, not arrival order: late events with older sequence numbers are still
 stored in full, but must neither regress the SessionNode/Session state projection nor
 rewrite the last-observed Deployment/RuntimeInstance provenance. The criterion is
-Eve's own per-session order: the v27 fact's stream position — its line and its index within the line, which the
-observer forwards and the projection orders as `line * 1000 + index`. A v27 position
-never changes, so it is also the event's dedupe fingerprint. Events stored from
-Eve 0.83 (v26) Sessions keep ordering by their `data.sequence`. When an event carries
-neither there is nothing to order by and projection degrades to last-writer-wins. Terminal states are
+Eve's own per-session order: the fact's stream position — its line and its index within the line, which the
+observer forwards and the projection orders as `line * 1000 + index`. A position
+never changes, so it is also the event's dedupe fingerprint, and an event without one
+is not projected. Terminal states are
 not "sticky" — completed → running is a legal transition when a continuation wakes a
 session, judged by sequence, never by the state itself. Worker heartbeats and host
 metrics follow the same rule: a replayed old batch must not move `observedAt`
@@ -400,24 +399,18 @@ also builds no local view of the Collector's delivery volume or queue pressure.
   `usage.recorded`, keyed by `run_key`: a model run's or a context change's record
   by its owner, and spend Eve makes outside its own model steps -- `decision`
   (`decide()`, automatic model selection, tool approval) and `auxiliary` (a model
-  call a tool makes) -- by its stream position;
-  rows recorded from Eve 0.83 Sessions are one `step.completed` each (keyed by turn
-  and step) and stay as they were. A `model` record owned by a call, and a
+  call a tool makes) -- by its stream position. A `model` record owned by a call, and a
   `delegated-late` one, re-report spend a child session already recorded, so only
-  the child counts them; v27 fills a missing token count with zero, so missing usage is a
+  the child counts them; Eve fills a missing token count with zero, so missing usage is a
   model run with no record at all. A model run's `run_key` also names the commit
   (stream line) the fact was written in. A completed model run counts as missing from
   its `model.settled` until its record arrives; eve writes that record in the same
   commit, so it fills that same `run_key` row, whichever of the two is delivered
-  first, and a run is never counted twice. From Eve 1.0.0-rc.11 an answer Eve
-  discards and asks for again records its usage in the `model.retried` commit; that
-  record keeps its own row and counts toward the Session's usage beside the run's
-  settled record. A failed or cancelled run is never counted as missing; a record
-  Eve writes for one counts. Rows projected before `run_key` named the commit keep
-  their bare `run:<id>` key, and a later record for such a run fills that row.
-- Every supported line speaks the v27 session protocol; session replay, traces, and
-  the projection still read the v26 events stored from Eve 0.83 Sessions. An
-  unhandled hook error fails the running turn; the injected hook catches every
+  first, and a run is never counted twice. An answer Eve discards and asks for again
+  records its usage in the `model.retried` commit; that record keeps its own row and
+  counts toward the Session's usage beside the run's settled record. A failed or
+  cancelled run is never counted as missing; a record Eve writes for one counts.
+- An unhandled hook error fails the running turn; the injected hook catches every
   telemetry failure, so this changes nothing for Eveland.
 
 ## Troubleshooting

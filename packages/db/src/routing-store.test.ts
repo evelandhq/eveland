@@ -741,7 +741,7 @@ function envelope(deploymentId: string): AgentEventObservation {
     parentEveSessionId: null,
     sourceSequence: 1,
     agent: { id: null, name: "root", nodeId: "root" },
-    channelKind: "http",
+    channelKind: "channel:eve",
     eventAt: new Date().toISOString(),
     event: { type: "session.started", data: {} },
   };

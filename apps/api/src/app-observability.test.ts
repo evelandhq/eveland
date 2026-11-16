@@ -42,10 +42,10 @@ describe("api app", () => {
       role: "user",
       content: "Count this",
     });
-    await store.appendSessionEvent(session.id, "step.completed", {
+    await store.appendSessionEvent(session.id, "usage.recorded", {
       turnId: "turn_0",
-      stepIndex: 0,
-      finishReason: "stop",
+      kind: "model",
+      owner: { runId: "run_0" },
       usage: { inputTokens: 90, outputTokens: 10, cacheReadTokens: 50 },
     });
     await store.appendSessionEvent(session.id, "model_response", {
@@ -80,7 +80,7 @@ describe("api app", () => {
       agentId: "agent_root",
       agentName: "Root agent",
       turnId: "turn_0",
-      stepIndex: 0,
+      runKey: "run:api1",
       finishReason: "stop",
       inputTokens: 20,
       outputTokens: 5,

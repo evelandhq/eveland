@@ -240,9 +240,9 @@ signal、payload hash 和接收时间，用于重投幂等与 Collector 在线�
 投递至少一次且可乱序，因此投影必须按事件顺序而非到达顺序推进：晚到的、序号更旧的
 事件仍要完整入库，但不得回退 SessionNode/Session 的状态投影，也不得改写
 last-observed Deployment/RuntimeInstance provenance。判据是 Eve 自带的 per-session
-顺序：v27 Fact 在 Stream 中的位置——
-所在行号与行内序号，由 Observer 转发、投影按 `line * 1000 + index` 排序。v27 位置永不改变，
-因此也是事件的去重指纹。从 Eve 0.83（v26）Session 存储的事件仍按其 `data.sequence` 排序。两者都没有时无从排序，投影退化为 last-writer-wins。终态不是
+顺序：Fact 在 Stream 中的位置——
+所在行号与行内序号，由 Observer 转发、投影按 `line * 1000 + index` 排序。位置永不改变，
+因此也是事件的去重指纹；没有位置的事件不会被投影。终态不是
 "粘住"的——continuation 唤醒会话时 completed → running 是合法转换，必须依据序号而非
 状态本身来判断。Worker 心跳与 host metric 同理：重放的旧批次不得让 `observedAt`
 倒退，否则健康的 worker 会被显示为失联。
@@ -354,19 +354,16 @@ eve_session_id)` 与 SessionNode 的同名对一样是唯一索引，两条存�
 - Observability 不是计费账本；usage 只采用 Eve/provider 实际报告的值，缺失保持缺失。一行用量对应一个
   `usage.recorded`，按 `run_key` 去重：Model Run 或 Context Change 的记录以其 Owner 为键，Eve 在自身
   Model Step 之外的花费——`decision`（`decide()`、自动选模型、工具审批）与 `auxiliary`（工具发起的
-  模型调用）——以其 Stream 位置为键；从 Eve 0.83 Session
-  记录的行各对应一个 `step.completed`（按 Turn 与 Step 去重），保持原样。由 Call 拥有的 `model`
-  记录和 `delegated-late` 记录是在重报子 Session 已记录的花费，因此只由子 Session 计入；v27 会把缺失的 Token 数填为零，
+  模型调用）——以其 Stream 位置为键。由 Call 拥有的 `model`
+  记录和 `delegated-late` 记录是在重报子 Session 已记录的花费，因此只由子 Session 计入；Eve 会把缺失的 Token 数填为零，
   所以用量缺失表现为某个 Model Run 完全没有记录。Model Run 的 `run_key` 同时标明事实所在的
   commit（stream line）。已完成的 Model Run 自其 `model.settled` 起计为缺失，直到其记录到达；Eve
   把该记录写在同一个 commit 里，所以它填充同一 `run_key` 行，无论两者谁先送达，一次 Run 都不会被
-  重复计数。从 Eve 1.0.0-rc.11 起，Eve 丢弃并重新请求的回答会在 `model.retried` 的 commit 里记录
-  用量；这条记录单独成行，与该 Run 结算时的记录一起计入 Session 用量。失败或被取消的 Run 从不计为
-  缺失；Eve 为它写下的记录会计入。在 `run_key` 标明 commit 之前投影的行保留裸 `run:<id>` 键，
-  该 Run 之后的记录会填充那一行。
-- 每条受支持的线都说 v27 Session 协议；Session 回放、Trace 与投影仍读取从 Eve 0.83 Session
-  存储的 v26 事件。未处理的 Hook 错误会让正在运行的 Turn 失败；注入的 Hook 会捕获每个
-  遥测失败，因此对 Eveland 没有影响。
+  重复计数。Eve 丢弃并重新请求的回答会在 `model.retried` 的 commit 里记录用量；这条记录单独成行，
+  与该 Run 结算时的记录一起计入 Session 用量。失败或被取消的 Run 从不计为缺失；Eve 为它写下的记录
+  会计入。
+- 未处理的 Hook 错误会让正在运行的 Turn 失败；注入的 Hook 会捕获每个遥测失败，因此对 Eveland
+  没有影响。
 
 ## 故障排查
 

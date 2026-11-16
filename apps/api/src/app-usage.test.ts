@@ -18,7 +18,7 @@ describe("usage analytics API", () => {
       agentId: "agent_usage_api",
       agentName: "Usage API agent",
       turnId: "turn_0",
-      stepIndex: 0,
+      runKey: "run:api4",
       finishReason: "stop",
       inputTokens: 80,
       outputTokens: 20,

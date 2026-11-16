@@ -92,11 +92,7 @@ export function setErrorStatus(span: Span, data: Record<string, unknown>): void 
   const error = asRecord(data.error);
   span.setStatus({
     code: SpanStatusCode.ERROR,
-    message:
-      asString(error?.message) ??
-      asString(data.message) ??
-      asString(data.status) ??
-      "Eve operation failed",
+    message: asString(error?.message) ?? "Eve operation failed",
   });
 }
 

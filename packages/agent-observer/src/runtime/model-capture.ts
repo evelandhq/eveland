@@ -3,10 +3,9 @@ import { asNonNegativeInteger, asRecord, asString } from "./values.js";
 /**
  * A model call observed through the AI SDK telemetry registry. `modelId` is
  * the id the runtime resolved and actually invoked — Eve's event stream only
- * ever reports the compile-time manifest value (evelandhq/eveland#263), so
- * this is the sole source of the real per-call model until vercel/eve#1593
- * puts it on `step.completed`. `responseModelId` is the id the provider
- * echoed back for the response.
+ * reports the compile-time manifest value (evelandhq/eveland#263), so this is
+ * the sole source of the real per-call model. `responseModelId` is the id the
+ * provider echoed back for the response.
  */
 export type ObservedModelCall = {
   modelId: string;
@@ -33,8 +32,8 @@ type AiSdkTelemetryGlobal = {
 
 /**
  * Concurrent turns can interleave a handful of calls between an `onStepEnd`
- * and the matching `step.completed` hook event; anything older than this is
- * an orphan (its step failed or its event was dropped) and gets evicted.
+ * and the matching `usage.recorded` hook event; anything older than this is
+ * an orphan (its run failed or its event was dropped) and gets evicted.
  */
 const maxBufferedCalls = 16;
 
@@ -99,8 +98,8 @@ export function createModelCallCapture(
 }
 
 /**
- * Eve copies the AI SDK usage numbers into `step.completed` unchanged
- * (`extractStepUsage`), so equality on both token counts identifies the call.
+ * Eve copies the AI SDK usage numbers into a run's `usage.recorded`
+ * unchanged, so equality on both token counts identifies the call.
  * Token counts alone can collide across concurrent turns; `finishReason`
  * breaks the tie when both sides carry it.
  */

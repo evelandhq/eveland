@@ -429,9 +429,9 @@ describe("ensureDeploymentActive", () => {
       parentEveSessionId: null,
       sourceSequence: 1,
       agent: { id: null, name: "root", nodeId: "root" },
-      channelKind: "http",
+      channelKind: "channel:eve",
       eventAt: "2026-07-28T02:21:14.000Z",
-      event: { type: "step.started", data: { stepIndex: 201 } },
+      event: { type: "turn.started", data: { turnId: "turn_201" } },
     });
     const runtime = {
       name: "docker",

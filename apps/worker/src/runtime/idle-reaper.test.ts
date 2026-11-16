@@ -214,7 +214,7 @@ describe("reapIdleDeployments", () => {
       parentEveSessionId: null,
       sourceSequence: 1,
       agent: { id: null, name: "root", nodeId: "root" },
-      channelKind: "http",
+      channelKind: "channel:eve",
       eventAt: "2026-08-05T09:13:59.000Z",
       event: { type: "session.started", data: {} },
       runtimeInstanceId: claim.runtimeInstance.id,
@@ -248,7 +248,7 @@ describe("reapIdleDeployments", () => {
         telemetryEventId: "evt_completed",
         sourceSequence: 2,
         eventAt: "2026-08-05T09:20:00.000Z",
-        event: { type: "session.completed", data: {} },
+        event: { type: "session.ended", data: { outcome: "completed" } },
       }),
     );
     await expect(

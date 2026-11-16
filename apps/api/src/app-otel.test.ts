@@ -1080,27 +1080,19 @@ function agentLogBatch(deploymentId: string) {
               logRecord("event_started", {
                 type: "session.started",
                 data: {
-                  sequence: 1,
-                  runtime: {
-                    agentId: "root",
-                    agentName: "Researcher",
-                    modelId: "openai/gpt-5",
-                    eveVersion: "0.27.0",
-                  },
+                  runtime: { agentId: "root", agentName: "Researcher", eveVersion: "1.0.0" },
                 },
+                meta: { position: { line: 0, index: 0 } },
               }),
-              logRecord("event_step", {
-                type: "step.completed",
+              logRecord("event_usage", {
+                type: "usage.recorded",
+                scope: { turnId: "turn_1", runId: "run_1" },
                 data: {
-                  sequence: 2,
-                  turnId: "turn_1",
-                  stepIndex: 0,
-                  finishReason: "stop",
-                  usage: {
-                    inputTokens: 120,
-                    outputTokens: 30,
-                  },
+                  kind: "model",
+                  owner: { runId: "run_1" },
+                  usage: { inputTokens: 120, outputTokens: 30 },
                 },
+                meta: { position: { line: 1, index: 1 } },
               }),
             ],
           },
@@ -1178,7 +1170,7 @@ function logRecord(eventId: string, event: unknown) {
       attribute("eveland.eve.session.id", "eve_session_1"),
       attribute("eveland.eve.agent.name", "Researcher"),
       attribute("eveland.eve.agent.node.id", "root"),
-      attribute("eveland.eve.channel.kind", "http"),
+      attribute("eveland.eve.channel.kind", "channel:eve"),
     ],
     body: anyValue(event),
   };
