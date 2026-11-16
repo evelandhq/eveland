@@ -103,7 +103,7 @@ async function main(): Promise<void> {
         await store.ingestAgentEvent(observation);
       }
 
-      let sessions = await store.listSessions(project.id);
+      let sessions = (await store.listSessionsPage(project.id, { limit: 10 })).items;
       assert.equal(
         sessions.length,
         1,
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
       for (const observation of observations) {
         await store.ingestAgentEvent(observation);
       }
-      sessions = await store.listSessions(project.id);
+      sessions = (await store.listSessionsPage(project.id, { limit: 10 })).items;
       assert.deepEqual(
         sessions[0]!.usage,
         usageBeforeReplay,
