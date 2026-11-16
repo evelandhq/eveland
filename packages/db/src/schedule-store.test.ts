@@ -215,6 +215,82 @@ describe("schedule persistence", () => {
     ).resolves.toHaveLength(3);
   });
 
+  test("advances a zoned schedule on its own wall clock", () => {
+    // 09:00 in Shanghai is 01:00 UTC; a planner that wakes at 05:00 UTC the
+    // next day has missed one tick.
+    expect(
+      calculateScheduleAdvance(
+        "0 9 * * *",
+        new Date("2026-07-15T01:00:00.000Z"),
+        new Date("2026-07-16T05:00:00.000Z"),
+        "Asia/Shanghai",
+      ),
+    ).toEqual({ nextRunAt: new Date("2026-07-17T01:00:00.000Z"), missedTicks: 1 });
+  });
+
+  test("persists each version's timezone, plans in it, and keeps it immutable", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "Zoned schedules", importKind: "git" });
+    const revision = await store.recordSourceRevision({
+      projectId: project.id,
+      kind: "git",
+      sourcePath: "/tmp/zoned",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const definition = {
+      key: "digest",
+      kind: "markdown" as const,
+      cron: "0 13 * * *",
+      timezone: "America/Los_Angeles",
+      sourcePath: "agent/schedules/digest.md",
+      definitionHash: "a".repeat(64),
+    };
+    await store.recordScheduleVersions({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      definitions: [definition],
+    });
+    const [entry] = await store.listProjectScheduleVersions(project.id, revision.id);
+    expect(entry?.version.timezone).toBe("America/Los_Angeles");
+
+    await expect(
+      store.recordScheduleVersions({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        definitions: [{ ...definition, timezone: "UTC" }],
+      }),
+    ).rejects.toThrow(/immutable/);
+    await expect(
+      store.recordScheduleVersions({
+        projectId: project.id,
+        sourceRevisionId: revision.id,
+        definitions: [{ ...definition, key: "other", timezone: "Mars/Olympus" }],
+      }),
+    ).rejects.toThrow(/IANA/);
+
+    const deployment = await store.recordDeployment({
+      projectId: project.id,
+      sourceRevisionId: revision.id,
+      imageTag: "fixture:zoned",
+      containerName: "fixture-zoned",
+      internalPort: 3000,
+      hostPort: 41989,
+      runtimeKind: "docker",
+    });
+    await store.setProjectSchedulerTarget(
+      project.id,
+      deployment.id,
+      new Date("2026-07-15T12:00:00.000Z"),
+    );
+    // 13:00 Pacific Daylight Time.
+    await expect(store.getProjectSchedule(entry!.schedule.id)).resolves.toMatchObject({
+      nextRunAt: "2026-07-15T20:00:00.000Z",
+    });
+  });
+
   test("coalesces due ticks and atomically creates one run and one job under concurrent planners", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Planner race", importKind: "zip" });

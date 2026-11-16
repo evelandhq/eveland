@@ -390,6 +390,7 @@ describe("processNextJob", () => {
                   key: "daily",
                   kind: "markdown" as const,
                   cron: "0 8 * * *",
+                  timezone: "UTC",
                   sourcePath: "agent/schedules/daily.md",
                   definitionHash: "a".repeat(64),
                   modulePath: "agent/schedules/daily.ts",

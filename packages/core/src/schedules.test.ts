@@ -20,6 +20,7 @@ Sweep the billing ledger.
       cron: "0 8 * * *",
       sourcePath: "agent/schedules/billing/sweep.md",
       prompt: "Sweep the billing ledger.",
+      timezone: "UTC",
       executable: true,
     });
   });
@@ -47,7 +48,7 @@ Sweep the billing ledger.
     },
   );
 
-  test.each(["timezone: Asia/Shanghai", "enabled: false", "description: nightly"])(
+  test.each(["enabled: false", "description: nightly"])(
     "rejects unsupported Markdown frontmatter: %s",
     (field) => {
       expect(() =>
@@ -60,7 +61,7 @@ ${field}
 Run nightly.
 `,
         ),
-      ).toThrow(/only supports the cron frontmatter field/);
+      ).toThrow(/only supports the cron and timezone frontmatter fields/);
     },
   );
 
@@ -77,13 +78,37 @@ Run nightly.
     expect(performance.now() - started).toBeLessThan(200);
   });
 
-  test("names UTC when Markdown frontmatter asks for a timezone", () => {
+  // eve stores the canonical IANA name ("utc" builds as "UTC") and fails the
+  // build on a zone it does not know.
+  test.each([
+    ["timezone: Asia/Shanghai", "Asia/Shanghai"],
+    ['timezone: "america/los_angeles"', "America/Los_Angeles"],
+    ["timezone: utc", "UTC"],
+  ])("reads Markdown frontmatter %s as its canonical zone", (field, timezone) => {
+    expect(
+      parseScheduleSource(
+        "agent/schedules/nightly.md",
+        `---\ncron: "0 8 * * *"\n${field}\n---\nRun nightly.\n`,
+      ),
+    ).toMatchObject({ cron: "0 8 * * *", timezone });
+  });
+
+  test("rejects a Markdown timezone that is not an IANA zone", () => {
     expect(() =>
       parseScheduleSource(
         "agent/schedules/nightly.md",
-        `---\ncron: "0 8 * * *"\ntimezone: Asia/Shanghai\n---\nRun nightly.\n`,
+        `---\ncron: "0 8 * * *"\ntimezone: Mars/Olympus\n---\nRun nightly.\n`,
       ),
-    ).toThrow(/runs every schedule in UTC/);
+    ).toThrow(/agent\/schedules\/nightly\.md.*Mars\/Olympus.*not an IANA timezone/);
+  });
+
+  test("rejects a Markdown timezone declared twice", () => {
+    expect(() =>
+      parseScheduleSource(
+        "agent/schedules/nightly.md",
+        `---\ncron: "0 8 * * *"\ntimezone: UTC\ntimezone: Asia/Tokyo\n---\nRun.\n`,
+      ),
+    ).toThrow(/declares timezone more than once/);
   });
 
   test.each(["0 8 * *", "0 0 8 * * *"])("rejects non-five-field cron: %s", (cron) => {
@@ -110,6 +135,86 @@ describe("getNextRunAt", () => {
   test("rejects cron expressions that do not contain exactly five fields", () => {
     expect(() => getNextRunAt("0 0 8 * * *")).toThrow(/five fields/);
   });
+
+  const la = "America/Los_Angeles";
+  const runs = (cron: string, from: string, count: number, timezone = la) => {
+    const out: string[] = [];
+    let at = new Date(from);
+    for (let index = 0; index < count; index += 1) {
+      at = getNextRunAt(cron, at, timezone);
+      out.push(at.toISOString());
+    }
+    return out;
+  };
+
+  test("keeps a local time across daylight saving changes", () => {
+    // 13:00 Pacific: 20:00 UTC in summer, 21:00 UTC in winter.
+    expect(runs("0 13 * * *", "2026-06-30T12:00:00Z", 1)).toEqual(["2026-06-30T20:00:00.000Z"]);
+    expect(runs("0 13 * * *", "2026-12-01T12:00:00Z", 1)).toEqual(["2026-12-01T21:00:00.000Z"]);
+    expect(runs("0 9 * * *", "2026-06-30T12:00:00Z", 1, "Asia/Shanghai")).toEqual([
+      "2026-07-01T01:00:00.000Z",
+    ]);
+  });
+
+  // eve's self-hosted rule: a skipped local time runs at the next valid local
+  // time, and a repeated local time runs once, at its first occurrence.
+  test("runs a skipped local time at the next valid local time", () => {
+    // 2026-03-08 02:00 PST jumps to 03:00 PDT (10:00 UTC).
+    expect(runs("30 2 * * *", "2026-03-07T12:00:00Z", 2)).toEqual([
+      "2026-03-08T10:00:00.000Z",
+      "2026-03-09T09:30:00.000Z",
+    ]);
+    // Every skipped minute lands on the same instant; it runs once.
+    expect(runs("*/15 2 * * *", "2026-03-08T09:00:00Z", 2)).toEqual([
+      "2026-03-08T10:00:00.000Z",
+      "2026-03-09T09:00:00.000Z",
+    ]);
+  });
+
+  test("runs a repeated local time once, at its first occurrence", () => {
+    // 2026-11-01 01:00-02:00 happens twice: first at -07:00, then at -08:00.
+    expect(runs("30 1 * * *", "2026-10-31T12:00:00Z", 2)).toEqual([
+      "2026-11-01T08:30:00.000Z",
+      "2026-11-02T09:30:00.000Z",
+    ]);
+    expect(runs("*/30 1 * * *", "2026-11-01T07:00:00Z", 3)).toEqual([
+      "2026-11-01T08:00:00.000Z",
+      "2026-11-01T08:30:00.000Z",
+      "2026-11-02T09:00:00.000Z",
+    ]);
+    // From inside the repeated hour's second pass, the next run is tomorrow.
+    expect(runs("30 1 * * *", "2026-11-01T09:10:00Z", 1)).toEqual(["2026-11-02T09:30:00.000Z"]);
+  });
+
+  test("hourly schedules keep firing through both transitions", () => {
+    expect(runs("0 * * * *", "2026-03-08T08:30:00Z", 3)).toEqual([
+      "2026-03-08T09:00:00.000Z",
+      "2026-03-08T10:00:00.000Z",
+      "2026-03-08T11:00:00.000Z",
+    ]);
+    expect(runs("0 * * * *", "2026-11-01T07:30:00Z", 3)).toEqual([
+      "2026-11-01T08:00:00.000Z",
+      "2026-11-01T10:00:00.000Z",
+      "2026-11-01T11:00:00.000Z",
+    ]);
+  });
+});
+
+describe("canonicalScheduleTimezone", () => {
+  test.each([
+    ["UTC", "UTC"],
+    ["utc", "UTC"],
+    ["asia/shanghai", "Asia/Shanghai"],
+    ["America/Los_Angeles", "America/Los_Angeles"],
+  ])("canonicalizes %s", (value, expected) => {
+    expect(scheduleUtilities.canonicalScheduleTimezone(value)).toBe(expected);
+  });
+
+  test.each(["", "Mars/Olympus", "+08:00"])("rejects %j", (value) => {
+    expect(() => scheduleUtilities.canonicalScheduleTimezone(value)).toThrow(
+      /not an IANA timezone/,
+    );
+  });
 });
 
 describe("describeScheduleCron", () => {
@@ -128,5 +233,11 @@ describe("describeScheduleCron", () => {
     expect(describeScheduleCron).toBeTypeOf("function");
     if (!describeScheduleCron) return;
     expect(describeScheduleCron(cron)).toBe(expected);
+  });
+
+  test("names the schedule's own timezone", () => {
+    expect(scheduleUtilities.describeScheduleCron("0 9 * * *", "Asia/Shanghai")).toBe(
+      "At 09:00, every day (Asia/Shanghai)",
+    );
   });
 });

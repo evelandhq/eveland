@@ -36,7 +36,7 @@ Eve framework executes schedule timers in-process by default. In enterprise mult
 1. **Dormant processes have no clock**: Stopped processes cannot trigger scheduled timers;
 2. **Duplicate executions across previews**: When preview deployments or canary targets run concurrently, each process fires duplicate cron tasks, risking duplicated business mutations.
 
-Eveland neutralizes local cron handlers during compilation, centralizing schedule timing at the platform layer:
+Eveland turns eve's own schedule runner off in every Deployment (`EVE_SCHEDULES_DISABLED=1`), centralizing schedule timing at the platform layer:
 
 - The platform uses PostgreSQL as the single source of truth, triggering only the designated active production target.
 - Even if the target agent is dormant, the platform prewarms and wakes the instance seconds ahead of time, ensuring precise on-time execution.

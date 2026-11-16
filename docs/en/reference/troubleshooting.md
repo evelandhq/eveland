@@ -104,7 +104,7 @@ This guide is organized by observed symptom. Before troubleshooting, inspect ove
 ### Common causes
 
 - Workflow Dispatcher is stopped or unable to acquire its advisory lock;
-- Non-standard cron syntax (Eveland strictly requires 5-field minute-resolution UTC cron).
+- Non-standard cron syntax (Eveland requires 5-field minute-resolution cron, read in UTC unless the schedule sets an IANA `timezone`).
 
 ### Remediation steps
 

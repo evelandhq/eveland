@@ -456,6 +456,13 @@
       "when": 1793692758111,
       "tag": "0064_model_gateway",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1794810318058,
+      "tag": "0065_schedule_version_timezone",
+      "breakpoints": true
     }
   ]
 }

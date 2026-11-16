@@ -114,7 +114,7 @@ export default async function SessionTimelinePage({
             {scheduleRun.trigger === "cron" ? (
               <span
                 className="font-mono text-muted-foreground"
-                title={describeScheduleCron(scheduleRun.version.cron)}
+                title={describeScheduleCron(scheduleRun.version.cron, scheduleRun.version.timezone)}
               >
                 {scheduleRun.version.cron}
               </span>

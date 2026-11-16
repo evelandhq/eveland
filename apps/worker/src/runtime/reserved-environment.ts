@@ -86,6 +86,11 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   // it is reserved so a project entry cannot re-enable it. The same constant
   // rides the build environment (systemd) and the image (Docker).
   EVE_TELEMETRY_DISABLED: [],
+  // The platform scheduler dispatches every authored schedule through the
+  // injected Scheduler Channel; eve's own cron runner would fire each one a
+  // second time, on every running Deployment of the project. A constant, and
+  // reserved so a project entry cannot turn eve's runner back on.
+  EVE_SCHEDULES_DISABLED: [],
   // Reserved at runtime only in production, but reserved for every build
   // regardless: `npm ci` and `pnpm install --frozen-lockfile` both omit
   // devDependencies when NODE_ENV=production is in the environment, so an entry

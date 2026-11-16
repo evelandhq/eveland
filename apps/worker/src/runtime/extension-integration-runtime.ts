@@ -10,7 +10,6 @@ export const EXTENSION_COVERAGE_GAPS_RELEASE_PATH =
 export async function runExtensionIntegration(releaseDir: string): Promise<{
   observerFiles: string[];
   observerCoverageGaps: ObserverCoverageGap[];
-  scheduleFiles: string[];
   scheduleDefinitions: number;
 }> {
   const resolvedReleaseDir = path.resolve(releaseDir);
@@ -39,7 +38,6 @@ export async function runExtensionIntegration(releaseDir: string): Promise<{
   return {
     observerFiles: observer.injectedFiles,
     observerCoverageGaps,
-    scheduleFiles: scheduler.transformedFiles,
     scheduleDefinitions: scheduler.definitions.length,
   };
 }

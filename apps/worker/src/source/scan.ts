@@ -59,11 +59,11 @@ export async function scanEveSource(input: {
           name: schedule.key,
           kind: schedule.kind,
           cron: schedule.cron,
-          timezone: "UTC",
+          timezone: schedule.timezone,
           enabled: true,
           executable: true,
           sourcePath: schedule.sourcePath,
-          nextRunAt: getNextRunAt(schedule.cron).toISOString(),
+          nextRunAt: getNextRunAt(schedule.cron, new Date(), schedule.timezone).toISOString(),
         };
       }
 

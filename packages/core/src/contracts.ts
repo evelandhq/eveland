@@ -797,6 +797,8 @@ export type ScheduleVersion = {
   sourceRevisionId: string;
   kind: "markdown" | "handler";
   cron: string;
+  /** Canonical IANA zone the cron is read in. */
+  timezone: string;
   sourcePath: string;
   definitionHash: string;
   createdAt: string;

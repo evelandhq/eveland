@@ -163,7 +163,10 @@ export async function applySchedulerTargetTx(
     await tx
       .update(projectSchedules)
       .set({
-        nextRunAt: version && scheduleRow.enabled ? getNextRunAt(version.cron, input.now) : null,
+        nextRunAt:
+          version && scheduleRow.enabled
+            ? getNextRunAt(version.cron, input.now, version.timezone)
+            : null,
         updatedAt: input.now,
       })
       .where(eq(projectSchedules.id, scheduleRow.id));

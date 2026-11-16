@@ -378,6 +378,7 @@ export function scheduleVersionRowToScheduleVersion(row: {
   sourceRevisionId: string;
   kind: string;
   cron: string;
+  timezone: string;
   sourcePath: string;
   definitionHash: string;
   createdAt: Date;

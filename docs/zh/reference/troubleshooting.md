@@ -104,7 +104,7 @@ description: 常见生产部署、构建、网络路由、冷启动、定时任�
 ### 常见原因
 
 - Workflow Dispatcher 服务未启动或 Advisory Lock 获取失败；
-- Cron 表达式使用了非标准的时区定义（平台仅支持标准的 5 段式 UTC Cron）。
+- Cron 表达式不是标准的 5 段式分钟级 Cron（默认按 UTC 解读，定时任务设置了 IANA `timezone` 时按该时区解读）。
 
 ### 排查与解决步骤
 
