@@ -5,10 +5,7 @@ import { mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import {
-  EVE_COMPATIBILITY_POLICY,
-  SUPPORTED_EVE_VERSION_RANGE,
-} from "@evelandhq/core/eve-compatibility";
+import { VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
 import {
   injectExtensionSchedules,
@@ -17,256 +14,10 @@ import {
 } from "./adapter.js";
 
 const execFileAsync = promisify(execFile);
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
-  ({ verifiedVersion, dependencyName }) => ({
-    version: verifiedVersion,
-    packageName: dependencyName,
-  }),
-);
 describe("injectSchedulerAdapter", () => {
-  test("fails closed outside the 1.0 compatibility window", async () => {
-    for (const eveVersion of [
-      "0.30.8",
-      "0.31.3",
-      "0.32.5",
-      "0.33.3",
-      "0.34.0",
-      "0.35.0",
-      "0.36.0",
-      "0.37.1",
-      "0.38.3",
-      "0.39.3",
-      "~0.39.3",
-      "0.40.0",
-      "~0.40.0",
-      "0.41.0",
-      "~0.41.0",
-      "0.42.0",
-      "~0.42.0",
-      "0.43.0",
-      "~0.43.0",
-      "0.44.4",
-      "~0.44.4",
-      "0.45.2",
-      "~0.45.2",
-      // 0.46 and 0.48 were the skipped lines of earlier windows; now they are
-      // simply below the floor, like every other pre-0.50 line here.
-      "0.46.0",
-      "~0.46.1",
-      "0.48.0",
-      "~0.48.0",
-      "0.47.7",
-      "^0.47.7",
-      // 0.49 was verified and then retired on 2026-09-07 when 0.52 entered,
-      // 0.50 and 0.51 on 2026-09-12 when 0.53 and 0.54 entered, 0.52 and 0.53
-      // on 2026-09-15 when 0.55 entered and the window narrowed to two lines,
-      // and 0.54 on 2026-09-16 when 0.56 entered: a formerly supported line is
-      // rejected exactly like a never-verified one.
-      "0.49.0",
-      "~0.49.0",
-      "^0.49.0",
-      "0.49.x",
-      "0.50.0",
-      "~0.50.0",
-      "^0.50.0",
-      "0.50.x",
-      "0.51.1",
-      "~0.51.1",
-      "^0.51.1",
-      "0.51.x",
-      "0.52.5",
-      "~0.52.5",
-      "^0.52.5",
-      "0.52.x",
-      "0.53.1",
-      "~0.53.1",
-      "^0.53.1",
-      "0.53.x",
-      "0.54.5",
-      "~0.54.5",
-      "^0.54.5",
-      "0.54.x",
-      // 0.56 and 0.57 were the skipped lines of the {0.55, 0.58} window: inside the
-      // hull, superseded on 2026-09-17 before any Eveland release carried
-      // them, so never verified and rejected like a retired line.
-      "0.56.0",
-      "~0.56.0",
-      "^0.56.0",
-      "0.56.x",
-      "0.57.0",
-      "~0.57.0",
-      "^0.57.0",
-      "0.57.x",
-      // 0.55 retired on 2026-09-19 when 0.62 entered; 0.59, 0.60 and 0.61 are
-      // the lines that round skipped inside the hull.
-      "0.55.0",
-      "~0.55.0",
-      "^0.55.0",
-      "0.55.x",
-      "0.59.1",
-      "~0.59.1",
-      "^0.59.1",
-      "0.59.x",
-      "0.60.1",
-      "~0.60.1",
-      "^0.60.1",
-      "0.60.x",
-      "0.61.1",
-      "~0.61.1",
-      "^0.61.1",
-      "0.61.x",
-      // 0.58 retired on 2026-09-23 when the window slid to 0.62 and 0.65; 0.63
-      // and 0.64 are the lines that round skipped inside the hull, 0.65
-      // joined them on 2026-09-24 when 0.66 took its place before any release,
-      // 0.66 itself retired on 2026-09-26 when 0.67 entered two days later, and
-      // 0.67 on 2026-09-29 when 0.68 replaced it, again before any release.
-      "0.58.1",
-      "~0.58.1",
-      "^0.58.1",
-      "0.58.x",
-      "0.63.0",
-      "~0.63.0",
-      "^0.63.0",
-      "0.63.x",
-      "0.64.1",
-      "^0.64.1",
-      "0.64.x",
-      "0.65.0",
-      "~0.65.0",
-      "^0.65.0",
-      "0.65.x",
-      "0.66.1",
-      "~0.66.1",
-      "^0.66.1",
-      "0.66.x",
-      "0.67.0",
-      "~0.67.0",
-      "^0.67.0",
-      "0.67.x",
-      // 0.62 retired on 2026-10-02 when 0.69 entered, 0.69 the same day
-      // when 0.70 replaced it, 0.70 on 2026-10-07 when 0.72 replaced it
-      // (0.71 skipped), 0.72 on 2026-10-08 when 0.73 replaced it, 0.73 the
-      // same day when 0.74 replaced it, 0.68 on 2026-10-09 when 0.75
-      // entered (v0.61.0 had carried 0.74 since the day before), and 0.75
-      // on 2026-10-10 when 0.76 replaced it, before any release carried it.
-      // 0.74 retired on 2026-10-14 when 0.79 entered (v0.62.0 had carried
-      // 0.76 since 2026-10-10); 0.77 and 0.78 sit inside the hull. 0.76
-      // retired on 2026-10-21 when 0.81 entered (v0.63.0 had carried 0.79
-      // since 2026-10-14); 0.80 sits inside the hull. 0.79 retired on
-      // 2026-10-27 when 0.83 entered (v0.64.0 had carried 0.81 since
-      // 2026-10-21); 0.82 sits inside the hull. 0.81 retired on 2026-11-02
-      // when 1.0 entered (v0.65.0 had carried 0.83 since 2026-10-27), and
-      // 0.84 through 0.91 were skipped; a 1.x caret spans later minors. 0.83,
-      // the last v26 line, retired on 2026-11-04 (v0.66.0 had carried 1.0
-      // since 2026-11-02).
-      "0.83.3",
-      "~0.83.3",
-      "0.83.x",
-      "0.81.1",
-      "~0.81.1",
-      "0.81.x",
-      "0.84.0",
-      "0.91.0",
-      "~0.91.0",
-      "1.1.0",
-      "^1.0.0",
-      "0.62.0",
-      "~0.62.0",
-      "^0.62.0",
-      "0.62.x",
-      ">=0.58.0",
-      ">=0.62.0",
-      ">=0.62.0 <0.69.0",
-      ">=0.68.0",
-      ">=0.68.0 <0.70.0",
-      ">=0.68.0 <0.71.0",
-      ">=0.74.0",
-      ">=0.74.0 <0.76.0",
-      "0.68.0",
-      "~0.68.0",
-      "^0.68.0",
-      "0.68.x",
-      "0.69.0",
-      "~0.69.0",
-      "^0.69.0",
-      "0.69.x",
-      ">=0.68.0 <0.73.0",
-      ">=0.68.0 <0.74.0",
-      ">=0.68.0 <0.75.0",
-      "0.73.0",
-      "~0.73.0",
-      "^0.73.0",
-      "0.73.x",
-      "0.72.1",
-      "~0.72.1",
-      "^0.72.1",
-      "0.72.x",
-      "0.70.0",
-      "~0.70.0",
-      "^0.70.0",
-      "0.70.x",
-      "0.71.0",
-      "^0.71.0",
-      "0.75.1",
-      "~0.75.1",
-      "^0.75.1",
-      "0.75.x",
-      "0.74.0",
-      "~0.74.0",
-      "^0.74.0",
-      "0.74.x",
-      ">=0.76.0 <0.80.0",
-      ">=0.76.0 <0.79.0",
-      ">=0.79.0 <0.82.0",
-      ">=0.81.0 <0.84.0",
-      "0.79.0",
-      "~0.79.0",
-      "^0.79.0",
-      "0.79.x",
-      "0.82.0",
-      "^0.82.0",
-      "0.82.x",
-      "0.84.0",
-      "0.76.0",
-      "~0.76.0",
-      "^0.76.0",
-      "0.76.x",
-      "0.77.0",
-      "^0.77.0",
-      "0.77.x",
-      "0.78.0",
-      "~0.78.0",
-      "0.78.x",
-      "0.80.0",
-      "~0.80.1",
-      "0.80.x",
-      "*",
-      "latest",
-    ]) {
-      const releaseDir = await fixture({ eveVersion, files: {} });
-
-      await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
-        new RegExp(
-          `supports Eve ${escapeRegExp(SUPPORTED_EVE_VERSION_RANGE)}.*found ${escapeRegExp(eveVersion)}`,
-        ),
-      );
-    }
-  });
-
-  test("accepts every dependency form that stays inside a verified Eve minor", async () => {
-    for (const eveVersion of ["1.0.0-rc.1", "~1.0.0-rc.1", "1.0.0", "~1.0.0", "1.0", "1.0.x"]) {
-      const releaseDir = await fixture({ eveVersion, files: {} });
-
-      const result = await injectSchedulerAdapter({ releaseDir });
-
-      expect(result.eveVersion).toBe(eveVersion);
-    }
-  });
-
   test("rewrites module and Markdown schedules to native no-ops while preserving originals", async () => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/schedules/billing/sweep.ts": `import { defineSchedule } from "eve/schedules";
 import { helper } from "../../lib/helper";
@@ -330,7 +81,7 @@ Produce the daily report.
 
   test("generates a closed authenticated dispatch Channel without embedding secrets", async () => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
       },
@@ -362,7 +113,7 @@ Produce the daily report.
 
   test("generates the fixed-session dispatch Channel", async () => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/schedules/report.md": `---
 cron: "30 5 * * *"
@@ -399,18 +150,11 @@ Produce the daily report.
     const files = {
       "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
     };
-    const readChannel = async (eveVersion: string) => {
-      const releaseDir = await fixture({ eveVersion, files });
-      await injectSchedulerAdapter({ releaseDir });
-      return readFile(path.join(releaseDir, "agent/channels/eveland-scheduler.ts"), "utf8");
-    };
-
-    for (const { version: eveVersion } of compatibilityMatrix) {
-      expect(await readChannel(eveVersion), eveVersion).toContain("turnPolicy");
-    }
-
-    const current = await readChannel(
-      EVE_COMPATIBILITY_POLICY.supportedLines.at(-1)!.verifiedVersion,
+    const releaseDir = await fixture({ eveVersion: VERIFIED_EVE_VERSION, files });
+    await injectSchedulerAdapter({ releaseDir });
+    const current = await readFile(
+      path.join(releaseDir, "agent/channels/eveland-scheduler.ts"),
+      "utf8",
     );
     // Both send sites: the markdown dispatch and the wrapper around the
     // authored handler's own `to(...).send`, where the author still wins
@@ -421,7 +165,7 @@ Produce the daily report.
 
   test("marks every scheduler-created root in async context without changing existing sessions", async () => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/schedules/report.md": `---\ncron: "30 5 * * *"\n---\nProduce the daily report.\n`,
         "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run() {} };`,
@@ -449,7 +193,7 @@ Produce the daily report.
     async (extension) => {
       const sourcePath = `agent/schedules/nested/direct.${extension}`;
       const releaseDir = await fixture({
-        eveVersion: "1.0.0-rc.2",
+        eveVersion: VERIFIED_EVE_VERSION,
         files: { [sourcePath]: `export default { cron: "0 6 * * *", async run() {} };` },
       });
 
@@ -466,7 +210,7 @@ Produce the daily report.
 
   test("rejects reserved authored identifiers and the reserved Channel path", async () => {
     const identifierCollision = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/schedules/collision.ts": `const __evelandOriginalSchedule = {}; export default __evelandOriginalSchedule;`,
       },
@@ -476,7 +220,7 @@ Produce the daily report.
     );
 
     const channelCollision = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/schedules/ok.ts": `export default { cron: "* * * * *", async run() {} };`,
         "agent/channels/eveland-scheduler.ts": `export default {};`,
@@ -487,7 +231,7 @@ Produce the daily report.
     );
 
     const defaultReExport = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/lib/shared.ts": `export default { cron: "0 7 * * *", async run() {} };`,
         "agent/schedules/re-export.ts": `export { default } from "../lib/shared";`,
@@ -500,7 +244,7 @@ Produce the daily report.
     // Eve 0.74's experimental schedule collections live in agent/schedules/
     // too, but declare no static cron; Eveland hosts only static schedules.
     const dynamicCollection = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/schedules/reminders.ts": [
           `import { defineDynamicSchedules } from "eve/experimental/schedules";`,
@@ -521,7 +265,7 @@ Produce the daily report.
     `import { defineSchedule } from "eve/schedules";\nexport default defineSchedule({ cron: "0 9 * * *", "timezone": "UTC", content: "Morning." });`,
   ])("rejects a module schedule that names a timezone: %s", async (source) => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.17",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: { "agent/schedules/morning.ts": source },
     });
     await expect(injectSchedulerAdapter({ releaseDir })).rejects.toThrow(
@@ -529,253 +273,236 @@ Produce the daily report.
     );
   });
 
-  test.each(compatibilityMatrix)(
-    "builds the transformed overlay with the real Eve $version compiler",
-    async ({ packageName, version }) => {
-      const releaseDir = await fixture({
-        eveVersion: version,
-        evePackageName: packageName,
-        files: {
-          "agent/schedules/nested/markdown.md": `---
+  test("builds the transformed overlay with the real eve compiler", async () => {
+    const releaseDir = await fixture({
+      eveVersion: VERIFIED_EVE_VERSION,
+      files: {
+        "agent/schedules/nested/markdown.md": `---
 cron: "0 3 * * *"
 ---
 Run the nested task.
 `,
-          "agent/schedules/zero.ts": `import { defineSchedule } from "eve/schedules";
+        "agent/schedules/zero.ts": `import { defineSchedule } from "eve/schedules";
 export default defineSchedule({ cron: "15 4 * * *", async run({ waitUntil }) { waitUntil(Promise.resolve()); } });
 `,
-        },
-      });
-      await injectSchedulerAdapter({ releaseDir });
+      },
+    });
+    await injectSchedulerAdapter({ releaseDir });
 
-      const compilerBin = eveBinFor(packageName);
-      const { stdout } = await execFileAsync(process.execPath, [compilerBin, "info", "--json"], {
+    const compilerBin = EVE_BIN;
+    const { stdout } = await execFileAsync(process.execPath, [compilerBin, "info", "--json"], {
+      cwd: releaseDir,
+    });
+    const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
+      diagnostics: { errors: number };
+    };
+    expect(info.diagnostics.errors).toBe(0);
+    await expect(
+      execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], {
         cwd: releaseDir,
-      });
-      const info = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
-        diagnostics: { errors: number };
+      }),
+    ).resolves.toMatchObject({
+      stderr: expect.not.stringContaining("error"),
+    });
+  }, 60_000);
+
+  test("executes the authenticated scheduler channel on Eve", async () => {
+    const releaseDir = await fixture({
+      eveVersion: VERIFIED_EVE_VERSION,
+      files: {
+        "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run({ waitUntil }) { waitUntil(Promise.resolve()); } };`,
+        "agent/schedules/broken.ts": `export default { cron: "* * * * *", async run() { throw new Error("fixture handler exploded"); } };`,
+        // Simulates Eve's command-hook readiness timeout: session creation
+        // rethrows a HookNotFoundError after the durable workflow may have
+        // committed, so the dispatch outcome is unknown, not failed (#407).
+        "agent/schedules/ambiguous.ts": `export default { cron: "* * * * *", async run() { throw Object.assign(new Error("Hook not found"), { name: "HookNotFoundError" }); } };`,
+      },
+    });
+    await injectSchedulerAdapter({ releaseDir });
+    const compilerBin = EVE_BIN;
+    await execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], {
+      cwd: releaseDir,
+    });
+    const runtimePort = await availablePort();
+    const reports: unknown[] = [];
+    const claimedCredentials = new Set<string>();
+    const redeemServer = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const report = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        phase?: string;
+        credential?: string;
       };
-      expect(info.diagnostics.errors).toBe(0);
-      await expect(
-        execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], {
-          cwd: releaseDir,
-        }),
-      ).resolves.toMatchObject({
-        stderr: expect.not.stringContaining("error"),
-      });
-    },
-    60_000,
-  );
-
-  test.each(compatibilityMatrix)(
-    "executes the authenticated scheduler channel on Eve $version",
-    async ({ packageName, version }) => {
-      const releaseDir = await fixture({
-        eveVersion: version,
-        evePackageName: packageName,
-        files: {
-          "agent/schedules/zero.ts": `export default { cron: "* * * * *", async run({ waitUntil }) { waitUntil(Promise.resolve()); } };`,
-          "agent/schedules/broken.ts": `export default { cron: "* * * * *", async run() { throw new Error("fixture handler exploded"); } };`,
-          // Simulates Eve's command-hook readiness timeout: session creation
-          // rethrows a HookNotFoundError after the durable workflow may have
-          // committed, so the dispatch outcome is unknown, not failed (#407).
-          "agent/schedules/ambiguous.ts": `export default { cron: "* * * * *", async run() { throw Object.assign(new Error("Hook not found"), { name: "HookNotFoundError" }); } };`,
-        },
-      });
-      await injectSchedulerAdapter({ releaseDir });
-      const compilerBin = eveBinFor(packageName);
-      await execFileAsync(process.execPath, [compilerBin, "build", "--skip-sandbox-prewarm"], {
+      reports.push(report);
+      if (
+        report.phase === "claim" &&
+        report.credential &&
+        claimedCredentials.has(report.credential)
+      ) {
+        response.writeHead(409, { "content-type": "application/json" });
+        response.end(JSON.stringify({ ok: false }));
+        return;
+      }
+      if (report.phase === "claim" && report.credential) claimedCredentials.add(report.credential);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+    });
+    await new Promise<void>((resolve) => redeemServer.listen(0, "127.0.0.1", resolve));
+    const redeemAddress = redeemServer.address();
+    if (!redeemAddress || typeof redeemAddress === "string")
+      throw new Error("Expected redeem server port.");
+    const child = spawn(
+      process.execPath,
+      [compilerBin, "start", "--host", "127.0.0.1", "--port", String(runtimePort)],
+      {
         cwd: releaseDir,
-      });
-      const runtimePort = await availablePort();
-      const reports: unknown[] = [];
-      const claimedCredentials = new Set<string>();
-      const redeemServer = createServer(async (request, response) => {
-        const chunks: Buffer[] = [];
-        for await (const chunk of request) chunks.push(Buffer.from(chunk));
-        const report = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
-          phase?: string;
-          credential?: string;
-        };
-        reports.push(report);
-        if (
-          report.phase === "claim" &&
-          report.credential &&
-          claimedCredentials.has(report.credential)
-        ) {
-          response.writeHead(409, { "content-type": "application/json" });
-          response.end(JSON.stringify({ ok: false }));
-          return;
-        }
-        if (report.phase === "claim" && report.credential)
-          claimedCredentials.add(report.credential);
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify({ ok: true }));
-      });
-      await new Promise<void>((resolve) => redeemServer.listen(0, "127.0.0.1", resolve));
-      const redeemAddress = redeemServer.address();
-      if (!redeemAddress || typeof redeemAddress === "string")
-        throw new Error("Expected redeem server port.");
-      const child = spawn(
-        process.execPath,
-        [compilerBin, "start", "--host", "127.0.0.1", "--port", String(runtimePort)],
+        env: {
+          ...process.env,
+          EVELAND_SCHEDULER_RUNTIME_SECRET: "runtime-fixture-secret",
+          EVELAND_SCHEDULER_REDEEM_URL: `http://127.0.0.1:${redeemAddress.port}/internal/scheduler/dispatch`,
+        },
+        stdio: "ignore",
+        detached: true,
+      },
+    );
+
+    try {
+      await waitUntilReachable(`http://127.0.0.1:${runtimePort}/health`);
+      const unauthenticated = await fetch(
+        `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
         {
-          cwd: releaseDir,
-          env: {
-            ...process.env,
-            EVELAND_SCHEDULER_RUNTIME_SECRET: "runtime-fixture-secret",
-            EVELAND_SCHEDULER_REDEEM_URL: `http://127.0.0.1:${redeemAddress.port}/internal/scheduler/dispatch`,
-          },
-          stdio: "ignore",
-          detached: true,
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ scheduleKey: "zero" }),
         },
       );
+      expect(unauthenticated.status).toBe(401);
 
-      try {
-        await waitUntilReachable(`http://127.0.0.1:${runtimePort}/health`);
-        const unauthenticated = await fetch(
-          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ scheduleKey: "zero" }),
+      const unknown = await fetch(
+        `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer unknown-fixture",
+            "content-type": "application/json",
+            "x-eveland-runtime-secret": "runtime-fixture-secret",
           },
-        );
-        expect(unauthenticated.status).toBe(401);
+          body: JSON.stringify({ scheduleKey: "missing" }),
+        },
+      );
+      expect(unknown.status).toBe(404);
 
-        const unknown = await fetch(
-          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
-          {
-            method: "POST",
-            headers: {
-              authorization: "Bearer unknown-fixture",
-              "content-type": "application/json",
-              "x-eveland-runtime-secret": "runtime-fixture-secret",
-            },
-            body: JSON.stringify({ scheduleKey: "missing" }),
+      const response = await fetch(
+        `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer dispatch-fixture",
+            "content-type": "application/json",
+            "x-eveland-runtime-secret": "runtime-fixture-secret",
           },
-        );
-        expect(unknown.status).toBe(404);
+          body: JSON.stringify({ scheduleKey: "zero" }),
+        },
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        scheduleRunId: "srun_fixture",
+        scheduleKey: "zero",
+        sessionIds: [],
+      });
 
-        const response = await fetch(
-          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
-          {
-            method: "POST",
-            headers: {
-              authorization: "Bearer dispatch-fixture",
-              "content-type": "application/json",
-              "x-eveland-runtime-secret": "runtime-fixture-secret",
-            },
-            body: JSON.stringify({ scheduleKey: "zero" }),
-          },
-        );
-        expect(response.status).toBe(200);
-        await expect(response.json()).resolves.toEqual({
+      const replay = await fetch(`http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer dispatch-fixture",
+          "content-type": "application/json",
+          "x-eveland-runtime-secret": "runtime-fixture-secret",
+        },
+        body: JSON.stringify({ scheduleKey: "zero" }),
+      });
+      expect(replay.status).toBe(409);
+      expect(reports).toEqual([
+        expect.objectContaining({
+          phase: "claim",
+          credential: "dispatch-fixture",
           scheduleRunId: "srun_fixture",
-          scheduleKey: "zero",
+        }),
+        expect.objectContaining({
+          phase: "complete",
+          credential: "dispatch-fixture",
+          status: "succeeded",
           sessionIds: [],
-        });
+        }),
+        expect.objectContaining({
+          phase: "claim",
+          credential: "dispatch-fixture",
+          scheduleRunId: "srun_fixture",
+        }),
+      ]);
 
-        const replay = await fetch(
-          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_fixture`,
-          {
-            method: "POST",
-            headers: {
-              authorization: "Bearer dispatch-fixture",
-              "content-type": "application/json",
-              "x-eveland-runtime-secret": "runtime-fixture-secret",
-            },
-            body: JSON.stringify({ scheduleKey: "zero" }),
-          },
-        );
-        expect(replay.status).toBe(409);
-        expect(reports).toEqual([
-          expect.objectContaining({
-            phase: "claim",
-            credential: "dispatch-fixture",
-            scheduleRunId: "srun_fixture",
-          }),
-          expect.objectContaining({
-            phase: "complete",
-            credential: "dispatch-fixture",
-            status: "succeeded",
-            sessionIds: [],
-          }),
-          expect.objectContaining({
-            phase: "claim",
-            credential: "dispatch-fixture",
-            scheduleRunId: "srun_fixture",
-          }),
-        ]);
+      const failing = await fetch(`http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_broken`, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer dispatch-broken",
+          "content-type": "application/json",
+          "x-eveland-runtime-secret": "runtime-fixture-secret",
+        },
+        body: JSON.stringify({ scheduleKey: "broken" }),
+      });
+      expect(failing.status).toBe(500);
+      expect(reports.slice(3)).toEqual([
+        expect.objectContaining({
+          phase: "claim",
+          credential: "dispatch-broken",
+          scheduleRunId: "srun_broken",
+        }),
+        expect.objectContaining({
+          phase: "complete",
+          credential: "dispatch-broken",
+          status: "failed",
+          sessionIds: [],
+          error: expect.stringContaining("fixture handler exploded"),
+        }),
+      ]);
 
-        const failing = await fetch(
-          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_broken`,
-          {
-            method: "POST",
-            headers: {
-              authorization: "Bearer dispatch-broken",
-              "content-type": "application/json",
-              "x-eveland-runtime-secret": "runtime-fixture-secret",
-            },
-            body: JSON.stringify({ scheduleKey: "broken" }),
+      const ambiguous = await fetch(
+        `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_ambiguous`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer dispatch-ambiguous",
+            "content-type": "application/json",
+            "x-eveland-runtime-secret": "runtime-fixture-secret",
           },
-        );
-        expect(failing.status).toBe(500);
-        expect(reports.slice(3)).toEqual([
-          expect.objectContaining({
-            phase: "claim",
-            credential: "dispatch-broken",
-            scheduleRunId: "srun_broken",
-          }),
-          expect.objectContaining({
-            phase: "complete",
-            credential: "dispatch-broken",
-            status: "failed",
-            sessionIds: [],
-            error: expect.stringContaining("fixture handler exploded"),
-          }),
-        ]);
-
-        const ambiguous = await fetch(
-          `http://127.0.0.1:${runtimePort}/eveland/scheduler/srun_ambiguous`,
-          {
-            method: "POST",
-            headers: {
-              authorization: "Bearer dispatch-ambiguous",
-              "content-type": "application/json",
-              "x-eveland-runtime-secret": "runtime-fixture-secret",
-            },
-            body: JSON.stringify({ scheduleKey: "ambiguous" }),
-          },
-        );
-        expect(ambiguous.status).toBe(500);
-        expect(reports.slice(5)).toEqual([
-          expect.objectContaining({
-            phase: "claim",
-            credential: "dispatch-ambiguous",
-            scheduleRunId: "srun_ambiguous",
-          }),
-          expect.objectContaining({
-            phase: "complete",
-            credential: "dispatch-ambiguous",
-            status: "dispatch_unknown",
-            sessionIds: [],
-            error: expect.stringContaining("Hook not found"),
-          }),
-        ]);
-      } finally {
-        await stopEveStart(child);
-        await new Promise<void>((resolve) => redeemServer.close(() => resolve()));
-      }
-    },
-    60_000,
-  );
+          body: JSON.stringify({ scheduleKey: "ambiguous" }),
+        },
+      );
+      expect(ambiguous.status).toBe(500);
+      expect(reports.slice(5)).toEqual([
+        expect.objectContaining({
+          phase: "claim",
+          credential: "dispatch-ambiguous",
+          scheduleRunId: "srun_ambiguous",
+        }),
+        expect.objectContaining({
+          phase: "complete",
+          credential: "dispatch-ambiguous",
+          status: "dispatch_unknown",
+          sessionIds: [],
+          error: expect.stringContaining("Hook not found"),
+        }),
+      ]);
+    } finally {
+      await stopEveStart(child);
+      await new Promise<void>((resolve) => redeemServer.close(() => resolve()));
+    }
+  }, 60_000);
 });
 
 describe("injectExtensionSchedules", () => {
   test("namespaces Extension schedules, honors consumer overrides, and regenerates the dispatch Channel", async () => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/schedules/root.ts": 'export default { cron: "0 1 * * *", async run() {} };',
         "node_modules/@acme/crm/package.json": JSON.stringify({
@@ -825,7 +552,7 @@ describe("injectExtensionSchedules", () => {
 
   test("reads Extension schedules from v16 mount manifests' sources", async () => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.5",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "node_modules/@acme/crm/package.json": JSON.stringify({
           name: "@acme/crm",
@@ -882,7 +609,7 @@ describe("injectExtensionSchedules", () => {
   });
 
   test("rejects Extension source paths outside the disposable Release", async () => {
-    const releaseDir = await fixture({ eveVersion: "1.0.0-rc.2", files: {} });
+    const releaseDir = await fixture({ eveVersion: VERIFIED_EVE_VERSION, files: {} });
     await injectSchedulerAdapter({ releaseDir });
     const outsideRoot = path.join(path.dirname(releaseDir), "outside-extension");
 
@@ -900,7 +627,7 @@ describe("injectExtensionSchedules", () => {
 
   test("fails closed when an Extension schedule key collides with an existing root key", async () => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "agent/schedules/crm__sync.ts": 'export default { cron: "0 1 * * *", async run() {} };',
         "node_modules/@acme/crm/dist/extension/schedules/sync.mjs":
@@ -927,7 +654,7 @@ describe("injectExtensionSchedules", () => {
 
   test("fails closed when separate namespace and local-key pairs produce the same key", async () => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "node_modules/@acme/one/dist/extension/schedules/b__c.mjs":
           'export default { cron: "0 2 * * *", async run() {} };',
@@ -963,7 +690,7 @@ describe("injectExtensionSchedules", () => {
   });
 
   test("rejects symlinked Extension schedule sources that escape the Release", async () => {
-    const releaseDir = await fixture({ eveVersion: "1.0.0-rc.2", files: {} });
+    const releaseDir = await fixture({ eveVersion: VERIFIED_EVE_VERSION, files: {} });
     await injectSchedulerAdapter({ releaseDir });
     const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "eveland-scheduler-outside-"));
     await mkdir(path.join(outsideRoot, "schedules"), { recursive: true });
@@ -989,7 +716,7 @@ describe("injectExtensionSchedules", () => {
 
   test("reports the generated module path for transformed Markdown schedules", async () => {
     const releaseDir = await fixture({
-      eveVersion: "1.0.0-rc.2",
+      eveVersion: VERIFIED_EVE_VERSION,
       files: {
         "node_modules/@acme/crm/dist/extension/schedules/report.md":
           '---\ncron: "0 3 * * *"\n---\nProduce the extension report.\n',
@@ -1118,13 +845,10 @@ async function waitUntilReachable(url: string): Promise<void> {
   throw new Error(`Timed out waiting for ${url}.`);
 }
 
-function eveBinFor(packageName: string): string {
-  return path.resolve(import.meta.dirname, `../node_modules/${packageName}/bin/eve.js`);
-}
+const EVE_BIN = path.resolve(import.meta.dirname, "../node_modules/eve/bin/eve.js");
 
 async function fixture(input: {
   eveVersion: string;
-  evePackageName?: string;
   files: Record<string, string>;
 }): Promise<string> {
   const releaseDir = await mkdtemp(path.join(os.tmpdir(), "eveland-scheduler-"));
@@ -1134,7 +858,7 @@ async function fixture(input: {
   );
   await mkdir(path.join(releaseDir, "node_modules"));
   await symlink(
-    path.resolve(import.meta.dirname, `../node_modules/${input.evePackageName ?? "eve"}`),
+    path.resolve(import.meta.dirname, "../node_modules/eve"),
     path.join(releaseDir, "node_modules/eve"),
   );
   await mkdir(path.join(releaseDir, "agent"), { recursive: true });

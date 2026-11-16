@@ -8,8 +8,7 @@
 //      and `eve start` resolves a string model ID through it;
 //   3. eve records the cost the provider writes at
 //      providerMetadata.gateway.cost as usage.recorded `costUsd`;
-//   4. `eve dev` honors the default provider too (vercel/eve#5787, fixed in
-//      1.0.0-rc.2; skipped for older versions).
+//   4. `eve dev` honors the default provider too.
 //
 // Plain tsx script (no vitest), like the other integration proofs. Needs npm
 // registry access for the install.
@@ -20,17 +19,15 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { execa, type ResultPromise } from "execa";
-import { LATEST_VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
+import { VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import { MODEL_GATEWAY_ENV } from "@evelandhq/core/model-gateway";
 import { loadModelCatalog, seedModelCatalog } from "../runtime/model-catalog-cache.js";
 import { injectModelGateway } from "../runtime/model-gateway-injection.js";
 
-const EVE_VERSION = process.env.EVE_VERSION ?? LATEST_VERIFIED_EVE_VERSION;
+const EVE_VERSION = process.env.EVE_VERSION ?? VERIFIED_EVE_VERSION;
 const MODEL_ID = "anthropic/claude-sonnet-4.5";
 const PROJECT_KEY = "sk-eveland-e2e-project-key";
 const COST_USD = 0.0123;
-// eve dev bypassed the default provider before vercel/eve#5789.
-const DEV_HONORS_DEFAULT_PROVIDER = !/^(0\.|1\.0\.0-rc\.[01]$)/.test(EVE_VERSION);
 
 type Recorded = { model: unknown; authorization: string | undefined; streamOptions: unknown };
 const recorded: Recorded[] = [];
@@ -80,7 +77,7 @@ try {
   console.log(`Installing eve ${EVE_VERSION}…`);
   await execa("npm", ["install", "--no-audit", "--no-fund"], { cwd: projectDir });
 
-  const injected = await injectModelGateway({ releaseDir: projectDir, eveVersion: EVE_VERSION });
+  const injected = await injectModelGateway({ releaseDir: projectDir });
   assert.equal(injected.status, "injected", "an eve 1.0 project gets the provider injected");
 
   const catalog = await loadModelCatalog({
@@ -117,17 +114,13 @@ try {
       ...serverOptions,
     }),
   );
-  if (DEV_HONORS_DEFAULT_PROVIDER) {
-    await runTurn("dev", (port) =>
-      execa(eveBin(), ["dev", "--no-ui", "--port", String(port)], {
-        cwd: projectDir,
-        env: { ...noGatewayCredentials(), ...gatewayEnv() },
-        ...serverOptions,
-      }),
-    );
-  } else {
-    console.log(`Skipping the eve dev check: eve ${EVE_VERSION} predates vercel/eve#5789.`);
-  }
+  await runTurn("dev", (port) =>
+    execa(eveBin(), ["dev", "--no-ui", "--port", String(port)], {
+      cwd: projectDir,
+      env: { ...noGatewayCredentials(), ...gatewayEnv() },
+      ...serverOptions,
+    }),
+  );
   console.log(`Model Gateway contract holds on eve ${EVE_VERSION}.`);
 } finally {
   gateway.close();

@@ -18,7 +18,7 @@ The platform signs in with email and password. On first startup the platform ide
 
 ## Projects (/projects)
 
-Shows all of the user's projects: project name; current deployment status; last updated time; current Eve version (shown in red with an upgrade hint when behind the latest supported version or unsupported); latest session status; next schedule time if any (in the personal display timezone, `HH:mm` 24-hour for today, `MM-DD HH:mm` otherwise). Supports creating, deleting, and entering projects.
+Shows all of the user's projects: project name; current deployment status; last updated time; current Eve version (the version the build installed, or the declared range before the first build); latest session status; next schedule time if any (in the personal display timezone, `HH:mm` 24-hour for today, `MM-DD HH:mm` otherwise). Supports creating, deleting, and entering projects.
 
 A Session in `waiting` is an idle conversation ready for the next message, not a pending human interaction. It leaves the project `Idle` or `Scheduled` (subject to deployment state and unreviewed scheduled failures), with `Ready for next message` as its activity. Only `waiting_approval` warrants the amber human-attention state. The 30-day history uses the same distinction: failed Sessions take precedence over pending human interactions, and ordinary idle conversations neither turn a day amber nor increase the awaiting count. Success rate and p95 duration still use terminal Sessions; being ready for another message does not mark the whole conversation completed.
 
@@ -30,7 +30,7 @@ The deletion job must wait for the project's already-running jobs to finish, the
 
 The main workspace shell applies only to Projects, Deployments, and Usage. Its top-left shows the Eveland logo, and its bottom-left shows the current user's avatar, name, and email. The whole user row is a single account-dropdown trigger whose menu offers Settings and Sign out.
 
-Project detail routes use a separate project shell. Its top-left returns to Projects, the remaining sidebar contains only that project's navigation, and its bottom context area shows the current Deployment state and Eve version instead of user information. A current Eve version is marked healthy; an older supported or unsupported version exposes its upgrade guidance in a tooltip. Settings routes likewise use a separate settings shell: its top-left returns to the workspace, its navigation is grouped into Personal and System, and it has no user footer.
+Project detail routes use a separate project shell. Its top-left returns to Projects, the remaining sidebar contains only that project's navigation, and its bottom context area shows the current Deployment state and Eve version instead of user information. Settings routes likewise use a separate settings shell: its top-left returns to the workspace, its navigation is grouped into Personal and System, and it has no user footer.
 
 ## Profile (/settings/profile)
 

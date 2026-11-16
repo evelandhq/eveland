@@ -41,5 +41,5 @@ Upstream NDJSON responses stream through to clients with zero buffering. Beyond 
 
 - [Configure Agent traffic](/docs/production/networking): wildcard DNS, TLS, reverse proxying, and private ports
 - [Routing and Deployment lifecycle contract](/docs/reference/routing): route policies, two-target basis-point weights, and session affinity
-- [Eve compatibility window](/docs/reference/eve-compatibility): sliding compatibility window and supported version matrix
+- [Eve compatibility window](/docs/reference/eve-compatibility): supported Eve versions and protocol baseline
 - [Security model and network boundaries](/docs/operations/security): Host rewrite defenses, internal privileged paths, and credential isolation

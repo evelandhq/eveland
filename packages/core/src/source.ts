@@ -1,21 +1,10 @@
-import { isSupportedEveDependency, unsupportedEveVersionMessage } from "./eve-compatibility.js";
+import { isSupportedEveSpecifier, unsupportedEveSpecifierMessage } from "./eve-compatibility.js";
 import { parseScheduleSource, type DiscoveredSchedule } from "./schedules.js";
 
 // Browser-safe module: pure string handling instead of node:path.
 function posixBasename(filePath: string): string {
   return filePath.slice(filePath.lastIndexOf("/") + 1);
 }
-
-export {
-  createEveVersionInfo,
-  isSupportedEveDependency,
-  isUnsupportedEveVersionMessage,
-  SUPPORTED_EVE_VERSION_RANGE,
-  SUPPORTED_EVE_VERSION_RANGES,
-  unsupportedEveVersionMessage,
-  type EveVersionInfo,
-  type SupportedEveVersionRange,
-} from "./eve-compatibility.js";
 
 export type SourceFile = {
   path: string;
@@ -127,8 +116,8 @@ export function inspectEveProject(files: SourceFile[]): EveProjectInspection {
     errors.push("Missing root instructions.md, instructions.ts, or instructions/.");
   }
   const eveVersion = readDeclaredEveVersion(normalized);
-  if (!isSupportedEveDependency(eveVersion)) {
-    errors.push(unsupportedEveVersionMessage(eveVersion));
+  if (!isSupportedEveSpecifier(eveVersion)) {
+    errors.push(unsupportedEveSpecifierMessage(eveVersion));
   }
 
   return {

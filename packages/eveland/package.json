@@ -44,14 +44,16 @@
   "dependencies": {
     "@ai-sdk/gateway": "4.0.111",
     "@ai-sdk/openai-compatible": "3.0.82",
-    "@ai-sdk/provider": "4.0.35"
+    "@ai-sdk/provider": "4.0.35",
+    "semver": "^7.8.6"
   },
   "devDependencies": {
+    "@types/semver": "^7.7.1",
     "eve": "1.0.0",
     "vitest": "^5.0.3"
   },
   "peerDependencies": {
-    "eve": ">=1.0.0-0 <2.0.0"
+    "eve": ">=1.0.0 <2.0.0"
   },
   "engines": {
     "node": ">=24.0.0"

@@ -12,10 +12,8 @@ import {
 import { createZipArchive } from "./zip.ts";
 
 const execFileAsync = promisify(execFile);
-// The window an instance reports. The CLI judges specifiers against whatever
-// window the instance it talks to carries, so this fixture keeps a 0.x line to
-// exercise the `0.x` caret grammar an older instance still accepts.
-const WINDOW = ["0.83.x", "1.0.x"];
+// The range an instance reports as `eve.supportedRange`.
+const WINDOW = ">=1.0.0 <1.1.0";
 
 async function makeProject(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-"));
@@ -127,54 +125,17 @@ describe("deploy preflight", () => {
     expect(result.files.some((file) => file.name === "escape")).toBe(false);
   });
 
-  test("judges eve specifiers against the instance window", () => {
-    expect(eveSpecifierProblem("0.83.3", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("^0.83.3", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("0.83.x", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("1.0.0-rc.1", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("~1.0.0", WINDOW)).toBeNull();
-    expect(eveSpecifierProblem("1.0.x", WINDOW)).toBeNull();
-    // A 1.x caret spans later minors; a prerelease only qualifies an exact patch.
-    expect(eveSpecifierProblem("^1.0.0", WINDOW)).toContain("Unsupported");
-    expect(eveSpecifierProblem("1.0.x-rc.1", WINDOW)).toContain("Unsupported");
-    // Retired on 2026-11-02 (0.81), and 0.84-0.91 skipped the same day.
-    expect(eveSpecifierProblem("0.81.1", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.91.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("1.1.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.46.0", WINDOW)).toContain("outside this instance's supported");
-    // Skipped on 2026-09-17 (0.56, 0.57), 2026-09-19 (0.59, 0.60, 0.61),
-    // 2026-09-23 (0.63 and 0.64), and 2026-09-24 (0.65), and 0.66 and 0.67
-    // retired on 2026-09-26 and 2026-09-29: never verified, or no longer, so a
-    // line that once sat between two supported ones reads like any other
-    // outsider.
-    expect(eveSpecifierProblem("0.63.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.63.x", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.64.1", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.64.x", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.65.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.65.x", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.66.1", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.66.x", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.67.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.67.x", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.59.1", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.60.x", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.61.1", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.56.x", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.57.0", WINDOW)).toContain("outside this instance's supported");
-    // Retired on 2026-09-07 (0.49), 2026-09-12 (0.50, 0.51), 2026-09-15 (0.52, 0.53), 2026-09-16 (0.54), 2026-09-19 (0.55), 2026-09-23 (0.58), and 2026-10-02 (0.62, 0.69): a formerly supported line reads exactly like any other outsider.
-    expect(eveSpecifierProblem("0.69.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.62.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.62.x", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.49.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.51.1", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.53.1", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.54.5", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.55.0", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("0.58.1", WINDOW)).toContain("outside this instance's supported");
-    expect(eveSpecifierProblem("^0.58", WINDOW)).toContain("Unsupported");
-    expect(eveSpecifierProblem(">=0.79.0 <0.81.1", WINDOW)).toContain("Unsupported");
+  test("judges eve specifiers against the range the instance hosts", () => {
+    // Anything that can resolve inside the range passes, including the caret
+    // range `eve init` writes; the build gates on what it actually installs.
+    for (const specifier of ["^1.0.0", "^1", "~1.0.0", "1.0.0", "1.0.x", "1.x", "*"]) {
+      expect(eveSpecifierProblem(specifier, WINDOW), specifier).toBeNull();
+    }
+    for (const specifier of ["0.83.3", "^0.83.0", "1.0.0-rc.2", "1.1.0", "2.0.0"]) {
+      expect(eveSpecifierProblem(specifier, WINDOW), specifier).toContain("cannot resolve");
+    }
     expect(eveSpecifierProblem("catalog:", WINDOW)).toContain("Unsupported");
+    expect(eveSpecifierProblem("latest", WINDOW)).toContain("Unsupported");
     expect(eveSpecifierProblem(null, WINDOW)).toContain("Missing");
   });
 

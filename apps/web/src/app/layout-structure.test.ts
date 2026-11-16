@@ -46,8 +46,7 @@ describe("dashboard layout boundaries", () => {
     expect(projectSidebar).toContain("<ProjectNav");
     expect(projectSidebar).toContain("<SidebarFooter");
     expect(projectSidebar).toContain("<StatusBadge");
-    expect(projectSidebar).toContain("<EveVersionStatus");
-    expect(projectSidebar).toContain("tooltipWhenCurrent={false}");
+    expect(projectSidebar).toContain("<EveVersion");
     expect(projectSidebar).not.toContain("<Avatar");
   });
 

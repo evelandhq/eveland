@@ -6,21 +6,10 @@ import {
   route,
   startUpstream,
 } from "./app.test-support.js";
-import type { EveVersionInfo } from "@evelandhq/core/source";
 import { createOperationKey } from "./gateway-durable-routing.js";
 import { describe, expect, test, vi } from "vitest";
 
 registerGatewayTestCleanup();
-
-function version(version: string, deploymentId: string): EveVersionInfo {
-  return {
-    version,
-    expected: "1.0.x",
-    supportedRanges: ["1.0.x"],
-    supported: true,
-    sourceRevisionId: `src-${deploymentId}`,
-  };
-}
 
 describe("Gateway durable Eve routes", () => {
   test("correlates Eve's opaque session-create 500 without rewriting it", async () => {
@@ -193,9 +182,6 @@ describe("Gateway durable Eve routes", () => {
       ],
     });
     const repo = repository([weighted]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) =>
-      version("1.0.0-rc.2", deploymentId),
-    );
     const activationClient = {
       activate: vi.fn(async ({ deploymentId }: { deploymentId: string }) => ({
         leaseId: `lease-${deploymentId}`,
@@ -236,37 +222,6 @@ describe("Gateway durable Eve routes", () => {
       expect.objectContaining({ deploymentId: "dep_first", kind: "turn" }),
       expect.any(AbortSignal),
     );
-  });
-
-  test("returns 409 when the selected target runs an unsupported Eve version", async () => {
-    const repo = repository([route()]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) => ({
-      ...version("0.37.1", deploymentId),
-      supported: false,
-    }));
-    const activationClient = {
-      activate: vi.fn(async () => ({ leaseId: "unused", endpointPort: 0 })),
-      renew: vi.fn(async () => {}),
-      release: vi.fn(async () => {}),
-    };
-    const app = createGatewayApp(repo, {
-      allowedBaseDomains: ["agent.localhost"],
-      affinitySecret,
-      activationClient,
-    });
-
-    const response = await app.request("http://p-alpha.agent.localhost/eve/v1/hooks/github", {
-      method: "POST",
-      headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
-      body: JSON.stringify({ action: "opened" }),
-    });
-
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "Unsupported Eve version",
-      detail: expect.stringContaining("0.37.1"),
-    });
-    expect(activationClient.activate).not.toHaveBeenCalled();
   });
 
   test("binds MCP invocation ids and keeps follow-up tools on the starting deployment", async () => {
@@ -318,9 +273,6 @@ describe("Gateway durable Eve routes", () => {
       ],
     });
     const repo = repository([weighted]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) =>
-      version("1.0.0-rc.2", deploymentId),
-    );
     const activationClient = {
       activate: vi.fn(async ({ deploymentId }: { deploymentId: string }) => ({
         leaseId: `lease-${deploymentId}`,
@@ -369,9 +321,6 @@ describe("Gateway durable Eve routes", () => {
   test("expires an idle create-once route instead of silently moving its retry", async () => {
     const stable = route();
     const repo = repository([stable]);
-    repo.getDeploymentEveVersion = vi.fn(async (deploymentId) =>
-      version("1.0.0-rc.2", deploymentId),
-    );
     repo.operationBindings.push({
       id: "opbind_expired",
       projectId: "proj_1",

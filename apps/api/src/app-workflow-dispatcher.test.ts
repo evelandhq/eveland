@@ -281,7 +281,7 @@ describe("workflow_step activation gating", () => {
 describe("workflow dispatcher recovery preflight", () => {
   async function recordFixtureDeployment(
     store: ReturnType<typeof createTestStore>,
-    input: { status: string; eveVersionResolved?: string },
+    input: { status: string },
   ) {
     const project = await store.createProject({ name: "Preflight Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("preflight-fixture");
@@ -303,9 +303,6 @@ describe("workflow dispatcher recovery preflight", () => {
       internalPort: 3000,
       hostPort: 42_300 + Math.floor(Math.random() * 500),
       runtimeKind: "docker",
-      ...(input.eveVersionResolved
-        ? { summary: { eveVersionResolved: input.eveVersionResolved } }
-        : {}),
     });
     await store.updateDeploymentStatus(deployment.id, input.status as never);
     return deployment;
@@ -315,29 +312,16 @@ describe("workflow dispatcher recovery preflight", () => {
     const store = createTestStore();
     const app = createApp(store, { gatewayServiceToken: "gateway-service-token" });
 
-    const reaped = await recordFixtureDeployment(store, {
-      status: "stopped",
-      eveVersionResolved: "1.0.0-rc.2",
-    });
-    const crashed = await recordFixtureDeployment(store, {
-      status: "failed",
-      eveVersionResolved: "1.0.0-rc.2",
-    });
-    const archived = await recordFixtureDeployment(store, {
-      status: "archived",
-      eveVersionResolved: "1.0.0-rc.2",
-    });
-    const staleEve = await recordFixtureDeployment(store, {
-      status: "stopped",
-      eveVersionResolved: "0.31.1",
-    });
+    const reaped = await recordFixtureDeployment(store, { status: "stopped" });
+    const crashed = await recordFixtureDeployment(store, { status: "failed" });
+    const archived = await recordFixtureDeployment(store, { status: "archived" });
 
     const response = await app.request("/internal/workflow/dispatcher/recovery-preflight", {
       method: "POST",
       headers: serviceHeaders,
       body: JSON.stringify({
         // The duplicate proves the judgment is per-Deployment, not per-entry.
-        deploymentIds: [reaped.id, crashed.id, archived.id, staleEve.id, staleEve.id, "dep_gone"],
+        deploymentIds: [reaped.id, crashed.id, archived.id, archived.id, "dep_gone"],
       }),
     });
     expect(response.status).toBe(200);
@@ -345,9 +329,8 @@ describe("workflow dispatcher recovery preflight", () => {
       notActivatable: { deploymentId: string; reason: string }[];
     };
     const refused = new Map(body.notActivatable.map((entry) => [entry.deploymentId, entry.reason]));
-    expect([...refused.keys()].sort()).toEqual([archived.id, staleEve.id, "dep_gone"].sort());
+    expect([...refused.keys()].sort()).toEqual([archived.id, "dep_gone"].sort());
     expect(refused.get(archived.id)).toContain("archived");
-    expect(refused.get(staleEve.id)).toContain("0.31.1");
     expect(refused.get("dep_gone")).toBe("Deployment no longer exists.");
   });
 

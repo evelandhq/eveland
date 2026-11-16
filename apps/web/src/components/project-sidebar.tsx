@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowLeftIcon } from "lucide-react";
-import { EveVersionStatus } from "@/components/eve-version-status";
+import { EveVersion } from "@/components/eve-version";
 import { ProjectNav } from "@/components/project-nav";
 import { StatusBadge } from "@/components/status-badge";
 import {
@@ -62,12 +62,7 @@ export function ProjectSidebar({
           <div className="flex items-center justify-between gap-2">
             <dt className="text-xs text-muted-foreground">Version</dt>
             <dd>
-              <EveVersionStatus
-                className="justify-end"
-                eveVersion={eveVersion}
-                showMessage={false}
-                tooltipWhenCurrent={false}
-              />
+              <EveVersion eveVersion={eveVersion} />
             </dd>
           </div>
         </dl>

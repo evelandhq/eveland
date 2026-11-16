@@ -7,7 +7,7 @@ description: 导入已有 Eve 项目，构建预览环境，并平滑发布到�
 
 ## 1. 确认版本兼容性
 
-Eveland 要求项目声明的 Eve 依赖处于经过验证的兼容版本窗口内。在部署时平台会自动检测依赖项；详细的支持版本范围请查阅 [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)。
+Eveland 要求项目声明的 Eve 依赖能解析到受支持的版本窗口内，`eve init` 生成的 `"^1.0.0"` 即可；构建时平台还会检查实际安装的 Eve 版本。详细的支持版本范围请查阅 [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)。
 
 ## 2. 导入项目源码
 

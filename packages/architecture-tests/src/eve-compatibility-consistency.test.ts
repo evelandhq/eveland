@@ -2,18 +2,15 @@ import { globSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
-  EVE_COMPATIBILITY_POLICY,
-  isSupportedEveDependency,
-  LATEST_VERIFIED_EVE_VERSION,
-  SUPPORTED_EVE_VERSION_RANGES,
-  VERIFIED_EVE_VERSIONS,
+  isSupportedEveVersion,
+  SUPPORTED_EVE_RANGE,
+  VERIFIED_EVE_VERSION,
 } from "@evelandhq/core/eve-compatibility";
 
-function supportedLinesBeforeLatest() {
-  return EVE_COMPATIBILITY_POLICY.supportedLines.slice(0, -1);
-}
-
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
+
+/** The eve the compatibility suites run against, as installed for the scheduler's tests. */
+const INSTALLED_EVE = "packages/agent-scheduler/node_modules/eve";
 
 function repositoryFile(relativePath: string): string {
   return readFileSync(new URL(relativePath, `file://${repositoryRoot}/`), "utf8");
@@ -45,47 +42,30 @@ function readParameterList(source: string, declaration: string): string {
 
 /**
  * The workflow names eve leaves unstamped when it bundles a project, read from
- * the bundler's own default argument.
- *
- * `STABLE_WORKFLOW_NAMES` is NOT that list. Eve 0.51.0 added a seventh
- * unstamped workflow -- `subagentToolExecuteWorkflow`, the shared execute body
- * behind every subagent tool -- without exporting it from the set, unioning it
- * into the bundler's default instead. Auditing the exported set alone would
- * have let the workflow that turns every subagent call into a durable tool run
- * reach the shared world with nobody having reviewed what it retains. So the
- * bundler's default is the authority, and an unrecognized shape fails loudly
- * rather than silently auditing a subset.
+ * the bundler's own default argument: `STABLE_WORKFLOW_NAMES` unioned with the
+ * constants the bundler adds to it. The exported set alone is not the
+ * authority -- the bundler adds members to it -- so an unrecognized shape
+ * fails loudly rather than silently auditing a subset.
  */
 const INLINED_STABLE_WORKFLOW_CONSTANTS: Record<string, string> = {
   turnWorkflow: "TURN_WORKFLOW_NAME",
 };
 
-function readUnstampedWorkflowConstants(dependencyName: string): string[] {
-  const evePackage = `packages/agent-scheduler/node_modules/${dependencyName}/dist/src`;
-  // 0.48.0 moved the exported set out of workflow-runtime.js into its own
-  // module, and the whole window is past that now, so read the module
-  // directly. A future line that moves it again fails here rather than
-  // silently auditing nothing.
+function readUnstampedWorkflowConstants(): string[] {
+  const evePackage = `${INSTALLED_EVE}/dist/src`;
   const namesSource = repositoryFile(`${evePackage}/execution/stable-workflow-names.js`);
   const exportedSet = /STABLE_WORKFLOW_NAMES=new Set\(\[([^\]]+)\]\)/.exec(namesSource)?.[1];
-  if (exportedSet === undefined) {
-    throw new Error(`${dependencyName}: could not read STABLE_WORKFLOW_NAMES`);
-  }
-  // 0.67.2 dropped the `TURN_WORKFLOW_NAME` constant and spells that one
-  // member inline as the string it held, so a member is either a constant or
-  // a backticked workflow name. A literal is mapped back onto the constant it
-  // replaced; an unknown one fails here rather than being audited under a
-  // name nobody reviewed.
+  if (exportedSet === undefined) throw new Error("could not read STABLE_WORKFLOW_NAMES");
+  // A member is either a constant or a backticked workflow name; a literal is
+  // mapped back onto the constant that names it, and an unknown one fails
+  // here rather than being audited under a name nobody reviewed.
   const exported = exportedSet.split(",").map((member) => {
     const constant = member.trim();
     const literal = /^`([^`]+)`$/.exec(constant)?.[1];
     if (literal === undefined) return constant;
     const replaced = INLINED_STABLE_WORKFLOW_CONSTANTS[literal];
     if (replaced === undefined) {
-      throw new Error(
-        `${dependencyName}: STABLE_WORKFLOW_NAMES inlines the workflow name "${literal}", ` +
-          "which no audited constant is known to have held",
-      );
+      throw new Error(`STABLE_WORKFLOW_NAMES inlines the unaudited workflow name "${literal}"`);
     }
     return replaced;
   });
@@ -95,191 +75,78 @@ function readUnstampedWorkflowConstants(dependencyName: string): string[] {
   );
   const parameters = readParameterList(builderSource, "async function applyWorkflowTransform(");
   const stableSetDefault = parameters.slice(parameters.lastIndexOf("=") + 1).trim();
-
-  // Through 0.50 the default is the exported set itself; from 0.51 it is a
-  // union with extra constants. Any third shape is a contract change.
-  if (stableSetDefault === "STABLE_WORKFLOW_NAMES") return exported;
   const union = /^new Set\(\[\.\.\.STABLE_WORKFLOW_NAMES,([A-Z0-9_,]+)\]\)$/.exec(stableSetDefault);
   if (!union) {
     throw new Error(
-      `${dependencyName}: unrecognized unstamped-workflow set \`${stableSetDefault}\`; ` +
+      `unrecognized unstamped-workflow set \`${stableSetDefault}\`; ` +
         "re-read how eve decides which workflow names stay unstamped",
     );
   }
   return [...exported, ...union[1]!.split(",").map((constant) => constant.trim())];
 }
 
-function englishList(values: readonly string[]): string {
-  if (values.length < 2) return values[0] ?? "";
-  if (values.length === 2) return `${values[0]} and ${values[1]}`;
-  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
-}
-
-function chineseList(values: readonly string[]): string {
-  if (values.length < 2) return values[0] ?? "";
-  return `${values.slice(0, -1).join("、")} 与 ${values.at(-1)}`;
-}
-
 describe("Eve compatibility repository contract", () => {
-  test("pins the latest verified Eve patch reviewed for this release", () => {
-    expect(LATEST_VERIFIED_EVE_VERSION).toBe("1.0.0");
+  test("the window floor is 1.0.0 and its ceiling is the minor after the verified one", () => {
+    const verified = /^(\d+)\.(\d+)\.(\d+)$/.exec(VERIFIED_EVE_VERSION);
+    expect(verified, "the verified version is an exact stable release").not.toBeNull();
+    expect(SUPPORTED_EVE_RANGE).toBe(`>=1.0.0 <${verified![1]}.${Number(verified![2]) + 1}.0`);
+    expect(isSupportedEveVersion(VERIFIED_EVE_VERSION)).toBe(true);
+  });
+
+  test("the compatibility suites run against the verified eve", () => {
+    const installed = JSON.parse(repositoryFile(`${INSTALLED_EVE}/package.json`)) as {
+      version: string;
+    };
+    expect(installed.version).toBe(VERIFIED_EVE_VERSION);
   });
 
   test("keeps the stable Eve workflow retention audit exhaustive", () => {
     const coveredStableWorkflowConstants = [
+      // The session's own run: every turn, the session inbox, and eve's
+      // handoff to a fresh run after a compaction or onto another Deployment.
       "WORKFLOW_ENTRY_NAME",
+      // Started only to import a session from the former per-turn driver
+      // model; never per message.
       "TURN_WORKFLOW_NAME",
       "SESSION_TIMEOUT_WORKFLOW_NAME",
-      // 0.48.0 introduced this run (as TOOL_RUN_WORKFLOW_NAME; 0.51.0 renamed
-      // it, and the old constant left the audit with 0.50.x on 2026-09-12):
-      // the durable run behind a tool whose `execute` is a Workflow body.
-      // Audited 2026-09-02, re-audited 2026-09-04: started by
-      // `execution/tools/workflow/start.js` with
-      // `startWorkflowOnCurrentDeployment` from inside the turn step, so the
-      // Workflow SDK stamps `$parentRunId` lineage and the run inherits its
-      // ancestor's stored class; it owns the
-      // `eve:workflow-tool-run:<operationId>` hook and settles by resuming the
-      // owner turn's outcome hook; cancellation rides `ctx.abortSignal` with a
-      // 30s grace period. An `ask()` hook stays answerable after the parent
-      // turn ends, so the run may outlive its turn until the interactive-class
-      // deadline reaps it like the session-timeout run; a late answer then
-      // gets the hook route's own 404. 0.52.2 re-checked 2026-09-07 and 0.52.5
-      // on 2026-09-10: the exported set and the bundler default are
-      // byte-identical to 0.51.1. 0.53.1 and 0.54.3 re-checked 2026-09-12:
-      // still byte-identical (0.53.1 "experimental.workflow.retention" only
-      // adds an `experimental_retention` start option, no new run). 0.54.5 and
-      // 0.55.0 re-checked 2026-09-15, 0.56.0 on 2026-09-16, 0.57.0 and
-      // 0.58.0 (and its 0.58.1 patch) on 2026-09-17, 0.62.0 on 2026-09-19: the
-      // exported set and the bundler default are still byte-identical (0.60.1
-      // added `executeAgentRouterTool`, which is version-stamped like the sleep
-      // and workflow-program tools and so is not in this set). 0.64.1 re-checked
-      // 2026-09-23: background invocations moved into this run at 0.63 (its
-      // `start.js` still starts it with `startWorkflowOnCurrentDeployment`),
-      // and the exported set lost TASK_RUN_WORKFLOW_NAME and nothing else.
-      // 0.65.0 re-checked the same day: byte-identical to 0.64.1; its new
-      // `executeAskQuestionTool` (the opt-in `ask_question` workflow tool) is
-      // version-stamped like the sleep tool and runs inside this run. 0.66.0
-      // and 0.66.1 re-checked 2026-09-24: stable-workflow-names.js is byte-identical to
-      // 0.65.0 (its tool-schema rework touched the workflow tool's schema, not
-      // its run). 0.66.2, 0.66.3, and 0.67.0 re-checked 2026-09-26: still
-      // byte-identical (0.67.0 removed the `task` run mode, which changes when
-      // the session run parks, not which runs exist). 0.67.2 and 0.68.0
-      // re-checked 2026-09-29: the same five members plus the subagent body,
-      // with `turnWorkflow` now spelled inline (see
-      // readUnstampedWorkflowConstants). 0.69.0 re-checked 2026-10-02: the
-      // exported set lost ACTIVITY_COLLECTOR_WORKFLOW_NAME, and this run now
-      // also carries every task -- a `task()`/`serve()` workflow tool and every
-      // agent call -- under the hook token `eve:task:<sessionId>:<taskId>`,
-      // reporting `task.started` from inside the run; `start.js` still starts
-      // it with `startWorkflowOnCurrentDeployment`. A `serve` task stays
-      // available between calls, so it lives until its session ends or the
-      // interactive-class deadline reaps it, like an unanswered `ask()`.
-      // 0.70.0 re-checked 2026-10-02: stable-workflow-names.js and the
-      // bundler default are byte-identical to 0.69.0 (0.70 holds the turn for
-      // approvals and sign-ins inside the session run, not in a run of its own).
-      // 0.72.1 re-checked 2026-10-07: still byte-identical to 0.70.0. Its
-      // compaction hop starts a fresh WORKFLOW_ENTRY_NAME run for an idle
-      // session on the same Deployment (eve's handoff path), which is an
-      // ordinary run of a name already audited here. 0.73.0 re-checked
-      // 2026-10-08: stable-workflow-names.js byte-identical to 0.72.1, and the
-      // bundler module differs only in import order. 0.74.0 re-checked
-      // 2026-10-08: both byte-identical to 0.73.0. 0.75.0 and 0.75.1
-      // re-checked 2026-10-09: both byte-identical to 0.74.0 (0.75's tool
-      // stubs and session-end sandbox cleanup run as steps inside the session
-      // run, not in a run of their own). 0.76.0 re-checked 2026-10-10: both
-      // byte-identical to 0.75.1 (the `eve__` catalog tools run inside the
-      // turn step). 0.79.0 re-checked 2026-10-14: both byte-identical to
-      // 0.76.0 (0.77 and 0.78 skipped; the stranded-session guard 0.76.1
-      // added wraps the World's queue handler, not a run of its own). 0.81.1
-      // re-checked 2026-10-21: the exported set gains only the two
-      // connection-event runs below (0.80 skipped), and the bundler default
-      // gains their references; its rebuilt handoff moves a session into a
-      // fresh WORKFLOW_ENTRY_NAME run, a name already audited here. 0.83.3
-      // re-checked 2026-10-27: stable-workflow-names.js byte-identical to
-      // 0.81.1 (0.82 skipped); 0.83's `prewarm()` and workflow-tool
-      // `ctx.getSandbox()` steps run inside the session and tool runs already
-      // audited here. 1.0.0-rc.1 re-checked 2026-11-02 (0.84 through 0.91
-      // skipped): stable-workflow-names.js and the bundler default are
-      // byte-identical to 0.83.3, and 0.85's cross-version handoff moves a
-      // pre-v27 session into a fresh WORKFLOW_ENTRY_NAME run, a name already
-      // audited here. 1.0.0-rc.2 re-checked 2026-11-03: stable-workflow-names.js
-      // and the bundler default are byte-identical to 1.0.0-rc.1. The activity
-      // collector (0.47.3-0.68)
-      // and the subagent execute body (0.51-0.68) left this list with 0.68 on
-      // 2026-10-09.
-      // 0.56.0 rebuilt the `workflow` tool around a
-      // model-supplied JS program, but its steps run inside this same run
-      // rather than opening one of their own. 0.57.0 moved turn execution
-      // into the session's own WORKFLOW_ENTRY_NAME run and 0.58.0 keeps that:
-      // the turn workflow name stays in the unstamped set, but on those lines
-      // it is started only to import a session from the former driver model
-      // (a 0.45+ driver's next turn dispatch), never per message.
+      // The durable run behind a workflow tool and every task (a
+      // `task()`/`serve()` tool and every agent call). Started from inside the
+      // turn step with `startWorkflowOnCurrentDeployment`, so it carries
+      // `$parentRunId` lineage and inherits its ancestor's stored class; it
+      // owns the `eve:task:<sessionId>:<taskId>` hook. An unanswered `ask()`
+      // or a `serve` task can outlive its turn until the interactive-class
+      // deadline reaps it like the session-timeout run.
       "WORKFLOW_TOOL_RUN_WORKFLOW_NAME",
-      // 0.69.0: the shared `serve` body behind every agent tool (local,
-      // remote, dynamic, and self-agent), replacing the execute body above.
-      // Audited 2026-10-02: it opens NO run of its own. `workflowIdForHandling`
-      // (runtime/subagents/workflow-reference.js) maps every agent-call
-      // dispatch target onto this id, `startWorkflowToolRun` starts a
-      // WORKFLOW_TOOL_RUN_WORKFLOW_NAME run for the task, and that run's
-      // `startWorkflowBody` resolves and runs this body inline -- no
-      // `start()`, no lineage of its own. The body loops on `receive()` and
-      // opens the child through `ctx.agent()`, whose session ends when the
-      // tool run finishes, so nothing outlives the run already audited above.
-      // Like the execute body, it needs an unstamped id only so a
-      // version-stamped deployment can still resolve it.
+      // The shared `serve` body behind every agent tool. It opens no run of
+      // its own: the tool run above resolves and runs it inline, and the
+      // child it opens through `ctx.agent()` ends with that run. It needs an
+      // unstamped id only so a version-stamped Deployment can resolve it.
       "AGENT_TOOL_SERVE_WORKFLOW_NAME",
-      // 0.80.0: the owner run behind an experimental Connect-managed event
-      // subscription (`experimental_events` on an MCP connection; requires
-      // `@vercel/connect` 2.5.2+). Audited 2026-10-21 against 0.81.1: the
-      // `events_subscribe_*` tool refuses outside an active root-agent session
-      // (`runtime/connections/events/actions.js`), and `startConnectionEventOwner`
-      // starts this run with `startWorkflowOnCurrentDeployment` from inside that
-      // session's step, so it carries `$parentRunId` lineage and inherits its
-      // ancestor's stored class. It owns the `connectionEventHookToken(binding)`
-      // hook and lives until the watch is retired or its subscription expires
-      // (`ttlMs` up to 365 days, or `null` for no expiry), so like an
+      // The owner run behind a Connect-managed event subscription
+      // (`experimental_events` on an MCP connection). Started from inside an
+      // active root-agent session's step, so it carries lineage and inherits
+      // the session's class. It owns the subscription's hook and lives until
+      // the watch is retired or the subscription expires, so like an
       // unanswered `ask()` it can outlive its session until the class deadline
-      // reaps it; a webhook delivery after that finds no owner. 0.81.1's
-      // handoff does not move it.
+      // reaps it.
       "CONNECTION_EVENT_WORKFLOW_NAME",
-      // 0.80.0: one run per delivered event, running one dispatch step that
-      // enters a session only through an explicit `attachSession(...).send(...)`,
-      // so it ends with that step. Audited 2026-10-21 against 0.81.1: the
-      // public receiver `POST /eve/v1/hooks/:connection`
-      // (`startConnectionEventDelivery`) starts it with
-      // `startWorkflowOnCurrentDeployment` straight from the route once the
-      // owner's subscription is known -- a root run with no lineage, under the
-      // World's default `interactive` class -- and otherwise resumes the owner's hook, whose
-      // `startConnectionEventDeliveryStep` starts it from inside the owner run
-      // (lineage to the owner, so its inherited class).
+      // One run per delivered event, running one dispatch step that enters a
+      // session only through an explicit `attachSession(...).send(...)`. The
+      // public receiver `POST /eve/v1/hooks/:connection` starts it as a root
+      // run under the World's default `interactive` class; the owner run's
+      // hook starts it with lineage to the owner.
       "CONNECTION_EVENT_DELIVERY_WORKFLOW_NAME",
     ];
 
-    // The covered list is the union across the window: a line may predate a
-    // stable workflow, but every stable workflow any supported line runs must
-    // be audited, and the list must not keep entries no line runs anymore.
-    // 1.0.x exports four (no activity collector), the agent serve body, and
-    // the two connection-event runs; it no longer opens a per-turn run, but
-    // keeps the turn name for legacy-session import.
-    const observedConstants = new Set<string>();
-    for (const { dependencyName } of EVE_COMPATIBILITY_POLICY.supportedLines) {
-      for (const constant of readUnstampedWorkflowConstants(dependencyName)) {
-        observedConstants.add(constant);
-        expect(coveredStableWorkflowConstants, `${dependencyName} runs ${constant}`).toContain(
-          constant,
-        );
-      }
+    expect(readUnstampedWorkflowConstants().sort()).toEqual(
+      [...coveredStableWorkflowConstants].sort(),
+    );
 
-      // 0.49.0 (@workflow/world beta.32) moved the lineage constants out of
-      // attributes.d.ts into attributes-validation.d.ts, and the whole window
-      // is past that now, so read the validation module directly.
-      const lineageContract = repositoryFile(
-        `packages/agent-scheduler/node_modules/${dependencyName}/dist/src/compiled/@workflow/world/attributes-validation.d.ts`,
-      );
-      expect(lineageContract, dependencyName).toContain('ROOT_RUN_ID_ATTRIBUTE = "$rootRunId"');
-      expect(lineageContract, dependencyName).toContain('PARENT_RUN_ID_ATTRIBUTE = "$parentRunId"');
-    }
-    expect([...observedConstants].sort()).toEqual([...coveredStableWorkflowConstants].sort());
+    const lineageContract = repositoryFile(
+      `${INSTALLED_EVE}/dist/src/compiled/@workflow/world/attributes-validation.d.ts`,
+    );
+    expect(lineageContract).toContain('ROOT_RUN_ID_ATTRIBUTE = "$rootRunId"');
+    expect(lineageContract).toContain('PARENT_RUN_ID_ATTRIBUTE = "$parentRunId"');
   });
 
   test("publishes a browser-safe compatibility policy subpath", () => {
@@ -298,130 +165,9 @@ describe("Eve compatibility repository contract", () => {
     expect(corePackage.exports?.["./server/eve-fixture"]).toBe("./src/server/eve-fixture.ts");
   });
 
-  test("describes the supported compatibility window", () => {
-    const { supportedLines, peerDependencyRange } = EVE_COMPATIBILITY_POLICY;
-    // The newest line installs as the plain `eve` catalog entry; a previous
-    // line, when the window carries one, as `eve-previous` from eve-matrix.
-    const stableDependencyNames = supportedLines.length === 1 ? ["eve"] : ["eve-previous", "eve"];
-    const lineNumbers = supportedLines.map((line, index) => {
-      const rangeMatch = /^(\d+)\.(\d+)\.x$/.exec(line.range);
-      const verifiedMatch = /^(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.]+)?$/.exec(line.verifiedVersion);
-      if (!rangeMatch || !verifiedMatch) {
-        throw new Error(`Invalid Eve compatibility line: ${line.range} / ${line.verifiedVersion}`);
-      }
-
-      const major = Number(rangeMatch[1]);
-      const minor = Number(rangeMatch[2]);
-      expect(Number(verifiedMatch[1]), line.range).toBe(major);
-      expect(Number(verifiedMatch[2]), line.range).toBe(minor);
-      expect(line.dependencyName, line.range).toBe(stableDependencyNames[index]);
-      // A line verified at a release candidate necessarily hosts them; one
-      // verified at a stable patch keeps hosting the candidates it entered on
-      // for as long as it says so, since the window admits a whole line.
-      const hostsReleaseCandidates =
-        verifiedMatch[4] !== undefined ||
-        ("hostsReleaseCandidates" in line && line.hostsReleaseCandidates === true);
-      if (hostsReleaseCandidates) {
-        expect(isSupportedEveDependency(`${major}.${minor}.0-rc.1`), line.range).toBe(true);
-      }
-      return { major, minor, prerelease: hostsReleaseCandidates };
-    });
-
-    // One line, or two while a newer line overlaps the one it replaces. The
-    // window has carried a single line since 0.83 retired on 2026-11-04.
-    expect(supportedLines.length).toBeGreaterThanOrEqual(1);
-    expect(supportedLines.length).toBeLessThanOrEqual(2);
-    // Lines are strictly ascending but need not be contiguous: a minor that
-    // was superseded before it could host a real deployment may be skipped
-    // (0.40/0.41 were replaced by 0.42 within 48 hours of release, 0.43 by
-    // 0.44 within four hours, 0.84 through 0.91 by 1.0 within a week). Each
-    // skip must be re-justified: it is only safe when every wire format is
-    // byte-identical across the whole span, or -- as across the 0.84
-    // session-protocol boundary while 0.83 and 1.0 overlapped -- every
-    // consumer reads both protocols.
-    const order = lineNumbers.map(({ major, minor }) => major * 10_000 + minor);
-    expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(new Set(order).size).toBe(order.length);
-
-    // The peer range is the union of maximal contiguous runs of supported
-    // minors within one major -- never their hull, which would admit skipped
-    // lines. A run whose first line hosts release candidates starts at `-0`,
-    // the only comparator npm lets a prerelease satisfy.
-    const contiguousRuns: Array<typeof lineNumbers> = [];
-    for (const line of lineNumbers) {
-      const run = contiguousRuns.at(-1);
-      const last = run?.at(-1);
-      if (run && last && last.major === line.major && line.minor === last.minor + 1) run.push(line);
-      else contiguousRuns.push([line]);
-    }
-    expect(peerDependencyRange).toBe(
-      contiguousRuns
-        .map((run) => {
-          const first = run[0]!;
-          const last = run.at(-1)!;
-          return `>=${first.major}.${first.minor}.0${first.prerelease ? "-0" : ""} <${last.major}.${last.minor + 1}.0`;
-        })
-        .join(" || "),
-    );
-  });
-
-  test("derives public compatibility values from the policy", async () => {
-    const compatibility = await import("@evelandhq/core/eve-compatibility");
-    const expectedRanges = EVE_COMPATIBILITY_POLICY.supportedLines.map(({ range }) => range);
-    const expectedVersions = EVE_COMPATIBILITY_POLICY.supportedLines.map(
-      ({ verifiedVersion }) => verifiedVersion,
-    );
-
-    expect(compatibility.SUPPORTED_EVE_VERSION_RANGES).toEqual(expectedRanges);
-    expect(compatibility.VERIFIED_EVE_VERSIONS).toEqual(expectedVersions);
-    expect(compatibility.LATEST_VERIFIED_EVE_VERSION).toBe(expectedVersions.at(-1));
-    expect(compatibility.SUPPORTED_EVE_VERSION_RANGE).toBe(
-      expectedRanges.length === 1
-        ? expectedRanges[0]
-        : expectedRanges.length === 2
-          ? `${expectedRanges[0]} or ${expectedRanges[1]}`
-          : `${expectedRanges.slice(0, -1).join(", ")}, or ${expectedRanges.at(-1)}`,
-    );
-  });
-
-  test("makes the source scanner consume the compatibility policy", async () => {
-    const compatibility = await import("@evelandhq/core/eve-compatibility");
-    const source = await import("@evelandhq/core/source");
-
-    expect(source.SUPPORTED_EVE_VERSION_RANGES).toBe(compatibility.SUPPORTED_EVE_VERSION_RANGES);
-  });
-
-  test("makes the source scanner delegate compatibility decisions", async () => {
-    const compatibility = await import("@evelandhq/core/eve-compatibility");
-    const source = await import("@evelandhq/core/source");
-
-    expect(source.isSupportedEveDependency).toBe(compatibility.isSupportedEveDependency);
-    expect(source.unsupportedEveVersionMessage).toBe(compatibility.unsupportedEveVersionMessage);
-    expect(source.createEveVersionInfo).toBe(compatibility.createEveVersionInfo);
-  });
-
-  test("routes repository Eve dependencies through the compatibility catalogs", () => {
+  test("routes repository Eve dependencies through the verified version", () => {
     const workspace = repositoryFile("pnpm-workspace.yaml");
-    const [latestLine, ...legacyLines] = [...EVE_COMPATIBILITY_POLICY.supportedLines].reverse();
-
-    expect(workspace).toContain(`catalog:\n  eve: ${latestLine!.verifiedVersion}`);
-    for (const line of legacyLines.reverse()) {
-      expect(workspace).toContain(`    ${line.dependencyName}: npm:eve@${line.verifiedVersion}`);
-    }
-    // No eve-peer catalog is asserted: sandbox-bwrap was its only consumer and
-    // now lives in its own repository with its own, deliberately wider peer
-    // range. peerDependencyRange still describes the platform's hosting window
-    // and still pins the SDK floor below.
-
-    // The SDK's ceiling is deliberately independent of the platform window, but
-    // its floor is not: advertising support for a line Eveland can no longer
-    // host would point developers at an Agent that cannot be deployed.
-    const sdkPeerRange = /\n {2}eve-sdk-peer:\n {4}eve: "([^"]+)"/.exec(workspace)?.[1];
-    const policyFloor = /^(>=\d+\.\d+\.\d+)/.exec(
-      EVE_COMPATIBILITY_POLICY.peerDependencyRange,
-    )?.[1];
-    expect(sdkPeerRange, "eve-sdk-peer must be declared").toBeDefined();
-    expect(sdkPeerRange).toContain(policyFloor!);
+    expect(workspace).toContain(`catalog:\n  eve: ${VERIFIED_EVE_VERSION}`);
 
     const packagePaths = globSync(
       [
@@ -435,14 +181,10 @@ describe("Eve compatibility repository contract", () => {
         exclude: ["**/node_modules/**", "**/.next/**"],
       },
     );
-    const latestConsumers = new Set<string>();
-    const legacyMatrixConsumers = new Set<string>();
-    const standaloneFixtureConsumers = new Set<string>();
+    const workspaceConsumers = new Set<string>();
+    const fixtureConsumers = new Set<string>();
     const templateConsumers = new Set<string>();
     const peerConsumers = new Set<string>();
-    const matrixDependencyNames = new Set<string>(
-      EVE_COMPATIBILITY_POLICY.supportedLines.map(({ dependencyName }) => dependencyName),
-    );
     for (const packagePath of packagePaths) {
       const packageJson = JSON.parse(repositoryFile(packagePath)) as {
         dependencies?: Record<string, string>;
@@ -450,63 +192,38 @@ describe("Eve compatibility repository contract", () => {
         peerDependencies?: Record<string, string>;
       };
       const isWorkspacePackage = /^(?:apps|packages)\/[^/]+\/package\.json$/.test(packagePath);
+      // npm publish does not understand pnpm's catalog: protocol, so the
+      // published SDK carries the verified version literally.
       const isPublishedSdk = packagePath === "packages/eveland/package.json";
-      // Templates ship what `eveland init` copies verbatim to users, so they
-      // carry the real verified version literal — `catalog:` is a fixture-only
-      // marker the platform's specifier grammar rejects.
+      // Templates ship what users copy verbatim, so they carry the verified
+      // version literally too.
       const isTemplate = /^templates\/[^/]+\/package\.json$/.test(packagePath);
       for (const dependencies of [packageJson.dependencies, packageJson.devDependencies]) {
-        for (const dependencyName of Object.keys(dependencies ?? {}).filter((name) =>
-          matrixDependencyNames.has(name),
-        )) {
-          if (isTemplate) {
-            templateConsumers.add(packagePath);
-          } else if (isWorkspacePackage && dependencyName === "eve") {
-            latestConsumers.add(packagePath);
-          } else if (isWorkspacePackage) {
-            legacyMatrixConsumers.add(packagePath);
-          } else {
-            standaloneFixtureConsumers.add(packagePath);
-          }
-          expect(dependencies?.[dependencyName], packagePath).toBe(
-            isTemplate
-              ? latestLine!.verifiedVersion
-              : isWorkspacePackage
-                ? dependencyName === "eve"
-                  ? isPublishedSdk
-                    ? latestLine!.verifiedVersion
-                    : "catalog:"
-                  : "catalog:eve-matrix"
-                : "catalog:",
-          );
-        }
+        const specifier = dependencies?.eve;
+        if (specifier === undefined) continue;
+        if (isTemplate) templateConsumers.add(packagePath);
+        else if (isWorkspacePackage) workspaceConsumers.add(packagePath);
+        else fixtureConsumers.add(packagePath);
+        expect(specifier, packagePath).toBe(
+          isTemplate || isPublishedSdk ? VERIFIED_EVE_VERSION : "catalog:",
+        );
       }
       if (packageJson.peerDependencies?.eve !== undefined) {
         peerConsumers.add(packagePath);
-        // The SDK is the only workspace package that declares an eve peer. Its
-        // source manifest uses the catalog's resolved range literally because
-        // npm publish does not understand pnpm's catalog: protocol. This test
-        // keeps the npm-safe duplicate synchronized with eve-sdk-peer.
-        expect(packageJson.peerDependencies.eve, packagePath).toBe(sdkPeerRange);
+        // The SDK's floor is the window's floor; its ceiling is eve's next
+        // major, since eve keeps the SDK's imports stable across 1.x.
+        expect(packageJson.peerDependencies.eve, packagePath).toBe(">=1.0.0 <2.0.0");
       }
     }
 
-    expect([...latestConsumers].sort()).toEqual([
+    expect([...workspaceConsumers].sort()).toEqual([
       "apps/web/package.json",
       "packages/agent-auth/package.json",
       "packages/agent-observer/package.json",
       "packages/agent-scheduler/package.json",
       "packages/eveland/package.json",
     ]);
-    // A single-line window installs no previous line anywhere. While two
-    // lines overlap, the matrix suites (observer, scheduler) install the
-    // previous one as `eve-previous`.
-    expect([...legacyMatrixConsumers].sort()).toEqual(
-      supportedLinesBeforeLatest().length === 0
-        ? []
-        : ["packages/agent-observer/package.json", "packages/agent-scheduler/package.json"],
-    );
-    expect([...standaloneFixtureConsumers].sort()).toEqual([
+    expect([...fixtureConsumers].sort()).toEqual([
       "apps/worker/src/integration/fixtures/agent-sandbox-e2e/package.json",
       "apps/worker/src/integration/fixtures/connections-e2e/package.json",
       "apps/worker/src/integration/fixtures/identity-e2e/package.json",
@@ -519,19 +236,12 @@ describe("Eve compatibility repository contract", () => {
   });
 
   test("keeps the published SDK manifest installable by npm before packing", () => {
-    const workspace = repositoryFile("pnpm-workspace.yaml");
-    const sdkPeerRange = /\n {2}eve-sdk-peer:\n {4}eve: "([^"]+)"/.exec(workspace)?.[1];
     const sdkPackage = JSON.parse(repositoryFile("packages/eveland/package.json")) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
       optionalDependencies?: Record<string, string>;
       peerDependencies?: Record<string, string>;
     };
-
-    expect(sdkPeerRange, "eve-sdk-peer must be declared").toBeDefined();
-    expect(sdkPackage.devDependencies?.eve).toBe(LATEST_VERIFIED_EVE_VERSION);
-    expect(sdkPackage.peerDependencies?.eve).toBe(sdkPeerRange);
-
     const publishedSpecifiers = Object.values({
       ...sdkPackage.dependencies,
       ...sdkPackage.devDependencies,
@@ -541,57 +251,23 @@ describe("Eve compatibility repository contract", () => {
     expect(publishedSpecifiers.filter((specifier) => specifier.startsWith("catalog:"))).toEqual([]);
   });
 
-  test("keeps active documentation references aligned with policy", () => {
-    const latestRange = SUPPORTED_EVE_VERSION_RANGES.at(-1)!;
-    const quotedVerifiedVersions = VERIFIED_EVE_VERSIONS.map((version) => `\`${version}\``);
-    const verifiedEnglish = englishList(quotedVerifiedVersions);
-    const quotedVerifiedVersionsChinese = VERIFIED_EVE_VERSIONS.map((version) => `\`${version}\``);
-    const verifiedChinese = chineseList(quotedVerifiedVersionsChinese);
-    const englishDocs = normalizedWhitespace(
-      repositoryFile("docs/en/reference/eve-compatibility.md"),
-    );
-    const chineseDocs = normalizedWhitespace(
-      repositoryFile("docs/zh/reference/eve-compatibility.md"),
-    );
-
-    expect(englishDocs).toContain(`verified at ${verifiedEnglish}`);
-    expect(englishDocs).toContain(
-      `marks only the latest supported line, \`${latestRange}\`, in green`,
-    );
-    expect(englishDocs).toContain(
-      `refresh their lockfile and redeploy to receive \`${LATEST_VERIFIED_EVE_VERSION}\``,
-    );
-    expect(chineseDocs).toContain(`验证版本为 ${verifiedChinese}`);
-    expect(chineseDocs).toContain(`UI 仅将最新支持线 \`${latestRange}\` 标为绿色`);
-    expect(chineseDocs).toContain(`才能实际获得 \`${LATEST_VERIFIED_EVE_VERSION}\``);
-  });
-
-  test("keeps the active product and public documentation windows aligned", () => {
-    const quotedRanges = SUPPORTED_EVE_VERSION_RANGES.map((range) => `\`${range}\``);
-    const englishRanges = englishList(quotedRanges);
-    const chineseRanges = chineseList(quotedRanges);
-    const englishDocs = normalizedWhitespace(
-      repositoryFile("docs/en/reference/eve-compatibility.md"),
-    );
-    const chineseDocs = normalizedWhitespace(
-      repositoryFile("docs/zh/reference/eve-compatibility.md"),
-    );
-
-    expect(englishDocs).toContain(`supports ${englishRanges}`);
-    expect(chineseDocs).toContain(`支持 ${chineseRanges}`);
+  test("keeps the public documentation aligned with the window", () => {
+    for (const locale of ["en", "zh"]) {
+      const docs = normalizedWhitespace(
+        repositoryFile(`docs/${locale}/reference/eve-compatibility.md`),
+      );
+      expect(docs, locale).toContain(`\`${SUPPORTED_EVE_RANGE}\``);
+      expect(docs, locale).toContain(`\`${VERIFIED_EVE_VERSION}\``);
+    }
   });
 
   test("keeps spec.md free of version facts", () => {
     // spec.md is the version-stable product contract: the supported Eve
-    // window, verified patches, and injected workflow-world pins live only in
-    // docs/{en,zh}/reference/eve-compatibility.md (and the runtime operations
-    // docs), so widening or sliding the window never edits spec.md.
+    // window, the verified version, and injected workflow-world pins live only
+    // in docs/{en,zh}/reference/eve-compatibility.md (and the runtime
+    // operations docs), so raising the ceiling never edits spec.md.
     const spec = repositoryFile("spec.md");
-    const literals = [
-      ...SUPPORTED_EVE_VERSION_RANGES.map((range) => range.replace(/\.x$/, "")),
-      ...VERIFIED_EVE_VERSIONS,
-    ];
-    for (const literal of literals) {
+    for (const literal of [SUPPORTED_EVE_RANGE, VERIFIED_EVE_VERSION]) {
       expect(spec, `spec.md must not carry the Eve version literal ${literal}`).not.toContain(
         literal,
       );

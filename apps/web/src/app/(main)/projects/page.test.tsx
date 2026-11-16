@@ -29,10 +29,7 @@ function project(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
     createdAt: "2026-11-02T01:00:00.000Z",
     updatedAt: "2026-11-02T01:00:00.000Z",
     eveVersion: {
-      version: "1.0.0-rc.1",
-      expected: "1.0.x",
-      supportedRanges: ["1.0.x"],
-      supported: true,
+      version: "1.0.0",
       sourceRevisionId: null,
     },
     activity: {

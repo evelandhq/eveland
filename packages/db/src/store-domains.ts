@@ -69,7 +69,7 @@ import type {
 } from "@evelandhq/core/model-gateway";
 import type { AgentCatalogRecord } from "@evelandhq/core/catalog";
 import type { AgentEventObservation } from "@evelandhq/core/observability";
-import type { EveVersionInfo } from "@evelandhq/core/source";
+import type { EveVersionInfo } from "@evelandhq/core/eve-compatibility";
 import type { SessionBindingIdlePolicy } from "@evelandhq/core/routing";
 import type {
   HostMetricSample,

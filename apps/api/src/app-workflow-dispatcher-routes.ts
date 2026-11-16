@@ -1,4 +1,4 @@
-import { permanentDeploymentActivationRefusal } from "@evelandhq/core/eve-compatibility";
+import { permanentDeploymentActivationRefusal } from "@evelandhq/core/workflow-dispatch";
 import type { Store } from "@evelandhq/db";
 import {
   workflowDispatcherHeartbeatSchema,
@@ -17,10 +17,7 @@ import type { ApiApp, AppOptions } from "./app-types.js";
 
 type DispatcherRouteStore = Pick<
   Store,
-  | "recordWorkflowDispatcherHeartbeat"
-  | "getWorkflowDispatcherRegistration"
-  | "getDeployment"
-  | "getRelease"
+  "recordWorkflowDispatcherHeartbeat" | "getWorkflowDispatcherRegistration" | "getDeployment"
 >;
 
 export function registerWorkflowDispatcherRoutes(input: {
@@ -60,8 +57,7 @@ export function registerWorkflowDispatcherRoutes(input: {
     const notActivatable: { deploymentId: string; reason: string }[] = [];
     for (const deploymentId of new Set(parsed.data.deploymentIds)) {
       const deployment = await store.getDeployment(deploymentId);
-      const release = deployment ? await store.getRelease(deployment.releaseId) : null;
-      const reason = permanentDeploymentActivationRefusal(deployment, release?.summary ?? null);
+      const reason = permanentDeploymentActivationRefusal(deployment);
       if (reason !== null) notActivatable.push({ deploymentId, reason });
     }
     return c.json({ notActivatable });

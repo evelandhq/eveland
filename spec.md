@@ -272,23 +272,18 @@ activation and schedule activation can recover the original deployment from that
 metadata after the source directory is reclaimed, while restart stays
 live-source-only.
 
-Until Eve reaches a stable product-compatibility commitment, Eveland supports only
-minor lines that have completed full compatibility verification; the window is a
-set of verified lines, not a contiguous range, and every widening or narrowing of
-the window is an explicit product change. The current window values, accepted
-dependency-declaration forms, and per-line baselines live in
-`docs/en/reference/eve-compatibility.md`.
+Eveland hosts one Eve major, from its first stable release up to the newest
+minor that has completed full compatibility verification. The floor never moves
+within the major, so a Release that was inside the window when it was built stays
+inside it; verifying a newer minor only raises the ceiling, and doing so is an
+explicit product change. The current window, accepted dependency declarations,
+and protocol baseline live in `docs/en/reference/eve-compatibility.md`.
 
-A missing Eve dependency, or any declaration that could resolve outside the window,
-must fail closed with a clear reminder to upgrade the project's `eve` dependency.
-The check covers import, build, restart, cold activation, the Playground, and all
-public Agent Gateway traffic reaching the selected deployment — it cannot be
-bypassed through an old Source Revision, an old Deployment, or a SessionBinding,
-and must never wake a dormant out-of-window Deployment; when a version cannot be
-proven supported it is treated as unsupported, with no guessing and no
-old-protocol compatibility. The UI marks the latest supported line in green and
-older supported lines and out-of-window versions in red; still-supported older
-lines keep running, out-of-window versions stay blocked.
+A project's declared `eve` dependency must be able to resolve inside the window,
+or import fails closed with a clear diagnostic. The build gates on the version it
+actually installed: a build whose installed Eve is outside the window, or cannot
+be read, fails and records no Release. Because every Release is inside the window
+by construction, nothing downstream of the build re-checks the Eve version.
 
 The wizard interaction, PAT details, name format, `.env` import, preflight expiry,
 and job execution semantics live in `docs/en/reference/source-import.md`.
@@ -554,7 +549,7 @@ decision change — discuss first, then act:
     block; the Playground transport is not the authoritative observation path;
     Built-in only projects read models, leaving detail to external destinations.
 13. **Version facts live outside the spec.** This spec carries no version numbers;
-    widening or narrowing the compatibility window is an explicit product change,
+    raising the compatibility window's ceiling is an explicit product change,
     locked jointly by `docs/en/reference/eve-compatibility.md` and the
     architecture tests.
 

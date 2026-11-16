@@ -4,6 +4,7 @@ import {
   assessDispatcherReadiness,
   clusterWorldIdentity,
   isSupportedWorkflowStorageSpec,
+  permanentDeploymentActivationRefusal,
 } from "./workflow-dispatch.js";
 
 function registration(
@@ -97,5 +98,23 @@ describe("isSupportedWorkflowStorageSpec", () => {
     expect(isSupportedWorkflowStorageSpec(5)).toBe(false);
     expect(isSupportedWorkflowStorageSpec(10)).toBe(false);
     expect(isSupportedWorkflowStorageSpec(null)).toBe(false);
+  });
+});
+
+describe("permanentDeploymentActivationRefusal", () => {
+  test("refuses a missing, archiving, or archived Deployment", () => {
+    expect(permanentDeploymentActivationRefusal(null)).toBe("Deployment no longer exists.");
+    expect(permanentDeploymentActivationRefusal(undefined)).toBe("Deployment no longer exists.");
+    for (const status of ["archiving", "archived"]) {
+      expect(permanentDeploymentActivationRefusal({ id: "dep_x", status })).toContain(
+        `dep_x is ${status}`,
+      );
+    }
+  });
+
+  test("a transiently failed or stopped Deployment is NOT permanent: its next activation restarts it", () => {
+    for (const status of ["failed", "stopped", "running"]) {
+      expect(permanentDeploymentActivationRefusal({ id: "dep_x", status })).toBeNull();
+    }
   });
 });

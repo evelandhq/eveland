@@ -4,7 +4,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseSchedulerDefinitions } from "@evelandhq/agent-scheduler";
 import { rejectedBuildVariablesLog, selectBuildVariables } from "./build-environment.js";
-import { collectStaticModelIds } from "./discovery-artifacts.js";
+import { assertHostedEveVersion, collectStaticModelIds } from "./discovery-artifacts.js";
 import { preparedReleaseLogLines, prepareReleaseTree } from "./prepare-release.js";
 import { EXTENSION_INTEGRATOR_RELEASE_PATH } from "./extension-integration.js";
 import {
@@ -237,13 +237,22 @@ export async function readImageDiscovery(imageTag: string): Promise<ReleaseDisco
       `Could not read build artifacts from Docker image ${imageTag}: ${result.stderr || "artifact reader failed"}`,
     );
   }
+  let parsed: {
+    manifest: unknown;
+    resolvedEveVersion: string | null;
+    schedulerDefinitions?: unknown;
+    compiledManifest?: unknown;
+  };
   try {
-    const parsed = JSON.parse(result.stdout) as {
-      manifest: unknown;
-      resolvedEveVersion: string | null;
-      schedulerDefinitions?: unknown;
-      compiledManifest?: unknown;
-    };
+    parsed = JSON.parse(result.stdout) as typeof parsed;
+  } catch (error) {
+    throw new Error(
+      `Invalid build artifacts in Docker image ${imageTag}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  assertHostedEveVersion(parsed.resolvedEveVersion);
+  try {
     const schedulerDefinitions = parseSchedulerDefinitions(parsed.schedulerDefinitions);
     if (!schedulerDefinitions) {
       throw new Error("Required scheduler definitions are missing or invalid.");

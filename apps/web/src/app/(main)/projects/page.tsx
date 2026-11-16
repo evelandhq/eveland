@@ -16,7 +16,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { getProjects, type ProjectListItem } from "@/lib/server-api";
-import { getEveVersionMessage, getEveVersionStatus } from "@/lib/eve-version";
 import { describeProjectSource } from "@/lib/project-source";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -271,7 +270,6 @@ export default async function ProjectsPage({
               const { activity } = project;
               const rate = formatRate(activity.successRate);
               const p95 = formatDuration(activity.p95DurationMs);
-              const eveStatus = getEveVersionStatus(project.eveVersion);
               return (
                 <div
                   key={project.id}
@@ -347,21 +345,7 @@ export default async function ProjectsPage({
                   </div>
 
                   <div className="mt-auto flex items-center justify-between border-t pt-2.5 text-[11px] text-muted-foreground">
-                    <span
-                      className={cn(
-                        "truncate font-mono",
-                        eveStatus === "current"
-                          ? "text-muted-foreground/70"
-                          : eveStatus === "upgrade"
-                            ? "text-warning-foreground"
-                            : "text-destructive-foreground",
-                      )}
-                      title={
-                        eveStatus === "current"
-                          ? undefined
-                          : getEveVersionMessage(project.eveVersion, eveStatus)
-                      }
-                    >
+                    <span className="truncate font-mono text-muted-foreground/70">
                       eve {project.eveVersion.version ?? "unknown"}
                     </span>
                     <span className="truncate">

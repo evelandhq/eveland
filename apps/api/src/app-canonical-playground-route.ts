@@ -8,7 +8,6 @@ import {
   PLAYGROUND_OPERATION_ID_HEADER,
   validatePlaygroundTurn,
 } from "@evelandhq/core/eve";
-import { unsupportedEveVersionMessage } from "@evelandhq/core/source";
 import { CANONICAL_REQUEST_ID_HEADER } from "@evelandhq/core/workflow-dispatch";
 import type { ProjectStore, SessionStore } from "@evelandhq/db";
 import type { AgentAuthService } from "./agent-auth-service.js";
@@ -20,14 +19,11 @@ import {
   parsePlaygroundBody,
   parsePlaygroundResponse,
   readLimitedPlaygroundBody,
-  resolveProjectEveVersion,
-  type EveVersionStore,
 } from "./app-support.js";
 import type { ApiApp } from "./app-types.js";
 import type { PlaygroundProxy } from "./gateway-playground.js";
 
-export type CanonicalPlaygroundStore = EveVersionStore &
-  Pick<ProjectStore, "getProject"> &
+export type CanonicalPlaygroundStore = Pick<ProjectStore, "getProject"> &
   Pick<SessionStore, "completeSession" | "createSession" | "getSessionByEveSessionId">;
 
 /**
@@ -190,20 +186,6 @@ export function registerCanonicalPlaygroundRoute(input: {
     if (pathSessionId && !platformSession) {
       return c.json({ error: "Playground session not found" }, 404);
     }
-    const eveVersion = platformSession?.deploymentId
-      ? await resolveProjectEveVersion(store, projectId, platformSession.deploymentId)
-      : null;
-    if (eveVersion && !eveVersion.supported) {
-      return c.json(
-        {
-          error: "Unsupported Eve version",
-          detail: unsupportedEveVersionMessage(eveVersion.version),
-          eveVersion,
-        },
-        409,
-      );
-    }
-
     if (isInitial) {
       platformSession = await store.createSession({
         projectId,

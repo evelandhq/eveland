@@ -4,17 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { projectDiscoveryManifest } from "@evelandhq/core/discovery";
-import { EVE_COMPATIBILITY_POLICY } from "@evelandhq/core/eve-compatibility";
+import { VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const compatibilityMatrix = EVE_COMPATIBILITY_POLICY.supportedLines.map(
-  ({ verifiedVersion, dependencyName }) => ({
-    version: verifiedVersion,
-    fixtureName: "matrix-hooks",
-    packageName: dependencyName,
-  }),
-);
+const compatibilityMatrix = [
+  { version: VERIFIED_EVE_VERSION, fixtureName: "matrix-hooks", packageName: "eve" },
+];
 
 describe("Eve observer hook compatibility matrix", () => {
   test.each(compatibilityMatrix)(

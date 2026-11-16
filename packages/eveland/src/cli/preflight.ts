@@ -1,5 +1,6 @@
 import { readFile, readdir, lstat } from "node:fs/promises";
 import path from "node:path";
+import { intersects, validRange } from "semver";
 
 /**
  * Local packaging preflight for `eveland deploy`: catches, in under a second
@@ -116,35 +117,20 @@ export async function collectProjectFiles(root: string): Promise<PreflightResult
 }
 
 /**
- * The platform's eve-specifier grammar, checked against the ranges the
- * instance reports (e.g. ["1.0.x"]). The server re-validates at
- * import and activation; this only moves the same verdict earlier.
+ * Whether the declared `eve` range can resolve inside the range the instance
+ * hosts (`/api/instance`'s `eve.supportedRange`). This is only the early
+ * hint: the build gates on the version it actually installs.
  */
 export function eveSpecifierProblem(
   specifier: string | null,
-  supportedRanges: readonly string[],
+  supportedRange: string,
 ): string | null {
-  const supported = `Eveland requires eve ${supportedRanges.join(" or ")}.`;
-  if (!specifier) return `Missing "eve" dependency. ${supported}`;
-  // Mirrors the platform's grammar (core's eveLineOfSpecifier), which this
-  // package may not import: an exact version, `~`, a `0.x` caret, or an
-  // `x`/`*` patch, with a prerelease tag allowed only on an exact patch.
-  const match =
-    /^([~^]?)(\d+)\.(\d+)(?:\.(\d+|[x*])(?:-([0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*))?)?$/.exec(
-      specifier.trim(),
-    );
-  if (!match) return `Unsupported eve dependency "${specifier}". ${supported}`;
-  const [, operator, major, minor, patch, prerelease] = match;
-  if (
-    (operator && !/^\d+$/.test(patch ?? "")) ||
-    (prerelease !== undefined && !/^\d+$/.test(patch ?? "")) ||
-    (operator === "^" && major !== "0")
-  ) {
-    return `Unsupported eve dependency "${specifier}". ${supported}`;
-  }
-  const line = `${Number(major)}.${Number(minor)}.x`;
-  if (!supportedRanges.includes(line)) {
-    return `eve ${specifier} is outside this instance's supported window. ${supported}`;
+  const supported = `This Eveland instance hosts eve ${supportedRange}.`;
+  if (!specifier?.trim()) return `Missing "eve" dependency. ${supported}`;
+  const range = validRange(specifier.trim());
+  if (range === null) return `Unsupported eve dependency "${specifier}". ${supported}`;
+  if (!intersects(range, supportedRange)) {
+    return `eve ${specifier} cannot resolve inside the versions this instance hosts. ${supported}`;
   }
   return null;
 }

@@ -375,8 +375,8 @@ if (releaseSweepIntervalMs > 0) {
 // Deployment-scoped on purpose: a run sleeping on a timer or waiting on a
 // session inbox hook is the intended durable state for a reaped process, so
 // nothing here keys off RuntimeInstance death. Runs are settled only on a
-// Deployment that can never activate again (missing, archived, or pinned to
-// an out-of-window Eve), or on a superseded one that the archive policy would
+// Deployment that can never activate again (missing or archived), or on a
+// superseded one that the archive policy would
 // no longer keep if not for the runs themselves. Set the interval to 0 to
 // disable.
 const sweepAbandonedWorkflowRuns = () => {

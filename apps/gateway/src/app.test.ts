@@ -143,156 +143,6 @@ describe("Gateway", () => {
     expect(upstreamRequests).toBe(0);
   });
 
-  test("rejects public Eve session traffic for the selected unsupported deployment before proxy or activation", async () => {
-    let upstreamRequests = 0;
-    const upstream = await startUpstream((_request, response) => {
-      upstreamRequests += 1;
-      response.end("unexpected");
-    });
-    const routed = route({ hostPort: upstream.port });
-    const repo = repository([routed]);
-    repo.bindings.push({
-      id: "bind_old_eve",
-      projectId: routed.projectId,
-      eveSessionId: "eve_old",
-      routeId: routed.id,
-      deploymentId: "dep_1",
-      trigger: "api",
-      variantName: null,
-      experimentId: null,
-      requestId: "req_original",
-      remoteIp: null,
-      affinityFingerprint: null,
-      affinitySource: null,
-      createdAt: "2026-07-15T00:00:00.000Z",
-      updatedAt: "2026-07-15T00:00:00.000Z",
-    });
-    repo.getDeploymentEveVersion = vi.fn(async () => ({
-      version: "0.22.6",
-      expected: "1.0.x" as const,
-      supportedRanges: ["1.0.x"] as const,
-      supported: false,
-      sourceRevisionId: "src_old",
-    }));
-    const activationClient = {
-      activate: vi.fn(async () => ({ leaseId: "lease_unexpected", endpointPort: upstream.port })),
-      renew: vi.fn(async () => {}),
-      release: vi.fn(async () => {}),
-    };
-    const app = createGatewayApp(repo, {
-      allowedBaseDomains: ["agent.localhost"],
-      affinitySecret,
-      activationClient,
-      now: () => new Date("2026-07-16T00:00:00.000Z"),
-    });
-
-    for (const request of [
-      { method: "POST", path: "/eve/v1/session" },
-      { method: "POST", path: "/eve/v1/session/eve_old" },
-      { method: "POST", path: "/eve/v1/session/eve_old/cancel" },
-      { method: "GET", path: "/eve/v1/session/eve_old/stream" },
-    ]) {
-      const response = await app.request(`http://p-alpha.agent.localhost${request.path}`, {
-        method: request.method,
-        headers: { host: "p-alpha.agent.localhost" },
-      });
-
-      expect(response.status).toBe(409);
-      await expect(response.json()).resolves.toEqual({
-        error: "Unsupported Eve version",
-        detail:
-          'Unsupported Eve dependency "0.22.6". Eveland requires Eve 1.0.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
-        eveVersion: {
-          version: "0.22.6",
-          expected: "1.0.x",
-          supportedRanges: ["1.0.x"],
-          supported: false,
-          sourceRevisionId: "src_old",
-        },
-      });
-    }
-
-    expect(repo.getDeploymentEveVersion).toHaveBeenCalledTimes(4);
-    expect(repo.getDeploymentEveVersion).toHaveBeenCalledWith("dep_1");
-    expect(activationClient.activate).not.toHaveBeenCalled();
-    expect(upstreamRequests).toBe(0);
-  });
-
-  test("fails closed on custom routes to a running out-of-window Deployment", async () => {
-    let upstreamRequests = 0;
-    const upstream = await startUpstream((_request, response) => {
-      upstreamRequests += 1;
-      response.end("unexpected");
-    });
-    const repo = repository([route({ hostPort: upstream.port })]);
-    repo.getDeploymentEveVersion = vi.fn(async () => ({
-      version: "0.37.1",
-      expected: "1.0.x" as const,
-      supportedRanges: ["1.0.x"] as const,
-      supported: false,
-      sourceRevisionId: "src_old",
-    }));
-    const app = createGatewayApp(repo, {
-      allowedBaseDomains: ["agent.localhost"],
-      affinitySecret,
-    });
-
-    // Neither path classifies as an Eve session operation; the version gate
-    // must still answer 409 instead of proxying to the old Deployment.
-    for (const request of [
-      { method: "POST", path: "/webhook/github" },
-      { method: "GET", path: "/eve/v1/health" },
-    ]) {
-      const response = await app.request(`http://p-alpha.agent.localhost${request.path}`, {
-        method: request.method,
-        headers: { host: "p-alpha.agent.localhost" },
-      });
-
-      expect(response.status).toBe(409);
-      await expect(response.json()).resolves.toMatchObject({
-        error: "Unsupported Eve version",
-        detail:
-          'Unsupported Eve dependency "0.37.1". Eveland requires Eve 1.0.x. Upgrade the project\'s "eve" dependency before importing or deploying.',
-      });
-    }
-
-    expect(repo.getDeploymentEveVersion).toHaveBeenCalledTimes(2);
-    expect(upstreamRequests).toBe(0);
-  });
-
-  test("answers 409 instead of waking a dormant out-of-window Deployment for a custom route", async () => {
-    const repo = repository([route({ deploymentStatus: "stopped" })]);
-    repo.getDeploymentEveVersion = vi.fn(async () => ({
-      version: "0.37.1",
-      expected: "1.0.x" as const,
-      supportedRanges: ["1.0.x"] as const,
-      supported: false,
-      sourceRevisionId: "src_old",
-    }));
-    const activationClient = {
-      activate: vi.fn(async () => ({ leaseId: "lease_unexpected", endpointPort: 0 })),
-      renew: vi.fn(async () => {}),
-      release: vi.fn(async () => {}),
-    };
-    const app = createGatewayApp(repo, {
-      allowedBaseDomains: ["agent.localhost"],
-      affinitySecret,
-      activationClient,
-    });
-
-    const response = await app.request("http://p-alpha.agent.localhost/webhook/github", {
-      method: "POST",
-      headers: { host: "p-alpha.agent.localhost", "content-type": "application/json" },
-      body: "{}",
-    });
-
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "Unsupported Eve version",
-    });
-    expect(activationClient.activate).not.toHaveBeenCalled();
-  });
-
   test("hides unknown and disabled hosts, and reports routes without a running target", async () => {
     const disabled = route({ hostname: "p-disabled.agent.localhost", enabled: false });
     const stopped = route({ hostname: "p-stopped.agent.localhost", deploymentStatus: "stopped" });
@@ -467,7 +317,6 @@ describe("Gateway", () => {
       ],
     });
     const repo = repository([routed]);
-    repo.getDeploymentEveVersion = vi.fn(repo.getDeploymentEveVersion);
     repo.bindings.push({
       id: "bind_stopped",
       projectId: routed.projectId,
@@ -512,7 +361,6 @@ describe("Gateway", () => {
       }),
       expect.any(AbortSignal),
     );
-    expect(repo.getDeploymentEveVersion).toHaveBeenCalledWith("dep_bound");
   });
 
   test("preserves Agent auth and cookies while rebuilding spoofable forwarding headers", async () => {

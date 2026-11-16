@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 import type { FetchLike } from "./api-client.ts";
 import { projectSlugFrom, runDeploy } from "./deploy.ts";
 
-async function makeProject(eve = "1.0.0-rc.2", name = "tour-guide"): Promise<string> {
+async function makeProject(eve = "^1.0.0", name = "tour-guide"): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-deploy-src-"));
   await mkdir(path.join(root, "agent"), { recursive: true });
   await writeFile(path.join(root, "package.json"), JSON.stringify({ name, dependencies: { eve } }));
@@ -105,10 +105,7 @@ function fakePlatform(options: {
 
     if (pathname === "/api/instance") {
       return json(200, {
-        eve: {
-          supportedRanges: ["1.0.x"],
-          expected: "1.0.x",
-        },
+        eve: { supportedRange: ">=1.0.0 <1.1.0", verifiedVersion: "1.0.0" },
       });
     }
     if (pathname === "/api/projects" && method === "GET") {
@@ -525,7 +522,7 @@ describe("eveland deploy", () => {
         promote: true,
         io: io(platform).io,
       }),
-    ).rejects.toThrow(/outside this instance's supported window/);
+    ).rejects.toThrow(/cannot resolve inside the versions this instance hosts/);
     expect(platform.calls.every((call) => call.method === "GET")).toBe(true);
   });
 

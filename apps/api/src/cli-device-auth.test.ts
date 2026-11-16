@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { SUPPORTED_EVE_RANGE, VERIFIED_EVE_VERSION } from "@evelandhq/core/eve-compatibility";
 import { createAuthApp, signIn } from "./auth-routes.test-support.js";
 import { DEVICE_CODE_GRANT_TYPE } from "@better-auth/oauth-provider";
 import { EVELAND_CLI_CLIENT_ID } from "./cli-auth.js";
@@ -131,11 +132,7 @@ describe("eveland CLI device authorization", () => {
     });
     expect(instance.status).toBe(200);
     await expect(instance.json()).resolves.toEqual({
-      eve: {
-        supportedRanges: expect.arrayContaining([expect.stringMatching(/^\d+\.\d+\.x$/)]),
-        expected: expect.stringMatching(/\d+\.\d+\.x/),
-        latestVerified: expect.stringMatching(/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/),
-      },
+      eve: { supportedRange: SUPPORTED_EVE_RANGE, verifiedVersion: VERIFIED_EVE_VERSION },
     });
 
     // A garbage bearer token is unauthenticated, not a scope failure.

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, test } from "vitest";
+import { unsupportedEveVersionMessage } from "@evelandhq/core/eve-compatibility";
 import { readReleaseDiscovery, readReleaseSchedulerDefinitions } from "./discovery-artifacts.js";
 
 const roots: string[] = [];
@@ -16,50 +17,59 @@ async function makeRelease(): Promise<string> {
   return root;
 }
 
+async function installEve(releaseDir: string, version: string): Promise<void> {
+  await mkdir(path.join(releaseDir, "node_modules", "eve"), { recursive: true });
+  await writeFile(
+    path.join(releaseDir, "node_modules", "eve", "package.json"),
+    JSON.stringify({ name: "eve", version }),
+  );
+}
+
 test("reads the discovery manifest and the installed eve version from a built release", async () => {
   const releaseDir = await makeRelease();
   await mkdir(path.join(releaseDir, ".eve", "discovery"), { recursive: true });
-  await mkdir(path.join(releaseDir, "node_modules", "eve"), { recursive: true });
   await writeFile(
     path.join(releaseDir, ".eve", "discovery", "agent-discovery-manifest.json"),
-    JSON.stringify({ kind: "eve-agent-discovery-manifest", version: 15 }),
+    JSON.stringify({ kind: "eve-agent-discovery-manifest", version: 16 }),
   );
-  await writeFile(
-    path.join(releaseDir, "node_modules", "eve", "package.json"),
-    JSON.stringify({ name: "eve", version: "1.0.0-rc.2" }),
-  );
+  await installEve(releaseDir, "1.0.0");
 
   await expect(readReleaseDiscovery(releaseDir)).resolves.toEqual({
-    manifest: { kind: "eve-agent-discovery-manifest", version: 15 },
-    resolvedEveVersion: "1.0.0-rc.2",
+    manifest: { kind: "eve-agent-discovery-manifest", version: 16 },
+    resolvedEveVersion: "1.0.0",
   });
 });
 
-test("returns undefined when the manifest is absent, and null version when eve is not installed", async () => {
+test("an absent or corrupt manifest records no summary but still reports the installed eve", async () => {
   const bare = await makeRelease();
-  await expect(readReleaseDiscovery(bare)).resolves.toBeUndefined();
-
-  const manifestOnly = await makeRelease();
-  await mkdir(path.join(manifestOnly, ".eve", "discovery"), { recursive: true });
-  await writeFile(
-    path.join(manifestOnly, ".eve", "discovery", "agent-discovery-manifest.json"),
-    JSON.stringify({ kind: "eve-agent-discovery-manifest", version: 12 }),
-  );
-  await expect(readReleaseDiscovery(manifestOnly)).resolves.toEqual({
-    manifest: { kind: "eve-agent-discovery-manifest", version: 12 },
-    resolvedEveVersion: null,
+  await installEve(bare, "1.0.0");
+  await expect(readReleaseDiscovery(bare)).resolves.toEqual({
+    manifest: null,
+    resolvedEveVersion: "1.0.0",
   });
-});
 
-test("swallows a corrupt manifest instead of failing the build path", async () => {
-  const releaseDir = await makeRelease();
-  await mkdir(path.join(releaseDir, ".eve", "discovery"), { recursive: true });
+  const corrupt = await makeRelease();
+  await installEve(corrupt, "1.0.0");
+  await mkdir(path.join(corrupt, ".eve", "discovery"), { recursive: true });
   await writeFile(
-    path.join(releaseDir, ".eve", "discovery", "agent-discovery-manifest.json"),
+    path.join(corrupt, ".eve", "discovery", "agent-discovery-manifest.json"),
     "{not json",
   );
+  await expect(readReleaseDiscovery(corrupt)).resolves.toMatchObject({ manifest: null });
+});
 
-  await expect(readReleaseDiscovery(releaseDir)).resolves.toBeUndefined();
+test("refuses a build whose installed eve is outside the hosted window, or unreadable", async () => {
+  // `^1.0.0` is a valid declaration, but it may install a minor nobody verified.
+  const newer = await makeRelease();
+  await installEve(newer, "1.1.0");
+  await expect(readReleaseDiscovery(newer)).rejects.toThrow(unsupportedEveVersionMessage("1.1.0"));
+
+  const candidate = await makeRelease();
+  await installEve(candidate, "1.0.0-rc.2");
+  await expect(readReleaseDiscovery(candidate)).rejects.toThrow(/1\.0\.0-rc\.2/);
+
+  const missing = await makeRelease();
+  await expect(readReleaseDiscovery(missing)).rejects.toThrow(unsupportedEveVersionMessage(null));
 });
 
 test("reads the post-integration scheduler definitions from the built release", async () => {

@@ -29,7 +29,7 @@ export const MODEL_GATEWAY_RUNTIME_FILE = ".eveland/model-gateway/runtime.mjs";
 
 export type ModelGatewayInjectionResult =
   | { status: "injected"; injectedFiles: string[]; runtimeFile: string }
-  | { status: "skipped"; reason: "eve-unknown" | "no-agent-root" };
+  | { status: "skipped"; reason: "no-agent-root" };
 
 let bundledRuntime: Promise<string> | undefined;
 
@@ -67,12 +67,7 @@ function modelGatewayRuntimeSourcePath(): string {
 
 export async function injectModelGateway(input: {
   releaseDir: string;
-  eveVersion: string;
 }): Promise<ModelGatewayInjectionResult> {
-  // Import already refuses a project whose eve dependency cannot be read, so
-  // this only happens on paths that bypass import (tests, smoke fixtures).
-  if (input.eveVersion.trim() === "") return { status: "skipped", reason: "eve-unknown" };
-
   const releaseDir = path.resolve(input.releaseDir);
   const agentRoot = await resolveAgentRoot(releaseDir);
   if (agentRoot === undefined) return { status: "skipped", reason: "no-agent-root" };

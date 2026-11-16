@@ -6,7 +6,10 @@ import {
   mergeRuntimeEnvironment,
   type EncryptedSecret,
 } from "@evelandhq/core/server/secrets";
-import { isSupportedEveDependency, unsupportedEveVersionMessage } from "@evelandhq/core/source";
+import {
+  isSupportedEveSpecifier,
+  unsupportedEveSpecifierMessage,
+} from "@evelandhq/core/eve-compatibility";
 import type { Store } from "@evelandhq/db";
 import { access, readFile, realpath, rm } from "node:fs/promises";
 import path from "node:path";
@@ -495,8 +498,8 @@ export async function resolveRuntimeCommandContext(
     (await readPackageJson(sourcePath)) ??
     parsePackageJson(persistedFiles.find((file) => file.path === "package.json")?.content);
   const eveVersion = declaredEveVersion(packageJson);
-  if (!isSupportedEveDependency(eveVersion)) {
-    throw new Error(unsupportedEveVersionMessage(eveVersion));
+  if (!isSupportedEveSpecifier(eveVersion)) {
+    throw new Error(unsupportedEveSpecifierMessage(eveVersion));
   }
   if (persistedCommandContext) return persistedCommandContext;
   const persistedPaths = new Set(persistedFiles.map((file) => file.path));

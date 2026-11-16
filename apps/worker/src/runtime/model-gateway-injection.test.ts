@@ -24,7 +24,7 @@ describe("injectModelGateway", () => {
   test("writes the instrumentation shim and the bundled runtime into an eve 1.0 release", async () => {
     const releaseDir = await releaseWithAgentDir();
 
-    const result = await injectModelGateway({ releaseDir, eveVersion: "1.0.0-rc.2" });
+    const result = await injectModelGateway({ releaseDir });
 
     expect(result).toEqual({
       status: "injected",
@@ -47,7 +47,7 @@ describe("injectModelGateway", () => {
     const releaseDir = await mkdtemp(path.join(tmpdir(), "eveland-model-gateway-root-"));
     await writeFile(path.join(releaseDir, "instructions.md"), "Be brief.\n");
 
-    const result = await injectModelGateway({ releaseDir, eveVersion: "1.0.0" });
+    const result = await injectModelGateway({ releaseDir });
 
     expect(result).toMatchObject({
       status: "injected",
@@ -60,15 +60,6 @@ describe("injectModelGateway", () => {
     expect(shim).toContain('from "../.eveland/model-gateway/runtime.mjs"');
   });
 
-  test("skips a release whose eve version could not be read, without claiming it is too old", async () => {
-    const releaseDir = await releaseWithAgentDir();
-
-    await expect(injectModelGateway({ releaseDir, eveVersion: "" })).resolves.toEqual({
-      status: "skipped",
-      reason: "eve-unknown",
-    });
-  });
-
   test.each(["eveland-model-gateway.ts", "eveland-model-gateway.js", "eveland-model-gateway.mts"])(
     "refuses to overwrite an authored instrumentation file named %s",
     async (authored) => {
@@ -76,7 +67,7 @@ describe("injectModelGateway", () => {
       await mkdir(path.join(releaseDir, "agent", "instrumentation"));
       await writeFile(path.join(releaseDir, "agent", "instrumentation", authored), "export {};\n");
 
-      await expect(injectModelGateway({ releaseDir, eveVersion: "1.0.0-rc.2" })).rejects.toThrow(
+      await expect(injectModelGateway({ releaseDir })).rejects.toThrow(
         /Reserved instrumentation file .*eveland-model-gateway.* already exists/,
       );
     },
@@ -100,7 +91,7 @@ describe("bundled Model Gateway runtime", () => {
     "installs a %s provider from the reserved variables the Worker delivers",
     async (kind) => {
       const releaseDir = await releaseWithAgentDir();
-      await injectModelGateway({ releaseDir, eveVersion: "1.0.0-rc.2" });
+      await injectModelGateway({ releaseDir });
       const runtime = (await import(
         pathToFileURL(path.join(releaseDir, MODEL_GATEWAY_RUNTIME_FILE)).href
       )) as {

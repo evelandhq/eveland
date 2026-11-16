@@ -22,16 +22,6 @@ describe("project deployments surface", () => {
     expect(page).toContain("Hide archived");
   });
 
-  test("asks core whether a deployment's Eve refusal is worth showing", () => {
-    const page = source(projectPage);
-
-    // The archived-first ordering lives in core beside the activation gates;
-    // the page must not re-derive it from the raw release message, which has
-    // no opinion about status.
-    expect(page).toContain("displayedDeploymentEveRefusal");
-    expect(page).not.toContain("unsupportedReleaseEveVersionMessage");
-  });
-
   test("decides drain from the routes that actually carry traffic", () => {
     const page = source(projectPage);
     const actions = source("../components/deployment-traffic-actions.tsx");

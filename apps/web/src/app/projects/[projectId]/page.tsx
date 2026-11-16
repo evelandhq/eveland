@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { ArrowRightIcon } from "lucide-react";
 import { DateTime } from "@/components/date-time";
-import { EveVersionStatus } from "@/components/eve-version-status";
 import { ProjectOverviewTrend } from "@/components/project-overview-trend";
 import { CopyValue } from "@/components/copy-value";
-import { getEveVersionStatus } from "@/lib/eve-version";
 import { describeProjectSource } from "@/lib/project-source";
 import { StatusBadge } from "@/components/status-badge";
 import {
@@ -110,18 +108,9 @@ export default async function ProjectOverviewPage({
               project ? describeProjectSource(project.importKind, project.gitUrl).label : "None"
             }
           />
-          {/* Normal is quiet: a current runtime is a version number, not a
-              badge. The badge is what upgrade-pending (amber) and unsupported
-              (red) earn. */}
           <OverviewFact
             label="Eve Agent"
-            value={
-              getEveVersionStatus(eveVersion) === "current" ? (
-                <span className="font-mono">{eveVersion.version ?? "Unknown"}</span>
-              ) : (
-                <EveVersionStatus eveVersion={eveVersion} showMessage={false} />
-              )
-            }
+            value={<span className="font-mono">{eveVersion.version ?? "Unknown"}</span>}
           />
         </dl>
       </section>

@@ -80,13 +80,12 @@ export function ComposerAttachments() {
   );
 }
 
-export function ComposerAttachmentButton({ disabled }: { disabled: boolean }) {
+export function ComposerAttachmentButton() {
   const attachments = usePromptInputAttachments();
 
   return (
     <PromptInputButton
       aria-label="Add attachments"
-      disabled={disabled}
       onClick={attachments.openFileDialog}
       title="Add attachments"
       tooltip="Add attachments · Up to 4 files, 10 MiB total"

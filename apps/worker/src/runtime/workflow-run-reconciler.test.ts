@@ -36,7 +36,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41960,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "1.0.0-rc.2" },
+      summary: { eveVersionResolved: "1.0.0" },
     });
     // Stopped by the idle reaper — the acceptance case that must NOT settle:
     // a sleeping timer or a session inbox hook on this Deployment is live
@@ -53,7 +53,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41961,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "1.0.0-rc.2" },
+      summary: { eveVersionResolved: "1.0.0" },
     });
     await store.updateDeploymentStatus(crashed.id, "failed");
 
@@ -65,27 +65,14 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41962,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "1.0.0-rc.2" },
+      summary: { eveVersionResolved: "1.0.0" },
     });
     await store.updateDeploymentStatus(archived.id, "archived");
-
-    const staleEve = await store.recordDeployment({
-      projectId: project.id,
-      sourceRevisionId: revision.id,
-      imageTag: "run-reconciler:stale-eve",
-      containerName: "run-reconciler-stale-eve",
-      internalPort: 3000,
-      hostPort: 41963,
-      runtimeKind: "systemd",
-      summary: { eveVersionResolved: "0.31.1" },
-    });
-    await store.updateDeploymentStatus(staleEve.id, "stopped");
 
     const candidates: ActiveWorkflowRunDeployment[] = [
       { projectId: project.id, deploymentId: healthy.id, workflowNames: [SESSION_WORKFLOW] },
       { projectId: project.id, deploymentId: crashed.id, workflowNames: [SESSION_WORKFLOW] },
       { projectId: project.id, deploymentId: archived.id, workflowNames: [SESSION_WORKFLOW] },
-      { projectId: project.id, deploymentId: staleEve.id, workflowNames: [SESSION_WORKFLOW] },
       { projectId: project.id, deploymentId: "dep_gone", workflowNames: [SESSION_WORKFLOW] },
     ];
     const reconcile = vi.fn(
@@ -117,9 +104,9 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       reconcile: reconcile as never,
     });
 
-    expect(result).toEqual({ examinedDeployments: 5, settledRuns: 3, failures: 0 });
+    expect(result).toEqual({ examinedDeployments: 4, settledRuns: 2, failures: 0 });
     const settled = reconcile.mock.calls.map((call) => call[1].deploymentIds![0]);
-    expect(settled.sort()).toEqual([archived.id, staleEve.id, "dep_gone"].sort());
+    expect(settled.sort()).toEqual([archived.id, "dep_gone"].sort());
     for (const call of reconcile.mock.calls) {
       expect(call[1]).toMatchObject({
         tenantId: project.id,
@@ -141,7 +128,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41964,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "1.0.0-rc.2" },
+      summary: { eveVersionResolved: "1.0.0" },
     });
     await store.updateDeploymentStatus(deployment.id, "archived");
 
@@ -169,7 +156,7 @@ describe("reconcileAbandonedWorkflowRuns", () => {
       internalPort: 3000,
       hostPort: 41965,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "1.0.0-rc.2" },
+      summary: { eveVersionResolved: "1.0.0" },
     });
     await store.updateDeploymentStatus(archived.id, "archived");
 
@@ -226,7 +213,7 @@ async function supersededFixture(store: ReturnType<typeof createTestStore>, name
       internalPort: 3000,
       hostPort: 41970 + index,
       runtimeKind: "systemd",
-      summary: { eveVersionResolved: "1.0.0-rc.2" },
+      summary: { eveVersionResolved: "1.0.0" },
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
     deployments.push(deployment);
