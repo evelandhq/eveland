@@ -62,7 +62,10 @@ limactl shell "$VM" -- sudo bash -c '
   systemctl start postgresql
   sudo -u postgres createuser --createdb eveland 2>/dev/null || true
   sudo -u postgres psql -c "alter role eveland with login password \$\$eveland\$\$"
-  sudo -u postgres createdb -O eveland eveland_workflow 2>/dev/null || true
+  # Fresh every run: the World migrates only an empty workflow schema, and a
+  # reused guest otherwise keeps whatever an earlier run left in it.
+  sudo -u postgres dropdb --if-exists --force eveland_workflow
+  sudo -u postgres createdb -O eveland eveland_workflow
 '
 
 limactl shell "$VM" -- sudo bash -c "
