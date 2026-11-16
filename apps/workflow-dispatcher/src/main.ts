@@ -3,6 +3,7 @@ import { startDispatcherService } from "@evelandhq/workflow-world/dispatcher";
 import type { DispatcherTelemetry } from "@evelandhq/workflow-world/dispatcher";
 import {
   defaultRunnerDeps,
+  resolveControlApi,
   resolveHeartbeatIntervalMs,
   startEvelandWorkflowDispatcher,
 } from "./dispatcher-runner.js";
@@ -54,7 +55,9 @@ const telemetry: DispatcherTelemetry = {
   },
 };
 
-const activationApiUrl = process.env.WORKFLOW_DISPATCHER_ACTIVATION_API_URL;
+// Validated before waiting, so a missing token fails at once instead of after
+// the API comes up.
+const { apiUrl: activationApiUrl } = resolveControlApi(process.env);
 if (activationApiUrl) await waitForControlApi(activationApiUrl);
 
 const handle = await startEvelandWorkflowDispatcher(process.env, telemetry, {

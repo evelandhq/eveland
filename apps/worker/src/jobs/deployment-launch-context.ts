@@ -9,6 +9,7 @@ import {
   warnStaleObserverRelease,
 } from "./process-observability.js";
 import { DOCKER_MEMORY_ROOT_MOUNT_DIR } from "../runtime/docker.js";
+import { DEPLOYMENT_LAUNCH_ENVIRONMENT_KEYS } from "../runtime/reserved-environment.js";
 import {
   composeDeploymentEnv,
   type DeploymentEnvironmentStore,
@@ -72,7 +73,9 @@ export function createDeploymentStartInput(input: DeploymentStartInput): Process
     port: input.port,
     env: {
       ...input.launchContext.env,
-      EVELAND_DEPLOYMENT_ID: input.launchContext.deploymentId,
+      ...Object.fromEntries(
+        DEPLOYMENT_LAUNCH_ENVIRONMENT_KEYS.map((key) => [key, input.launchContext.deploymentId]),
+      ),
     },
     commandContext: input.launchContext.commandContext,
     sandboxCacheDir: usesHostVisiblePaths

@@ -211,6 +211,39 @@ function resolveWorkflowMaxPoolSize(workerEnv: NodeJS.ProcessEnv): string {
   return String(size);
 }
 
+/**
+ * The shared World's tenancy, topology, and dispatch-authentication names. A
+ * project that could set these could scope its world at another tenant's data,
+ * hand the runner a database nothing provisions, or fail every dispatch's
+ * authentication. The World reads its canonical `WORKFLOW_WORLD_*` names before
+ * the `EVELAND_*` ones, so each value is injected under both.
+ */
+function sharedWorldEnvironment(input: {
+  worldUrl: string;
+  projectId: string;
+  schedulerRuntimeSecret: string | undefined;
+  workerEnv: NodeJS.ProcessEnv;
+}): Record<string, string> {
+  const runner = resolveWorkflowRunnerMode(input.workerEnv);
+  const streamCompaction = input.workerEnv.EVELAND_WORKFLOW_STREAM_COMPACTION ?? "on";
+  return {
+    EVELAND_WORKFLOW_WORLD_URL: input.worldUrl,
+    WORKFLOW_WORLD_URL: input.worldUrl,
+    EVELAND_WORKFLOW_RUNNER: runner,
+    WORKFLOW_WORLD_RUNNER: runner,
+    EVELAND_WORKFLOW_STREAM_COMPACTION: streamCompaction,
+    WORKFLOW_WORLD_STREAM_COMPACTION: streamCompaction,
+    WORKFLOW_WORLD_TENANT_ID: input.projectId,
+    ...(input.schedulerRuntimeSecret
+      ? { WORKFLOW_WORLD_RUNTIME_SECRET: input.schedulerRuntimeSecret }
+      : {}),
+    // Connection capacity on the shared instance is platform-planned
+    // (max_connections ~ pool size x running Deployments), so a project must
+    // not raise its own share.
+    WORKFLOW_POSTGRES_MAX_POOL_SIZE: resolveWorkflowMaxPoolSize(input.workerEnv),
+  };
+}
+
 // Shared by build_deploy and restart_deployment. Durable-workflow gating is
 // NOT part of this: build_deploy only calls this after deciding the deploy may
 // proceed, and restart never re-gates an already-deployed release.
@@ -326,14 +359,15 @@ export async function composeDeploymentEnv(
     // of its own choosing. The key stays the project's own AI_GATEWAY_API_KEY.
     // See ./model-gateway-environment.ts.
     ...modelGateway,
-    // Only injected when the platform has the shared world configured. A
-    // project that could set these could scope its world at another tenant's
-    // data, or hand the runner a database nothing provisions.
+    // Only injected when the platform has the shared world configured.
     ...(evelandWorldUrl
       ? {
-          EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
-          EVELAND_WORKFLOW_RUNNER: resolveWorkflowRunnerMode(workerEnv),
-          EVELAND_WORKFLOW_STREAM_COMPACTION: workerEnv.EVELAND_WORKFLOW_STREAM_COMPACTION ?? "on",
+          ...sharedWorldEnvironment({
+            worldUrl: evelandWorldUrl,
+            projectId,
+            schedulerRuntimeSecret,
+            workerEnv,
+          }),
           // Empty, which `@workflow/core` reads as unset. The shared World
           // runs a hook wake beside a delivery holding its run's queue, so a
           // cancel can abort a running step, and that is safe only while no

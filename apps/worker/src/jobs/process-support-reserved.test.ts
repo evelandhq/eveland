@@ -102,7 +102,7 @@ describe("reserved runtime environment names", () => {
     );
 
     expect(undeclared).toEqual([]);
-    // EVELAND_PROJECT_ID is derived per project; the EVELAND_MODEL_GATEWAY_KIND
+    // EVELAND_PROJECT_ID and WORKFLOW_WORLD_TENANT_ID are derived per project; the EVELAND_MODEL_GATEWAY_KIND
     // and _URL names come from the database at every launch; EVE_TELEMETRY_DISABLED and
     // WORKFLOW_OPTIMISTIC_INLINE_START are platform constants. None has a
     // worker-environment input.
@@ -114,6 +114,7 @@ describe("reserved runtime environment names", () => {
       "EVELAND_MODEL_GATEWAY_KIND",
       "EVELAND_MODEL_GATEWAY_URL",
       "EVELAND_PROJECT_ID",
+      "WORKFLOW_WORLD_TENANT_ID",
       "EVE_TELEMETRY_DISABLED",
       "WORKFLOW_OPTIMISTIC_INLINE_START",
     ]);
@@ -155,12 +156,50 @@ describe("reserved runtime environment names", () => {
     expect(env.EVELAND_MEMORY_ROOT).toBe(path.resolve(".eveland-data", "memory", "proj_reserved"));
   });
 
+  test("a project entry cannot retarget the shared World under the World's own names", async () => {
+    const store = createTestStore();
+    const project = await store.createProject({ name: "world-spoof", importKind: "zip" });
+    await store.upsertSecrets(project.id, [
+      { key: "WORKFLOW_WORLD_TENANT_ID", value: encrypt("proj_someone_else"), kind: "variable" },
+      { key: "WORKFLOW_WORLD_URL", value: encrypt("postgres://x@evil/db"), kind: "secret" },
+      { key: "WORKFLOW_WORLD_RUNNER", value: encrypt("embedded"), kind: "variable" },
+      { key: "WORKFLOW_WORLD_RUNTIME_SECRET", value: encrypt("chosen"), kind: "secret" },
+      { key: "WORKFLOW_WORLD_STREAM_COMPACTION", value: encrypt("off"), kind: "variable" },
+      { key: "WORKFLOW_POSTGRES_MAX_POOL_SIZE", value: encrypt("500"), kind: "variable" },
+    ]);
+
+    const { env } = await composeDeploymentEnv(
+      store,
+      project.id,
+      {
+        ...baseOptions,
+        evelandWorkflowWorldUrl: evelandWorldUrl,
+        ensureEvelandWorkflowTenant: async () => {},
+      },
+      { WORKFLOW_POSTGRES_MAX_POOL_SIZE: "4" },
+    );
+
+    expect(env.WORKFLOW_WORLD_TENANT_ID).toBe(project.id);
+    expect(env.WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
+    expect(env.WORKFLOW_WORLD_RUNNER).toBe("external");
+    expect(env.WORKFLOW_WORLD_RUNTIME_SECRET).toBe(baseOptions.schedulerRuntimeSecret);
+    expect(env.WORKFLOW_WORLD_STREAM_COMPACTION).toBe("on");
+    // Connection capacity on the shared instance is platform-planned.
+    expect(env.WORKFLOW_POSTGRES_MAX_POOL_SIZE).toBe("4");
+  });
+
   test("the platform world gets its own tenancy names and no per-project database", async () => {
     const { env, secretValues } = await composeOnEvelandWorld();
 
     expect(env.EVELAND_WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
     expect(env.EVELAND_WORKFLOW_RUNNER).toBe("external");
     expect(env.EVELAND_WORKFLOW_STREAM_COMPACTION).toBe("off");
+    expect(env.WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
+    expect(env.WORKFLOW_WORLD_TENANT_ID).toBe("proj_reserved");
+    expect(env.WORKFLOW_WORLD_RUNNER).toBe("external");
+    expect(env.WORKFLOW_WORLD_STREAM_COMPACTION).toBe("off");
+    expect(env.WORKFLOW_WORLD_RUNTIME_SECRET).toBe(baseOptions.schedulerRuntimeSecret);
+    expect(env.WORKFLOW_POSTGRES_MAX_POOL_SIZE).toBe("10");
     expect(env.EVELAND_SANDBOX_RUN_TIMEOUT_MS).toBe("600000");
     expect(env.EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES).toBe("64");
     expect(env.EVELAND_SANDBOX_MAX_OUTPUT_BYTES).toBe("16777216");
