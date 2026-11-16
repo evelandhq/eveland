@@ -57,7 +57,7 @@ _注意：Agent Gateway 始终透明转发客户端请求与响应中的 Authori
 
 平台提供公开只读接口 `GET /api/agent-catalog`，返回当前平台可用的 Agent 列表：
 
-- **收录条件**：目标项目的生产稳定路由（Stable Route）全部正权重部署均健康，且项目源码明确声明了 `capabilities.eveChat=true`（标准 `agent/channels/eve.ts` 导出）。
+- **收录条件**：目标项目的生产稳定路由（Stable Route）全部正权重部署均健康，且这些部署构建出的 Release 提供 eve 聊天 channel（以构建后 `eve info --json` 的报告为准）。eve 默认提供这个 channel，因此无论 Agent 是否编写了 `agent/channels/eve.ts` 都会被收录。
 - **字段规范**：包含 `projectId`、`displayName`、`description`、稳定端点及支持的能力列表。
 - **只读中立**：Catalog 仅作为只读投影，不强制做租户过滤，具体的访问控制与权限审批完全交由各个 Agent 自行决定。
 

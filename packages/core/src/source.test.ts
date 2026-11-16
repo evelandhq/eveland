@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { unsupportedEveSpecifierMessage } from "./eve-compatibility.js";
-import { inspectEveProject } from "./source.js";
+import { inspectEveProject, unsupportedLayoutMessage } from "./source.js";
 
 describe("inspectEveProject", () => {
   test("recognizes nested eve agent layout and summarizes authored slots", () => {
@@ -34,7 +34,6 @@ describe("inspectEveProject", () => {
     expect(result.layout).toBe("nested");
     expect(result.projectName).toBe("weather-agent");
     expect(result.eveVersion).toBe("1.0.0");
-    expect(result.capabilities).toEqual({ eveChat: true });
     expect(result.summary).toMatchObject({
       agents: ["agent/agent.ts"],
       instructions: ["agent/instructions.md"],
@@ -51,32 +50,6 @@ describe("inspectEveProject", () => {
       "LINEAR_API_TOKEN",
       "OPENAI_API_KEY",
     ]);
-  });
-
-  test("does not declare eveChat for a non-canonical or unrelated Eve channel", () => {
-    const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0" } }) },
-      { path: "agent/instructions.md", content: "You are an agent." },
-      {
-        path: "agent/channels/eve.ts",
-        content: `export default customChannel({ note: "eveChannel" });`,
-      },
-    ]);
-
-    expect(result.capabilities).toEqual({ eveChat: false });
-  });
-
-  // A channel file of repeated unclosed import braces once made the eveChat
-  // probe scan quadratically.
-  test("probes a crafted channel file in linear time", () => {
-    const started = performance.now();
-    const result = inspectEveProject([
-      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "1.0.0" } }) },
-      { path: "agent/instructions.md", content: "You are an agent." },
-      { path: "agent/channels/eve.ts", content: "import{".repeat(20_000) },
-    ]);
-    expect(result.capabilities).toEqual({ eveChat: false });
-    expect(performance.now() - started).toBeLessThan(200);
   });
 
   test("uses Eve's authored skill extensions in the source summary", () => {
@@ -106,13 +79,76 @@ describe("inspectEveProject", () => {
     ]);
   });
 
-  test("rejects directories without root instructions", () => {
+  test("rejects a repository without agent instructions", () => {
     const result = inspectEveProject([{ path: "agent/tools/get_weather.ts", content: "" }]);
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain(
-      "Missing root instructions.md, instructions.ts, or instructions/.",
+    expect(result.layout).toBe("unknown");
+    expect(result.errors).toContain(unsupportedLayoutMessage("unknown"));
+    expect(unsupportedLayoutMessage("unknown")).toMatch(
+      /^Missing agent\/instructions\.md, agent\/instructions\.ts, or agent\/instructions\/\. Eveland deploys one agent per repository/,
     );
+  });
+
+  // A build injects platform files into agent/, which turns a flat project
+  // into an empty nested one that eve refuses for missing instructions; the
+  // preflight names the layout instead.
+  test("rejects eve's flat layout with an error that names it", () => {
+    const result = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "^1.0.0" } }) },
+      { path: "instructions.md", content: "You are an agent." },
+      { path: "agent.ts", content: "export default defineAgent({})" },
+      { path: "schedules/daily.md", content: '---\ncron: "0 8 * * *"\n---\nReport.' },
+    ]);
+
+    expect(result.valid).toBe(false);
+    expect(result.layout).toBe("flat");
+    expect(result.errors).toEqual([unsupportedLayoutMessage("flat")]);
+    expect(result.errors[0]).toContain("flat layout");
+    expect(result.errors[0]).toContain(
+      "Move instructions, agent.ts, and the agent's directories into agent/.",
+    );
+  });
+
+  test("rejects an eve workspace of agents/<name>/ members", () => {
+    const result = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "^1.0.0" } }) },
+      { path: "agents/support/instructions.md", content: "You are support." },
+      { path: "agents/billing/instructions/system.md", content: "You are billing." },
+    ]);
+
+    expect(result.valid).toBe(false);
+    expect(result.layout).toBe("workspace");
+    expect(result.errors).toEqual([unsupportedLayoutMessage("workspace")]);
+    expect(result.errors[0]).toContain("agents/<name>/");
+  });
+
+  test("accepts every instruction form eve authors", () => {
+    for (const instructions of [
+      "agent/instructions.md",
+      "agent/instructions.mts",
+      "agent/instructions.js",
+      "agent/instructions/system.md",
+    ]) {
+      const result = inspectEveProject([
+        { path: "package.json", content: JSON.stringify({ dependencies: { eve: "^1.0.0" } }) },
+        { path: instructions, content: "You are an agent." },
+      ]);
+      expect(result.errors, instructions).toEqual([]);
+      expect(result.layout).toBe("nested");
+    }
+  });
+
+  // eve resolves agent/ ahead of root files, so a stray root instructions
+  // file does not make a nested project flat.
+  test("prefers agent/ when the root also has instructions", () => {
+    const result = inspectEveProject([
+      { path: "package.json", content: JSON.stringify({ dependencies: { eve: "^1.0.0" } }) },
+      { path: "instructions.md", content: "Notes." },
+      { path: "agent/instructions.md", content: "You are an agent." },
+    ]);
+    expect(result.valid).toBe(true);
+    expect(result.layout).toBe("nested");
   });
 
   test("fails closed with a diagnostic when the declared Eve cannot resolve inside the window", () => {
