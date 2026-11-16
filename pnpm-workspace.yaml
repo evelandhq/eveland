@@ -12,18 +12,18 @@ allowBuilds:
   workerd: true
 overrides:
   # Security floors for transitive deps whose parents pin vulnerable versions
-  # exactly (Dependabot alerts, 2026-08-24). Drop each once the parent moves:
+  # exactly (Dependabot alerts). Drop each once the parent moves:
   # miniflare pins sharp/undici exactly per release; drizzle-kit's deprecated
   # @esbuild-kit chain pins esbuild ~0.18.
-  # sharp floor raised to 0.35.4 for GHSA-rgj7-g3m4-5g8c (libheif), 2026-09-15.
+  # The sharp floor is 0.35.4 for GHSA-rgj7-g3m4-5g8c (libheif).
   "miniflare>sharp": "^0.35.4"
   "miniflare>undici": "^7.30.1"
   "@esbuild-kit/core-utils>esbuild": "^0.25.0"
-  # Security floors for high/critical Dependabot alerts, 2026-11-15. Each
+  # Security floors for high/critical Dependabot alerts. Each
   # parent still allows (or pins) a vulnerable patch; drop a floor once every
   # parent resolves past it. dompurify via mermaid (GHSA-cg2g-xh64-v4q7);
-  # undici 7 via the legacy world-local, @ai-sdk/provider-utils, dotenvx and
-  # world-local 5.2.1, undici 8 via jsdom and node-gyp (GHSA-xjj6-f33q-929c and
+  # undici 7 via @ai-sdk/provider-utils, dotenvx, and @workflow/world-local,
+  # undici 8 via jsdom and node-gyp (GHSA-xjj6-f33q-929c and
   # siblings); systeminformation via host-metrics and dotenvx
   # (GHSA-3f7j-7jwc-fxfj); zod 4 via the Workflow worlds and
   # @vercel/cli-config (GHSA-mrhx-c7xc-m3w5). vite, which vitest takes as a

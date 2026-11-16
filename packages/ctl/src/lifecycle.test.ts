@@ -569,7 +569,7 @@ describe("systemd supervision mode", () => {
     for (const key of SYSTEMD_HOST_UNITS) {
       expect(harness.execCalls).toContainEqual(["systemctl", "stop", `eveland-${key}.service`]);
     }
-    // Nothing is stopped through Compose any more: the infrastructure
+    // Nothing is stopped through Compose: the infrastructure
     // containers deliberately keep running while the platform is down.
     expect(
       harness.execCalls.find((argv) => argv[0] === "docker" && argv.includes("stop")),

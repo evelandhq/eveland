@@ -22,7 +22,7 @@ provision:
       apt-get install -y apparmor bash bubblewrap ca-certificates curl findutils git grep jq python-is-python3 python3 python3-pip ripgrep unzip zstd
       curl -fsSL https://deb.nodesource.com/setup_26.x | bash -
       apt-get install -y nodejs
-      # Node 25+ no longer bundles corepack.
+      # Node 25+ does not bundle corepack.
       npm install --global corepack@0.36.0
       corepack enable
       corepack install --global pnpm@11.7.0

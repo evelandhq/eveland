@@ -111,8 +111,8 @@ Produce the daily report.
     expect(channel).toContain("function describeScheduleFailure");
     expect(channel).not.toContain("test-secret");
     expect(channel).not.toContain("eve/dist/src/internal");
-    // Every minor in the supported window speaks fixed-session addressing; the
-    // continuation-token generation went out of the window with Eve 0.30.
+    // Every minor in the supported window speaks fixed-session addressing, so
+    // the channel never uses continuation tokens.
     expect(channel).toContain("{ params, from, to }");
     expect(channel).not.toContain("continuationToken");
   });
@@ -149,7 +149,7 @@ Produce the daily report.
   });
 
   test("asks for the queued turn policy on every supported Eve line", async () => {
-    // Eve 0.33 made "steer" the default send policy, which cancels a turn
+    // Eve's default send policy is "steer", which cancels a turn
     // already running on the target session. A schedule is a background actor
     // and must never preempt a turn a human is waiting on. Every supported
     // line supports the explicit `turnPolicy` option.
@@ -237,7 +237,7 @@ Produce the daily report.
       /concrete default export.*default re-exports are not supported/,
     );
 
-    // Eve 0.74's experimental schedule collections live in agent/schedules/
+    // Eve's experimental schedule collections live in agent/schedules/
     // too, but declare no static cron; Eveland hosts only static schedules.
     const dynamicCollection = await fixture({
       eveVersion: VERIFIED_EVE_VERSION,
@@ -820,7 +820,7 @@ async function fixture(input: {
   await writeFile(path.join(releaseDir, "agent/instructions.md"), "Fixture.");
   await writeFile(
     path.join(releaseDir, "agent/agent.ts"),
-    // eve 0.87+ rejects an agent that is not built by `defineAgent`.
+    // eve rejects an agent that is not built by `defineAgent`.
     'import { defineAgent } from "eve";\nexport default defineAgent({ model: "zai/glm-5.2", modelContextWindowTokens: 131072 });\n',
   );
   for (const [relativePath, content] of Object.entries(input.files)) {

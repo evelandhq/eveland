@@ -71,8 +71,7 @@ describe("starter-agent template", () => {
   });
 
   // The seeded agent installs the SDK this platform release ships, not a
-  // stale line: a 0.x caret never crosses a minor, so "^0.21.0" kept new
-  // instances on 0.21 long after the SDK moved on. release-please rewrites
+  // stale line a loose range could keep new instances on. release-please rewrites
   // the pin in the same release PR that bumps the SDK (extra-files).
   test("pins the eveland SDK at the version this tree ships", async () => {
     const manifest = JSON.parse(

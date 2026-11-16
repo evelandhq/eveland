@@ -99,14 +99,14 @@ function walkJsFiles(root: string): string[] {
 /**
  * eve compiles its World spec-version gate per release rather than comparing
  * against an imported constant, so the accepted range is read back out of the
- * shipped bundle. Two forms exist: through 0.32 the gate pins a single version
- * (`specVersion !== 5`), and from 0.33 it accepts a range (`>= 5 && <= 6`)
- * because world-vercel opts into a spec above the default and an equality
- * check would make the runtime refuse the adapter shipped alongside it.
+ * shipped bundle. The gate either pins a single version (`specVersion !== 5`)
+ * or accepts a range (`>= 5 && <= 6`); a range is needed when world-vercel opts
+ * into a spec above the default, since an equality check would make the
+ * runtime refuse the adapter shipped alongside it.
  *
  * The thrown message is parsed rather than the comparison itself: the message
  * is authored text that names both bounds, while the operator sequence is
- * minifier output that already changed shape once.
+ * minifier output whose shape is not stable across releases.
  */
 function findEnforcedSpecVersions(eveDistDir: string): { min: number; max: number } | undefined {
   for (const file of walkJsFiles(eveDistDir)) {
@@ -361,8 +361,7 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       ).toBeDefined();
 
       // The declared number, not the package's current one: eve compares the
-      // `specVersion` the World hands it, and the two have differed before
-      // (0.15.0 through 0.17.0 declared 6 on a package whose current was 7).
+      // `specVersion` the World hands it, and the two can differ.
       const declared = declaredWorldSpecVersion();
       expect(declared).toBeGreaterThanOrEqual(enforced!.min);
       expect(declared).toBeLessThanOrEqual(enforced!.max);

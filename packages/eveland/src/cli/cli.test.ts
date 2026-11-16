@@ -203,8 +203,7 @@ describe("eveland env set --stdin", () => {
 
 // `--version` reads a manifest by a path relative to this file, so it is the
 // one command that breaks silently when the CLI's depth in the tree changes.
-// Nothing else exercises it: the only caller was install.sh's shim probe, on
-// a PR-path-gated job.
+// Nothing else in the suite exercises it.
 test("--version reports the eveland package's own version", async () => {
   const stdout: string[] = [];
   const exitCode = await runCli(["--version"], {

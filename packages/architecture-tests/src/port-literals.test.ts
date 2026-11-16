@@ -4,10 +4,9 @@ import { listSourceFiles, listWorkspaces, readSource } from "./scan-support.js";
 /**
  * Port-literal ratchet: every default port the platform binds or dials lives
  * in @evelandhq/core/ports, and product code must import it from there. Bare
- * literals are how the pre-17300 defaults (3000/4000/4080/5432/...) crept
- * into a dozen files each — and how a collision becomes a silent
- * wrong-service connection instead of a startup failure (#167). The scan
- * covers the retired legacy ports too, so none of them can creep back in.
+ * literals spread one default across many files and turn a collision into a
+ * silent wrong-service connection instead of a startup failure (#167). The
+ * scan covers retired ports too, so none of them can creep back in.
  */
 const PORT_LITERAL =
   /(?<!\d)(3000|3001|4000|4080|4090|4317|4318|4327|4328|5432|41000|55432|17300|17301|17302|17303|17310|17311|17312|17313|17314|17350|18000)(?!\d)/;
@@ -23,9 +22,8 @@ const EXEMPT_DIRECTORIES = [/\/integration\//];
 
 /**
  * Ports the platform has retired. The scan above reaches product sources only,
- * and `4000` outlived the 17300 move inside `docker-compose.yml` because
- * nothing checked deployment configuration -- long enough to send every Agent
- * event to a port no service listens on (#462). Current ports are legitimate
+ * so a retired port in deployment configuration would go unnoticed while it
+ * sends every Agent event to a port no service listens on (#462). Current ports are legitimate
  * here (a Compose file is where they are declared), so only retired values are
  * a finding.
  */

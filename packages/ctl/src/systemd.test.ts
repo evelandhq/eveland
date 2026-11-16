@@ -354,8 +354,7 @@ async function makeHarness(options: { uid?: number; bootstrapped?: boolean } = {
       execCalls.push(argv);
       if (argv[0] === "systemctl" && argv[1] === "is-active")
         return { code: 0, output: "active\n" };
-      // A host that has none of the service accounts yet, like the machine an
-      // older installation updates from.
+      // A host that has none of the service accounts yet.
       if (argv[0] === "id") return { code: 1, output: "no such user\n" };
       return { code: 0, output: "" };
     },
