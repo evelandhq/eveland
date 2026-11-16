@@ -44,8 +44,8 @@ export type InstallMetadata = {
    * tell a bundled container from a host Postgres, an SSH tunnel, or another
    * project's cluster on the same loopback port.
    *
-   * Absent on installations made before the question existed: those all run
-   * the bundled database, which is what `databaseMode` answers for them.
+   * Absent until first boot records the answer; `databaseMode` reads an
+   * absent answer as bundled.
    */
   database?: DatabaseMode;
 };

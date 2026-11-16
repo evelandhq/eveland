@@ -84,5 +84,4 @@ eveland-ctl dispatcher-lock --terminate --yes             # 宿主机崩溃后�
 ## 相关参考
 
 - [安装 Eveland](/zh/docs/production/install)：从头到尾的安装流程
-- [准备宿主机](/zh/docs/production/prerequisites)：ctl 自动准备的那些东西，手工怎么做
 - [升级与回滚](/zh/docs/operations/upgrades)：版本迁移与维护流程

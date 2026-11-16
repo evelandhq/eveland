@@ -40,6 +40,5 @@ Eve 0.83 narrowed the chain: microsandbox is gone, `DefaultSandbox` picks its pr
 
 ## Deeper reference
 
-- [Host prerequisites](/docs/production/prerequisites): configuring bubblewrap and AppArmor
 - [Health and diagnostics](/docs/operations/diagnostics): inspecting build log sandbox self-checks
 - [Security model](/docs/operations/security): privilege boundaries and isolation model

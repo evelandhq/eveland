@@ -15,7 +15,6 @@ import {
   hostUnitsArmedPath,
   renderPlatformUnit,
   renderServiceEnv,
-  RETIRED_COMPOSE_SERVICES,
   INFRA_COMPOSE_SERVICES,
   SYSTEMD_HOST_UNITS,
   WEB_ENV_KEYS,
@@ -461,16 +460,6 @@ describe("runInstallCommand", () => {
       expect(composeUp).toContain(service);
     }
     for (const key of SYSTEMD_HOST_UNITS) expect(composeUp).not.toContain(key);
-
-    // Containers this form no longer runs are actively removed: a leftover
-    // one still holds the port its host unit is about to bind.
-    const removal = harness.execCalls.find((argv) => argv.includes("rm"));
-    expect(removal).toBeDefined();
-    for (const { service, profile } of RETIRED_COMPOSE_SERVICES) {
-      expect(removal!.join(" ")).toContain(`--profile ${profile}`);
-      expect(removal).toContain(service);
-    }
-    expect(removal!.join(" ")).toContain("--stop --force");
 
     // Both units enabled and started; supervision recorded.
     for (const key of SYSTEMD_HOST_UNITS) {

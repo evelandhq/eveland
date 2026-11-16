@@ -54,6 +54,5 @@ Eve 项目在打包（`npx eve build`）时会静态解析部分配置（例如�
 
 - [密钥与连接配置](/zh/docs/agents/secrets-connections)：面向开发者的配置指引
 - [安全模型与隔离边界](/zh/docs/operations/security)：机密落盘加密与脱敏机制
-- [安装宿主机 Worker](/zh/docs/production/worker)：构建沙箱与环境变量白名单
 
 - [环境变量参考](/zh/docs/reference/environment-variables)：平台核心及运行时保留环境变量清单

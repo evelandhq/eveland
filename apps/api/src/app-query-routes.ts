@@ -166,17 +166,12 @@ export function registerQueryRoutes(app: ApiApp, store: Store): void {
     const rawLimit = c.req.query("limit");
     const after = c.req.query("after")?.trim();
     const before = c.req.query("before")?.trim();
-    // Without paging params the full history is returned (kept for older
-    // clients; the history is unbounded, so current callers always page).
-    // With them, reads are bounded and the response carries an opaque
-    // `cursor` (usable even when the page is empty) for the CLI's
-    // tail/follow protocol, plus `olderCursor` on tail and `before` reads so
-    // the Dashboard can walk history backwards one bounded page at a time.
-    if (rawLimit === undefined && after === undefined && before === undefined) {
-      return c.json({
-        logs: await store.listLogs(c.req.param("projectId"), type),
-      });
-    }
+    // Every read is one bounded page (the newest `limit` lines when neither
+    // cursor is given): the history grows for the life of the project. The
+    // response carries an opaque `cursor` (usable even when the page is
+    // empty) for the CLI's tail/follow protocol, plus `olderCursor` on tail
+    // and `before` reads so the Dashboard can walk history backwards one
+    // bounded page at a time.
     const limit = Number(rawLimit ?? 1_000);
     if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
       return c.json({ error: "Invalid log limit: expected an integer from 1 to 1000." }, 400);

@@ -39,10 +39,6 @@ const DEPLOYMENT_CONFIGURATION = [
   "infra/otel/collector.yaml",
   "infra/traefik/agents.yml",
   "infra/lima/eveland.yaml",
-  "infra/systemd/eveland-worker.service",
-  "infra/systemd/eveland-worker.env.example",
-  "infra/systemd/eveland-workflow-dispatcher.service",
-  "infra/systemd/eveland-workflow-dispatcher.env.example",
 ];
 
 describe("port literals", () => {

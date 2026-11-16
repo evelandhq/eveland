@@ -302,12 +302,8 @@ export async function readSupervisorRecord(
   }
   const trimmed = raw.trim();
   try {
-    const parsed = JSON.parse(trimmed) as Partial<SupervisorRecord> | number;
-    if (typeof parsed === "number") {
-      // A legacy plain-number pidfile: an identity-less record.
-      return Number.isInteger(parsed) && parsed > 0 ? { pid: parsed, identity: null } : null;
-    }
-    if (typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0) {
+    const parsed = JSON.parse(trimmed) as Partial<SupervisorRecord> | null;
+    if (typeof parsed?.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0) {
       return {
         pid: parsed.pid,
         identity: typeof parsed.identity === "string" ? parsed.identity : null,
@@ -323,8 +319,9 @@ export async function readSupervisorRecord(
  * The supervisor pid, verified: the process must exist AND still carry the
  * identity recorded at spawn. A recycled pid (same number, different start
  * time or command) reads as "not running" — signaling it would hit an
- * unrelated process, possibly as root. An identity-less legacy record is
- * accepted only when the live command looks like our supervisor.
+ * unrelated process, possibly as root. A record written without an identity
+ * (it could not be read at write time) is accepted only when the live command
+ * looks like our supervisor.
  */
 export async function verifiedSupervisorPid(
   layout: ApplianceLayout,
