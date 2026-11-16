@@ -36,7 +36,7 @@ async function harness(options: {
     path.join(repo, ".env"),
     world === null
       ? "DATABASE_URL=postgres://x@127.0.0.1:17310/eveland\n"
-      : `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL=${world}\n`,
+      : `WORKFLOW_WORLD_BOOTSTRAP_URL=${world}\n`,
   );
   const out: string[] = [];
   const err: string[] = [];
@@ -196,7 +196,7 @@ describe("eveland-ctl dead-letters", () => {
 
   test("the env file wins over a stray world URL in the operator's shell", async () => {
     const { io, summarizeCalls } = await harness({ groups: [] });
-    io.env.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL = "postgres://someone@elsewhere/other";
+    io.env.WORKFLOW_WORLD_BOOTSTRAP_URL = "postgres://someone@elsewhere/other";
     await runDeadLetters([], io);
     expect(summarizeCalls).toEqual([WORLD_URL]);
   });

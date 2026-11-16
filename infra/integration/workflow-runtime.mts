@@ -38,15 +38,15 @@ export async function startWorkflowRuntime(
   store: Parameters<typeof createApp>[0],
   log: (line: string) => void = (line) => console.log(`[workflow-runtime] ${line}`),
 ): Promise<WorkflowRuntime> {
-  const baseUrl = process.env.EVELAND_WORKFLOW_WORLD_URL;
+  const baseUrl = process.env.WORKFLOW_WORLD_URL;
   if (!baseUrl) {
     throw new Error(
-      "EVELAND_WORKFLOW_WORLD_URL is required: turns execute only through the external dispatcher.",
+      "WORKFLOW_WORLD_URL is required: turns execute only through the external dispatcher.",
     );
   }
   // Deployment-facing vs host-facing views of the same server (Docker's
   // host.docker.internal split); on the Lima guest both are 127.0.0.1.
-  const hostBaseUrl = process.env.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL ?? baseUrl;
+  const hostBaseUrl = process.env.WORKFLOW_WORLD_BOOTSTRAP_URL ?? baseUrl;
 
   // A scratch database per smoke: boot recovery re-enqueues every active run
   // it can see, so a shared database would make each dispatcher chew through
@@ -68,8 +68,8 @@ export async function startWorkflowRuntime(
   hostWorldUrl.pathname = `/${worldDbName}`;
   // The worker's build/deploy paths read these at call time; the dispatcher
   // (which migrates the fresh database at boot) gets them via its spawn env.
-  process.env.EVELAND_WORKFLOW_WORLD_URL = worldUrl.toString();
-  process.env.EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL = hostWorldUrl.toString();
+  process.env.WORKFLOW_WORLD_URL = worldUrl.toString();
+  process.env.WORKFLOW_WORLD_BOOTSTRAP_URL = hostWorldUrl.toString();
 
   const token =
     process.env.WORKFLOW_DISPATCHER_ACTIVATION_TOKEN ??
@@ -79,8 +79,8 @@ export async function startWorkflowRuntime(
   // worker injects it into every deployment it builds, and passed to the
   // dispatcher explicitly. An unset NODE_ENV counts as production upstream,
   // so there is no silent dev fallback to lean on.
-  process.env.EVELAND_SCHEDULER_RUNTIME_SECRET ??= "eveland-smoke-runtime-secret";
-  const runtimeSecret = process.env.EVELAND_SCHEDULER_RUNTIME_SECRET;
+  process.env.WORKFLOW_WORLD_RUNTIME_SECRET ??= "eveland-smoke-runtime-secret";
+  const runtimeSecret = process.env.WORKFLOW_WORLD_RUNTIME_SECRET;
   // createApp requires an auth service outside NODE_ENV=test; these smokes
   // exercise the internal service surface only, exactly like the API tests.
   const previousNodeEnv = process.env.NODE_ENV;
@@ -98,11 +98,11 @@ export async function startWorkflowRuntime(
 
   const dispatcher = spawnDispatcherApp(
     {
-      EVELAND_WORKFLOW_WORLD_URL: hostWorldUrl.toString(),
-      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: hostWorldUrl.toString(),
+      WORKFLOW_WORLD_URL: hostWorldUrl.toString(),
+      WORKFLOW_WORLD_BOOTSTRAP_URL: hostWorldUrl.toString(),
       WORKFLOW_DISPATCHER_ACTIVATION_API_URL: `http://127.0.0.1:${String(apiPort)}`,
       WORKFLOW_DISPATCHER_ACTIVATION_TOKEN: token,
-      EVELAND_SCHEDULER_RUNTIME_SECRET: runtimeSecret,
+      WORKFLOW_WORLD_RUNTIME_SECRET: runtimeSecret,
       EVELAND_WORKFLOW_DISPATCHER_HEARTBEAT_INTERVAL_MS: "2000",
     },
     log,

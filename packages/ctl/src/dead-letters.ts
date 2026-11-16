@@ -58,9 +58,7 @@ export async function runDeadLetters(args: string[], io: LifecycleIo): Promise<n
   const worldUrl = resolveWorkflowWorldPlatformUrl({ ...io.env, ...envFile?.values });
   if (!worldUrl) {
     io.stdout("No shared workflow world is configured, so there are no dispatch dead letters.");
-    io.stdout(
-      color.dim("  (EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL / EVELAND_WORKFLOW_WORLD_URL are unset.)"),
-    );
+    io.stdout(color.dim("  (WORKFLOW_WORLD_BOOTSTRAP_URL / WORKFLOW_WORLD_URL are unset.)"));
     return 0;
   }
 

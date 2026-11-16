@@ -4,7 +4,7 @@ import { access, mkdir as fsMkdir, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { SANDBOX_TOOLCHAIN_COMMANDS } from "./sandbox-toolchain.js";
-import { resolveBackendDistDir, resolveRuntimeKind } from "./select.js";
+import { resolveProviderDistDir, resolveRuntimeKind } from "./select.js";
 
 const devSecretKey = "eveland-dev-secret-key-000000000";
 
@@ -19,7 +19,7 @@ export type PreflightDeps = {
   userExists: (name: string) => Promise<boolean>;
   groupExists: (name: string) => Promise<boolean>;
   canTraverseAs: (user: string, dir: string) => Promise<boolean>;
-  backendDistDir: () => string;
+  providerDistDir: () => string;
   probeDockerNetworkPool: () => Promise<string | undefined>;
 };
 
@@ -101,7 +101,7 @@ function defaultDeps(env: NodeJS.ProcessEnv): PreflightDeps {
     userExists: defaultUserExists,
     groupExists: defaultGroupExists,
     canTraverseAs: defaultCanTraverseAs,
-    backendDistDir: resolveBackendDistDir,
+    providerDistDir: resolveProviderDistDir,
     probeDockerNetworkPool,
   };
 }
@@ -219,9 +219,9 @@ export async function collectSystemdPreflightIssues(deps: PreflightDeps): Promis
     );
   }
 
-  // 8. The sandbox backend is built.
+  // 8. The sandbox provider is built.
   try {
-    deps.backendDistDir();
+    deps.providerDistDir();
   } catch (error) {
     issues.push(error instanceof Error ? error.message : String(error));
   }
@@ -310,7 +310,7 @@ export async function assertWorkerPreflight(
 function assertSchedulerPreflight(env: NodeJS.ProcessEnv): void {
   if (env.NODE_ENV !== "production") return;
   const secrets = [
-    ["EVELAND_SCHEDULER_RUNTIME_SECRET", env.EVELAND_SCHEDULER_RUNTIME_SECRET],
+    ["WORKFLOW_WORLD_RUNTIME_SECRET", env.WORKFLOW_WORLD_RUNTIME_SECRET],
     ["EVELAND_SCHEDULER_DISPATCH_SECRET", env.EVELAND_SCHEDULER_DISPATCH_SECRET],
   ] as const;
   for (const [name, value] of secrets) {
@@ -318,9 +318,9 @@ function assertSchedulerPreflight(env: NodeJS.ProcessEnv): void {
     if (Buffer.byteLength(value, "utf8") < 32)
       throw new Error(`${name} must be at least 32 bytes.`);
   }
-  if (env.EVELAND_SCHEDULER_RUNTIME_SECRET === env.EVELAND_SCHEDULER_DISPATCH_SECRET) {
+  if (env.WORKFLOW_WORLD_RUNTIME_SECRET === env.EVELAND_SCHEDULER_DISPATCH_SECRET) {
     throw new Error(
-      "EVELAND_SCHEDULER_RUNTIME_SECRET and EVELAND_SCHEDULER_DISPATCH_SECRET must be independent values.",
+      "WORKFLOW_WORLD_RUNTIME_SECRET and EVELAND_SCHEDULER_DISPATCH_SECRET must be independent values.",
     );
   }
   if (!env.EVELAND_SCHEDULER_REDEEM_URL) {

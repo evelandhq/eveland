@@ -114,7 +114,6 @@ describe("buildSystemdRunArgs", () => {
       "--property=Environment=PORT=41000",
       "--property=Environment=HOME=/data/builds/proj_123/rel_789",
       "--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/proj_123",
-      "--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/data/builds/proj_123/rel_789",
       "--property=MemoryMax=2G",
       "--property=CPUQuota=200%",
       "--property=TasksMax=512",
@@ -139,9 +138,6 @@ describe("buildSystemdRunArgs", () => {
       "-lc",
       "npx eve start --host 127.0.0.1 --port 41000",
     ]);
-    expect(args).toContain(
-      "--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/data/builds/proj_123/rel_789",
-    );
   });
 
   test("applies the configured task limit", () => {
@@ -200,7 +196,6 @@ describe("buildSystemdRunArgs (sandbox cache)", () => {
     expect(args).toContain(
       "--property=Environment=EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-data/sandbox/p",
     );
-    expect(args).toContain("--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=/rel");
     // The env file must still be read before PORT is forced.
     expect(args.indexOf("--property=EnvironmentFile=/env/p.env")).toBeLessThan(
       args.indexOf("--property=Environment=PORT=41000"),
@@ -509,7 +504,7 @@ const baseAdapterConfig = {
   cpuQuota: "200%",
   buildSandbox: "bwrap" as const,
   sandboxCacheDir: "/var/lib/eveland-data/sandbox",
-  backendDistDir: () => "/opt/sandbox-bwrap/dist",
+  providerDistDir: () => "/opt/sandbox-bwrap/dist",
 };
 
 describe("createSystemdAdapter listProcesses", () => {
@@ -554,24 +549,24 @@ describe("createSystemdAdapter listProcesses", () => {
   });
 });
 
-describe("createSystemdAdapter backendDistDir laziness", () => {
-  test("never invokes the backendDistDir provider at construction time", () => {
-    const backendDistDir = vi.fn(() => {
+describe("createSystemdAdapter providerDistDir laziness", () => {
+  test("never invokes the providerDistDir provider at construction time", () => {
+    const providerDistDir = vi.fn(() => {
       throw new Error("should not be called until buildRelease runs");
     });
 
-    expect(() => createSystemdAdapter({ ...baseAdapterConfig, backendDistDir })).not.toThrow();
-    expect(backendDistDir).not.toHaveBeenCalled();
+    expect(() => createSystemdAdapter({ ...baseAdapterConfig, providerDistDir })).not.toThrow();
+    expect(providerDistDir).not.toHaveBeenCalled();
   });
 
-  test("invokes the backendDistDir provider inside buildRelease, surfacing its error", async () => {
-    const backendDistDir = vi.fn(() => {
+  test("invokes the providerDistDir provider inside buildRelease, surfacing its error", async () => {
+    const providerDistDir = vi.fn(() => {
       throw new Error("@evelandhq/sandbox-bwrap is not resolvable.");
     });
     const adapter = createSystemdAdapter({
       ...baseAdapterConfig,
       buildSandbox: "none",
-      backendDistDir,
+      providerDistDir,
     });
 
     await expect(
@@ -583,7 +578,7 @@ describe("createSystemdAdapter backendDistDir laziness", () => {
         commandContext: { hasLockfile: true },
       }),
     ).rejects.toThrow("@evelandhq/sandbox-bwrap is not resolvable.");
-    expect(backendDistDir).toHaveBeenCalledTimes(1);
+    expect(providerDistDir).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -665,31 +660,6 @@ describe("createSystemdAdapter startProcess", () => {
     expect(script).toContain("readlink '/run/systemd/dynamic-uid/direct:eveland-d-123'");
     expect(script).not.toContain("id -u");
     expect(script).not.toContain("getent");
-  });
-
-  test("does not let project env override the platform template revision", async () => {
-    vi.mocked(writeFile).mockClear();
-    const adapter = createSystemdAdapter(baseAdapterConfig);
-
-    await adapter.startProcess({
-      processName: "eveland-proj_123-dep_456",
-      releaseRef: "/data/builds/proj_123/rel_platform",
-      port: 41000,
-      env: {
-        EVELAND_SANDBOX_TEMPLATE_REVISION: "project-controlled",
-        OPENAI_API_KEY: "test-key",
-      },
-      commandContext: { hasLockfile: true },
-      sandboxCacheDir: "/var/lib/eveland-data/sandbox/proj_123",
-      memoryRootDir: "/var/lib/eveland-data/memory/proj_123",
-      observabilityPolicyDir: "/var/lib/eveland-data/observability/proj_123/dep_456",
-    });
-
-    expect(writeFile).toHaveBeenCalledWith(
-      path.join("/var/lib/eveland-data", "deployment-env", "eveland-proj_123-dep_456.env"),
-      'OPENAI_API_KEY="test-key"\n',
-      { mode: 0o600 },
-    );
   });
 
   test("ensureProcess reuses an active unit that owns its port without invoking systemd-run", async () => {
@@ -1027,7 +997,7 @@ describe("createSystemdAdapter buildRelease (sandbox injection)", () => {
 
     expect(injectSandboxModules).toHaveBeenCalledWith({
       releaseDir: path.resolve("/data/builds/proj_123/rel_789"),
-      backendDistDir: "/opt/sandbox-bwrap/dist",
+      providerDistDir: "/opt/sandbox-bwrap/dist",
     });
 
     const cacheDir = path.resolve("/var/lib/eveland-data/sandbox", "proj_123");

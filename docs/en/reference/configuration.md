@@ -15,7 +15,7 @@ Configure Agent base domains, service authentication, affinity signing, the priv
 
 ## Worker and runtime
 
-Configure `EVELAND_RUNTIME=systemd`, the same absolute data root, application encryption, app/build users, build sandbox, per-deployment CPU and memory, retention, and `EVELAND_WORKFLOW_WORLD_URL`.
+Configure `EVELAND_RUNTIME=systemd`, the same absolute data root, application encryption, app/build users, build sandbox, per-deployment CPU and memory, retention, and `WORKFLOW_WORLD_URL`.
 
 ## Workflow dispatcher
 

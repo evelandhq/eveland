@@ -25,9 +25,6 @@ describe("buildPlatformSandboxModule", () => {
     ]) {
       expect(source).toContain(`process.env.${variable}`);
     }
-    // Templates are keyed by eve's source revision now; the deployment
-    // revision the backend used has no meaning for the provider.
-    expect(source).not.toContain("EVELAND_SANDBOX_TEMPLATE_REVISION");
     expect(source).toContain("export function platformEnvironment(prepare)");
   });
 });
@@ -36,12 +33,11 @@ describe("buildSandboxShimModule", () => {
   test.each(Object.keys(SHIMMED_SANDBOX_ENTRY_POINTS) as ShimmedSandboxEntryPoint[])(
     "re-exports %s and shadows its provider with the platform environment",
     (entryPoint) => {
-      const { specifier, provider, factories, reexports } =
-        SHIMMED_SANDBOX_ENTRY_POINTS[entryPoint];
+      const { specifier, provider, factories } = SHIMMED_SANDBOX_ENTRY_POINTS[entryPoint];
       const source = buildSandboxShimModule(entryPoint, MARKER);
 
       expect(source.startsWith(MARKER)).toBe(true);
-      if (reexports) expect(source).toContain(`export * from "${specifier}";`);
+      expect(source).toContain(`export * from "${specifier}";`);
       expect(source).toContain(`export const ${provider} = {`);
       for (const factory of factories) {
         expect(source).toContain(`${factory}: (`);
@@ -51,16 +47,6 @@ describe("buildSandboxShimModule", () => {
       );
     },
   );
-
-  test("stands the microsandbox shim alone, since eve 0.83 removed that entry point", () => {
-    // eve 0.81's eve/sandbox/microsandbox exports only MicrosandboxSandbox,
-    // which the shim shadows; on 0.83 a re-export would not resolve at all.
-    const source = buildSandboxShimModule("microsandbox", MARKER);
-
-    expect(source).not.toContain('eve/sandbox/microsandbox";');
-    expect(source).not.toContain("export * from");
-    expect(source).toContain("export const MicrosandboxSandbox = {");
-  });
 
   test("keeps an image factory's options argument in second position", () => {
     expect(buildSandboxShimModule("docker", MARKER)).toContain(
@@ -93,7 +79,7 @@ describe("rewriteEveSandboxImports", () => {
       "import { DockerSandbox } from 'eve/sandbox/docker';",
       'import type { SandboxSession } from "eve/sandbox";',
       'export { VercelSandbox } from "eve/sandbox/vercel";',
-      'const lazy = await import("eve/sandbox/microsandbox");',
+      'const lazy = await import("eve/sandbox/docker");',
       'const { JustBashSandbox } = require("eve/sandbox/just-bash");',
     ].join("\n");
 
@@ -106,7 +92,7 @@ describe("rewriteEveSandboxImports", () => {
         "import { DockerSandbox } from '../.eveland/shim/docker.js';",
         'import type { SandboxSession } from "../.eveland/shim/sandbox.js";',
         'export { VercelSandbox } from "../.eveland/shim/vercel.js";',
-        'const lazy = await import("../.eveland/shim/microsandbox.js");',
+        'const lazy = await import("../.eveland/shim/docker.js");',
         'const { JustBashSandbox } = require("../.eveland/shim/just-bash.js");',
       ].join("\n"),
     );

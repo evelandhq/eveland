@@ -15,7 +15,7 @@ export function assertWorkflowTopologyPreflight(env: NodeJS.ProcessEnv): void {
   resolveWorkflowRunnerMode(env);
   if (env.NODE_ENV === "production" && !resolveWorkflowWorldPlatformUrl(env)) {
     throw new Error(
-      "EVELAND_WORKFLOW_WORLD_URL is required in production: every new build uses the shared workflow world. WORKFLOW_POSTGRES_URL only serves legacy Deployments being terminated and does not satisfy this requirement.",
+      "WORKFLOW_WORLD_URL is required in production: every new build uses the shared workflow world. WORKFLOW_POSTGRES_URL only serves legacy Deployments being terminated and does not satisfy this requirement.",
     );
   }
 }

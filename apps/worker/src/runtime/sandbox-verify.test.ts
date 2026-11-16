@@ -18,15 +18,18 @@ const execFileAsync = promisify(execFile);
 vi.mock("execa", () => ({ execa: vi.fn(async () => ({ exitCode: 0, all: "SANDBOX VERIFY OK" })) }));
 
 describe("buildSandboxVerifyScript", () => {
-  test("exercises prewarm, create, run and shutdown against the vendored backend", () => {
+  test("drives the vendored provider through prepare, start, spawn, stop and session end", () => {
     const script = buildSandboxVerifyScript();
     expect(script).toContain('from "./sandbox-bwrap/index.js"');
-    expect(script).toContain("backend.prewarm(");
-    expect(script).toContain("handle.session.writeTextFile(");
+    expect(script).toContain("createBwrapSandboxProviderDefinition()");
+    expect(script).toContain("environment.prepare(");
+    expect(script).toContain("environment.start(");
+    expect(script).toContain("connection.writeFiles(");
+    expect(script).toContain("connection.spawn(");
     expect(script).toContain("const message: string");
     expect(script).toContain("node eveland-verify.ts");
-    expect(script).toContain("handle.session.run(");
-    expect(script).toContain("handle.shutdown()");
+    expect(script).toContain("connection.stop()");
+    expect(script).toContain("environment.onSessionEnd(");
     expect(script).toContain("SANDBOX VERIFY OK");
   });
 
@@ -71,20 +74,22 @@ describe("buildSandboxVerifyScript", () => {
   });
 });
 
-describe("buildSandboxVerifyScript, executed end-to-end against a stub backend", () => {
-  test("prints one structured diagnostic to stderr and exits non-zero when backend.prewarm() throws", async () => {
+describe("buildSandboxVerifyScript, executed end-to-end against a stub provider", () => {
+  test("prints one structured diagnostic to stderr and exits non-zero when start() throws", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "eveland-verify-e2e-"));
-    // Mirrors the real layout: the verify script and the vendored backend are
-    // siblings under `.eveland/` in a release dir (see VENDORED_BACKEND_DIR).
+    // Mirrors the real layout: the verify script and the vendored provider are
+    // siblings under `.eveland/` in a release dir (see VENDORED_PROVIDER_DIR).
     const backendDir = path.join(root, "sandbox-bwrap");
     await mkdir(backendDir, { recursive: true });
     await writeFile(
       path.join(backendDir, "index.js"),
       [
-        "export function createBwrapSandboxBackend() {",
+        "export function createBwrapSandboxProviderDefinition() {",
         "  return {",
-        '    prewarm: async () => { throw new Error("bwrap: setting up uid map: Permission denied"); },',
-        '    create: async () => { throw new Error("create() must not run: prewarm() should have thrown first"); },',
+        "    environment: () => ({",
+        '      prepare: async () => ({ version: 1, templatePath: "/t" }),',
+        '      start: async () => { throw new Error("bwrap: setting up uid map: Permission denied"); },',
+        "    }),",
         "  };",
         "}",
         "",
@@ -105,25 +110,36 @@ describe("buildSandboxVerifyScript, executed end-to-end against a stub backend",
     });
   });
 
-  test("prints SANDBOX VERIFY OK and exits zero when the backend succeeds", async () => {
+  test("prints SANDBOX VERIFY OK and exits zero when the provider succeeds", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "eveland-verify-e2e-"));
     const backendDir = path.join(root, "sandbox-bwrap");
     await mkdir(backendDir, { recursive: true });
     await writeFile(
       path.join(backendDir, "index.js"),
       [
-        "export function createBwrapSandboxBackend() {",
+        "const stream = (text) => new Response(text).body;",
+        "let ended = false;",
+        "export function createBwrapSandboxProviderDefinition() {",
         "  return {",
-        "    prewarm: async () => {},",
-        "    create: async () => ({",
-        "      session: {",
-        "        writeTextFile: async () => {},",
-        '        run: async () => ({ exitCode: 0, stdout: "eveland-typescript-ok\\n", stderr: "" }),',
-        "      },",
-        "      shutdown: async () => {},",
+        "    environment: () => ({",
+        '      prepare: async () => ({ version: 1, templatePath: "/t" }),',
+        "      start: async () => ({",
+        '        state: { version: 1, sessionKey: "k", networkPolicy: "allow-all" },',
+        "        connection: {",
+        "          writeFiles: async () => {},",
+        "          spawn: async () => ({",
+        '            stdout: stream("eveland-typescript-ok\\n"),',
+        '            stderr: stream(""),',
+        "            wait: async () => ({ exitCode: 0 }),",
+        "          }),",
+        "          stop: async () => {},",
+        "        },",
+        "      }),",
+        "      onSessionEnd: async () => { ended = true; },",
         "    }),",
         "  };",
         "}",
+        'process.on("beforeExit", () => { if (!ended) process.exitCode = 3; });',
         "",
       ].join("\n"),
     );

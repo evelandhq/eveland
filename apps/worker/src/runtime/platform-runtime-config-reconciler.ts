@@ -17,7 +17,7 @@ import { RESERVED_RUNTIME_ENVIRONMENT_INPUTS } from "./reserved-environment.js";
  * kept its launch-time values indefinitely, and every failure that followed
  * was partial and silent: the Agent answers HTTP, health is green, and only
  * the subsystem behind the changed value is broken. On UAT that was
- * EVELAND_WORKFLOW_WORLD_URL after a Postgres move; the same shape applies to
+ * WORKFLOW_WORLD_URL after a Postgres move; the same shape applies to
  * a rotated scheduler secret or a changed Identity issuer.
  *
  * The reconcile runs at worker boot, which is sound rather than merely
@@ -41,7 +41,7 @@ const stateFileName = "platform-runtime-configuration.sha256";
  * "set to the empty string" collide, and those are different launches.
  *
  * Values, not just names, go into the digest -- including
- * EVELAND_SCHEDULER_RUNTIME_SECRET. Only the digest is ever written down, to a
+ * WORKFLOW_WORLD_RUNTIME_SECRET. Only the digest is ever written down, to a
  * 0600 file, and nothing reverses it back to a secret.
  */
 export function platformRuntimeConfigurationFingerprint(env: NodeJS.ProcessEnv): string {

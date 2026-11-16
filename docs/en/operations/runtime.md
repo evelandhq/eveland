@@ -50,7 +50,8 @@ EVELAND_CPU_QUOTA=100%
 # Maximum concurrent tasks/threads per process
 EVELAND_TASKS_MAX=1024
 
-# Sandbox command execution timeout in milliseconds (default: 10 minutes)
+# Wall-clock limit for every sandboxed command, long-running spawns included,
+# in milliseconds (default: 10 minutes)
 EVELAND_SANDBOX_RUN_TIMEOUT_MS=600000
 ```
 
@@ -62,7 +63,8 @@ _For comprehensive hardware sizing recommendations, see [Capacity planning](/doc
 
 Built-in Eve tools for code execution and file inspection (`bash`, `read_file`, `write_file`) are driven by `@evelandhq/sandbox-bwrap`:
 
-- **Native compatibility**: Eveland injects the bubblewrap sandbox into compiled releases while preserving the project's own sandbox setup — `bootstrap()` and `onSession()` on Eve lines with sandbox backends, the environment's `prepare` and the `defineSandbox()` selector on lines with provider environments — and the workspace seeds (`agent/sandbox/workspace/**`). On provider lines the build fails if any sandbox was prepared by a provider other than bwrap; see [Eve compatibility](/docs/reference/eve-compatibility).
+- **Native compatibility**: Eveland injects the bubblewrap sandbox provider into compiled releases while preserving the project's own sandbox setup — the environment's `prepare`, the `defineSandbox()` selector, and the workspace seeds (`agent/sandbox/workspace/**`). The build fails if any sandbox was prepared by a provider other than bwrap; see [Eve compatibility](/docs/reference/eve-compatibility).
+- **Command limits**: `EVELAND_SANDBOX_RUN_TIMEOUT_MS` and `EVELAND_SANDBOX_MAX_OUTPUT_BYTES` bound every sandboxed command, including a long-running process an agent starts with `spawn()`. A command that reaches either limit has its process group killed.
 - **Session workspace isolation**: Each persistent conversation retains its own isolated `/workspace` directory. Redeployments or cold starts preserve existing session workspaces without data loss.
 
 ---
@@ -72,11 +74,11 @@ Built-in Eve tools for code execution and file inspection (`bash`, `read_file`, 
 Durable workflows ensure timers and asynchronous callbacks resume accurately even when the parent agent has scaled to zero:
 
 - **Singleton external dispatcher**: Driven by a single Workflow Dispatcher holding a PostgreSQL advisory lock across the cluster.
-- **Tenant isolation**: All agents share a single workflow database (`EVELAND_WORKFLOW_WORLD_URL`), partitioned logically by `tenant_id` (project ID).
-- **Engine injection**: During release compilation, Eveland automatically injects `@evelandhq/workflow-world@0.31.1` (superseding legacy `@workflow/world-postgres@5.0.0-beta.34`), delegating execution states strictly to the external dispatcher.
+- **Tenant isolation**: All agents share a single workflow database (`WORKFLOW_WORLD_URL`), partitioned logically by `tenant_id` (project ID).
+- **Engine injection**: During release compilation, Eveland automatically injects `@evelandhq/workflow-world@1.0.0` (superseding legacy `@workflow/world-postgres@5.0.0-beta.34`), delegating execution states strictly to the external dispatcher.
 - **Automated migrations**: Worker startup and project provisioning automatically apply schema migrations safely.
 
-World 0.31.1 fixes a session-start race where an event read sees a newly created run's events without its in-band fence snapshot. It re-reads the snapshot, then the event page, preserving storage spec 9 and dispatch protocol 1. Rebuild and deploy a new Release to receive the fix: the World is bundled into each immutable Release, so restarting an existing deployment keeps its original version.
+The World is bundled into each immutable Release, so a World upgrade reaches a project only when it builds and deploys a new Release; restarting an existing deployment keeps its original version. Every Release attests storage spec 9 and dispatch protocol 1.
 
 ### Workflow retention classes
 

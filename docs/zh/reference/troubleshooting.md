@@ -13,7 +13,7 @@ description: 常见生产部署、构建、网络路由、冷启动、定时任�
 
 - 宿主机缺少必要系统依赖（如 `bubblewrap`、`apparmor`、`bwrap` 用户命名空间权限）；
 - 未创建 `/workspace` 挂载目录或 `eveland-app` / `eveland-build` 系统用户；
-- `EVELAND_WORKFLOW_WORLD_URL` 环境变量缺失或无法连接 PostgreSQL。
+- `WORKFLOW_WORLD_URL` 环境变量缺失或无法连接 PostgreSQL。
 
 ### 排查与解决步骤
 

@@ -83,8 +83,7 @@ describe("processNextJob", () => {
           releaseRef: "eveland/proj:rel_cur",
           port: deployment.hostPort,
           env: expect.objectContaining({
-            EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
-            EVELAND_WORKFLOW_RUNNER: "external",
+            WORKFLOW_WORLD_URL: evelandWorldUrl,
             OPENAI_API_KEY: "sk-test-restart",
             EVELAND_DEPLOYMENT_ID: deployment.id,
           }),

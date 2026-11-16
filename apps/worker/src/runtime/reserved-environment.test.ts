@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { RUNTIME_SECRET_ENV_NAMES } from "@evelandhq/workflow-world";
+import { RUNTIME_SECRET_ENV_NAME } from "@evelandhq/workflow-world";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -9,9 +9,9 @@ import {
   RESERVED_RUNTIME_ENVIRONMENT_KEYS,
 } from "./reserved-environment.js";
 
-// The names the shared World owns or aliases: its canonical `WORKFLOW_WORLD_*`
-// vocabulary and the `EVELAND_*` names it falls back to. Each one decides
-// tenancy, topology, or dispatch authentication for the deployed process.
+// The names the shared World owns: its `WORKFLOW_WORLD_*` vocabulary, plus any
+// `EVELAND_*` name it might read. Each one decides tenancy, topology, or
+// dispatch authentication for the deployed process.
 const WORLD_OWNED_NAME = /\b(?:WORKFLOW_WORLD|EVELAND)_[A-Z0-9_]+\b/g;
 const RELATIVE_IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*)["'](\.{1,2}\/[^"']+)["']/g;
 
@@ -43,12 +43,10 @@ function worldRuntimeModules(): string[] {
 describe("the shared World's environment names", () => {
   // A name the World reads that the platform does not own is a name a project
   // entry can set: WORKFLOW_WORLD_TENANT_ID would scope the Deployment's runs
-  // into another tenant's partitions, WORKFLOW_WORLD_RUNNER would bypass the
-  // worker's runner-mode check, WORKFLOW_WORLD_RUNTIME_SECRET would fail every
-  // dispatch. The World reads its canonical names before the aliases, so
-  // reserving only the aliases protects nothing.
+  // into another tenant's partitions, WORKFLOW_WORLD_RUNTIME_SECRET would fail
+  // every dispatch.
   test("every name the installed World reads at runtime is platform-owned", () => {
-    const read = new Set<string>(RUNTIME_SECRET_ENV_NAMES);
+    const read = new Set<string>([RUNTIME_SECRET_ENV_NAME]);
     for (const file of worldRuntimeModules()) {
       for (const match of stripComments(readFileSync(file, "utf8")).matchAll(WORLD_OWNED_NAME)) {
         read.add(match[0]);

@@ -409,7 +409,7 @@ export async function collectDoctorChecks(deps: DoctorDeps): Promise<CheckResult
   // Both views are checked, not just the platform's: the deployment-facing URL
   // is the one an agent actually holds.
   const platformDatabase = databaseUrl ? databaseName(databaseUrl) : null;
-  const worldKeys = ["EVELAND_WORKFLOW_WORLD_URL", "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL"] as const;
+  const worldKeys = ["WORKFLOW_WORLD_URL", "WORKFLOW_WORLD_BOOTSTRAP_URL"] as const;
   const worldDatabases = worldKeys
     .map((key) => ({ key, database: databaseName(deps.envFile?.values[key]?.trim() ?? "") }))
     .filter((entry): entry is { key: (typeof worldKeys)[number]; database: string } =>

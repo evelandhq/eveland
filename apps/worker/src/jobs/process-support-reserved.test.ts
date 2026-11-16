@@ -65,8 +65,8 @@ async function composeOnEvelandWorld() {
       memoryRootDir: "/var/lib/eveland-memory",
     },
     {
-      EVELAND_WORKFLOW_WORLD_URL: evelandWorldUrl,
-      EVELAND_WORKFLOW_STREAM_COMPACTION: "off",
+      WORKFLOW_WORLD_URL: evelandWorldUrl,
+      WORKFLOW_WORLD_STREAM_COMPACTION: "off",
     },
   );
 }
@@ -103,9 +103,8 @@ describe("reserved runtime environment names", () => {
     expect(undeclared).toEqual([]);
     // EVELAND_PROJECT_ID and WORKFLOW_WORLD_TENANT_ID are derived per project; the EVELAND_MODEL_GATEWAY_KIND
     // and _URL names come from the database at every launch; EVE_SCHEDULES_DISABLED,
-    // EVE_TELEMETRY_DISABLED and
-    // WORKFLOW_OPTIMISTIC_INLINE_START are platform constants. None has a
-    // worker-environment input.
+    // EVE_TELEMETRY_DISABLED and WORKFLOW_SPEC_VERSION are platform constants. None
+    // has a worker-environment input.
     expect(
       RESERVED_RUNTIME_ENVIRONMENT_KEYS.filter(
         (key) => RESERVED_RUNTIME_ENVIRONMENT_SOURCES[key]?.length === 0,
@@ -114,10 +113,10 @@ describe("reserved runtime environment names", () => {
       "EVELAND_MODEL_GATEWAY_KIND",
       "EVELAND_MODEL_GATEWAY_URL",
       "EVELAND_PROJECT_ID",
+      "WORKFLOW_SPEC_VERSION",
       "WORKFLOW_WORLD_TENANT_ID",
       "EVE_TELEMETRY_DISABLED",
       "EVE_SCHEDULES_DISABLED",
-      "WORKFLOW_OPTIMISTIC_INLINE_START",
     ]);
   });
 
@@ -166,8 +165,8 @@ describe("reserved runtime environment names", () => {
     await store.upsertSecrets(project.id, [
       { key: "WORKFLOW_WORLD_TENANT_ID", value: encrypt("proj_someone_else"), kind: "variable" },
       { key: "WORKFLOW_WORLD_URL", value: encrypt("postgres://x@evil/db"), kind: "secret" },
-      { key: "WORKFLOW_WORLD_RUNNER", value: encrypt("embedded"), kind: "variable" },
       { key: "WORKFLOW_WORLD_RUNTIME_SECRET", value: encrypt("chosen"), kind: "secret" },
+      { key: "WORKFLOW_SPEC_VERSION", value: encrypt("8"), kind: "variable" },
       { key: "WORKFLOW_WORLD_STREAM_COMPACTION", value: encrypt("off"), kind: "variable" },
       { key: "WORKFLOW_POSTGRES_MAX_POOL_SIZE", value: encrypt("500"), kind: "variable" },
     ]);
@@ -185,9 +184,10 @@ describe("reserved runtime environment names", () => {
 
     expect(env.WORKFLOW_WORLD_TENANT_ID).toBe(project.id);
     expect(env.WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
-    expect(env.WORKFLOW_WORLD_RUNNER).toBe("external");
     expect(env.WORKFLOW_WORLD_RUNTIME_SECRET).toBe(baseOptions.schedulerRuntimeSecret);
     expect(env.WORKFLOW_WORLD_STREAM_COMPACTION).toBe("on");
+    // Empty is unset to eve, which then asks for the spec the World serves.
+    expect(env.WORKFLOW_SPEC_VERSION).toBe("");
     // Connection capacity on the shared instance is platform-planned.
     expect(env.WORKFLOW_POSTGRES_MAX_POOL_SIZE).toBe("4");
   });
@@ -195,12 +195,8 @@ describe("reserved runtime environment names", () => {
   test("the platform world gets its own tenancy names and no per-project database", async () => {
     const { env, secretValues } = await composeOnEvelandWorld();
 
-    expect(env.EVELAND_WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
-    expect(env.EVELAND_WORKFLOW_RUNNER).toBe("external");
-    expect(env.EVELAND_WORKFLOW_STREAM_COMPACTION).toBe("off");
     expect(env.WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
     expect(env.WORKFLOW_WORLD_TENANT_ID).toBe("proj_reserved");
-    expect(env.WORKFLOW_WORLD_RUNNER).toBe("external");
     expect(env.WORKFLOW_WORLD_STREAM_COMPACTION).toBe("off");
     expect(env.WORKFLOW_WORLD_RUNTIME_SECRET).toBe(baseOptions.schedulerRuntimeSecret);
     expect(env.WORKFLOW_POSTGRES_MAX_POOL_SIZE).toBe("10");
@@ -209,9 +205,6 @@ describe("reserved runtime environment names", () => {
     expect(env.EVELAND_SANDBOX_MAX_OUTPUT_BYTES).toBe("16777216");
     expect(env.EVELAND_MEMORY_ROOT).toBe("/var/lib/eveland-memory");
     expect(env.EVELAND_PROJECT_ID).toBe("proj_reserved");
-    // A hook wake runs beside the delivery holding its run's queue; optimistic
-    // inline start would let it run a step body twice.
-    expect(env.WORKFLOW_OPTIMISTIC_INLINE_START).toBe("");
     // Provisioning a per-project database here would leave an empty one behind
     // for every project on the new world.
     expect(env.WORKFLOW_POSTGRES_URL).toBeUndefined();

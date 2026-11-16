@@ -44,8 +44,8 @@ describe("databaseName", () => {
 describe("the two views of the shared world", () => {
   test("deployments get the container-reachable URL; the platform prefers the bootstrap one", () => {
     const env = {
-      EVELAND_WORKFLOW_WORLD_URL: "postgres://e:e@host.docker.internal:17310/eveland_workflow",
-      EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL: "postgres://e:e@127.0.0.1:17310/eveland_workflow",
+      WORKFLOW_WORLD_URL: "postgres://e:e@host.docker.internal:17310/eveland_workflow",
+      WORKFLOW_WORLD_BOOTSTRAP_URL: "postgres://e:e@127.0.0.1:17310/eveland_workflow",
     };
     expect(resolveWorkflowWorldDeploymentUrl(env)).toContain("host.docker.internal");
     expect(resolveWorkflowWorldPlatformUrl(env)).toContain("127.0.0.1");

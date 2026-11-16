@@ -52,7 +52,7 @@ During release compilation, Eveland injects the lightweight sandbox and immediat
 
 - **Passing check marker**:
   ```text
-  Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.
+  Sandbox self-check passed: the vendored bwrap provider runs under this host's deployment hardening.
   ```
 - **If the self-check fails (halting the build)**, check these host prerequisites in order:
   1. Ensure `/etc/apparmor.d/bwrap` exists and grants `userns` permissions;

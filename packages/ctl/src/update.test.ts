@@ -78,7 +78,7 @@ async function makeHarness(
       "EVELAND_ADMIN_EMAIL=admin@example.com",
       "EVELAND_ADMIN_PASSWORD=long-enough-password",
       "DATABASE_URL=postgres://x",
-      "EVELAND_WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
+      "WORKFLOW_WORLD_URL=postgres://eveland:eveland@127.0.0.1:17310/eveland",
       "EVELAND_RELEASE_CHANNEL=stable",
       "EVELAND_REVISION=0000000",
     ].join("\n"),

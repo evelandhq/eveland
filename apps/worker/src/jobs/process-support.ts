@@ -29,7 +29,6 @@ import {
   resolveWorkflowWorldPlatformUrl,
 } from "@evelandhq/core/workflow-world-url";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
-import { resolveWorkflowRunnerMode } from "../runtime/workflow-world.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-deployment-config.js";
 
 import {
@@ -217,8 +216,8 @@ function resolveWorkflowMaxPoolSize(workerEnv: NodeJS.ProcessEnv): string {
  * The shared World's tenancy, topology, and dispatch-authentication names. A
  * project that could set these could scope its world at another tenant's data,
  * hand the runner a database nothing provisions, or fail every dispatch's
- * authentication. The World reads its canonical `WORKFLOW_WORLD_*` names before
- * the `EVELAND_*` ones, so each value is injected under both.
+ * authentication. The Deployment id rides the launch context
+ * (`WORKFLOW_WORLD_DEPLOYMENT_ID`), because this runs per project.
  */
 function sharedWorldEnvironment(input: {
   worldUrl: string;
@@ -226,19 +225,17 @@ function sharedWorldEnvironment(input: {
   schedulerRuntimeSecret: string | undefined;
   workerEnv: NodeJS.ProcessEnv;
 }): Record<string, string> {
-  const runner = resolveWorkflowRunnerMode(input.workerEnv);
-  const streamCompaction = input.workerEnv.EVELAND_WORKFLOW_STREAM_COMPACTION ?? "on";
   return {
-    EVELAND_WORKFLOW_WORLD_URL: input.worldUrl,
     WORKFLOW_WORLD_URL: input.worldUrl,
-    EVELAND_WORKFLOW_RUNNER: runner,
-    WORKFLOW_WORLD_RUNNER: runner,
-    EVELAND_WORKFLOW_STREAM_COMPACTION: streamCompaction,
-    WORKFLOW_WORLD_STREAM_COMPACTION: streamCompaction,
+    WORKFLOW_WORLD_STREAM_COMPACTION: input.workerEnv.WORKFLOW_WORLD_STREAM_COMPACTION ?? "on",
     WORKFLOW_WORLD_TENANT_ID: input.projectId,
     ...(input.schedulerRuntimeSecret
       ? { WORKFLOW_WORLD_RUNTIME_SECRET: input.schedulerRuntimeSecret }
       : {}),
+    // Empty, which eve reads as unset: eve then asks for the spec generation
+    // it was built for, the one the World serves. A project value would ask
+    // the World for a generation it refuses, failing every run.
+    WORKFLOW_SPEC_VERSION: "",
     // Connection capacity on the shared instance is platform-planned
     // (max_connections ~ pool size x running Deployments), so a project must
     // not raise its own share.
@@ -359,23 +356,12 @@ export async function composeDeploymentEnv(
     ...modelGateway,
     // Only injected when the platform has the shared world configured.
     ...(evelandWorldUrl
-      ? {
-          ...sharedWorldEnvironment({
-            worldUrl: evelandWorldUrl,
-            projectId,
-            schedulerRuntimeSecret,
-            workerEnv,
-          }),
-          // Empty, which `@workflow/core` reads as unset. The shared World
-          // runs a hook wake beside a delivery holding its run's queue, so a
-          // cancel can abort a running step, and that is safe only while no
-          // step body starts before its claim resolves. A project that set
-          // this to 1 would let a wake's replay run a step body a second time
-          // (workflow-world 0.26.1, docs/design.md "Delivery and failure
-          // semantics"). Not "0": that would also turn off turbo's first-
-          // delivery fast path, which the World already keeps single-handler.
-          WORKFLOW_OPTIMISTIC_INLINE_START: "",
-        }
+      ? sharedWorldEnvironment({
+          worldUrl: evelandWorldUrl,
+          projectId,
+          schedulerRuntimeSecret,
+          workerEnv,
+        })
       : {}),
     ...(identityIssuer ? { EVELAND_IDENTITY_ISSUER: identityIssuer.replace(/\/$/, "") } : {}),
     ...(identityJwksUrl ? { EVELAND_IDENTITY_JWKS_URL: identityJwksUrl } : {}),

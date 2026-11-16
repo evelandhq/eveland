@@ -15,7 +15,7 @@ description: 查找生产配置分组以及每个值所属的组件。
 
 ## Worker 与 Runtime
 
-配置 `EVELAND_RUNTIME=systemd`、相同绝对数据根目录、Application Encryption、App/Build User、Build Sandbox、每 Deployment CPU/Memory、Retention 与 `EVELAND_WORKFLOW_WORLD_URL`。
+配置 `EVELAND_RUNTIME=systemd`、相同绝对数据根目录、Application Encryption、App/Build User、Build Sandbox、每 Deployment CPU/Memory、Retention 与 `WORKFLOW_WORLD_URL`。
 
 ## Workflow Dispatcher
 

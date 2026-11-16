@@ -186,7 +186,6 @@ export function buildSystemdRunArgs(input: SystemdStartInput): string[] {
     `--property=Environment=PORT=${input.port}`,
     `--property=Environment=HOME=${input.releaseDir}`,
     `--property=Environment=EVELAND_SANDBOX_CACHE_DIR=${input.sandboxCacheDir}`,
-    `--property=Environment=EVELAND_SANDBOX_TEMPLATE_REVISION=${input.releaseDir}`,
     `--property=MemoryMax=${input.memoryMax}`,
     `--property=CPUQuota=${input.cpuQuota}`,
     `--property=TasksMax=${input.tasksMax ?? 512}`,
@@ -443,10 +442,10 @@ export type SystemdAdapterConfig = {
    * Resolves the directory holding the built @evelandhq/sandbox-bwrap (its
    * dist/), vendored into each release. A provider rather than a resolved
    * string so constructing the adapter never touches the filesystem --
-   * it's invoked only inside `buildRelease`, at the point the backend is
+   * it's invoked only inside `buildRelease`, at the point the provider is
    * actually needed.
    */
-  backendDistDir: () => string;
+  providerDistDir: () => string;
 };
 
 export function createSystemdAdapter(
@@ -481,7 +480,7 @@ export function createSystemdAdapter(
       // clears node_modules, so .eveland/ survives into the compiled output.
       const injection = await injectSandboxModules({
         releaseDir,
-        backendDistDir: config.backendDistDir(),
+        providerDistDir: config.providerDistDir(),
       });
       const cacheDir = projectCacheDir(input.projectId);
       // The dynamic runtime user runs under ProtectSystem=strict and cannot
@@ -579,7 +578,7 @@ export function createSystemdAdapter(
             ...(injection.generated.length + injection.rewritten.length === 0
               ? [
                   "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
-                    "be injected. The deployed agent will fall back to eve's default sandbox backend chain.",
+                    "be injected. The deployed agent will fall back to eve's default sandbox.",
                 ]
               : []),
             ...(injection.rewritten.length
@@ -595,7 +594,7 @@ export function createSystemdAdapter(
                     "eve would not load it, or it is not a regular file; workspace seeds are preserved.",
                 ]
               : []),
-            "Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.",
+            "Sandbox self-check passed: the vendored bwrap provider runs under this host's deployment hardening.",
           ].join("\n")
         : undefined;
       const discovery = await readReleaseDiscovery(releaseDir);
@@ -632,9 +631,7 @@ export function createSystemdAdapter(
       const envFilePath = path.join(envDir, `${input.processName}.env`);
       const accessRepairScriptPath = path.join(envDir, `${input.processName}.prepare-access.sh`);
       const dynamicUserUidMarkerPath = path.join(input.observabilityPolicyDir, ".dynamic-user-uid");
-      const deploymentEnv = { ...input.env };
-      delete deploymentEnv.EVELAND_SANDBOX_TEMPLATE_REVISION;
-      await writeFile(envFilePath, buildEnvFileContent(deploymentEnv), { mode: 0o600 });
+      await writeFile(envFilePath, buildEnvFileContent(input.env), { mode: 0o600 });
 
       await execa("chown", ["-R", `root:${config.user}`, input.observabilityPolicyDir]);
       await execa("chmod", ["2750", input.observabilityPolicyDir]);

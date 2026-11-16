@@ -84,7 +84,7 @@ Before it touches anything, `update` reads the target release's `CHANGELOG.md` a
 
 ## 5. Moving the workflow world out of the platform database
 
-Installations configured before the split — `eveland-ctl` rendered both DSNs against the same database until this release — have `EVELAND_WORKFLOW_WORLD_URL` naming the platform's own database. `eveland-ctl doctor` reports this as `workflow-world-database`. It matters because the world's DSN is injected into every agent deployment: agent code holds those credentials, and through them the accounts, sessions, and encrypted project secrets.
+Installations configured before the split — `eveland-ctl` rendered both DSNs against the same database until this release — have `WORKFLOW_WORLD_URL` naming the platform's own database. `eveland-ctl doctor` reports this as `workflow-world-database`. It matters because the world's DSN is injected into every agent deployment: agent code holds those credentials, and through them the accounts, sessions, and encrypted project secrets.
 
 Nothing repoints it for you: the runs, timers, and hooks already in flight live in the `workflow` schema of the database currently in use, and a silent switch would strand them. Move them deliberately, with the platform stopped:
 
@@ -95,7 +95,7 @@ pg_dump -h 127.0.0.1 -p 17310 -U eveland -n workflow eveland \
   | psql -h 127.0.0.1 -p 17310 -U eveland eveland_workflow
 ```
 
-Then point every component at the new database — `EVELAND_WORKFLOW_WORLD_URL` (and `EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL` where it is set) in `etc/eveland.env` — and start again. Verify with `eveland-ctl doctor`, then drop the old schema once a deploy and a workflow run have both succeeded:
+Then point every component at the new database — `WORKFLOW_WORLD_URL` (and `WORKFLOW_WORLD_BOOTSTRAP_URL` where it is set) in `etc/eveland.env` — and start again. Verify with `eveland-ctl doctor`, then drop the old schema once a deploy and a workflow run have both succeeded:
 
 ```sql
 DROP SCHEMA workflow CASCADE;

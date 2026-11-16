@@ -52,7 +52,7 @@ sudo journalctl -u eveland-<projectSlug>-<deploymentId>.service -f
 
 - **自检通过标记**：
   ```text
-  Sandbox self-check passed: the vendored bwrap backend runs under this host's deployment hardening.
+  Sandbox self-check passed: the vendored bwrap provider runs under this host's deployment hardening.
   ```
 - **如果自检失败（构建会自动中断退出）**，通常是宿主机先决条件未满足，请依次核查：
   1. `/etc/apparmor.d/bwrap` 配置文件是否存在并正确赋予了 `userns` 权限；

@@ -17,7 +17,7 @@ const payload = {
 describe("schedule dispatch credentials", () => {
   test("uses explicit secrets, explicit-development fallbacks, and fails closed otherwise", () => {
     expect(
-      resolveSchedulerRuntimeSecret({ EVELAND_SCHEDULER_RUNTIME_SECRET: "explicit-runtime" }),
+      resolveSchedulerRuntimeSecret({ WORKFLOW_WORLD_RUNTIME_SECRET: "explicit-runtime" }),
     ).toBe("explicit-runtime");
     expect(
       resolveSchedulerDispatchSecret({ EVELAND_SCHEDULER_DISPATCH_SECRET: "explicit-dispatch" }),

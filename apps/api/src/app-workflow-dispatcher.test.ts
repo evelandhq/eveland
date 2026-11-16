@@ -19,7 +19,7 @@ function heartbeatBody(overrides: Record<string, unknown> = {}) {
     bootRecoveryCompleted: true,
     reenqueuedRuns: 2,
     worldDatabaseIdentity: WORLD_IDENTITY,
-    schemaGeneration: "0013_run_quarantines.sql",
+    schemaGeneration: "0001_baseline.sql",
     protocolMin: 1,
     protocolMax: 1,
     startedAt: new Date().toISOString(),
@@ -69,8 +69,8 @@ async function createDeployableFixture(
 const sharedAttestation = {
   worldKind: "shared" as const,
   worldPackage: "@evelandhq/workflow-world",
-  worldVersion: "0.11.0",
-  storageSpec: 6,
+  worldVersion: "1.0.0",
+  storageSpec: 9,
   dispatchProtocol: 1,
   enqueueCapability: "per_run_queue_v1" as const,
 };

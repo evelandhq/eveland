@@ -49,9 +49,7 @@ export async function runDispatcherLock(args: string[], io: LifecycleIo): Promis
   const worldUrl = resolveWorkflowWorldPlatformUrl({ ...io.env, ...envFile?.values });
   if (!worldUrl) {
     io.stdout("No shared workflow world is configured, so there is no dispatcher lock to inspect.");
-    io.stdout(
-      color.dim("  (EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL / EVELAND_WORKFLOW_WORLD_URL are unset.)"),
-    );
+    io.stdout(color.dim("  (WORKFLOW_WORLD_BOOTSTRAP_URL / WORKFLOW_WORLD_URL are unset.)"));
     return 0;
   }
 

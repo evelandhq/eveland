@@ -134,7 +134,7 @@ describe("createRuntimeAdapterFromEnv", () => {
     ).toThrow(/Unknown EVELAND_RUNTIME/);
   });
 
-  // These two only pin that construction does not throw. backendDistDir resolution
+  // These two only pin that construction does not throw. providerDistDir resolution
   // is deferred to buildRelease (see select.ts), so constructing the systemd adapter
   // never touches the filesystem, regardless of whether @evelandhq/sandbox-bwrap is
   // installed. The path assertions live in systemd.test.ts, where buildSystemdRunArgs,

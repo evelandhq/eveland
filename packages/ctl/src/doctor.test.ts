@@ -225,7 +225,7 @@ describe("collectDoctorChecks", () => {
           values: {
             NODE_ENV: "production",
             DATABASE_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
-            EVELAND_WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
+            WORKFLOW_WORLD_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
             APP_SECRET_KEY: "k".repeat(32),
             BETTER_AUTH_SECRET: "s".repeat(32),
             EVELAND_ADMIN_PASSWORD: "long-enough-password",
@@ -248,9 +248,9 @@ describe("collectDoctorChecks", () => {
           values: {
             NODE_ENV: "production",
             DATABASE_URL: "postgres://eveland:eveland@127.0.0.1:17310/eveland",
-            EVELAND_WORKFLOW_WORLD_URL:
+            WORKFLOW_WORLD_URL:
               "postgres://eveland:eveland@host.docker.internal:17310/eveland_workflow",
-            EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL:
+            WORKFLOW_WORLD_BOOTSTRAP_URL:
               "postgres://eveland:eveland@127.0.0.1:17310/eveland_workflow",
             APP_SECRET_KEY: "k".repeat(32),
             BETTER_AUTH_SECRET: "s".repeat(32),

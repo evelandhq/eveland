@@ -12,8 +12,8 @@ import path from "node:path";
 export const sharedWorkflowWorldAttestation: ReleaseWorkflowAttestation = {
   worldKind: "shared",
   worldPackage: "@evelandhq/workflow-world",
-  worldVersion: "0.11.0",
-  storageSpec: 6,
+  worldVersion: "1.0.0",
+  storageSpec: 9,
   dispatchProtocol: 1,
   enqueueCapability: "per_run_queue_v1",
 };

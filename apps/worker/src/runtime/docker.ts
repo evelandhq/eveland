@@ -151,8 +151,6 @@ export function buildDockerRunArgs(input: DockerRunInput): string[] {
     `${input.memoryRootDir}:${DOCKER_MEMORY_ROOT_MOUNT_DIR}`,
     "--env",
     "EVELAND_SANDBOX_CACHE_DIR=/var/lib/eveland-sandbox",
-    "--env",
-    `EVELAND_SANDBOX_TEMPLATE_REVISION=${input.imageTag}`,
   );
 
   args.push("--env-file", input.envFilePath);
@@ -472,8 +470,8 @@ export type DockerAdapterConfig = {
   collectorContainerName?: string;
   /** Root of the worker's data dir; holds the root-owned 0600 env files. */
   dataDir: string;
-  /** Resolves the built bwrap backend only when an Eve release is built. */
-  backendDistDir: () => string;
+  /** Resolves the built bwrap provider only when an Eve release is built. */
+  providerDistDir: () => string;
   memoryMax?: string;
   cpuQuota?: string;
   tasksMax?: number;
@@ -517,7 +515,7 @@ export function createDockerAdapter(
         });
         const sandboxInjection = await injectSandboxModules({
           releaseDir: path.resolve(input.buildDir),
-          backendDistDir: config.backendDistDir(),
+          providerDistDir: config.providerDistDir(),
         });
         if (sandboxInjection) {
           await writeSandboxVerifyScript(path.resolve(input.buildDir));
@@ -568,7 +566,7 @@ export function createDockerAdapter(
             sandboxInjection &&
             sandboxInjection.generated.length + sandboxInjection.rewritten.length === 0
               ? "WARNING: no agent/ directory was found at the project root, so no sandbox module could " +
-                "be injected. The deployed agent will fall back to eve's default sandbox backend chain."
+                "be injected. The deployed agent will fall back to eve's default sandbox."
               : undefined,
             sandboxInjection?.rewritten.length
               ? `Redirected the project's authored sandbox (${sandboxInjection.rewritten.join(", ")}) to ` +
@@ -601,9 +599,7 @@ export function createDockerAdapter(
       await ensureAgentTelemetryNetwork(input.processName, collectorContainerName);
       await mkdir(envDir, { recursive: true });
       const envFilePath = envFilePathFor(input.processName);
-      const deploymentEnv = { ...input.env };
-      delete deploymentEnv.EVELAND_SANDBOX_TEMPLATE_REVISION;
-      await writeFile(envFilePath, buildDockerEnvFileContent(deploymentEnv), { mode: 0o600 });
+      await writeFile(envFilePath, buildDockerEnvFileContent(input.env), { mode: 0o600 });
       try {
         const log = await dockerRun({
           containerName: input.processName,

@@ -334,11 +334,6 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "Global cap on concurrently running heavy jobs (builds). Overrides the default derived from machine memory and cores.",
   ),
   entry(
-    "EVELAND_SANDBOX_TEMPLATE_REVISION",
-    ["worker"],
-    "Overrides the sandbox command template revision injected into prepared Releases.",
-  ),
-  entry(
     "EVELAND_RELEASE_SWEEP_INTERVAL_MS",
     ["worker"],
     "Interval between automatic Release retention sweeps.",
@@ -494,10 +489,11 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "60000",
   ),
   {
-    name: "EVELAND_SCHEDULER_RUNTIME_SECRET",
-    components: ["api", "worker"],
+    name: "WORKFLOW_WORLD_RUNTIME_SECRET",
+    components: ["api", "worker", "workflow-dispatcher"],
     sensitivity: "secret",
-    purpose: "Authenticates the private injected Scheduler Channel and its API callback.",
+    purpose:
+      "The platform runtime secret: signs every workflow dispatch and authenticates the private injected Scheduler Channel and its API callback.",
     fallback: developmentSecret,
     required: production,
     warning: productionSecretWarning,
@@ -546,7 +542,7 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     fallback: (env) => resolveWorkflowBootstrapUrl(env),
   },
   {
-    name: "EVELAND_WORKFLOW_WORLD_URL",
+    name: "WORKFLOW_WORLD_URL",
     components: ["api", "worker", "workflow-dispatcher"],
     sensitivity: "url",
     purpose:
@@ -554,16 +550,16 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     required: production,
   },
   {
-    name: "EVELAND_WORKFLOW_WORLD_BOOTSTRAP_URL",
+    name: "WORKFLOW_WORLD_BOOTSTRAP_URL",
     components: ["api", "worker", "workflow-dispatcher"],
     sensitivity: "url",
     purpose:
-      "Host-reachable URL for the shared workflow database. Set when deployments reach Postgres by a different name than the platform does (e.g. host.docker.internal under Docker Desktop); defaults to EVELAND_WORKFLOW_WORLD_URL.",
+      "Host-reachable URL for the shared workflow database. Set when deployments reach Postgres by a different name than the platform does (e.g. host.docker.internal under Docker Desktop); defaults to WORKFLOW_WORLD_URL.",
   },
   entry(
     "EVELAND_WORKFLOW_RUNNER",
     ["worker"],
-    'Workflow runner mode injected into deployments. Only "external" is supported; an explicit "embedded" fails startup closed.',
+    'Workflow runner mode. Only "external" is supported; any other value fails worker startup closed.',
     "external",
   ),
   entry(
@@ -585,9 +581,9 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "15000",
   ),
   entry(
-    "EVELAND_WORKFLOW_STREAM_COMPACTION",
+    "WORKFLOW_WORLD_STREAM_COMPACTION",
     ["worker", "workflow-dispatcher"],
-    "Enables workflow-world 0.7 snapshot stripping for new stream writes and terminal block rewrites; off is an emergency compatibility switch.",
+    "Enables snapshot stripping for new stream writes and terminal block rewrites; off is an emergency switch.",
     "on",
   ),
   entry(

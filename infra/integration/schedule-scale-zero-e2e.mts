@@ -12,7 +12,7 @@ import { createApiActivationClient } from "../../apps/gateway/src/activation-cli
 import { createGatewayApp } from "../../apps/gateway/src/app.js";
 import { encryptSecretValue } from "../../packages/core/src/server/secrets.js";
 import { materializeEveFixtureDirectory } from "../../packages/core/src/server/eve-fixture.js";
-import { LATEST_VERIFIED_EVE_VERSION } from "../../packages/core/src/eve-compatibility.js";
+import { VERIFIED_EVE_VERSION } from "../../packages/core/src/eve-compatibility.js";
 import {
   deriveAgentTelemetrySecret,
   verifyAgentTelemetryCredential,
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
     // runtime secret ON PURPOSE (one contract, both ends); this smoke injects
     // its own value into the deployment via jobOptions, so the dispatcher
     // must sign with the same one.
-    process.env.EVELAND_SCHEDULER_RUNTIME_SECRET = SCHEDULER_RUNTIME_SECRET;
+    process.env.WORKFLOW_WORLD_RUNTIME_SECRET = SCHEDULER_RUNTIME_SECRET;
     cleanupWorkflowRuntime = await startWorkflowRuntime(cleanupStore.store);
     const { store } = cleanupStore;
     const runtime = createRuntimeAdapterFromEnv();
@@ -247,7 +247,7 @@ async function main(): Promise<void> {
     );
 
     console.log(
-      `SCHEDULE SCALE TO ZERO E2E OK runtime=${runtime.name} eve=${LATEST_VERIFIED_EVE_VERSION} dormant=1 cronRuns=1 sessions=2 nativeDuplicates=0 idleStopped=1 continuationWoke=1`,
+      `SCHEDULE SCALE TO ZERO E2E OK runtime=${runtime.name} eve=${VERIFIED_EVE_VERSION} dormant=1 cronRuns=1 sessions=2 nativeDuplicates=0 idleStopped=1 continuationWoke=1`,
     );
   } catch (error) {
     primaryFailed = true;

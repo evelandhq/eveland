@@ -24,9 +24,9 @@ Nothing after the build re-checks the version: every Release is inside the windo
 | ----------------------------------------------- | ---------------------------------------- |
 | Eve, in Agent projects                          | `>=1.0.0 <1.1.0`, verified `1.0.0`       |
 | `eveland` SDK, in Agent projects                | peer dependency `eve >=1.0.0 <2.0.0`     |
-| Workflow World, injected into every new Release | `@evelandhq/workflow-world@0.31.1`       |
+| Workflow World, injected into every new Release | `@evelandhq/workflow-world@1.0.0`        |
 | Workflow World of legacy per-project Releases   | `@workflow/world-postgres@5.0.0-beta.34` |
-| Sandbox, run by the worker                      | `@evelandhq/sandbox-bwrap` `^0.7.0`      |
+| Sandbox, run by the worker                      | `@evelandhq/sandbox-bwrap` `^1.0.0`      |
 
 ## Protocol baseline
 

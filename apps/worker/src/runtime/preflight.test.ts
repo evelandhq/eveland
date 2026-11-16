@@ -34,13 +34,13 @@ function makePassingDeps(
     userExists: vi.fn(async () => true),
     groupExists: vi.fn(async () => true),
     canTraverseAs: vi.fn(async () => true),
-    backendDistDir: vi.fn(() => "/opt/eveland/dist"),
+    providerDistDir: vi.fn(() => "/opt/eveland/dist"),
     probeDockerNetworkPool: vi.fn(async () => undefined),
   };
 }
 
 const productionSchedulerEnv = {
-  EVELAND_SCHEDULER_RUNTIME_SECRET: "scheduler-runtime-secret-at-least-32-bytes",
+  WORKFLOW_WORLD_RUNTIME_SECRET: "scheduler-runtime-secret-at-least-32-bytes",
   EVELAND_SCHEDULER_DISPATCH_SECRET: "scheduler-dispatch-secret-at-least-32-bytes",
   EVELAND_SCHEDULER_REDEEM_URL: "http://127.0.0.1:4000/internal/scheduler/dispatch",
 };
@@ -74,7 +74,7 @@ describe("assertWorkerPreflight", () => {
     expect(deps.userExists).not.toHaveBeenCalled();
     expect(deps.groupExists).not.toHaveBeenCalled();
     expect(deps.canTraverseAs).not.toHaveBeenCalled();
-    expect(deps.backendDistDir).not.toHaveBeenCalled();
+    expect(deps.providerDistDir).not.toHaveBeenCalled();
   });
 
   test("checks Docker bridge allocation for an explicit docker runtime", async () => {
@@ -112,7 +112,7 @@ describe("assertWorkerPreflight", () => {
   test("rejects missing scheduler secrets before a production docker worker starts", async () => {
     await expect(
       assertWorkerPreflight({ NODE_ENV: "production", EVELAND_RUNTIME: "docker" }),
-    ).rejects.toThrow(/EVELAND_SCHEDULER_RUNTIME_SECRET/);
+    ).rejects.toThrow(/WORKFLOW_WORLD_RUNTIME_SECRET/);
   });
 
   test("rejects a short scheduler secret before a production docker worker starts", async () => {
@@ -120,11 +120,11 @@ describe("assertWorkerPreflight", () => {
       assertWorkerPreflight({
         NODE_ENV: "production",
         EVELAND_RUNTIME: "docker",
-        EVELAND_SCHEDULER_RUNTIME_SECRET: "too-short",
+        WORKFLOW_WORLD_RUNTIME_SECRET: "too-short",
         EVELAND_SCHEDULER_DISPATCH_SECRET: "scheduler-dispatch-secret-at-least-32-bytes",
         EVELAND_SCHEDULER_REDEEM_URL: "http://127.0.0.1:4000/internal/scheduler/dispatch",
       }),
-    ).rejects.toThrow(/EVELAND_SCHEDULER_RUNTIME_SECRET.*at least 32 bytes/);
+    ).rejects.toThrow(/WORKFLOW_WORLD_RUNTIME_SECRET.*at least 32 bytes/);
   });
 
   test("runs the full preflight when NODE_ENV=production resolves the systemd default, even with EVELAND_RUNTIME unset", async () => {
@@ -142,7 +142,7 @@ describe("assertWorkerPreflight", () => {
     expect(deps.commandExists).toHaveBeenCalled();
     expect(deps.userExists).toHaveBeenCalled();
     expect(deps.canTraverseAs).toHaveBeenCalledWith("eveland-app", "/var/lib/eveland");
-    expect(deps.backendDistDir).toHaveBeenCalled();
+    expect(deps.providerDistDir).toHaveBeenCalled();
   });
 
   test("collects issues on the NODE_ENV=production default path, not just the explicit-systemd one", async () => {
@@ -162,7 +162,7 @@ describe("assertWorkerPreflight", () => {
     const env: NodeJS.ProcessEnv = {
       NODE_ENV: "production",
       EVELAND_RUNTIME: "docker",
-      EVELAND_SCHEDULER_RUNTIME_SECRET: "scheduler-runtime-secret-at-least-32-bytes",
+      WORKFLOW_WORLD_RUNTIME_SECRET: "scheduler-runtime-secret-at-least-32-bytes",
       EVELAND_SCHEDULER_DISPATCH_SECRET: "scheduler-dispatch-secret-at-least-32-bytes",
       EVELAND_SCHEDULER_REDEEM_URL: "http://127.0.0.1:4000/internal/scheduler/dispatch",
     };
@@ -171,7 +171,7 @@ describe("assertWorkerPreflight", () => {
     expect(deps.probeDockerNetworkPool).toHaveBeenCalledOnce();
     expect(deps.getuid).not.toHaveBeenCalled();
     expect(deps.commandExists).not.toHaveBeenCalled();
-    expect(deps.backendDistDir).not.toHaveBeenCalled();
+    expect(deps.providerDistDir).not.toHaveBeenCalled();
   });
 
   test("resolves when every check passes", async () => {
@@ -412,9 +412,9 @@ describe("collectSystemdPreflightIssues", () => {
     expect(issues.some((issue) => issue.includes("/workspace"))).toBe(true);
   });
 
-  test("converts a backendDistDir() throw into an issue, keeping its message", async () => {
+  test("converts a providerDistDir() throw into an issue, keeping its message", async () => {
     const deps = makePassingDeps();
-    deps.backendDistDir = vi.fn(() => {
+    deps.providerDistDir = vi.fn(() => {
       throw new Error("@evelandhq/sandbox-bwrap is not resolvable. Run `pnpm install`.");
     });
     const issues = await collectSystemdPreflightIssues(deps);
