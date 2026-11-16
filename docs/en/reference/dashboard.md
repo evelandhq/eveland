@@ -134,6 +134,10 @@ The page supports the last 24 hours, 7 days, and 30 days, showing the current pe
 
 A model filter switches the main trend chart to a single-model view. Session counts then mean distinct root sessions actually using that model within the selected time bucket, and tokens, cost, and steps bucket by the model usage event's time. One root session can span multiple Eve agents/subagents and multiple models, so a whole session is never force-labeled with one model. Steps whose model cannot be resolved from the observed SessionNode stay `Unknown model` — never dropped or guessed.
 
+## Source (/projects/:projectId/source)
+
+A read-only code browser for the current Source Revision. Its layout and the Eve structure summary are specified in [Source import](/docs/reference/source-import#8-source-page-projectsprojectidsource).
+
 ## Project Settings (/projects/:projectId/settings)
 
 Project Settings is one centered page containing project details, Variables and Secrets, and the danger zone. Project details edits the display name and description and shows the immutable project slug, project ID, and source repository read-only. Variables and Secrets manages the project's runtime configuration (see [Agent environment](/docs/reference/agent-environment)). The old `/projects/proj_xxxxxxxxxx/secrets` path redirects to `/projects/proj_xxxxxxxxxx/settings`.

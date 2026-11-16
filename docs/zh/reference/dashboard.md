@@ -134,6 +134,10 @@ Usage 是面向开发者与管理员的 Agent traffic 和模型消耗分析页�
 
 Model 筛选把主趋势图切换为单 Model 视角。此时 Session 数表示在所选时间桶内实际使用该 Model 的 distinct root Sessions，Token、Cost 和 step 数按 model usage event 的时间归入桶。一个 root Session 可以包含多个 Eve agent / subagent 和多个 Model，因此不能给整个 Session 强行标记唯一 Model。无法从受观测 SessionNode 解析 Model 的 step 保留为 `Unknown model`，不能丢弃或猜测。
 
+## Source (/projects/:projectId/source)
+
+当前 Source Revision 的只读代码浏览器。布局与 Eve 结构摘要见[源码导入](/zh/docs/reference/source-import#8-source-页-projectsprojectidsource)。
+
 ## Project Settings (/projects/:projectId/settings)
 
 Project Settings 是一个居中的单页，依次包含 Project 详情、Variables 与 Secrets 以及 Danger zone。Project 详情可修改 Display name 与 Description，并只读展示不可变的 Project slug、Project ID 与 Source repository。Variables 与 Secrets 管理 Project 的运行时配置（见 [Agent 环境](/zh/docs/reference/agent-environment)）。旧 `/projects/proj_xxxxxxxxxx/secrets` 路径重定向到 `/projects/proj_xxxxxxxxxx/settings`。

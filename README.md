@@ -15,13 +15,13 @@ schedules, and logs.
 > project from Vercel; references to Eve and Vercel describe compatibility and
 > integrations only.
 
-> **Status: pre-1.0.** Eveland is used in production by its maintainers, but the
-> 0.x line makes breaking changes in minor releases (each is documented in the
-> [CHANGELOG](CHANGELOG.md) and in
-> [`docs/en/operations/upgrades.md`](docs/en/operations/upgrades.md)). Production
-> deployments run on Linux with the systemd runtime (bubblewrap sandboxing);
-> the Docker runtime is for development, not production. Development works on
-> macOS and Linux with Node 26 (≥ 24 supported) and pnpm 11.
+> **Status: stable.** Eveland follows semantic versioning: breaking changes come
+> only in a major release, and each is listed in the [CHANGELOG](CHANGELOG.md),
+> which `eveland-ctl update` shows before it upgrades. Production deployments run
+> on Linux with the systemd runtime (bubblewrap sandboxing); the Docker runtime is
+> for development and for trying Eveland on macOS. What Eveland does not host is
+> listed in [Known limitations](docs/en/reference/known-limitations.md).
+> Development works on macOS and Linux with Node 26 (≥ 24 supported) and pnpm 11.
 
 Eveland is a pnpm monorepo. The authenticated Dashboard, platform API, Agent
 Gateway, worker, and workflow dispatcher ship together as one SemVer-versioned
@@ -143,25 +143,26 @@ in-repo Markdown is readable standalone if the site is unavailable.
 
 ### Repository layout
 
-| Path                              | What it is                                                                                                                            |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api`                        | Hono platform API with Better Auth sessions, team membership, and the authenticated Built-in OTLP ingest endpoint                     |
-| `apps/gateway`                    | The Agent Gateway — host-routed public Agent data plane; preserves Agent auth/cookies and streaming, pins Eve sessions to deployments |
-| `apps/web`                        | The Dashboard — Next.js App Router console (shadcn preset, Tailwind v4)                                                               |
-| `apps/worker`                     | Docker and systemd runtime adapters plus the Postgres job consumer for import, build, restart, and schedule jobs                      |
-| `apps/workflow-dispatcher`        | External dispatcher for durable workflow timers and wake, running exactly once per installation                                       |
-| `apps/docs`                       | Bilingual public website and documentation for `eveland.ai` (Next.js + Fumadocs), rendering the repo-root `docs/` tree                |
-| `packages/core`                   | Dependency-free contracts plus explicit Eve protocol, ID, source, schedule, archive, secret, and runtime-command subpaths             |
-| `packages/db`                     | Drizzle schema and migrations, and the one domain-oriented SQL Store shared by production Postgres and PGlite tests                   |
-| `packages/agent-observer`         | Release-time Eve hook and instrumentation injection with private OpenTelemetry providers that never mutate a user's global providers  |
-| `packages/agent-auth`             | Playground authentication registry, OIDC acquisition (Authorization Code + PKCE), and credential materialization                      |
-| `packages/identity-broker`        | Agent-user identity finalization, Identity Sessions, project-audience Caller Tokens, signing-key rotation, and public JWKS            |
-| `packages/agent-scheduler`        | Release-time injection of the private Scheduler Channel, including Extension-contributed schedules                                    |
-| `packages/platform-observability` | Shared OpenTelemetry SDK bootstrap for Eveland services                                                                               |
-| `packages/session-collector`      | Standard OTLP decoding and projection into the built-in Session, usage, and instance-health read models                               |
-| `packages/eveland`                | The published `eveland` npm package (`eveland/auth`, `evelandIdentity()`); see its [README](packages/eveland/README.md)               |
-| `packages/architecture-tests`     | Executable ratchets for dependency direction, import cycles, browser-safe core exports, and environment-variable coverage             |
-| `infra`                           | Compose, Traefik, systemd, Lima, and real integration-smoke assets                                                                    |
+| Path                              | What it is                                                                                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`                        | Hono platform API with Better Auth sessions, team membership, and the authenticated Built-in OTLP ingest endpoint                                                 |
+| `apps/gateway`                    | The Agent Gateway — host-routed public Agent data plane; preserves Agent auth/cookies and streaming, pins Eve sessions to deployments                             |
+| `apps/web`                        | The Dashboard — Next.js App Router console (shadcn preset, Tailwind v4)                                                                                           |
+| `apps/worker`                     | Docker and systemd runtime adapters plus the Postgres job consumer for import, build, restart, and schedule jobs                                                  |
+| `apps/workflow-dispatcher`        | External dispatcher for durable workflow timers and wake, running exactly once per installation                                                                   |
+| `apps/docs`                       | Bilingual public website and documentation for `eveland.ai` (Next.js + Fumadocs), rendering the repo-root `docs/` tree                                            |
+| `packages/core`                   | Dependency-free contracts plus explicit Eve protocol, ID, source, schedule, archive, secret, and runtime-command subpaths                                         |
+| `packages/db`                     | Drizzle schema and migrations, and the one domain-oriented SQL Store shared by production Postgres and PGlite tests                                               |
+| `packages/agent-observer`         | Release-time Eve hook and instrumentation injection with private OpenTelemetry providers that never mutate a user's global providers                              |
+| `packages/agent-auth`             | Playground authentication registry, OIDC acquisition (Authorization Code + PKCE), and credential materialization                                                  |
+| `packages/identity-broker`        | Agent-user identity finalization, Identity Sessions, project-audience Caller Tokens, signing-key rotation, and public JWKS                                        |
+| `packages/agent-scheduler`        | Release-time injection of the private Scheduler Channel, including Extension-contributed schedules                                                                |
+| `packages/platform-observability` | Shared OpenTelemetry SDK bootstrap for Eveland services                                                                                                           |
+| `packages/session-collector`      | Standard OTLP decoding and projection into the built-in Session, usage, and instance-health read models                                                           |
+| `packages/eveland`                | The published `eveland` npm package: the SDK Agents import (`eveland/auth`, `eveland/memory`) and the `eveland` CLI; see its [README](packages/eveland/README.md) |
+| `packages/ctl`                    | `eveland-ctl`, the operator CLI that installs, starts, updates, and checks the platform on one machine                                                            |
+| `packages/architecture-tests`     | Executable ratchets for dependency direction, import cycles, browser-safe core exports, and environment-variable coverage                                         |
+| `infra`                           | Compose, Traefik, systemd, Lima, and real integration-smoke assets                                                                                                |
 
 ### Development modes
 
@@ -241,10 +242,14 @@ Before merging a Release PR:
 - the target commit is clean and `git diff --check` passes.
 
 The bubblewrap sandbox backend
-[`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap) is not
-versioned with the Eveland product: it lives in its own repository, releases on
-its own line, and is consumed here as a published npm dependency of the worker.
-Upgrading it is an ordinary dependency bump; nothing in this repository builds it.
+[`@evelandhq/sandbox-bwrap`](https://github.com/evelandhq/sandbox-bwrap) and the
+shared Workflow World
+[`@evelandhq/workflow-world`](https://github.com/evelandhq/workflow-world) are not
+versioned with the Eveland product: each lives in its own repository, releases on
+its own line, and is consumed here as a published npm dependency. Upgrading one
+is an ordinary dependency bump; nothing in this repository builds them. The
+versions each Eveland release pairs are listed in
+[Eve compatibility](docs/en/reference/eve-compatibility.md).
 
 The operator-facing versioning policy and upgrade/rollback procedure live in
 [`docs/en/operations/upgrades.md`](docs/en/operations/upgrades.md).

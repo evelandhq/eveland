@@ -31,8 +31,7 @@ production" means the process throws or a deploy is blocked when it is missing.
 > worker injects this DSN into every deployment, so agent code holds it; against
 > the platform database it would also open the accounts, sessions, and encrypted
 > project secrets. `eveland-ctl doctor` reports a shared database as
-> `workflow-world-database`; moving an existing installation is documented in
-> [Upgrades](/docs/operations/upgrades).
+> `workflow-world-database`.
 
 > **`WORKFLOW_WORLD_URL` must use a container-reachable host** (e.g.
 > `host.docker.internal`), not `localhost`, when agents run in Docker, because

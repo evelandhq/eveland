@@ -3,47 +3,45 @@
 Eveland's direction is to be the production home for fleets of Eve agents on
 infrastructure a team controls. This roadmap describes current priorities, not
 release commitments or dates. The product contract remains in [`spec.md`](spec.md),
-and shipped behavior remains documented in the versioned release notes and
-reference documentation.
+and shipped behavior remains documented in the release notes and the
+[reference documentation](docs/en/reference/).
 
-## Current foundation
+## Where Eveland stands
 
-Eveland already imports Eve projects, builds immutable Releases, runs concurrent
-preview Deployments, routes stable and preview traffic through the Agent
-Gateway, manages runtime configuration and identity, dispatches schedules, and
-projects Sessions and provider-reported usage from OpenTelemetry signals.
-Production deployments use isolated systemd services and scale idle processes
-to zero.
+Eveland 1.0 imports single-agent Eve 1.x projects, builds immutable Releases, runs
+concurrent preview Deployments, routes stable and preview traffic through the
+Agent Gateway, manages runtime configuration and identity, dispatches schedules,
+and projects Sessions and provider-reported usage from OpenTelemetry signals.
+Production installations run every platform process and every Deployment as a
+systemd unit on one Linux host, sandbox Agent commands with bubblewrap, and scale
+idle Deployments to zero. One installer and `eveland-ctl` install, update (backing
+up the databases first), and diagnose the platform.
 
-## Now: Developer Preview
+## Next
 
-The near-term priority is making the existing production boundary dependable
-for people outside the maintainer team:
+- **Follow Eve's 1.x line.** Verify each new Eve minor against the compatibility
+  suites and raise the supported window, and keep the paired versions of
+  `@evelandhq/sandbox-bwrap` and `@evelandhq/workflow-world` current.
+- **Narrow the known limitations.** Several entries in
+  [Known limitations](docs/en/reference/known-limitations.md) exist because Eve
+  offers no public API for what Eveland needs: workflow World selection,
+  scheduled-session provenance, and the public origin of `createWebhook()` URLs.
+  Work with upstream Eve toward public surfaces for these, and adopt them as they
+  ship.
+- **Keep operations dependable.** Exercise install, update, rollback, backup, and
+  restore on clean hosts for every release, and keep the operator documentation
+  in step with shipped behavior.
+- **Make failures explain themselves.** Build, activation, routing, scheduling,
+  and Session failures should name their cause and the next step in the
+  Dashboard and operator logs.
 
-- verify a clean Ubuntu production installation from prerequisites through a
-  real observed Agent turn;
-- keep installation, upgrade, rollback, backup, and recovery instructions in
-  sync with shipped behavior;
-- publish an explicit Eveland-to-Eve compatibility matrix and keep the verified
-  window current;
-- make build, activation, routing, scheduling, and Session failures explain
-  themselves in the Dashboard and operator logs;
-- expand representative examples and document known limitations without
-  presenting `main` as a stable release;
-- use external installations and production workloads to find security,
-  retention, and lifecycle gaps before 1.0.
+## Not committed
 
-## Toward 1.0
-
-Eveland will reach 1.0 when its public installation and upgrade contracts are
-stable enough that operators can deploy, diagnose, upgrade, roll back, back up,
-and restore a supported production instance without relying on maintainer-only
-knowledge. Exact scope will be based on evidence from Developer Preview users.
-
-Potential work such as multi-host operation, multiple Teams or environments,
-and additional deployment automation is not committed. It should enter the
-roadmap only after the single-instance production path is proven and the
-corresponding product, security, migration, and rollback boundaries are clear.
+Multi-host operation, multiple Teams or environments, custom domains, and
+additional deployment automation are not committed. Such work enters the roadmap
+only with production evidence that it is needed and with clear product, security,
+migration, and rollback boundaries. The product's non-goals are listed in
+[`spec.md`](spec.md).
 
 ## Influence the roadmap
 

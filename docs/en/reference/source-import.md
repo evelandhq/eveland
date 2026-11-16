@@ -21,6 +21,9 @@ Projects can be imported via two sources: **Git Repository URLs** or **Zip Archi
   - **Environment secrets**: Supports manual entry or bulk `.env` paste. Distinguishes non-sensitive `variable` entries from encrypted `secret` credentials.
 - **Phase 3: Atomic commit**
   - Clicking `Deploy` executes an atomic database transaction: creating the Project record, saving encrypted credentials, recording the initial Source Revision, and enqueuing the import job.
+- **Phase 4: Import and first deploy**
+  - The import job rescans the same snapshot to establish the immutable Source Revision and, on success, enqueues `build_deploy`; a failed import never proceeds to deployment.
+  - The page polls the Project, the import and deploy jobs, and their persisted logs, following the newest log line, and always offers a link to the Project while the deploy runs. When the deploy completes it shows the copyable stable Agent endpoint and the Project link. Leaving the page does not cancel the background jobs.
 
 ---
 
@@ -53,7 +56,7 @@ Builds honor committed package manager lockfiles strictly:
   - Uses `pnpm-lock.yaml` with the platform-pinned pnpm version for frozen installs;
   - Uses `package-lock.json` with `npm ci`;
   - Falls back to `npm install` only when no lockfile exists.
-- **Skills discovery**: Directories under `agent/skills/` are discovered natively by Eve. Eveland compiles sandboxed resource definitions, ensuring skill scripts execute strictly within sandboxed boundaries.
+- **Skills**: Eve discovers and compiles `agent/skills/` itself; Eveland does not interpret `defineSkill`, and skill scripts gain no host privileges or secrets through the platform. They run in the Agent sandbox like any other command.
 
 ---
 
@@ -75,8 +78,22 @@ A Project's import kind is immutable and only says how the Project was created. 
 
 `GET /api/projects/:id/deployments` returns `releaseSources`, keyed by Release id, with the provenance of each listed Deployment's source; the Deployments page renders it as "Commit abc123" or "Uploaded from the CLI by _user_, based on abc123, with uncommitted changes".
 
+## 7. Source Revision metadata and restarts
+
+A Source Revision persists the `package.json` and recognized lockfile metadata needed to start an existing Release. After the source directory is reclaimed, cold activation and ScheduleRun activation still restore the package manager and lockfile choice from that immutable metadata and start the original Deployment, without rebuilding the Release. Restart stays live-source-only: it confirms the source directory still exists before stopping the running process, and when it is missing the restart fails and asks for a re-import and deploy, without interrupting the running process, even though the metadata is still in the database.
+
+## 8. Source page (/projects/:projectId/source)
+
+A read-only code browser: the file tree, file contents, the current Source Revision, and a summary of the Eve project structure (at least agents, instructions, tools, skills, subagents, connections, schedules, and sandbox). There is no online editing and no Git write-back.
+
+The browser fills the whole project content canvas, with no outer frame and no page-level padding. File search is the first control of the tree panel; its borderless toolbar lines up with an equally compact preview header that shows only the current path. The file tree and the header stay fixed, and the code body scrolls in both directions on its own, so the horizontal scrollbar is always at the bottom of the visible area. Code uses a 12px font, 18px line height, and muted line numbers; the frame shows no file type, file size, or Eve version metadata.
+
+Connections appear only in the structure summary, alongside the other Eve entities; there is no separate Connections navigation or configuration UI. A Release's built summary comes from `eve info --json` (eve's documented output) run after `eve build` on the same installed dependency tree: compile status, layout, diagnostic counts, the root Agent's model, the instruction file, and the names of skills, tools, declared subagents, schedules, and channels (names an Extension contributes carry a `<namespace>__` prefix). `eve info` lists no hooks, connections, sandbox, or remote agents, so the built summary has none either. Output the platform does not recognize fails closed, and no built summary is recorded.
+
 ## Deeper reference
 
 - [Deploy your first agent](/docs/agents/first-deployment): developer onboarding guide
 - [Eve compatibility window](/docs/reference/eve-compatibility): supported framework versions
 - [Security model](/docs/operations/security): PAT encryption and sandbox isolation
+- [Agent environment](/docs/reference/agent-environment): Secret and Variable precedence and injection for wizard entries
+- [Dashboard page contract](/docs/reference/dashboard): the Projects list and Git credential management

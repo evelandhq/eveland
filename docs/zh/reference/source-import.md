@@ -21,6 +21,9 @@ description: 新建项目向导、Source Preflight 预检、私有仓库凭据�
   - **环境变量与密钥导入**：支持手动新增或通过粘贴 `.env` 批量导入。表格明确区分普通变量（`variable`）与机密密钥（`secret`）。
 - **阶段三：原子提交**
   - 点击 `Deploy` 时，API 在单个数据库事务中原子完成：创建 Project 记录、保存加密环境变量、创建首个不可变 Source Revision 并排入初次导入构建 Job，避免环境不一致。
+- **阶段四：导入与首次部署**
+  - 导入 Job 重新扫描同一快照以建立不可变 Source Revision，成功后排入 `build_deploy`；失败的导入不会继续部署。
+  - 页面轮询 Project、导入/部署 Job 和持久化日志，自动跟随最新日志；部署进行中始终提供前往 Project 详情的入口。部署完成后展示可复制的稳定 Agent endpoint 和 Project 详情链接。离开页面不会取消后台 Job。
 
 ---
 
@@ -53,7 +56,7 @@ description: 新建项目向导、Source Preflight 预检、私有仓库凭据�
   - 存在 `pnpm-lock.yaml` 时，使用平台锁定的 pnpm 执行 `frozen install`；
   - 存在 `package-lock.json` 时，使用 `npm ci`；
   - 仅在完全没有锁文件时，才回退至 `npm install`。
-- **Skills 发现与加载**：项目内的 `agent/skills/` 目录由 Eve 框架原生发现。Eveland 会在发布构建时生成独立的沙箱资源定义，确保 Skill 脚本只能在受限沙箱内执行。
+- **Skills**：`agent/skills/` 由 Eve 自己发现和编译；Eveland 不解释 `defineSkill`，Skill 脚本也不会经由平台获得宿主机权限或 Secret。它们和其它命令一样在 Agent 沙箱中运行。
 
 ---
 
@@ -75,19 +78,11 @@ description: 新建项目向导、Source Preflight 预检、私有仓库凭据�
 
 `GET /api/projects/:id/deployments` 返回按 Release id 索引的 `releaseSources`，即列表中每个部署的源码来源；Deployments 页面据此渲染为「Commit abc123」或「由 _用户_ 从 CLI 上传，基于 abc123，含未提交改动」。
 
-## 相关参考
-
-- [部署第一个 Agent](/zh/docs/agents/first-deployment)：面向开发者的初次部署指南
-- [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)：受支持的 Eve 框架版本范围
-- [安全模型](/zh/docs/operations/security)：PAT 加密与构建沙箱隔离机制
-
-source import job 重新扫描同一快照以建立不可变 Source Revision，并在成功后排入 `build_deploy`；失败导入不得继续部署。页面轮询 Project、导入/部署 job 和持久化日志，自动跟随最新日志；部署进行中始终提供前往 Project 详情的入口。部署完成后展示可复制的 stable Agent endpoint 和 Project 详情链接。页面离开不取消后台 job。
-
-## Source Revision 元数据与重启
+## 7. Source Revision 元数据与重启
 
 Source Revision 必须持久化启动既有 Release 所需的 `package.json` 与已识别 lockfile 元数据。源码目录已被回收时，cold activation 与 ScheduleRun activation 仍从这些不可变元数据恢复 package manager/lockfile 选择并启动原 Deployment，不得要求重建 Release。restart 则保持 live-source-only：必须在停止现有进程前确认源码目录仍存在；缺失时失败并要求重新导入部署，即使数据库中仍有持久化元数据也不得先中断正在运行的进程。
 
-## Source 页 (/projects/:projectId/source)
+## 8. Source 页 (/projects/:projectId/source)
 
 只读代码浏览器，支持文件树、文件内容查看、当前 Source Revision 信息与 Eve 项目结构摘要。摘要至少包括 agents、instructions、tools、skills、subagents、connections、schedules、sandbox。不做在线编辑，不做 Git 写回。
 
@@ -100,4 +95,5 @@ Source 页面只把 Connection 与其他 Eve 实体一起作为项目结构摘�
 - [部署第一个 Agent](/zh/docs/agents/first-deployment)：项目导入与构建的快速入门指南
 - [Eve 兼容性窗口](/zh/docs/reference/eve-compatibility)：导入受支持的 Eve 版本范围与依赖规则
 - [Agent 环境](/zh/docs/reference/agent-environment)：向导中的 Secret 与 Variable 优先级与注入契约
-- [Dashboard 页面契约](/zh/docs/reference/dashboard)：新建项目向导、Projects 列表与 Git 凭证管理
+- [Dashboard 页面契约](/zh/docs/reference/dashboard)：Projects 列表与 Git 凭证管理
+- [安全模型](/zh/docs/operations/security)：PAT 加密与构建沙箱隔离机制

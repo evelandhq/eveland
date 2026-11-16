@@ -28,6 +28,16 @@ npm install eveland
 
 本包提供 `eveland/auth`（`evelandIdentity()`）、`eveland/memory` 以及这个 CLI。Agent 文件保持在 `eve init` 生成的 `agent/` 目录中：Eveland 每个仓库只部署 `agent/` 下的一个 Agent（见[源码导入](/zh/docs/reference/source-import)）。
 
+### 版本兼容
+
+CLI 与平台的主版本号必须相同：`eveland` 1.x 的 CLI 可以配合任意 1.x 的平台。CLI 在每个请求的 `x-eveland-cli-version` 头中带上自己的版本。主版本不同的平台不会执行该请求，而是返回 HTTP 426 和 `cli_version_unsupported` 错误，CLI 打印其中的原因，例如：
+
+```text
+eveland CLI 1.9.0 is not compatible with this Eveland platform (2.3.0): the CLI must have the platform's major version, 2. Install eveland@2 (for example `npm install eveland@2`).
+```
+
+不带该请求头的请求（例如 Dashboard 发出的请求）不受检查。
+
 ---
 
 ## 2. 目标平台 Origin 解析规则
