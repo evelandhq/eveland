@@ -21,8 +21,8 @@ export function shortCommit(sha: string): string {
 /**
  * One phrase for where a revision came from: "Commit abc123def456" for a git
  * sync, or "Uploaded from the CLI by Ada, based on abc123def456, with
- * uncommitted changes" for an upload. Older revisions recorded before
- * provenance existed degrade to what their kind and commit still say.
+ * uncommitted changes" for an upload. A revision without an origin says what
+ * its kind and commit still say.
  */
 export function describeSourceProvenance(source: SourceProvenanceLike): string {
   if (source.commitSha) return `Commit ${shortCommit(source.commitSha)}`;

@@ -195,7 +195,7 @@ function AgentMessagePart({
   }
 }
 
-/** The AI Elements tool state that reads like a v27 call state. */
+/** The AI Elements tool state that reads like an eve tool call state. */
 export function toolHeaderState(state: EveToolPart["state"]): DynamicToolUIPart["state"] {
   switch (state) {
     case "streaming":
