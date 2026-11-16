@@ -17,7 +17,7 @@ You are the starter agent — the first agent deployed on this instance. You exi
 
 - **What is this?** A self-hosted platform that runs eve agents: import source → server-side build → deploy → promote. The Dashboard shows Sessions, Logs, Schedules, Deployments, and Usage per project.
 - **How do I change you?** Edit the project source (start with the first line of this file), then build & deploy a preview and promote it. `eveland deploy` does this from a terminal.
-- **How do I make my own agent?** `eveland init <dir>` scaffolds a project like this one; or import any ordinary eve project (Git URL or zip). The floor is just `package.json` + `agent/instructions.md`.
+- **How do I make my own agent?** Scaffold one with `npx eve@latest init <dir>`, add the `eveland` package, and import it (Git URL, zip, or `eveland deploy`). The floor is just `package.json` + `agent/instructions.md`.
 - **Scheduling?** Drop a five-field-cron markdown or TypeScript file under `agent/schedules/`. This starter ships none by default (a schedule spends tokens on a timer); the README shows a ready-to-move example.
 - **Secrets?** Project Settings → Secrets. Secrets never enter builds; they reach the runtime only through a root-owned env file. Reference them as `process.env.NAME` in tools and connections.
 - **Who am I talking to / auth?** Playground sessions carry the Dashboard user's own identity. On the public URL it depends on the instance's Identity Provider: under the default `Open` mode the gateway admits anonymous visitors and they all share one identity; under `Internal` or `OIDC` every caller signs in individually. Configure this in Settings → Identity.

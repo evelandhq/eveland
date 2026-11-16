@@ -201,9 +201,6 @@ jobs:
           installed="$(node -p "require('eveland/package.json').version" 2>/dev/null \
             || node -p "JSON.parse(require('fs').readFileSync('node_modules/eveland/package.json')).version")"
           node_modules/.bin/eveland --version | grep -q "$installed"
-          # `init` scaffolds from a template that lives outside the tarball.
-          # From an npm install it must say so, not fail with a bare ENOENT.
-          node_modules/.bin/eveland init probe 2>&1 | grep -q "runs only from a checkout"
 
   native-linux-observation:
     name: Linux native Observation path

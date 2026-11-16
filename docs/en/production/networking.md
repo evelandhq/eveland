@@ -27,21 +27,21 @@ Public certificate authorities (such as Let's Encrypt) require the **ACME DNS-01
 
 ## 3. Reverse proxy configuration (Traefik example)
 
-The reverse proxy terminates public TLS and forwards traffic to `127.0.0.1:17300`. See `infra/traefik/agents.yml`:
+The reverse proxy terminates public TLS and forwards traffic to `127.0.0.1:17300`. The rules use Traefik v3 syntax, as in `infra/traefik/agents.yml`:
 
 ```yaml
 http:
   routers:
     # Dashboard and API console
     eveland-console:
-      rule: "Host(`console.example.com`)"
+      rule: "Host(`console.example.com`) && !PathPrefix(`/internal`)"
       entryPoints: ["websecure"]
       service: "eveland-gateway"
       tls: {}
 
     # Wildcard agent traffic
     eveland-agents:
-      rule: "HostRegexp(`{sub:[a-z0-9-]+}.agents.example.com`) && !PathPrefix(`/internal`)"
+      rule: 'HostRegexp(`^[a-z0-9-]+\.agents\.example\.com$`) && !PathPrefix(`/internal`)'
       entryPoints: ["websecure"]
       service: "eveland-gateway"
       tls: {}
