@@ -1,3 +1,5 @@
+import { CLI_VERSION, CLI_VERSION_HEADER } from "./version.ts";
+
 /**
  * The CLI's HTTP seam: the public /api contract only — the same one the
  * browser Dashboard uses. Injectable fetch keeps every command testable
@@ -30,7 +32,7 @@ export async function apiRequest<T>(input: {
   fetchImpl?: FetchLike;
 }): Promise<T> {
   const fetchImpl = input.fetchImpl ?? fetch;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { [CLI_VERSION_HEADER]: CLI_VERSION };
   let body: string | FormData | undefined;
   if (input.multipart) {
     body = input.multipart;

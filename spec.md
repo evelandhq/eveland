@@ -98,6 +98,11 @@ protocol step (claim before approve, scope confinement, revocability) is the
 standard flow, and the resulting token is an ordinary scoped device-flow token
 visible and revocable like any other.
 
+The CLI and the platform are compatible when they share a major version. The
+CLI names its version on every request, and the platform refuses a CLI of
+another major version before running anything, with an error that names the
+version to install (`docs/{en,zh}/reference/cli.md`).
+
 The public `/health` of the API and Agent Gateway returns, beyond liveness, the
 Eveland product `version`, Git `revision`, release `channel`, and current
 `component`; all components share `service = eveland`, and the API, Dashboard,

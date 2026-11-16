@@ -30,6 +30,7 @@ import {
 } from "./app-control-plane-auth-boundary.js";
 import { registerMemberRoutes } from "./app-member-routes.js";
 import { registerSystemDiagnosticsRoutes } from "./app-system-diagnostics-routes.js";
+import { registerCliVersionCheck } from "./app-cli-version.js";
 export type { AppOptions } from "./app-types.js";
 import { positiveDuration } from "./app-support.js";
 
@@ -124,6 +125,7 @@ export function createApp(
       credentials: true,
     }),
   );
+  registerCliVersionCheck({ app, platformVersion: buildInfo.version });
 
   registerInternalRoutes({
     app,

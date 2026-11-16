@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { ApiError, apiRequest, type FetchLike } from "./api-client.ts";
 import { removeCredential, resolveToken, saveCredential } from "./credentials.ts";
@@ -8,6 +7,7 @@ import { listEnv, removeEnv, setEnv } from "./env.ts";
 import { runLogs } from "./logs.ts";
 import { resolveOrigin } from "./origin.ts";
 import { resolveProject } from "./project.ts";
+import { CLI_VERSION } from "./version.ts";
 
 /**
  * The eveland CLI: platform-relationship verbs only (auth, deploy, logs,
@@ -290,7 +290,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     return name ? 0 : 1;
   }
   if (name === "--version" || name === "-v" || name === "version") {
-    io.stdout(`eveland ${await cliVersion()}`);
+    io.stdout(`eveland ${CLI_VERSION}`);
     return 0;
   }
   const command = commands[name];
@@ -336,22 +336,6 @@ function printHelp(io: CliIo): void {
   io.stdout("");
   io.stdout("Origin resolution: --origin, else a local install's EVELAND_HOME.");
   io.stdout("Headless auth: set EVELAND_TOKEN to skip the stored credential.");
-}
-
-async function cliVersion(): Promise<string> {
-  // Its own package's version, which is the number a user can act on: it is
-  // what their lockfile pins and what `npm view eveland` resolves. This used
-  // to read the repository root manifest, back when the CLI was a private
-  // 0.0.0 workspace package that would have identified nothing; that path
-  // does not exist at all in the published tarball.
-  //
-  // Two levels up on purpose: the same hop reaches the manifest from
-  // src/cli/ when running from source and from dist/cli/ when running from
-  // the package as published.
-  const packageJson = JSON.parse(
-    await readFile(new URL("../../package.json", import.meta.url), "utf8"),
-  ) as { version: string };
-  return packageJson.version;
 }
 
 function levenshtein(a: string, b: string): number {
