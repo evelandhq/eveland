@@ -22,7 +22,7 @@ eve 的 channel 在 Agent 内部挂载路由，例如 Slack channel 的 `POST /e
 
 - **对完整 URL 签名。** Agent 看到的是公开 `Host`，以及 Agent Gateway 丢弃客户端自带值后重新设置的 `X-Forwarded-Proto` 和 `X-Forwarded-Host`。如果 channel 对完整请求 URL 校验签名（如 Twilio），请显式设置 channel 的公开 URL（Twilio 的 `webhookUrl`，语音回调还需 `publicBaseUrl`），不要依赖 TLS 终止之后请求 URL 的重建方式。
 - **冷启动。** 因空闲而停止的 Deployment 会被下一个请求唤醒，该请求最多等待 30 秒。投递超时较短的平台（如 Slack 的 3 秒）可能会重试空闲后的第一个事件。
-- **加权路由。** channel 路由的路径里没有会话 ID，因此每个入站事件都按稳定路由的权重分配。加权发布期间，同一对话的相邻事件可能在不同 Release 上执行路由处理函数。见[发布与流量路由](/zh/docs/agents/releases-routing)。
+- **加权路由。** channel 路由的路径里没有会话 ID，因此每个入站事件都按稳定路由的权重分配。事件开启或延续的那一轮在接收它的 Deployment 上运行，因此加权发布期间，同一对话的相邻轮次可能在不同 Release 上运行；对话本身不会中断，因为项目的所有 Deployment 共享会话。见[发布与流量路由](/zh/docs/agents/releases-routing)。
 - **保留路径。** 对 `/.well-known/workflow/v1/*`（下文的 webhook 路由除外），以及 `/eve/v1/session` 下不属于 eve 会话路由的路径，Agent Gateway 返回 `404`。eve 把 `/eve/v1/*` 留给自己的 channel，因此自定义 channel 的路由请声明在它之外。
 
 ## 3. Connection 登录（OAuth）与远程 Agent 回调

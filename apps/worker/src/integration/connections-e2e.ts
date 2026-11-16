@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { GATEWAY_PORT } from "@evelandhq/core/ports";
 import { sealSecret } from "@evelandhq/core/server/sealed-secret";
 import { materializeEveFixtureDirectory } from "@evelandhq/core/server/eve-fixture";
 import type { DeploymentRecord, ReleaseRecord } from "@evelandhq/core/contracts";
@@ -32,8 +35,18 @@ const FIXTURE_SOURCE_PATH = fileURLToPath(new URL("./fixtures/connections-e2e", 
 const CONNECTION_MODULES = [
   "agent/connections/warehouse.ts",
   "agent/connections/knowledge.ts",
+  "agent/connections/signin.ts",
   "agent/subagents/researcher/connections/research.ts",
+  "agent/subagents/remote.ts",
 ] as const;
+/** The code the stand-in OAuth provider hands back, and the token it becomes. */
+const SIGNIN_CODE = "connections-e2e-code";
+const SIGNIN_TOKEN = `signin-${SIGNIN_CODE}`;
+const REMOTE_SESSION_ID = "connections-e2e-remote-session";
+const SDK_DIR = fileURLToPath(new URL("../../../../packages/eveland", import.meta.url));
+/** The user the sign-in and memory proofs act as; memory is scoped per user. */
+const SMOKE_USER = { "x-connections-e2e-user": "connections-e2e-user" };
+const MEMORY_FACT = `memory fact ${randomUUID().slice(0, 8)}`;
 
 type ConnectionServerCounts = {
   openapiCalls: number;
@@ -41,7 +54,14 @@ type ConnectionServerCounts = {
   mcpLists: number;
   mcpCalls: number;
   rejectedAuth: number;
+  signinCalls: number;
+  /** The callback each remote-agent create request carried. */
+  remoteCallbacks: RemoteCallback[];
 };
+
+type RemoteCallback = { callId: string; subagentName: string; token: string; url: string };
+
+type PublicGateway = { request: (url: string, init?: RequestInit) => Promise<Response> };
 
 type SessionEvent = { type?: string; data?: unknown };
 
@@ -56,6 +76,20 @@ async function main(): Promise<void> {
   const sourcePath = path.join(sourceRoot, "source");
   await materializeEveFixtureDirectory(FIXTURE_SOURCE_PATH, sourcePath);
   await materializeConnectionOrigin(sourcePath, fixtureOrigin);
+  // The fixture's `eveland` dependency is the workspace SDK, packed fresh and
+  // unpacked into a `file:` directory (source import records text files only),
+  // as identity-e2e does.
+  const packedSdk = path.join(sourceRoot, "eveland-sdk.tgz");
+  await execa("pnpm", ["-C", SDK_DIR, "pack", "--out", packedSdk]);
+  await mkdir(path.join(sourcePath, "eveland-sdk"));
+  await execa("tar", [
+    "-xzf",
+    packedSdk,
+    "-C",
+    path.join(sourcePath, "eveland-sdk"),
+    "--strip-components",
+    "1",
+  ]);
 
   const { store, close } = await createPgliteTestStore();
   // Turns execute only via the external dispatcher. The helper
@@ -111,6 +145,30 @@ async function main(): Promise<void> {
     await verifyRootConnections(deployment1.hostPort, connectionServer.counts);
     await verifySubagentConnection(deployment1.hostPort, connectionServer.counts);
 
+    // eve starts its sign-in and remote-agent callback URLs at
+    // WORKFLOW_LOCAL_BASE_URL, which the worker sets to the project's public
+    // Agent origin (default scheme, base domain, and port here). Both are
+    // followed back through the Agent Gateway, as a browser or a remote
+    // deployment would.
+    const { startPublicGateway } = (await import(
+      new URL("../../../../infra/integration/public-gateway.mts", import.meta.url).href
+    )) as {
+      startPublicGateway: (
+        store: unknown,
+        options: { allowedBaseDomains: string[] },
+      ) => PublicGateway;
+    };
+    const gateway = startPublicGateway(store, { allowedBaseDomains: ["agent.localhost"] });
+    const publicOrigin = `http://${project.slug}.agent.localhost:${GATEWAY_PORT}`;
+    await verifySignIn(deployment1.hostPort, gateway, publicOrigin, connectionServer.counts);
+    await verifyRemoteCallback(
+      deployment1.hostPort,
+      gateway,
+      publicOrigin,
+      connectionServer.counts,
+    );
+    await saveMemory(deployment1.hostPort);
+
     const beforeRestart = { ...connectionServer.counts };
     await store.enqueueJob(project.id, "restart_deployment");
     assert.equal(
@@ -118,6 +176,7 @@ async function main(): Promise<void> {
       true,
       "restart_deployment job did not run",
     );
+    await expectMemory(deployment1.hostPort, "after a restart");
     await verifyRootConnections(deployment1.hostPort, connectionServer.counts);
     assert.ok(
       connectionServer.counts.openapiCalls > beforeRestart.openapiCalls,
@@ -159,6 +218,7 @@ async function main(): Promise<void> {
     // model loop has completed initialization under a heavily loaded systemd
     // smoke host. Settle one no-tool turn before timing Connection actions.
     await runWarmupTurn(deployment2.hostPort);
+    await expectMemory(deployment2.hostPort, "from a second Release");
     const beforeSecondRelease = { ...connectionServer.counts };
     await verifyRootConnections(deployment2.hostPort, connectionServer.counts);
     assert.ok(
@@ -190,7 +250,7 @@ async function main(): Promise<void> {
     );
 
     console.log(
-      `MANAGED CONNECTIONS E2E OK runtime=${runtime.name} releases=2 restart=1 openapiCalls=${connectionServer.counts.openapiCalls} mcpLists=${connectionServer.counts.mcpLists} mcpCalls=${connectionServer.counts.mcpCalls} subagent=1 secretLeaks=0`,
+      `MANAGED CONNECTIONS E2E OK runtime=${runtime.name} releases=2 restart=1 openapiCalls=${connectionServer.counts.openapiCalls} mcpLists=${connectionServer.counts.mcpLists} mcpCalls=${connectionServer.counts.mcpCalls} subagent=1 signIn=1 remoteCallback=1 secretLeaks=0`,
     );
   } catch (error) {
     const diagnostics = runtime.getProcessDiagnostics
@@ -351,6 +411,142 @@ async function runWarmupTurn(port: number): Promise<void> {
   assert.ok(session.events.some(isCompletedTurnEvent), "new Release warm-up turn did not complete");
 }
 
+/**
+ * A user-scoped Connection asks the user to sign in; the authorize URL its
+ * challenge carries holds the callback URL eve minted. The smoke plays the
+ * provider: it sends the browser back to that URL, through the Gateway, with a
+ * code, and the parked tool call then runs with the token the code became.
+ */
+async function verifySignIn(
+  port: number,
+  gateway: PublicGateway,
+  publicOrigin: string,
+  counts: ConnectionServerCounts,
+): Promise<void> {
+  const sessionId = await createSession(
+    port,
+    'Search connection "signin" for "signin status", then call getSigninStatus.',
+    SMOKE_USER,
+  );
+  const opened = await readUntilEvent(
+    port,
+    sessionId,
+    (event) => event.type === "interaction.opened" && signInUrl(event) !== null,
+  );
+  const authorizeUrl = new URL(signInUrl(opened)!);
+  const redirect = new URL(authorizeUrl.searchParams.get("redirect_uri") ?? "");
+  assert.equal(
+    redirect.origin,
+    publicOrigin,
+    `sign-in callback left the public origin: ${redirect}`,
+  );
+  assert.match(redirect.pathname, /^\/eve\/v1\/connections\/signin\/callback\//u);
+
+  redirect.searchParams.set("code", SIGNIN_CODE);
+  const returned = await gateway.request(redirect.toString());
+  const returnedBody = await returned.text();
+  assert.ok(
+    returned.status < 400,
+    `sign-in return through the Gateway failed (${returned.status}): ${returnedBody}`,
+  );
+
+  const { events } = await readUntilWaiting(port, sessionId, 0);
+  assert.ok(
+    events.some((event) => event.type === "interaction.settled"),
+    `sign-in interaction never settled: ${JSON.stringify(events.map((event) => event.type))}`,
+  );
+  assert.equal(counts.signinCalls, 1, "signed-in Connection was not called exactly once");
+}
+
+/**
+ * eve hands a remote agent a callback URL for the child's result. The smoke
+ * is the remote agent: it records that URL and answers through it, via the
+ * Gateway, and the parent's delegating turn then completes.
+ */
+async function verifyRemoteCallback(
+  port: number,
+  gateway: PublicGateway,
+  publicOrigin: string,
+  counts: ConnectionServerCounts,
+): Promise<void> {
+  const before = counts.remoteCallbacks.length;
+  const sessionId = await createSession(port, "Ask the remote agent: report the remote status.");
+  const deadline = Date.now() + SESSION_STREAM_BUDGET_MS;
+  while (counts.remoteCallbacks.length === before && Date.now() < deadline) {
+    await delay(250);
+  }
+  const callback = counts.remoteCallbacks[before];
+  assert.ok(callback, "parent never created the remote agent's session");
+  const callbackUrl = new URL(callback.url);
+  assert.equal(
+    callbackUrl.origin,
+    publicOrigin,
+    `remote callback left the public origin: ${callbackUrl}`,
+  );
+  assert.equal(callbackUrl.pathname, `/eve/v1/callback/${encodeURIComponent(callback.token)}`);
+
+  const zeroUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const answered = await gateway.request(callbackUrl.toString(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      callId: callback.callId,
+      kind: "turn.completed",
+      outcome: {
+        kind: "parked",
+        result: { kind: "succeeded", output: "remote status ok" },
+        usageDelta: zeroUsage,
+      },
+      output: "remote status ok",
+      sessionId: REMOTE_SESSION_ID,
+      subagentName: callback.subagentName,
+    }),
+  });
+  const answeredBody = await answered.text();
+  assert.equal(
+    answered.status,
+    202,
+    `remote callback through the Gateway failed (${answered.status}): ${answeredBody}`,
+  );
+
+  const { events } = await readUntilWaiting(port, sessionId, 0);
+  assert.ok(
+    events.some((event) => event.type === "call.settled"),
+    `remote agent call never settled: ${JSON.stringify(events.map((event) => event.type))}`,
+  );
+}
+
+/**
+ * `fileMemory()` on the Eveland backend: the model saves a fact through the
+ * memory tool, and a later session for the same user is handed it back.
+ */
+async function saveMemory(port: number): Promise<void> {
+  const sessionId = await createSession(port, `Remember: ${MEMORY_FACT}`, SMOKE_USER);
+  const { events } = await readUntilWaiting(port, sessionId, 0);
+  assert.ok(
+    events.some((event) => event.type === "call.settled"),
+    `memory save never ran: ${JSON.stringify(events.map((event) => event.type))}`,
+  );
+  await expectMemory(port, "in a second session");
+}
+
+async function expectMemory(port: number, label: string): Promise<void> {
+  const sessionId = await createSession(port, "What do you remember?", SMOKE_USER);
+  const { events } = await readUntilWaiting(port, sessionId, 0);
+  assert.ok(
+    JSON.stringify(events).includes(`I remember ${MEMORY_FACT}`),
+    `memory was not recalled ${label}: ${JSON.stringify(events)}`,
+  );
+}
+
+function signInUrl(event: SessionEvent): string | null {
+  const request = (event.data as { request?: { kind?: unknown; signIn?: { url?: unknown } } })
+    ?.request;
+  return request?.kind === "sign-in" && typeof request.signIn?.url === "string"
+    ? request.signIn.url
+    : null;
+}
+
 async function startSession(
   port: number,
   message: string,
@@ -361,9 +557,18 @@ async function startSession(
   events: SessionEvent[];
   subagentCalled: boolean;
 }> {
+  const sessionId = await createSession(port, message);
+  return { sessionId, ...(await readUntilWaiting(port, sessionId, 0, options)) };
+}
+
+async function createSession(
+  port: number,
+  message: string,
+  headers: Record<string, string> = {},
+): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}/eve/v1/session`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify({ message }),
     signal: AbortSignal.timeout(20_000),
   });
@@ -375,7 +580,47 @@ async function startSession(
       ? parsed.sessionId
       : response.headers.get("x-eve-session-id");
   assert.ok(sessionId, `session creation returned no session id: ${body}`);
-  return { sessionId, ...(await readUntilWaiting(port, sessionId, 0, options)) };
+  return sessionId;
+}
+
+/** Reads a session's stream from the start until one event matches. */
+async function readUntilEvent(
+  port: number,
+  sessionId: string,
+  matches: (event: SessionEvent) => boolean,
+): Promise<SessionEvent> {
+  const response = await fetch(
+    `http://127.0.0.1:${port}/eve/v1/session/${encodeURIComponent(sessionId)}/stream?startIndex=0`,
+    { signal: AbortSignal.timeout(SESSION_STREAM_BUDGET_MS) },
+  );
+  assert.ok(response.ok && response.body, `session stream failed (${response.status})`);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const seen: SessionEvent[] = [];
+  let buffer = "";
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      let newline: number;
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line) continue;
+        for (const event of sessionStreamLineEvents(JSON.parse(line)) as SessionEvent[]) {
+          seen.push(event);
+          if (matches(event)) return event;
+          if (event.type === "turn.settled") {
+            throw new Error(`turn settled before the expected event: ${JSON.stringify(seen)}`);
+          }
+        }
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  throw new Error(`session ${sessionId} stream ended early: ${JSON.stringify(seen)}`);
 }
 
 /**
@@ -475,6 +720,8 @@ async function startConnectionServer(
     mcpLists: 0,
     mcpCalls: 0,
     rejectedAuth: 0,
+    signinCalls: 0,
+    remoteCallbacks: [],
   };
   const server = createServer(
     {
@@ -516,6 +763,32 @@ async function handleConnectionRequest(
     if (!authorize(request, response, OPENAPI_TOKEN, counts)) return;
     counts.openapiCalls += 1;
     json(response, 200, { status: "managed-openapi-ok" });
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/openapi/signin-status") {
+    if (!authorize(request, response, SIGNIN_TOKEN, counts)) return;
+    counts.signinCalls += 1;
+    json(response, 200, { status: "signed-in-ok" });
+    return;
+  }
+  // The stand-in remote agent: it accepts the child and answers later
+  // through the callback URL, and acknowledges whatever else eve sends the
+  // child session (such as ending it).
+  if (request.method === "POST" && url.pathname === "/eve/v1/session") {
+    const body = JSON.parse(await readRequestBody(request)) as { callback?: RemoteCallback };
+    assert.ok(body.callback, "remote agent create request carried no callback");
+    counts.remoteCallbacks.push(body.callback);
+    json(response, 202, {
+      ok: true,
+      protocolVersion: 3,
+      sessionId: REMOTE_SESSION_ID,
+      status: "accepted",
+    });
+    return;
+  }
+  if (url.pathname.startsWith(`/eve/v1/session/${REMOTE_SESSION_ID}`)) {
+    await readRequestBody(request);
+    json(response, 200, { ok: true, sessionId: REMOTE_SESSION_ID, status: "accepted" });
     return;
   }
   if (!["/mcp/knowledge", "/mcp/research"].includes(url.pathname)) {

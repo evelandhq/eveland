@@ -8,32 +8,29 @@ type GenerateResult = Awaited<ReturnType<MockLanguageModelV3["doGenerate"]>>;
  * sees a discovered tool in its tool list: it finds it with eve's catalog
  * search tool `eve__search({ query })` and calls it through
  * `eve__tool({ name, input })`, and every connection tool is named
- * `<connection>__<tool>`. The model also recognizes the unqualified
- * `connection_search({ connection, query })` /
- * `connection_execute({ connection, tool, input })` pair, and reads which pair
- * it has from the tool list it is offered.
+ * `<connection>__<tool>`.
  */
 const CONNECTION_TOOLS = {
   warehouse: "getConnectionStatus",
   knowledge: "lookupConnectionRecord",
   research: "lookupConnectionRecord",
+  signin: "getSigninStatus",
 } as const;
+
+const CONNECTION_QUERIES: Record<ConnectionName, string> = {
+  warehouse: "connection status",
+  knowledge: "connection record",
+  research: "connection record",
+  signin: "signin status",
+};
 
 type ConnectionName = keyof typeof CONNECTION_TOOLS;
 
-/** The search/execute pair a generation offers, or null when neither is listed. */
-function catalogTools(toolNames: readonly string[]): {
-  search: string;
-  execute: string;
-  qualified: boolean;
-} | null {
-  if (toolNames.includes("eve__search") && toolNames.includes("eve__tool")) {
-    return { search: "eve__search", execute: "eve__tool", qualified: true };
+function connectionNamed(userPrompt: string): ConnectionName {
+  for (const name of Object.keys(CONNECTION_TOOLS) as ConnectionName[]) {
+    if (userPrompt.includes(`connection \\"${name}\\"`)) return name;
   }
-  if (toolNames.includes("connection_search")) {
-    return { search: "connection_search", execute: "connection_execute", qualified: false };
-  }
-  return null;
+  return "knowledge";
 }
 
 export function connectionTestModel(): MockLanguageModelV3 {
@@ -48,35 +45,42 @@ export function connectionTestModel(): MockLanguageModelV3 {
     const lastToolResult = (toolName: string) =>
       lastMessage.includes('"type":"tool-result"') &&
       lastMessage.includes(`"toolName":"${toolName}"`);
-    const connection: ConnectionName = userPrompt.includes('connection \\"warehouse\\"')
-      ? "warehouse"
-      : userPrompt.includes('connection \\"research\\"')
-        ? "research"
-        : "knowledge";
-    const catalog = catalogTools(toolNames);
-    const tool = CONNECTION_TOOLS[connection];
-    const qualifiedTool = `${connection}__${tool}`;
+    const connection = connectionNamed(userPrompt);
+    const catalog = toolNames.includes("eve__search") && toolNames.includes("eve__tool");
+    const qualifiedTool = `${connection}__${CONNECTION_TOOLS[connection]}`;
 
     // A Connection call or a delegation came back: the flow is done. A
     // delegation first answers with its task receipt; the turn then
     // holds for the child and calls the model again with its result, which
     // falls through to the same closing text below.
-    if (
-      ["connection_execute", "eve__tool", qualifiedTool, "researcher", "agent"].some(lastToolResult)
-    ) {
+    if (["eve__tool", qualifiedTool, "researcher", "remote", "agent"].some(lastToolResult)) {
       return textResult("managed Connection flow complete");
     }
 
-    if (catalog !== null && lastToolResult(catalog.search)) {
+    if (catalog && lastToolResult("eve__search")) {
       // A failed discovery must terminate instead of asking for the same tool
       // forever; the integration assertions will report the missing HTTP call.
-      if (!lastMessage.includes(catalog.qualified ? qualifiedTool : tool)) {
+      if (!lastMessage.includes(qualifiedTool)) {
         return textResult("managed Connection discovery failed");
       }
-      return toolCallResult(
-        catalog.execute,
-        catalog.qualified ? { name: qualifiedTool, input: {} } : { connection, tool, input: {} },
-      );
+      return toolCallResult("eve__tool", { name: qualifiedTool, input: {} });
+    }
+
+    // Memory: `Remember: <fact>` saves through the `file` memory slot's tool;
+    // `What do you remember?` answers with the fact eve recalled into the
+    // prompt from the saved document, or says nothing was recalled.
+    if (lastToolResult("file__save_memory")) return textResult("memory saved");
+    const remember = /Remember:\s*(memory fact [a-z0-9-]+)/u.exec(userPrompt)?.[1];
+    if (remember && toolNames.includes("file__save_memory")) {
+      return toolCallResult("file__save_memory", { text: remember });
+    }
+    if (userPrompt.includes("What do you remember?")) {
+      const recalled = /\d+: (memory fact [a-z0-9-]+)/u.exec(JSON.stringify(options.prompt))?.[1];
+      return textResult(recalled ? `I remember ${recalled}` : "I remember nothing");
+    }
+
+    if (toolNames.includes("remote") && /ask\s+the\s+remote\s+agent\s*:/iu.test(userPrompt)) {
+      return toolCallResult("remote", { message: "Report the remote status." });
     }
 
     if (
@@ -89,13 +93,11 @@ export function connectionTestModel(): MockLanguageModelV3 {
       });
     }
 
-    if (catalog !== null && /Search connection/u.test(userPrompt)) {
-      const query = connection === "warehouse" ? "connection status" : "connection record";
-      return toolCallResult(
-        catalog.search,
-        // A `<connection>__` prefix searches only that connection's tools.
-        catalog.qualified ? { query: `${connection}__ ${query}` } : { connection, query },
-      );
+    if (catalog && /Search connection/u.test(userPrompt)) {
+      // A `<connection>__` prefix searches only that connection's tools.
+      return toolCallResult("eve__search", {
+        query: `${connection}__ ${CONNECTION_QUERIES[connection]}`,
+      });
     }
 
     return textResult("managed Connection flow complete");
