@@ -114,7 +114,8 @@ through two public Eve slots in the prepared Release:
 
 - **Hook** (`hooks/eveland-observer.js`, `defineHook` with a `*` handler) in the root
   Agent and in every directory-form Subagent. It receives each session's stream facts
-  and exports them; these facts are what the Built-in Session projection reads.
+  and exports them; these facts are what the Built-in Session projection reads. Each
+  shim also names its Agent's file-form Subagents (see below).
 - **Instrumentation** (`agent/instrumentation/eveland-observer.js`,
   `defineInstrumentation`) at the root only. Eve delivers its lifecycle events for every
   session the process runs, Subagents included. The observer uses `model.call.started`
@@ -139,10 +140,25 @@ Extension Subagent (including nested descendants and consumer overrides) inside 
 installed package in the Release's `node_modules`. That shim is the only file written
 into the package: it carries no runtime copy, and without the platform mount (and
 therefore without a policy) it is inert. Eve's file-form Subagents have no independent
-hooks slot; whether local or Extension-sourced, their sessions remain an explicit
-coverage gap — Eveland does not patch Eve compiled internals — and the complete
-Extension gaps `{kind,path,reason}` are written to
+hooks slot; whether local or Extension-sourced, their sessions' transcripts remain an
+explicit coverage gap — Eveland does not patch Eve compiled internals — and the
+complete Extension gaps `{kind,path,reason}` are written to
 `.eveland/observability/extension-coverage-gaps.json`.
+
+A file-form Subagent's spend is still counted. The only report of it is its parent's
+`usage.recorded` against the call that opened the child (or the parent's
+`delegated-late` record scoped to the child's task). Each hook shim names its Agent's
+file-form Subagents by the name the Agent calls them — a local one by its file name, a
+mounted Extension's as `<namespace>__<id>` — and the Extension integration rewrites the
+consumer Agent's shim to add the mounted ones. When the parent's stream shows a call to
+such a Subagent that is not remote (`call.requested`), the task serving it
+(`call.started`), and the child session it opened (`child.opened`), the observer exports
+the parent's record with `eveland.eve.usage.session.id` and
+`eveland.eve.usage.agent.name` naming that child, and meters it under the child's
+`gen_ai.agent.name`. Whether a Subagent runs with the hook is fixed when the Release is
+built, so the attribution never depends on what arrives when. A delegation the process
+did not see requested (the Deployment restarted while the child ran) stays
+unattributed: its spend goes uncounted rather than counted twice.
 
 Residual Eve-coupling risks of this design:
 
@@ -157,7 +173,8 @@ Residual Eve-coupling risks of this design:
 - File-form Subagent sessions reach the root instrumentation, but instrumentation events
   carry no stream facts (no stream positions, no `content.completed`, no
   `usage.recorded` record kinds), which the Built-in projection requires; those
-  sessions stay a coverage gap.
+  sessions' transcripts stay a coverage gap, and their usage is the parent's record of
+  each call: one row per call, with no per-run model.
 
 The private providers produce traces, logs, and metrics separately. The three signals
 share the Resource and correlation identifiers but are managed by three independent
@@ -435,7 +452,12 @@ also builds no local view of the Collector's delivery volume or queue pressure.
   (`decide()`, automatic model selection, tool approval) and `auxiliary` (a model
   call a tool makes) -- by its stream position. A `model` record owned by a call, and a
   `delegated-late` one, re-report spend a child session already recorded, so only
-  the child counts them; Eve fills a missing token count with zero, so missing usage is a
+  the child counts them. A file-form Subagent records nothing Eveland observes, so when
+  the observer names such a child on its parent's record, that record counts once on the
+  child's node, keyed by its position on the parent's stream
+  (`parent-record@line:<line>:<index>`); it creates the child's unresolved node when the
+  parent's `child.opened` has not arrived yet. A remote child's re-reported spend is not
+  counted in this project. Eve fills a missing token count with zero, so missing usage is a
   model run with no record at all. A model run's `run_key` also names the commit
   (stream line) the fact was written in. A completed model run counts as missing from
   its `model.settled` until its record arrives; eve writes that record in the same

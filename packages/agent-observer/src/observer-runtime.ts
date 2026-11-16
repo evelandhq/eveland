@@ -2,6 +2,22 @@ import { createPolicyManagedAgentTelemetry } from "./policy-runtime.js";
 import { modelCallCapture } from "./runtime/model-capture.js";
 import type { AgentTelemetryEvent, AgentTelemetryHookContext } from "./runtime.js";
 
+export type ObserverHook = {
+  events: {
+    "*"(event: AgentTelemetryEvent, context: AgentTelemetryHookContext): Promise<void>;
+  };
+};
+
+/** What the hook shim baked into one agent's `hooks/` slot knows about that agent. */
+export type ObserverHookShimOptions = {
+  /**
+   * The agent's subagents that eve runs without a hooks slot (file-form
+   * subagents), by the name the agent calls them. Their spend reaches the
+   * observer only as the agent's re-reported usage records.
+   */
+  unobservedSubagents?: readonly string[];
+};
+
 /**
  * The plain configurations the observer hands eve, deliberately NOT wrapped in
  * `defineHook` / `defineInstrumentation`: the runtime is bundled fully
@@ -11,12 +27,13 @@ import type { AgentTelemetryEvent, AgentTelemetryHookContext } from "./runtime.j
  * the Agent's own eve installation and wrap these values.
  */
 export type ObserverRuntime = {
-  /** A `*` hook: the session stream's facts, exported as the Agent's telemetry. */
-  hook: {
-    events: {
-      "*"(event: AgentTelemetryEvent, context: AgentTelemetryHookContext): Promise<void>;
-    };
-  };
+  /**
+   * A `*` hook for one agent: the session stream's facts, exported as the
+   * Agent's telemetry.
+   */
+  observerHook(options: ObserverHookShimOptions): ObserverHook;
+  /** {@link ObserverRuntime.observerHook} for an agent with no unobserved subagents. */
+  hook: ObserverHook;
   /** Lifecycle instrumentation: the model each provider call actually ran. */
   instrumentation: {
     tracePolicy(): { emit: true; recordInputs: false; recordOutputs: false };
@@ -45,8 +62,9 @@ export function createObserverRuntime(input: {
     warn: warnRateLimited,
   });
 
-  return {
-    hook: {
+  const observerHook = (options: ObserverHookShimOptions): ObserverHook => {
+    const hook = { unobservedSubagents: new Set(options.unobservedSubagents ?? []) };
+    return {
       events: {
         // An unhandled hook error fails the running turn, so this handler must
         // never throw: telemetry failure may never fail an Agent turn.
@@ -54,14 +72,19 @@ export function createObserverRuntime(input: {
         // outer guard keeps that true for anything they might miss.
         async "*"(event, context) {
           try {
-            await telemetry.capture(event, context);
+            await telemetry.capture(event, context, hook);
             if (event.type === "session.ended") await telemetry.forceFlush();
           } catch (error) {
             warnRateLimited(error);
           }
         },
       },
-    },
+    };
+  };
+
+  return {
+    observerHook,
+    hook: observerHook({}),
     instrumentation: {
       // eve records model call content for every AI SDK telemetry integration
       // in the process when any instrumentation file asks for it. The observer

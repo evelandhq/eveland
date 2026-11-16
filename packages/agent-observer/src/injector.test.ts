@@ -41,14 +41,19 @@ describe("injectObserverHooks", () => {
       "file-child.ts",
       "remote-child.ts",
     ]);
-    expect(result.observerContract).toBe(4);
+    expect(result.observerContract).toBe(5);
     const rootShim = await readFile(path.join(releaseDir, result.injectedFiles[0]!), "utf8");
     expect(rootShim).toContain("file:///run/eveland/observability/runtime.mjs");
     expect(rootShim).toContain("../../.eveland/observability/runtime.mjs");
     expect(rootShim).toContain('import { defineHook } from "eve/hooks"');
-    await expect(
-      readFile(path.join(releaseDir, result.injectedFiles[1]!), "utf8"),
-    ).resolves.toContain("../../../../.eveland/observability/runtime.mjs");
+    // The root names the file-form subagents eve runs without a hooks slot, by
+    // the name it calls them; whether one is remote is the call's to say.
+    expect(rootShim).toContain(
+      'runtime?.observerHook({ unobservedSubagents: ["file-child","remote-child"] })',
+    );
+    const childShim = await readFile(path.join(releaseDir, result.injectedFiles[1]!), "utf8");
+    expect(childShim).toContain("../../../../.eveland/observability/runtime.mjs");
+    expect(childShim).toContain("defineHook(runtime?.default ??");
     // Instrumentation is root-only in eve and sees every session the process
     // runs, so one file covers the root and all of its subagents.
     const instrumentationShim = await readFile(
@@ -300,6 +305,113 @@ describe("injectExtensionSubagentHooks", () => {
       `const shim = await import(${JSON.stringify(observerPath)}); console.log(shim.default?.events?.["*"]?.name);`,
     ]);
     expect(stdout.trim()).toBe("mounted");
+  });
+
+  test("names an Extension's file-form subagents in the hook of the agent that calls them", async () => {
+    const releaseDir = await createRelease();
+    await write("agent/subagents/local-file.ts", "export default {}", releaseDir);
+    await injectObserverHooks({ releaseDir });
+    const extensionRoot = path.join(releaseDir, "node_modules/@acme/crm/dist/extension");
+    const reviewerRoot = path.join(extensionRoot, "subagents/reviewer");
+    await mkdir(reviewerRoot, { recursive: true });
+    const manifestOf = (agentRoot: string, extra: Record<string, unknown> = {}) => ({
+      agentRoot,
+      subagents: [],
+      resolvedExtensions: [],
+      ...extra,
+    });
+    const source = (entryPath: string, subagentId: string, manifest: unknown) => ({
+      entryPath,
+      logicalPath: path.basename(entryPath),
+      subagentId,
+      manifest,
+    });
+    const agentRoot = path.join(releaseDir, "agent");
+    const manifest = manifestOf(agentRoot, {
+      subagents: [
+        source(
+          path.join(agentRoot, "subagents/local-file.ts"),
+          "local-file",
+          manifestOf(agentRoot),
+        ),
+      ],
+      resolvedExtensions: [
+        {
+          namespace: "crm",
+          manifest: manifestOf(extensionRoot, {
+            subagents: [
+              source(
+                path.join(extensionRoot, "subagents/quick.mjs"),
+                "quick",
+                manifestOf(extensionRoot),
+              ),
+              source(
+                reviewerRoot,
+                "reviewer",
+                manifestOf(reviewerRoot, {
+                  subagents: [
+                    source(
+                      path.join(reviewerRoot, "subagents/draft.mjs"),
+                      "draft",
+                      manifestOf(reviewerRoot),
+                    ),
+                  ],
+                }),
+              ),
+            ],
+          }),
+        },
+      ],
+    });
+
+    const result = await injectExtensionSubagentHooks({ releaseDir, manifest });
+
+    expect(result.injectedFiles).toEqual([
+      "node_modules/@acme/crm/dist/extension/subagents/reviewer/hooks/eveland-observer.js",
+    ]);
+    // The consumer's shim keeps its baked runtime and now names the mounted
+    // file-form subagent under the mount's namespace beside its own.
+    const rootShim = await readFile(path.join(agentRoot, "hooks/eveland-observer.js"), "utf8");
+    expect(rootShim).toContain("../../.eveland/observability/runtime.mjs");
+    expect(rootShim).toContain(
+      'runtime?.observerHook({ unobservedSubagents: ["crm__quick","local-file"] })',
+    );
+    await expect(
+      readFile(path.join(reviewerRoot, "hooks/eveland-observer.js"), "utf8"),
+    ).resolves.toContain('runtime?.observerHook({ unobservedSubagents: ["draft"] })');
+  });
+
+  test("a hook shim hands the runtime its agent's unobserved subagents", async () => {
+    const releaseDir = await createRelease();
+    const observerPath = path.join(releaseDir, "agent/hooks/observer.js");
+    const platformRuntimePath = path.join(releaseDir, "mounted-runtime.mjs");
+    await write(
+      "mounted-runtime.mjs",
+      [
+        "export function observerHook(options) {",
+        "  const handler = () => {};",
+        '  Object.defineProperty(handler, "name", { value: JSON.stringify(options) });',
+        '  return { events: { "*": handler } };',
+        "}",
+        "",
+      ].join("\n"),
+      releaseDir,
+    );
+    await write(
+      "agent/hooks/observer.js",
+      createObserverShim(observerPath, undefined, new URL(`file://${platformRuntimePath}`).href, [
+        "filechild",
+        "crm__quick",
+      ]),
+      releaseDir,
+    );
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      `const shim = await import(${JSON.stringify(observerPath)}); console.log(shim.default?.events?.["*"]?.name);`,
+    ]);
+    expect(JSON.parse(stdout.trim())).toEqual({ unobservedSubagents: ["filechild", "crm__quick"] });
   });
 
   test("reports file-form coverage and rejects Extension subagent paths outside the Release", async () => {

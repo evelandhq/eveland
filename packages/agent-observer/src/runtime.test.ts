@@ -3,10 +3,12 @@ import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/s
 import { InMemoryLogRecordExporter } from "@opentelemetry/sdk-logs";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
 import { afterEach, describe, expect, test } from "vitest";
+import { createDelegationTracker } from "./runtime/delegations.js";
 import { createModelCallCapture, type ModelCallCapture } from "./runtime/model-capture.js";
 import {
   createPrivateAgentTelemetryRuntime,
   type AgentTelemetryEvent,
+  type ObserverHookOptions,
   type PrivateAgentTelemetryRuntime,
   type RuntimeAgentPolicy,
 } from "./runtime.js";
@@ -29,6 +31,7 @@ function harness(
   capture: Partial<RuntimeAgentPolicy["capture"]> = {},
   modelCapture: ModelCallCapture = createModelCallCapture(),
   session: HookSession = { id: "eve_v27" },
+  hook: ObserverHookOptions = {},
 ) {
   const traces = new InMemorySpanExporter();
   const logs = new InMemoryLogRecordExporter();
@@ -37,18 +40,23 @@ function harness(
     policy: policy(capture),
     exporters: { traces, logs, metrics },
     modelCapture,
+    delegations: createDelegationTracker(),
   });
   activeRuntimes.push(runtime);
   let line = 0;
   async function commit(...facts: Fact[]): Promise<void> {
     for (const [index, fact] of facts.entries()) {
-      await runtime.capture(fact as AgentTelemetryEvent, {
-        session,
-        agent: { name: "Researcher", nodeId: "root" },
-        channel: { kind: "channel:eve" },
-        position: { line, index },
-        now: new Date(Date.UTC(2026, 10, 2, 0, 0, line)),
-      });
+      await runtime.capture(
+        fact as AgentTelemetryEvent,
+        {
+          session,
+          agent: { name: "Researcher", nodeId: "root" },
+          channel: { kind: "channel:eve" },
+          position: { line, index },
+          now: new Date(Date.UTC(2026, 10, 2, 0, 0, line)),
+        },
+        hook,
+      );
     }
     line += 1;
   }
@@ -515,6 +523,124 @@ describe("private Agent telemetry runtime", () => {
       .find((metric) => metric.descriptor.name === "eveland.gen_ai.cost")!
       .dataPoints.reduce((total, point) => total + (point.value as number), 0);
     expect(cost).toBe(0.75);
+  });
+
+  test("attributes a file-form subagent's re-reported spend to that child, and meters it once", async () => {
+    const { runtime, logs, metrics, commit } = harness({}, createModelCallCapture(), undefined, {
+      // `weather` is a file-form remote agent: its spend belongs elsewhere.
+      unobservedSubagents: new Set(["filechild", "weather"]),
+    });
+    const usage = (inputTokens: number) => ({
+      inputTokens,
+      outputTokens: 1,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+    const agentCall = (callId: string, name: string, remote?: true) => ({
+      type: "call.requested",
+      scope: { ...turn, runId: "run_1" },
+      data: {
+        callId,
+        owner: { runId: "run_1" },
+        capability: { kind: "agent", name, ...(remote ? { remote } : {}) },
+      },
+    });
+    const opened = (callId: string, sessionId: string, name: string) => ({
+      type: "child.opened",
+      scope: turn,
+      data: { owner: { callId }, sessionId, name, stream: `/eve/v1/session/${sessionId}/stream` },
+    });
+    const spent = (callId: string, inputTokens: number) => ({
+      type: "usage.recorded",
+      scope: turn,
+      data: { kind: "model", owner: { callId }, usage: usage(inputTokens) },
+    });
+    await commit({ type: "turn.started", scope: turn, data: { turnId: "turn_1" } });
+    await commit(
+      agentCall("call_file", "filechild"),
+      agentCall("call_dir", "dirchild"),
+      agentCall("call_remote", "weather", true),
+    );
+    await commit(
+      { type: "call.started", scope: turn, data: { callId: "call_file", taskId: "task_file" } },
+      { type: "call.started", scope: turn, data: { callId: "call_dir", taskId: "task_dir" } },
+      { type: "call.started", scope: turn, data: { callId: "call_remote", taskId: "task_remote" } },
+    );
+    await commit(
+      opened("call_file", "eve_file", "filechild"),
+      opened("call_dir", "eve_dir", "dirchild"),
+      opened("call_remote", "eve_remote", "weather"),
+    );
+    await commit(
+      spent("call_file", 64),
+      spent("call_dir", 9000),
+      spent("call_remote", 7000),
+      // A call this process never saw requested stays unattributed.
+      spent("call_unseen", 5000),
+    );
+    // A later call to the same task reaches the child without another `child.opened`.
+    await commit(agentCall("call_file_2", "filechild"));
+    await commit({
+      type: "call.started",
+      scope: turn,
+      data: { callId: "call_file_2", taskId: "task_file" },
+    });
+    await commit(spent("call_file_2", 10));
+    await commit(
+      {
+        type: "usage.recorded",
+        scope: { ...turn, taskId: "task_file" },
+        data: { kind: "delegated-late", usage: usage(5) },
+      },
+      { type: "usage.recorded", scope: turn, data: { kind: "delegated-late", usage: usage(3000) } },
+    );
+    // A child the task opened, rather than the call, is the task's.
+    await commit(agentCall("call_task", "filechild"));
+    await commit({
+      type: "call.started",
+      scope: turn,
+      data: { callId: "call_task", taskId: "task_bg" },
+    });
+    await commit({
+      type: "child.opened",
+      scope: { ...turn, taskId: "task_bg" },
+      data: { owner: { taskId: "task_bg" }, sessionId: "eve_bg", name: "filechild", stream: "s" },
+    });
+    await commit(spent("call_task", 20));
+    await runtime.forceFlush();
+
+    const attributed = logs
+      .getFinishedLogRecords()
+      .filter((record) => record.attributes["eveland.eve.event.type"] === "usage.recorded")
+      .map((record) => [
+        (record.body as { data: { usage: { inputTokens: number } } }).data.usage.inputTokens,
+        record.attributes["eveland.eve.usage.session.id"] ?? null,
+        record.attributes["eveland.eve.usage.agent.name"] ?? null,
+      ]);
+    expect(attributed).toEqual([
+      [64, "eve_file", "filechild"],
+      [9000, null, null],
+      [7000, null, null],
+      [5000, null, null],
+      [10, "eve_file", "filechild"],
+      [5, "eve_file", "filechild"],
+      [3000, null, null],
+      [20, "eve_bg", "filechild"],
+    ]);
+    const inputTokens = metrics
+      .getMetrics()
+      .flatMap((resource) => resource.scopeMetrics.flatMap((scope) => scope.metrics))
+      .find((metric) => metric.descriptor.name === "gen_ai.client.token.usage")!
+      .dataPoints.filter((point) => point.attributes["gen_ai.token.type"] === "input")
+      .map((point) => ({
+        agent: point.attributes["gen_ai.agent.name"],
+        kind: point.attributes["eveland.gen_ai.usage.kind"],
+        sum: (point.value as { sum: number }).sum,
+      }));
+    expect(inputTokens).toEqual([
+      { agent: "filechild", kind: "model", sum: 94 },
+      { agent: "filechild", kind: "delegated-late", sum: 5 },
+    ]);
   });
 
   test("never lets a malformed v27 event escape the capture", async () => {

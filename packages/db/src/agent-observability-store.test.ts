@@ -1368,6 +1368,130 @@ describe("v27 (eve 0.84+) observations", () => {
     ]);
   });
 
+  test("counts a file-form child's spend, which only its parent reports, once on the child's node", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    const recorded = (data: Record<string, unknown>, inputTokens: number) => ({
+      type: "usage.recorded",
+      scope: { turnId: "t" },
+      data: {
+        ...data,
+        usage: {
+          inputTokens,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsd: 0.5,
+        },
+      },
+    });
+    const unobserved = (eveSessionId: string, agentName: string) => ({
+      unobservedChild: { eveSessionId, agentName },
+    });
+    const opened = (sessionId: string, callId: string, name: string) => ({
+      type: "child.opened",
+      scope: { turnId: "t" },
+      data: { sessionId, owner: { callId }, name, stream: `/eve/v1/session/${sessionId}/stream` },
+    });
+    const deliveries: Array<[number, number, Record<string, unknown>, object]> = [
+      [0, 0, { type: "session.started", data: {} }, {}],
+      // The record can arrive before the `child.opened` that names its child.
+      [
+        5,
+        0,
+        recorded({ kind: "model", owner: { callId: "call_file" } }, 64),
+        unobserved("eve_file_child", "filechild"),
+      ],
+      [2, 0, opened("eve_file_child", "call_file", "filechild"), {}],
+      [2, 1, opened("eve_late_child", "call_late", "probe__fhelper"), {}],
+      [
+        6,
+        0,
+        { ...recorded({ kind: "delegated-late" }, 8), scope: { turnId: "t", taskId: "task_late" } },
+        unobserved("eve_late_child", "probe__fhelper"),
+      ],
+      // A hooked child records its own spend: the parent's record of it
+      // names no child and stays uncounted.
+      [7, 0, recorded({ kind: "model", owner: { callId: "call_dir" } }, 9000), {}],
+    ];
+    for (const [line, index, event, overrides] of deliveries) {
+      await store.ingestAgentEvent(v27(deploymentId, line, index, event, overrides));
+    }
+    const expected = {
+      status: "reported",
+      reportedSteps: 2,
+      missingSteps: 0,
+      inputTokens: 72,
+      costUsd: 1,
+    };
+    const usageOf = async () =>
+      (await store.listSessionsPage(projectId, { limit: 100 }).then((page) => page.items))[0]
+        ?.usage;
+    expect(await usageOf()).toMatchObject(expected);
+
+    // A replay under new delivery ids lands on the same rows.
+    for (const [line, index, event, overrides] of deliveries) {
+      await store.ingestAgentEvent(
+        v27(deploymentId, line, index, event, {
+          ...overrides,
+          telemetryEventId: `replay_${line}_${index}`,
+        }),
+      );
+    }
+    expect(await usageOf()).toMatchObject(expected);
+    const [session] = await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items);
+    const nodes = await store.listSessionNodes(session!.id);
+    const root = nodes.find((node) => node.eveSessionId === "eve_root")!;
+    const nodeOf = (eveSessionId: string) =>
+      nodes.find((node) => node.eveSessionId === eveSessionId)!;
+    expect(nodeOf("eve_file_child")).toMatchObject({
+      parentNodeId: root.id,
+      agentName: "filechild",
+      resolutionStatus: "unresolved",
+    });
+    expect(nodeOf("eve_late_child")).toMatchObject({ parentNodeId: root.id });
+    expect(
+      (await store.listModelUsageEvents(session!.id))
+        .map((row) => [row.eveSessionId, row.agentName, row.runKey, row.inputTokens])
+        .sort(),
+    ).toEqual([
+      ["eve_file_child", "filechild", "parent-record@line:5:0", 64],
+      ["eve_late_child", "probe__fhelper", "parent-record@line:6:0", 8],
+    ]);
+  });
+
+  test("never counts a parent's record on a session that is not its child", async () => {
+    const { store, projectId, deploymentId } = await createStore();
+    await store.ingestAgentEvent(
+      v27(deploymentId, 0, 0, { type: "session.started", data: {} }, { eveSessionId: "eve_other" }),
+    );
+    await store.ingestAgentEvent(v27(deploymentId, 0, 0, { type: "session.started", data: {} }));
+    await store.ingestAgentEvent(
+      v27(
+        deploymentId,
+        1,
+        0,
+        {
+          type: "usage.recorded",
+          scope: { turnId: "t" },
+          data: {
+            kind: "model",
+            owner: { callId: "call_1" },
+            usage: { inputTokens: 50, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          },
+        },
+        { unobservedChild: { eveSessionId: "eve_other", agentName: "filechild" } },
+      ),
+    );
+    for (const session of await store
+      .listSessionsPage(projectId, { limit: 100 })
+      .then((page) => page.items)) {
+      expect(session.usage).toMatchObject({ inputTokens: 0, reportedSteps: 0 });
+      expect(await store.listModelUsageEvents(session.id)).toEqual([]);
+    }
+  });
+
   test("classifies the v27 scheduler channel as a scheduled trigger", async () => {
     const { store, projectId, deploymentId } = await createStore();
     await store.ingestAgentEvent(
