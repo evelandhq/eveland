@@ -1,133 +1,91 @@
-import { asNonNegativeInteger, asRecord, asString } from "./values.js";
+import { asRecord, asString } from "./values.js";
 
 /**
- * A model call observed through the AI SDK telemetry registry. `modelId` is
- * the id the runtime resolved and actually invoked — Eve's event stream only
- * reports the compile-time manifest value (evelandhq/eveland#263), so this is
- * the sole source of the real per-call model. `responseModelId` is the id the
+ * The model a run's provider call actually ran. The stream's `model.started`
+ * names the model eve selected for the run (a reference such as
+ * `anthropic/claude-sonnet-5`); the provider that resolves that reference can
+ * run a different id, which eve reports only on its instrumentation events
+ * (`model.call.started.model.modelId`). `responseModelId` is the id the
  * provider echoed back for the response.
  */
 export type ObservedModelCall = {
   modelId: string;
   responseModelId?: string;
-  inputTokens?: number;
-  outputTokens?: number;
-  finishReason?: string;
 };
 
-export type ObservedStepUsage = {
-  inputTokens: number | undefined;
-  outputTokens: number | undefined;
-  finishReason: string | undefined;
-};
+export type ModelRun = { sessionId: string; runId: string };
 
 export type ModelCallCapture = {
-  install(): void;
-  take(step: ObservedStepUsage): ObservedModelCall | undefined;
-};
-
-type AiSdkTelemetryGlobal = {
-  AI_SDK_TELEMETRY_INTEGRATIONS?: Array<Record<string, unknown>>;
+  /** Records one `model.call.started` or `model.call.settled` instrumentation event. */
+  observe(event: unknown): void;
+  /** The model the run's latest provider call ran, if one was observed. */
+  take(run: ModelRun): ObservedModelCall | undefined;
 };
 
 /**
- * Concurrent turns can interleave a handful of calls between an `onStepEnd`
- * and the matching `usage.recorded` hook event; anything older than this is
- * an orphan (its run failed or its event was dropped) and gets evicted.
+ * Runs recorded before their `usage.recorded` arrives. A run's usage follows
+ * its provider call within the same step, so only the runs in flight across
+ * the process's concurrent sessions are live; older entries belong to runs
+ * whose usage was already taken or never came.
  */
-const maxBufferedCalls = 16;
+const defaultMaxRuns = 256;
 
 /**
- * Observes the Agent's own AI SDK model calls via the registry declared in
- * ai 7.x as `globalThis.AI_SDK_TELEMETRY_INTEGRATIONS`. The array is written
- * directly instead of through `registerTelemetry()` because this module runs
- * from the observability mount, where the Agent's `ai` package is not
- * resolvable; the assignment is what `registerTelemetry()` does. The AI SDK
- * awaits integration callbacks inside the model-call path, so a throw here
- * would fail the Agent's own call — every callback must swallow instead.
+ * Correlates eve's instrumentation `model.call.*` events with the session
+ * stream's `usage.recorded` by the run they share. eve gives every session
+ * its own run ids (`run_0`, `run_1`, ...), so the key is the session and the
+ * run. Instrumentation is root-only in eve and reports every session the
+ * process runs, subagents included, so one capture serves the root hook and
+ * every subagent hook in the process. `observe` runs on eve's instrumentation
+ * bus and must never throw.
  */
-export function createModelCallCapture(
-  target: AiSdkTelemetryGlobal = globalThis as AiSdkTelemetryGlobal,
-): ModelCallCapture {
-  const buffer: ObservedModelCall[] = [];
-  let installed = false;
+export function createModelCallCapture(options: { maxRuns?: number } = {}): ModelCallCapture {
+  const maxRuns = Math.max(1, options.maxRuns ?? defaultMaxRuns);
+  const runs = new Map<string, ObservedModelCall>();
 
-  function onStepEnd(event: unknown): void {
-    try {
-      const step = asRecord(event);
-      const modelId = asString(asRecord(step?.model)?.modelId);
-      if (!modelId) return;
-      const responseModelId = asString(asRecord(step?.response)?.modelId);
-      const usage = asRecord(step?.usage);
-      buffer.push({
-        modelId,
-        ...(responseModelId ? { responseModelId } : {}),
-        inputTokens: asNonNegativeInteger(usage?.inputTokens),
-        outputTokens: asNonNegativeInteger(usage?.outputTokens),
-        finishReason: asString(step?.finishReason),
-      });
-      if (buffer.length > maxBufferedCalls) buffer.splice(0, buffer.length - maxBufferedCalls);
-    } catch {
-      // Never propagate into the Agent's model call.
+  function remember(key: string, observed: ObservedModelCall): void {
+    runs.delete(key);
+    runs.set(key, observed);
+    while (runs.size > maxRuns) {
+      const oldest = runs.keys().next().value;
+      if (oldest === undefined) break;
+      runs.delete(oldest);
     }
   }
 
   return {
-    install(): void {
-      if (installed) return;
-      installed = true;
+    observe(event: unknown): void {
       try {
-        (target.AI_SDK_TELEMETRY_INTEGRATIONS ??= []).push({ onStepEnd });
+        const record = asRecord(event);
+        const scope = asRecord(record?.scope);
+        const sessionId = asString(scope?.sessionId);
+        const runId = asString(scope?.runId);
+        if (!sessionId || !runId) return;
+        const key = runKey({ sessionId, runId });
+        if (record?.type === "model.call.started") {
+          const modelId = asString(asRecord(record.model)?.modelId);
+          if (modelId) remember(key, { modelId });
+          return;
+        }
+        if (record?.type === "model.call.settled" && record.outcome === "completed") {
+          const responseModelId = asString(record.responseModelId);
+          const started = runs.get(key);
+          if (started && responseModelId) remember(key, { ...started, responseModelId });
+        }
       } catch {
-        // A frozen or exotic globalThis leaves the observer on manifest ids.
+        // Never propagate into eve's instrumentation dispatch.
       }
     },
-    take(step: ObservedStepUsage): ObservedModelCall | undefined {
-      for (let index = buffer.length - 1; index >= 0; index -= 1) {
-        if (matchesStep(buffer[index]!, step)) return buffer.splice(index, 1)[0];
-      }
-      // Compaction calls also pass through `onStepEnd` but never match a
-      // step's exact usage, so a miss on a usage-bearing step returns nothing
-      // rather than risk attributing the compaction model. Only a step that
-      // reported no usage at all falls back to the newest entry — in the
-      // dominant single-model process, a correct guess.
-      if (step.inputTokens !== undefined || step.outputTokens !== undefined) return undefined;
-      return buffer.pop();
+    take(run: ModelRun): ObservedModelCall | undefined {
+      const observed = runs.get(runKey(run));
+      return observed ? { ...observed } : undefined;
     },
   };
 }
 
-/**
- * Eve copies the AI SDK usage numbers into a run's `usage.recorded`
- * unchanged, so equality on both token counts identifies the call.
- * Token counts alone can collide across concurrent turns; `finishReason`
- * breaks the tie when both sides carry it.
- */
-function matchesStep(entry: ObservedModelCall, step: ObservedStepUsage): boolean {
-  if (step.inputTokens === undefined || step.outputTokens === undefined) return false;
-  if (entry.inputTokens !== step.inputTokens || entry.outputTokens !== step.outputTokens) {
-    return false;
-  }
-  if (entry.finishReason === undefined || step.finishReason === undefined) return true;
-  return normalizeFinishReason(entry.finishReason) === step.finishReason;
+function runKey(run: ModelRun): string {
+  return `${run.sessionId}\0${run.runId}`;
 }
 
-/**
- * Mirrors Eve's `normalizeAssistantStepFinishReason`: the step event carries
- * the normalized value, so the AI SDK side must be normalized the same way
- * before comparing (e.g. the SDK's "unknown" arrives as "other").
- */
-function normalizeFinishReason(value: string): string {
-  switch (value) {
-    case "content-filter":
-    case "error":
-    case "length":
-    case "stop":
-    case "tool-calls":
-      return value;
-    default:
-      return "other";
-  }
-}
-
+/** The process-wide capture the observer runtime's hook and instrumentation share. */
 export const modelCallCapture: ModelCallCapture = createModelCallCapture();

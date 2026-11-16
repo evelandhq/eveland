@@ -153,7 +153,7 @@ in-repo Markdown is readable standalone if the site is unavailable.
 | `apps/docs`                       | Bilingual public website and documentation for `eveland.ai` (Next.js + Fumadocs), rendering the repo-root `docs/` tree                |
 | `packages/core`                   | Dependency-free contracts plus explicit Eve protocol, ID, source, schedule, archive, secret, and runtime-command subpaths             |
 | `packages/db`                     | Drizzle schema and migrations, and the one domain-oriented SQL Store shared by production Postgres and PGlite tests                   |
-| `packages/agent-observer`         | Release-time Eve hook injection with private OpenTelemetry providers that never mutate a user's global providers                      |
+| `packages/agent-observer`         | Release-time Eve hook and instrumentation injection with private OpenTelemetry providers that never mutate a user's global providers  |
 | `packages/agent-auth`             | Playground authentication registry, OIDC acquisition (Authorization Code + PKCE), and credential materialization                      |
 | `packages/identity-broker`        | Agent-user identity finalization, Identity Sessions, project-audience Caller Tokens, signing-key rotation, and public JWKS            |
 | `packages/agent-scheduler`        | Release-time injection of the private Scheduler Channel, including Extension-contributed schedules                                    |

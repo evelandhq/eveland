@@ -15,7 +15,7 @@ Eveland guarantees that **conversation and turn tracking covers every interactio
 
 - **Limitations of gateway-only capture**: Inspecting traffic exclusively at the edge proxy misses direct port invocations, background cron schedules, webhook channels, and internal subagent-to-subagent delegations.
 - **Why event-stream scraping failed**: If an agent implements custom authentication, external pull scrapers require storing end-user credentials. Furthermore, internal cron and subagent traffic carry no external HTTP credentials to scrape with.
-- **Release-time injection**: Eveland injects an observer hook during compilation, pushing structured events directly from within the agent process via standard OTLP. The injection is self-contained and never alters user source code.
+- **Release-time injection**: Eveland injects an observer hook and instrumentation file during compilation, pushing structured events directly from within the agent process via standard OTLP. The injection is self-contained and never alters user source code.
 
 ---
 

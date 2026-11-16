@@ -27,7 +27,7 @@ type HookSession = NonNullable<Parameters<PrivateAgentTelemetryRuntime["capture"
 
 function harness(
   capture: Partial<RuntimeAgentPolicy["capture"]> = {},
-  modelCapture: ModelCallCapture = createModelCallCapture({}),
+  modelCapture: ModelCallCapture = createModelCallCapture(),
   session: HookSession = { id: "eve_v27" },
 ) {
   const traces = new InMemorySpanExporter();
@@ -411,25 +411,35 @@ describe("private Agent telemetry runtime", () => {
   });
 
   test("carries the observed per-call model into the v27 usage log, not only the span", async () => {
-    // The configured model and the model the provider actually ran differ, so
-    // the Built-in projection must learn the real one from the usage log.
-    const taken: unknown[] = [];
-    const { runtime, traces, logs, commit } = harness(
-      {},
-      {
-        install() {},
-        take(step) {
-          taken.push(step);
-          return { modelId: "actual/model", responseModelId: "actual/model-2026-11-01" };
-        },
-      },
-    );
+    // The stream's `model.started` names the model eve selected; the provider
+    // call eve's instrumentation reports names the model that actually ran,
+    // and the Built-in projection must learn that one from the usage log.
+    const modelCapture = createModelCallCapture();
+    const { runtime, traces, logs, commit } = harness({}, modelCapture);
     const scope = { turnId: "t", runId: "r" };
     await commit({ type: "turn.started", scope: { turnId: "t" }, data: { turnId: "t" } });
     await commit({
       type: "model.started",
       scope,
-      data: { runId: "r", modelId: "manifest/model" },
+      data: { runId: "r", modelId: "selected/model" },
+    });
+    const instrumentationScope = { sessionId: "eve_v27", rootSessionId: "eve_v27", ...scope };
+    modelCapture.observe({
+      type: "model.call.started",
+      model: { modelId: "actual/model", provider: "gateway" },
+      scope: instrumentationScope,
+    });
+    modelCapture.observe({
+      type: "model.call.settled",
+      outcome: "completed",
+      responseModelId: "actual/model-2026-11-01",
+      scope: instrumentationScope,
+    });
+    // Another session's run_0-style id must not leak into this session.
+    modelCapture.observe({
+      type: "model.call.started",
+      model: { modelId: "child/model", provider: "gateway" },
+      scope: { ...instrumentationScope, sessionId: "eve_child" },
     });
     await commit({
       type: "model.settled",
@@ -443,7 +453,6 @@ describe("private Agent telemetry runtime", () => {
     });
     await runtime.forceFlush();
 
-    expect(taken).toHaveLength(1);
     expect(traces.getFinishedSpans().map((span) => span.name)).toContain("chat actual/model");
     const usage = logs
       .getFinishedLogRecords()

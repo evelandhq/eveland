@@ -43,7 +43,7 @@ import {
   taskKey,
   type AgentTelemetryRuntimeState,
 } from "./spans.js";
-import { asNonNegativeInteger, asRecord, asString, serializeAttribute } from "./values.js";
+import { asRecord, asString, serializeAttribute } from "./values.js";
 
 /**
  * Maps eve's session protocol onto spans: facts are
@@ -68,8 +68,8 @@ export function mapAgentTelemetryLifecycle(input: {
   modelCapture: ModelCallCapture;
   /**
    * Hands the caller the per-call model taken for a `usage.recorded`, so the
-   * usage log carries it too. `take` consumes the capture, so it happens here
-   * once, where the owning run and its finish reason are known.
+   * usage log carries it too. It is looked up here, where the owning run is
+   * known.
    */
   onObservedModel?: (observed: ObservedModelCall) => void;
 }): Span | undefined {
@@ -200,7 +200,7 @@ export function mapAgentTelemetryLifecycle(input: {
               : (asString(asRecord(data.error)?.code) ?? outcome ?? "unknown"),
         });
       }
-      state.settledRuns.set(runKey, { endedAt: now(), finishReason });
+      state.settledRuns.set(runKey, { endedAt: now() });
       return runSpan;
     }
     case "usage.recorded": {
@@ -223,13 +223,9 @@ export function mapAgentTelemetryLifecycle(input: {
         endSettledRuns(state, sessionId);
         return turnSpan;
       }
-      const usage = asRecord(data.usage);
-      const settled = state.settledRuns.get(ownerRunKey);
-      const observedModel = input.modelCapture.take({
-        inputTokens: asNonNegativeInteger(usage?.inputTokens),
-        outputTokens: asNonNegativeInteger(usage?.outputTokens),
-        finishReason: settled?.finishReason,
-      });
+      const observedModel = ownerRunId
+        ? input.modelCapture.take({ sessionId, runId: ownerRunId })
+        : undefined;
       if (observedModel) {
         input.onObservedModel?.(observedModel);
         state.runModels.set(ownerRunKey, observedModel.modelId);

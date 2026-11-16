@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import net from "node:net";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -74,6 +74,8 @@ test("builds Extension schedules and observed Extension subagents with the real 
   // The Channel imports the Extension's schedule as published; the package is
   // not rewritten.
   await expect(readFile(builtSchedule, "utf8")).resolves.toBe(authoredSchedule);
+  // The hook shim loads the observer runtime from the platform mount; the
+  // package gets no runtime copy.
   await expect(
     readFile(
       path.join(
@@ -82,7 +84,10 @@ test("builds Extension schedules and observed Extension subagents with the real 
       ),
       "utf8",
     ),
-  ).resolves.toContain("eveland-observer-runtime.mjs");
+  ).resolves.toContain("file:///run/eveland/observability/runtime.mjs");
+  await expect(
+    access(path.join(extensionPackageRoot, "dist/extension/lib/eveland-observer-runtime.mjs")),
+  ).rejects.toThrow();
 
   await execFileAsync(process.execPath, [eveBin, "build", "--skip-sandbox-prewarm"], {
     cwd: releaseDir,

@@ -29,12 +29,12 @@ Instrumentation in user source code belongs to the user:
 
 Eveland's own telemetry is split into four stable domains:
 
-| Domain     | Producer                                   | Content                                                   |
-| ---------- | ------------------------------------------ | --------------------------------------------------------- |
-| `agent`    | Private providers of the injected Eve hook | Session, Turn, Model, Tool, Subagent, provider usage      |
-| `platform` | API, Agent Gateway, Worker, Collector      | HTTP, DB, job, component, and process signals             |
-| `runtime`  | Worker private logger                      | Build, deploy, and runtime lifecycle logs                 |
-| `capacity` | Worker private meter                       | CPU, memory, load, filesystem, inode, workload, heartbeat |
+| Domain     | Producer                                                       | Content                                                   |
+| ---------- | -------------------------------------------------------------- | --------------------------------------------------------- |
+| `agent`    | Private providers of the injected Eve hook and instrumentation | Session, Turn, Model, Tool, Subagent, provider usage      |
+| `platform` | API, Agent Gateway, Worker, Collector                          | HTTP, DB, job, component, and process signals             |
+| `runtime`  | Worker private logger                                          | Build, deploy, and runtime lifecycle logs                 |
+| `capacity` | Worker private meter                                           | CPU, memory, load, filesystem, inode, workload, heartbeat |
 
 ## Data flow
 
@@ -44,7 +44,7 @@ flowchart LR
       USER["User instrumentation"]
       USERSDK["User global OTel SDK"]
       USERBACKEND["User backend"]
-      HOOK["Eveland Eve hook"]
+      HOOK["Eveland Eve hook + instrumentation"]
       PRIVATE["Private Tracer / Logger / Meter Provider"]
       POLICY["Read-only runtime policy"]
       USER --> USERSDK --> USERBACKEND
@@ -109,21 +109,55 @@ User global providers
 Eveland private providers
 ```
 
-`packages/agent-observer` injects the `@eveland/eve-runtime` instrumentation scope in
-Eve's platform-reserved hook slot. The private providers obtain tracer, logger, and
-meter directly from their instances, never call global registration, and never flush or
-shut down user providers.
+`packages/agent-observer` injects the `@eveland/eve-runtime` instrumentation scope
+through two public Eve slots in the prepared Release:
 
-After dependency installation, the Extension integration also reads Eve v13's
-`resolvedExtensions` and injects the same observer into every valid directory-form
-Extension Subagent (including nested descendants and consumer overrides). At deploy
-time the mounted `/run/eveland/observability/runtime.mjs` takes precedence; the
-fallback runtime baked into the Extension is evaluated only when the platform mount is
-absent, so two copies of model capture are never installed at once. Eve's file-form
-Subagents have no independent hooks slot; whether local or Extension-sourced, they
-remain recorded as an explicit coverage gap — Eveland does not patch Eve compiled
-internals — and the complete Extension gaps `{kind,path,reason}` are written to
+- **Hook** (`hooks/eveland-observer.js`, `defineHook` with a `*` handler) in the root
+  Agent and in every directory-form Subagent. It receives each session's stream facts
+  and exports them; these facts are what the Built-in Session projection reads.
+- **Instrumentation** (`agent/instrumentation/eveland-observer.js`,
+  `defineInstrumentation`) at the root only. Eve delivers its lifecycle events for every
+  session the process runs, Subagents included. The observer uses `model.call.started`
+  and `model.call.settled` to label each model run's `usage.recorded` with the model the
+  provider call actually ran (`eveland.gen_ai.observed.model`, and
+  `eveland.gen_ai.observed.response_model` when the provider echoes one), keyed by
+  session and run id. The stream's `model.started` names the model Eve selected, which
+  differs whenever a provider resolves that reference to another id. The file's
+  `tracePolicy` requests no content, so it never widens what the Agent's own AI SDK
+  telemetry integrations record. The observer registers nothing in AI SDK
+  process globals.
+
+Every shim imports the mounted `/run/eveland/observability/runtime.mjs` at run time, so
+the hook and instrumentation shims share one runtime per process. The mount exists only
+in a Deployment, never during `eve build`. The private providers obtain tracer, logger,
+and meter directly from their instances, never call global registration, and never flush
+or shut down user providers.
+
+After dependency installation, the Extension integration also reads the discovery
+manifest's `resolvedExtensions` and writes the hook shim into every valid directory-form
+Extension Subagent (including nested descendants and consumer overrides) inside the
+installed package in the Release's `node_modules`. That shim is the only file written
+into the package: it carries no runtime copy, and without the platform mount (and
+therefore without a policy) it is inert. Eve's file-form Subagents have no independent
+hooks slot; whether local or Extension-sourced, their sessions remain an explicit
+coverage gap — Eveland does not patch Eve compiled internals — and the complete
+Extension gaps `{kind,path,reason}` are written to
 `.eveland/observability/extension-coverage-gaps.json`.
+
+Residual Eve-coupling risks of this design:
+
+- Session transcripts and usage come from hooks, and Eve runs a hook only for the
+  Agent whose slot holds it. Extension Subagent coverage therefore depends on writing
+  into the installed package, located through the discovery manifest's undocumented
+  `resolvedExtensions`. Eve 1.0.0 does not verify Extension package contents (the
+  package's `_manifest.json` records only the building Eve version, the distribution
+  contract, and external dependencies), so the write takes effect. An Eve version that
+  verified package integrity or changed that manifest shape would make Extension
+  Subagent sessions lose their transcripts and usage, or fail the build.
+- File-form Subagent sessions reach the root instrumentation, but instrumentation events
+  carry no stream facts (no stream positions, no `content.completed`, no
+  `usage.recorded` record kinds), which the Built-in projection requires; those
+  sessions stay a coverage gap.
 
 The private providers produce traces, logs, and metrics separately. The three signals
 share the Resource and correlation identifiers but are managed by three independent
@@ -411,7 +445,8 @@ also builds no local view of the Collector's delivery volume or queue pressure.
   counts toward the Session's usage beside the run's settled record. A failed or
   cancelled run is never counted as missing; a record Eve writes for one counts.
 - An unhandled hook error fails the running turn; the injected hook catches every
-  telemetry failure, so this changes nothing for Eveland.
+  telemetry failure, so this changes nothing for Eveland. Eve isolates instrumentation
+  handler failures per file, and the injected instrumentation handlers never throw.
 
 ## Troubleshooting
 
@@ -444,18 +479,18 @@ failure.
 
 ## Implementation map
 
-| Location                                       | Responsibility                                                                       |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `packages/agent-observer`                      | Eve hook injection, private providers, event/GenAI mapping, dynamic policy           |
-| `packages/platform-observability`              | API, Agent Gateway, Worker OTel SDKs plus capacity/runtime providers                 |
-| `packages/session-collector`                   | Standard OTLP JSON/protobuf decoding and Built-in projection                         |
-| `packages/core/src/observability`              | Policy, destination, runtime, and signal contracts                                   |
-| `packages/db`                                  | Policy, destination health, batch receipt, Session/Usage/Instance Health persistence |
-| `apps/api/src/app-otel-routes.ts`              | Service-authenticated Built-in OTLP ingest                                           |
-| `apps/api/src/observability`                   | Policy service and secure egress                                                     |
-| `apps/worker/src/jobs/collector-observability` | Collector configuration generation, validation, application, and health coordination |
-| `apps/web/src/app/settings/observability`      | External destinations and Agent capture settings                                     |
-| `infra/otel/collector.yaml`                    | Default managed Collector configuration                                              |
+| Location                                       | Responsibility                                                                                 |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `packages/agent-observer`                      | Eve hook and instrumentation injection, private providers, event/GenAI mapping, dynamic policy |
+| `packages/platform-observability`              | API, Agent Gateway, Worker OTel SDKs plus capacity/runtime providers                           |
+| `packages/session-collector`                   | Standard OTLP JSON/protobuf decoding and Built-in projection                                   |
+| `packages/core/src/observability`              | Policy, destination, runtime, and signal contracts                                             |
+| `packages/db`                                  | Policy, destination health, batch receipt, Session/Usage/Instance Health persistence           |
+| `apps/api/src/app-otel-routes.ts`              | Service-authenticated Built-in OTLP ingest                                                     |
+| `apps/api/src/observability`                   | Policy service and secure egress                                                               |
+| `apps/worker/src/jobs/collector-observability` | Collector configuration generation, validation, application, and health coordination           |
+| `apps/web/src/app/settings/observability`      | External destinations and Agent capture settings                                               |
+| `infra/otel/collector.yaml`                    | Default managed Collector configuration                                                        |
 
 ## Deeper reference
 

@@ -202,8 +202,8 @@ not provide.
 
 Instrumentation in Agent source is an independent boundary: Eveland does not modify
 user monitoring code, register or replace global providers, or intercept user
-exporters; the platform only injects the Eveland hook, with its private providers,
-into Eve's reserved hook slot. Telemetry failures produce only rate-limited
+exporters; the platform only injects the Eveland hook and instrumentation file, with
+their private providers, into Eve's reserved slots. Telemetry failures produce only rate-limited
 degradation warnings and must never fail an Eve event hook or an Agent turn; a
 missing Collector must not block Agent startup or cold activation; observability
 settings changes restart only the Collector, never Agent Deployments. External
@@ -519,7 +519,7 @@ decision change — discuss first, then act:
    logs, telemetry, argv, builds, or any persisted artifact; diagnostics show only
    the configured state.
 6. **Platform injection, source-oblivious.** The sandbox backend, workflow world,
-   observer hook, and Model Gateway default provider (inert until a gateway is
+   observer hook and instrumentation, and Model Gateway default provider (inert until a gateway is
    configured) are injected by the platform into the disposable Release copy;
    imported source, manifests, and lockfiles are never modified, and authored
    lifecycle and configuration — including a model provider the Agent installs

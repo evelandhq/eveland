@@ -24,12 +24,12 @@ Built-in 读模型，不定义私有遥测协议。
 
 Eveland 自有遥测分为四个稳定 domain：
 
-| Domain     | Producer                              | 内容                                                      |
-| ---------- | ------------------------------------- | --------------------------------------------------------- |
-| `agent`    | 注入 Eve hook 的私有 provider         | Session、Turn、Model、Tool、Subagent、provider usage      |
-| `platform` | API、Agent Gateway、Worker、Collector | HTTP、DB、job、组件和进程信号                             |
-| `runtime`  | Worker 私有 logger                    | build、deploy、runtime lifecycle 日志                     |
-| `capacity` | Worker 私有 meter                     | CPU、memory、load、filesystem、inode、workload、heartbeat |
+| Domain     | Producer                                           | 内容                                                      |
+| ---------- | -------------------------------------------------- | --------------------------------------------------------- |
+| `agent`    | 注入的 Eve hook 与 instrumentation 的私有 provider | Session、Turn、Model、Tool、Subagent、provider usage      |
+| `platform` | API、Agent Gateway、Worker、Collector              | HTTP、DB、job、组件和进程信号                             |
+| `runtime`  | Worker 私有 logger                                 | build、deploy、runtime lifecycle 日志                     |
+| `capacity` | Worker 私有 meter                                  | CPU、memory、load、filesystem、inode、workload、heartbeat |
 
 ## 最终数据流
 
@@ -39,7 +39,7 @@ flowchart LR
       USER["用户 instrumentation"]
       USERSDK["用户 global OTel SDK"]
       USERBACKEND["用户后端"]
-      HOOK["Eveland Eve hook"]
+      HOOK["Eveland Eve hook + instrumentation"]
       PRIVATE["私有 Tracer / Logger / Meter Provider"]
       POLICY["只读 runtime policy"]
       USER --> USERSDK --> USERBACKEND
@@ -102,18 +102,45 @@ Listener 与前门访问。
 Eveland private providers
 ```
 
-`packages/agent-observer` 在 Eve 的平台保留 hook slot 注入
-`@eveland/eve-runtime` instrumentation scope。私有 provider 直接通过实例获取
-tracer、logger 和 meter，不调用 global registration，也不对用户 provider 执行
-flush 或 shutdown。
+`packages/agent-observer` 通过准备好的 Release 中两个公开的 Eve slot 注入
+`@eveland/eve-runtime` instrumentation scope：
 
-依赖安装后的 Extension integration 还会读取 Eve v13 的 `resolvedExtensions`，对有效的
-directory-form Extension Subagent（含嵌套后代与 consumer override）注入同一 observer。
-部署时优先使用挂载的 `/run/eveland/observability/runtime.mjs`；烘焙进 Extension 的
-fallback runtime 只在平台 mount 缺席时才求值，避免同时安装两份 model capture。Eve 的
-file-form Subagent 没有独立 hooks slot，无论本地还是 Extension 来源都记录明确
-coverage gap，不 patch Eve compiled internals；Extension 缺口的完整
+- **Hook**（`hooks/eveland-observer.js`，带 `*` 处理器的 `defineHook`），注入根 Agent
+  和每个 directory-form Subagent。它接收每个会话的 stream fact 并导出；Built-in 会话
+  投影读取的正是这些 fact。
+- **Instrumentation**（`agent/instrumentation/eveland-observer.js`，
+  `defineInstrumentation`），只注入根目录。Eve 会把进程内每个会话（包括 Subagent）的
+  生命周期事件交给它。observer 用 `model.call.started` 与 `model.call.settled`，按会话与
+  run id 给每个 Model Run 的 `usage.recorded` 标上 provider 调用实际运行的模型
+  （`eveland.gen_ai.observed.model`，provider 回显时还有
+  `eveland.gen_ai.observed.response_model`）。stream 中的 `model.started` 记录的是 Eve
+  选定的模型，provider 把该引用解析成别的 id 时两者不同。该文件的 `tracePolicy` 不请求
+  任何内容，因此不会扩大 Agent 自己的 AI SDK telemetry integration 记录的内容。observer
+  不在 AI SDK 的进程级全局变量中注册任何东西。
+
+每个 shim 都在运行时导入挂载的 `/run/eveland/observability/runtime.mjs`，所以 hook 与
+instrumentation shim 在每个进程里共享同一个 runtime。该挂载只存在于 Deployment 中，
+`eve build` 期间不存在。私有 provider 直接通过实例获取 tracer、logger 和 meter，不调用
+global registration，也不对用户 provider 执行 flush 或 shutdown。
+
+依赖安装后的 Extension integration 还会读取 discovery manifest 的
+`resolvedExtensions`，把 hook shim 写进 Release `node_modules` 中已安装包内每个有效的
+directory-form Extension Subagent（含嵌套后代与 consumer override）。这个 shim 是写进
+该包的唯一文件：它不携带 runtime 副本，没有平台挂载（因而也没有 policy）时不做任何事。
+Eve 的 file-form Subagent 没有独立 hooks slot，无论本地还是 Extension 来源，其会话都记录
+为明确的 coverage gap，不 patch Eve compiled internals；Extension 缺口的完整
 `{kind,path,reason}` 写入 `.eveland/observability/extension-coverage-gaps.json`。
+
+这一设计残留的 Eve 耦合风险：
+
+- 会话 transcript 与用量来自 hook，而 Eve 只为 slot 中放着该 hook 的 Agent 运行它。
+  因此 Extension Subagent 的覆盖依赖写入已安装的包，并经由 discovery manifest 未文档化的
+  `resolvedExtensions` 定位。Eve 1.0.0 不校验 Extension 包内容（包里的 `_manifest.json`
+  只记录构建它的 Eve 版本、分发契约和外部依赖），所以写入生效。若某个 Eve 版本校验包完整性
+  或改变该 manifest 形状，Extension Subagent 会话会丢失 transcript 与用量，或构建失败。
+- file-form Subagent 的会话会到达根 instrumentation，但 instrumentation 事件不携带
+  stream fact（没有 stream 位置、没有 `content.completed`、没有 `usage.recorded` 的记录
+  类别），而 Built-in 投影需要这些；这些会话仍是 coverage gap。
 
 私有 provider 分别产生 traces、logs 和 metrics。三个 signal 共享 Resource 和
 correlation identifiers，但由三个独立 provider 管理。
@@ -363,7 +390,8 @@ eve_session_id)` 与 SessionNode 的同名对一样是唯一索引，两条存�
   与该 Run 结算时的记录一起计入 Session 用量。失败或被取消的 Run 从不计为缺失；Eve 为它写下的记录
   会计入。
 - 未处理的 Hook 错误会让正在运行的 Turn 失败；注入的 Hook 会捕获每个遥测失败，因此对 Eveland
-  没有影响。
+  没有影响。Eve 按文件隔离 instrumentation 处理器的失败，注入的 instrumentation 处理器也从不
+  抛错。
 
 ## 故障排查
 
@@ -393,7 +421,7 @@ Worker 每五分钟通过同一条 API egress proxy 路径，用不含业务数�
 
 | 位置                                           | 职责                                                                                 |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `packages/agent-observer`                      | Eve hook 注入、私有 providers、event/GenAI 映射、动态 policy                         |
+| `packages/agent-observer`                      | Eve hook 与 instrumentation 注入、私有 providers、event/GenAI 映射、动态 policy      |
 | `packages/platform-observability`              | API、Agent Gateway、Worker OTel SDK 与 capacity/runtime providers                    |
 | `packages/session-collector`                   | 标准 OTLP JSON/protobuf 解码和 Built-in 投影                                         |
 | `packages/core/src/observability`              | policy、destination、runtime 和 signal contracts                                     |

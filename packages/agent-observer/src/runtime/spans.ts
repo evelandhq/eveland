@@ -31,7 +31,7 @@ export type AgentSpanState = {
    * Runs whose `model.settled` arrived, held open for the `usage.recorded`
    * that follows it in the same commit; keyed by run span key.
    */
-  settledRuns: Map<string, { endedAt: number; finishReason: string | undefined }>;
+  settledRuns: Map<string, { endedAt: number }>;
 };
 
 export type AgentTelemetryRuntimeState = AgentSpanState & TranscriptState;

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vitest";
@@ -34,13 +34,14 @@ describe("injectObserverHooks", () => {
     expect(result.injectedFiles).toEqual([
       "agent/hooks/eveland-observer.js",
       "agent/subagents/directory-child/hooks/eveland-observer.js",
+      "agent/instrumentation/eveland-observer.js",
     ]);
     expect(result.runtimeFile).toBe(".eveland/observability/runtime.mjs");
     expect(result.coverageGaps.map((gap) => path.basename(gap.path))).toEqual([
       "file-child.ts",
       "remote-child.ts",
     ]);
-    expect(result.observerContract).toBe(3);
+    expect(result.observerContract).toBe(4);
     const rootShim = await readFile(path.join(releaseDir, result.injectedFiles[0]!), "utf8");
     expect(rootShim).toContain("file:///run/eveland/observability/runtime.mjs");
     expect(rootShim).toContain("../../.eveland/observability/runtime.mjs");
@@ -48,6 +49,54 @@ describe("injectObserverHooks", () => {
     await expect(
       readFile(path.join(releaseDir, result.injectedFiles[1]!), "utf8"),
     ).resolves.toContain("../../../../.eveland/observability/runtime.mjs");
+    // Instrumentation is root-only in eve and sees every session the process
+    // runs, so one file covers the root and all of its subagents.
+    const instrumentationShim = await readFile(
+      path.join(releaseDir, result.injectedFiles[2]!),
+      "utf8",
+    );
+    expect(instrumentationShim).toContain(
+      'import { defineInstrumentation } from "eve/instrumentation"',
+    );
+    expect(instrumentationShim).toContain("file:///run/eveland/observability/runtime.mjs");
+    expect(instrumentationShim).toContain("../../.eveland/observability/runtime.mjs");
+  });
+
+  test("fails instead of overwriting an authored reserved observer instrumentation file", async () => {
+    const releaseDir = await createRelease();
+    await write("agent/instrumentation/eveland-observer.ts", "authored", releaseDir);
+
+    await expect(injectObserverHooks({ releaseDir })).rejects.toThrow(
+      /Reserved instrumentation file agent\/instrumentation\/eveland-observer.ts already exists/,
+    );
+    await expect(
+      readFile(path.join(releaseDir, "agent/instrumentation/eveland-observer.ts"), "utf8"),
+    ).resolves.toBe("authored");
+  });
+
+  test("instrumentation shim observes provider calls without asking eve for content", async () => {
+    const releaseDir = await createRelease();
+    const result = await injectObserverHooks({ releaseDir });
+    const instrumentationPath = path.join(releaseDir, "agent/instrumentation/eveland-observer.js");
+
+    // A file's tracePolicy that admits content would widen what every AI SDK
+    // telemetry integration in the process records, so it must admit none.
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      `const shim = await import(${JSON.stringify(instrumentationPath)});
+       const definition = shim.default;
+       console.log(JSON.stringify({
+         events: Object.keys(definition.events ?? {}).sort(),
+         policy: definition.tracePolicy?.({}),
+       }));`,
+    ]);
+
+    expect(result.injectedFiles).toContain("agent/instrumentation/eveland-observer.js");
+    expect(JSON.parse(stdout.trim())).toEqual({
+      events: ["model.call.settled", "model.call.started"],
+      policy: { emit: true, recordInputs: false, recordOutputs: false },
+    });
   });
 
   test("fails instead of overwriting an authored reserved observer hook", async () => {
@@ -96,6 +145,9 @@ describe("injectObserverHooks", () => {
     expect(runtime).not.toContain('from "eve/hooks"');
     expect(runtime).not.toContain("EVELAND_TELEMETRY_ENABLED");
     expect(runtime).not.toContain('from "@evelandhq/');
+    // Model ids come from eve's instrumentation events, not the AI SDK's
+    // process-global telemetry registry.
+    expect(runtime).not.toContain("AI_SDK_TELEMETRY_INTEGRATIONS");
   });
 
   test("shim falls back to the baked runtime when no platform runtime is mounted", async () => {
@@ -198,59 +250,56 @@ describe("injectExtensionSubagentHooks", () => {
       ],
     };
 
+    const packageFilesBefore = await listFiles(path.join(releaseDir, "node_modules"));
+
     const result = await injectExtensionSubagentHooks({ releaseDir, manifest });
 
     expect(result.injectedFiles).toEqual([
       "node_modules/@acme/crm/dist/extension/subagents/reviewer/hooks/eveland-observer.js",
       "node_modules/@acme/crm/dist/extension/subagents/reviewer/subagents/editor/hooks/eveland-observer.js",
     ]);
-    await expect(
-      readFile(path.join(reviewerRoot, "hooks/eveland-observer.js"), "utf8"),
-    ).resolves.toContain("eveland-observer-runtime.mjs");
-    await expect(
-      readFile(path.join(extensionRoot, "lib/eveland-observer-runtime.mjs"), "utf8"),
-    ).resolves.toContain("loadFallbackRuntime");
+    // The hook shims are the only files written into the installed package:
+    // the shim loads the runtime from the platform mount and carries no copy.
+    expect(await listFiles(path.join(releaseDir, "node_modules"))).toEqual(
+      [
+        ...packageFilesBefore,
+        ...result.injectedFiles.map((file) => file.slice("node_modules/".length)),
+      ].sort(),
+    );
+    const shim = await readFile(path.join(reviewerRoot, "hooks/eveland-observer.js"), "utf8");
+    expect(shim).toContain("file:///run/eveland/observability/runtime.mjs");
+    expect(shim).not.toContain(".eveland/observability/runtime.mjs");
 
+    // Outside an Eveland deployment the mount is absent and the hook is inert.
     const { stdout } = await execFileAsync(process.execPath, [
       "--input-type=module",
       "-e",
-      `const shim = await import(${JSON.stringify(path.join(reviewerRoot, "hooks/eveland-observer.js"))}); console.log(typeof shim.default?.events?.["*"]);`,
+      `const shim = await import(${JSON.stringify(path.join(reviewerRoot, "hooks/eveland-observer.js"))}); console.log(typeof shim.default?.events?.["*"]); await shim.default.events["*"]({ type: "turn.started" }, {});`,
     ]);
     expect(stdout.trim()).toBe("function");
   });
 
-  test("does not evaluate the baked fallback when the mounted runtime is healthy", async () => {
+  test("an Extension hook shim runs the mounted platform runtime", async () => {
     const releaseDir = await createRelease();
     const observerPath = path.join(releaseDir, "agent/hooks/extension-observer.js");
-    const fallbackLoaderPath = path.join(releaseDir, "agent/lib/fallback-loader.mjs");
     const platformRuntimePath = path.join(releaseDir, "mounted-runtime.mjs");
     await write(
-      "agent/lib/fallback-loader.mjs",
-      'export async function loadFallbackRuntime() { throw new Error("fallback evaluated"); }\n',
-      releaseDir,
-    );
-    await write(
       "mounted-runtime.mjs",
-      'export default { events: { "*": () => undefined } };\n',
+      'export default { events: { "*": function mounted() {} } };\n',
       releaseDir,
     );
     await write(
       "agent/hooks/extension-observer.js",
-      createObserverShim(
-        observerPath,
-        fallbackLoaderPath,
-        true,
-        new URL(`file://${platformRuntimePath}`).href,
-      ),
+      createObserverShim(observerPath, undefined, new URL(`file://${platformRuntimePath}`).href),
       releaseDir,
     );
 
     const { stdout } = await execFileAsync(process.execPath, [
       "--input-type=module",
       "-e",
-      `const shim = await import(${JSON.stringify(observerPath)}); console.log(typeof shim.default?.events?.["*"]);`,
+      `const shim = await import(${JSON.stringify(observerPath)}); console.log(shim.default?.events?.["*"]?.name);`,
     ]);
-    expect(stdout.trim()).toBe("function");
+    expect(stdout.trim()).toBe("mounted");
   });
 
   test("reports file-form coverage and rejects Extension subagent paths outside the Release", async () => {
@@ -354,6 +403,16 @@ async function createRelease(): Promise<string> {
   temporaryDirectories.push(releaseDir);
   await write("agent/instructions.md", "fixture", releaseDir);
   return releaseDir;
+}
+
+async function listFiles(root: string): Promise<string[]> {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) =>
+      path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"),
+    )
+    .sort();
 }
 
 async function write(relativePath: string, content: string, root: string): Promise<void> {
