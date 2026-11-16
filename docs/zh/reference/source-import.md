@@ -14,6 +14,7 @@ description: 新建项目向导、Source Preflight 预检、私有仓库凭据�
 - **阶段一：输入来源并执行 Preflight**
   - 用户提供 Git URL 或上传 Zip。API 创建一个临时、带过期时间（默认 1 小时）的 `Source Preflight`。
   - Worker 执行浅克隆（Shallow Clone）或安全解压，快速验证项目目录结构，以及 `package.json` 中声明的 Eve 依赖能否解析到受支持的版本窗口内（构建时还会检查实际安装的版本）。
+  - **一个仓库一个 Agent，放在 `agent/` 下**：Agent 文件位于仓库根目录的 `agent/` 中（`agent/instructions.md`、`agent/agent.ts`、`agent/tools/` 等）。eve 的其他布局会被 Preflight 拒绝，并在报错里写明是哪种布局：Agent 文件直接放在仓库根目录（flat 布局），以及 Agent 位于 `agents/<name>/` 下的 eve workspace。
   - 只有 Preflight 通过，向导才允许进入下一步；若失败则留在当前屏幕并高亮可操作的具体错误。
 - **阶段二：项目命名与环境变量配置**
   - **名称自动推导**：从 Git URL 最后一个路径段（去掉 `.git`）或 Zip 文件名猜测项目名，用户可手动修改。

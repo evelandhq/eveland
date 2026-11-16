@@ -28,7 +28,6 @@ import {
   resolveWorkflowWorldDeploymentUrl,
   resolveWorkflowWorldPlatformUrl,
 } from "@evelandhq/core/workflow-world-url";
-import { resolveDeploymentShutdownTimeoutSeconds } from "../runtime/shutdown-budget.js";
 import { ensureProjectWorkflowWorld } from "../runtime/workflow-world-bootstrap.js";
 import { resolveWorkflowRunnerMode } from "../runtime/workflow-world.js";
 import { resolveIdentityDeploymentConfiguration } from "../runtime/identity-config-reconciler.js";
@@ -348,12 +347,6 @@ export async function composeDeploymentEnv(
     EVELAND_SANDBOX_RUN_TIMEOUT_MS: resolveSandboxRunTimeoutMs(workerEnv),
     EVELAND_SANDBOX_MAX_CONCURRENT_PROCESSES: sandboxProcessLimits.maxConcurrentProcesses,
     EVELAND_SANDBOX_MAX_OUTPUT_BYTES: sandboxProcessLimits.maxOutputBytes,
-    // How long srvx drains in-flight requests before cutting the remaining
-    // connections (see ../runtime/shutdown-budget.ts for the four layers this
-    // number has to thread). Reserved because a project entry could otherwise
-    // set it to 0 -- turning every platform-initiated restart into an instant
-    // kill -- or past the point where `eve start` SIGKILLs the server anyway.
-    SERVER_SHUTDOWN_TIMEOUT: String(resolveDeploymentShutdownTimeoutSeconds(workerEnv)),
     // `npx eve start` is a CLI command, and from eve 0.52.0 the CLI reports
     // usage to Vercel unless told not to (see ../runtime/reserved-environment.ts).
     EVE_TELEMETRY_DISABLED: "1",

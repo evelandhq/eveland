@@ -496,7 +496,7 @@ describe("Eveland Internal Identity routes", () => {
     ).toBe(401);
   });
 
-  test("returns stable eveChat deployments without Realm Project grants", async () => {
+  test("lists stable deployments whose built release serves the eve channel, without Realm Project grants", async () => {
     const { app, store } = await createIdentityApp();
     const connection = await store.createIdentityProviderConnection({
       type: "internal",
@@ -523,7 +523,7 @@ describe("Eveland Internal Identity routes", () => {
       projectId: chatProject.id,
       kind: "zip",
       sourcePath: "/tmp/catalog-chat",
-      summary: { capabilities: { eveChat: true } },
+      summary: {},
       envVars: [],
       files: [],
       schedules: [],
@@ -532,6 +532,7 @@ describe("Eveland Internal Identity routes", () => {
       projectId: chatProject.id,
       sourceRevisionId: deployedRevision.id,
       imageTag: "catalog-chat:stable",
+      summary: { summarySource: "eve-info", channels: ["eve", "eveland-scheduler"] },
       containerName: "catalog-chat-stable",
       internalPort: 3000,
       hostPort: 41981,
@@ -543,7 +544,7 @@ describe("Eveland Internal Identity routes", () => {
       projectId: chatProject.id,
       kind: "zip",
       sourcePath: "/tmp/catalog-chat-next",
-      summary: { capabilities: { eveChat: false } },
+      summary: {},
       envVars: [],
       files: [],
       schedules: [],
@@ -557,7 +558,7 @@ describe("Eveland Internal Identity routes", () => {
       projectId: noChannelProject.id,
       kind: "zip",
       sourcePath: "/tmp/no-channel",
-      summary: { capabilities: { eveChat: false } },
+      summary: {},
       envVars: [],
       files: [],
       schedules: [],
@@ -566,6 +567,7 @@ describe("Eveland Internal Identity routes", () => {
       projectId: noChannelProject.id,
       sourceRevisionId: noChannelRevision.id,
       imageTag: "no-channel:stable",
+      summary: { summarySource: "eve-info", channels: ["slack", "eveland-scheduler"] },
       containerName: "no-channel-stable",
       internalPort: 3000,
       hostPort: 41982,
@@ -586,7 +588,7 @@ describe("Eveland Internal Identity routes", () => {
       projectId: stoppedProject.id,
       kind: "zip",
       sourcePath: "/tmp/stopped-chat",
-      summary: { capabilities: { eveChat: true } },
+      summary: {},
       envVars: [],
       files: [],
       schedules: [],
@@ -595,6 +597,7 @@ describe("Eveland Internal Identity routes", () => {
       projectId: stoppedProject.id,
       sourceRevisionId: stoppedRevision.id,
       imageTag: "stopped-chat:stable",
+      summary: { summarySource: "eve-info", channels: ["eve"] },
       containerName: "stopped-chat-stable",
       internalPort: 3000,
       hostPort: 41983,
@@ -602,6 +605,36 @@ describe("Eveland Internal Identity routes", () => {
     });
     await store.updateDeploymentStatus(stoppedDeployment.id, "stopped");
     await store.ensureDeploymentRoutes(stoppedProject.id, stoppedDeployment.id, "agent.localhost");
+
+    // A Release recorded without a build summary proves nothing about its channels.
+    const unsummarizedProject = await store.createProject({
+      name: "Unsummarized Chat",
+      importKind: "zip",
+    });
+    const unsummarizedRevision = await store.recordSourceRevision({
+      projectId: unsummarizedProject.id,
+      kind: "zip",
+      sourcePath: "/tmp/unsummarized-chat",
+      summary: {},
+      envVars: [],
+      files: [],
+      schedules: [],
+    });
+    const unsummarizedDeployment = await store.recordDeployment({
+      projectId: unsummarizedProject.id,
+      sourceRevisionId: unsummarizedRevision.id,
+      imageTag: "unsummarized-chat:stable",
+      containerName: "unsummarized-chat-stable",
+      internalPort: 3000,
+      hostPort: 41984,
+      runtimeKind: "docker",
+    });
+    await store.updateDeploymentStatus(unsummarizedDeployment.id, "running");
+    await store.ensureDeploymentRoutes(
+      unsummarizedProject.id,
+      unsummarizedDeployment.id,
+      "agent.localhost",
+    );
 
     const undeployedProject = await store.createProject({
       name: "Undeployed Chat",
@@ -611,7 +644,7 @@ describe("Eveland Internal Identity routes", () => {
       projectId: undeployedProject.id,
       kind: "zip",
       sourcePath: "/tmp/undeployed-chat",
-      summary: { capabilities: { eveChat: true } },
+      summary: {},
       envVars: [],
       files: [],
       schedules: [],

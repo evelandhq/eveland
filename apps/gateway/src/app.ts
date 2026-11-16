@@ -24,6 +24,7 @@ export type {
 import type { GatewayAppOptions, GatewayRepository } from "./gateway-types.js";
 import { resolveGatewaySessionBinding } from "./gateway-session-lifecycle.js";
 import {
+  classifyA2aRequest,
   classifyMcpInvocation,
   createOperationKey,
   operationIdFromBody,
@@ -244,7 +245,7 @@ export function createGatewayApp(repository: GatewayRepository, options: Gateway
       limitBytes: maxRequestBodyBytes,
     });
     if (!routingBody.ok) return routingBody.response;
-    eveRequest ??= classifyMcpInvocation(routingBody.body);
+    eveRequest ??= classifyMcpInvocation(routingBody.body) ?? classifyA2aRequest(routingBody.body);
     const operationId =
       eveRequest?.kind === "initial" ? operationIdFromBody(routingBody.body) : null;
     const operationKey = operationId

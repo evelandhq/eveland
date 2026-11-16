@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
+  a2aTaskFromValue,
+  classifyA2aRequest,
   classifyMcpInvocation,
   createOperationKey,
   mcpInvocationIdFromValue,
@@ -64,5 +66,62 @@ describe("Gateway durable Eve routing", () => {
     };
 
     expect(mcpInvocationIdFromValue(response)).toBe("eve_invocation");
+  });
+
+  test("pins A2A requests by the context or task they name", () => {
+    const send = (message: Record<string, unknown>, method = "SendMessage") =>
+      classifyA2aRequest(
+        bytes({
+          jsonrpc: "2.0",
+          id: 1,
+          method,
+          params: { message: { messageId: "m", ...message } },
+        }),
+      );
+    expect(send({})).toEqual({ kind: "a2a_send", sessionId: null });
+    expect(send({}, "SendStreamingMessage")).toEqual({ kind: "a2a_send", sessionId: null });
+    // The contextId is the eve session id; a taskId alone names a task bound
+    // when its context answered.
+    expect(send({ contextId: "wrun_ctx", taskId: "task_1" })).toEqual({
+      kind: "a2a_send",
+      sessionId: "wrun_ctx",
+    });
+    expect(send({ taskId: "task_1" })).toEqual({ kind: "a2a_send", sessionId: "task_1" });
+    for (const method of ["GetTask", "CancelTask", "SubscribeToTask"]) {
+      expect(
+        classifyA2aRequest(bytes({ jsonrpc: "2.0", id: 1, method, params: { id: "task_1" } })),
+      ).toEqual({ kind: "a2a_task", sessionId: "task_1" });
+    }
+    expect(
+      classifyA2aRequest(
+        bytes({ jsonrpc: "2.0", id: 1, method: "ListTasks", params: { contextId: "wrun_ctx" } }),
+      ),
+    ).toEqual({ kind: "a2a_task", sessionId: "wrun_ctx" });
+
+    expect(
+      classifyA2aRequest(bytes({ jsonrpc: "2.0", id: 1, method: "GetTask", params: {} })),
+    ).toBeNull();
+    expect(classifyA2aRequest(bytes({ jsonrpc: "2.0", method: "tools/call" }))).toBeNull();
+    expect(classifyA2aRequest(bytes({ method: "SendMessage", params: {} }))).toBeNull();
+    expect(classifyA2aRequest(undefined)).toBeNull();
+  });
+
+  test("reads the task and its context from an A2A send result or stream event", () => {
+    expect(
+      a2aTaskFromValue({
+        jsonrpc: "2.0",
+        id: 1,
+        result: { task: { id: "task_1", contextId: "wrun_ctx", status: {} } },
+      }),
+    ).toEqual({ taskId: "task_1", contextId: "wrun_ctx" });
+    expect(
+      a2aTaskFromValue({
+        jsonrpc: "2.0",
+        id: 1,
+        result: { statusUpdate: { taskId: "task_2", contextId: "wrun_ctx", status: {} } },
+      }),
+    ).toEqual({ taskId: "task_2", contextId: "wrun_ctx" });
+    expect(a2aTaskFromValue({ jsonrpc: "2.0", id: 1, error: { code: -32602 } })).toBeNull();
+    expect(a2aTaskFromValue({ result: { task: { id: "task_1" } } })).toBeNull();
   });
 });

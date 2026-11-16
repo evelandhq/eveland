@@ -39,10 +39,11 @@ description: 详细规范：Host 模型、加权路由、SessionBinding、持久
 
 ## 4. 持久化路由与 Operation 绑定 (OperationBinding)
 
-Eve 的持久化操作（create-once、task-input、MCP invocation）遵循固定目标规则：
+Eve 的持久化操作（create-once、task-input、MCP invocation、A2A）遵循固定目标规则：
 
 - **首次写入胜出**：携带 `operationId` 的创建请求，网关使用独立密钥计算 HMAC 作为 operationKey，并以 `(projectId, operationKey)` 形式持久化首个处理目标，绝不在数据库中存储明文原始 ID。
 - **MCP 任务跟踪**：MCP `agent_start` 成功返回的 `invocationId` 会被记录为绑定关系，后续针对该任务的 `agent_get`、`agent_update` 与 `agent_cancel` 自动回溯至原目标。
+- **A2A Context 与 Task**：eve 的 A2A Channel 把每个 A2A Context 作为一个 eve Session 运行（`contextId` 就是 Session ID）。未指明 Context 的 `SendMessage` 或 `SendStreamingMessage` 得到应答时，其 `contextId` 与 Task ID 会绑定到应答的 Deployment（流式发送按第一个事件绑定）。指明 Context 或 Task 的发送，以及 `GetTask`、`CancelTask`、`SubscribeToTask`（按 Task ID）与 `ListTasks`（按 Context），都由该绑定固定；固定的发送新开启的 Task 也绑定到同一个 Deployment。Agent Gateway 按 JSON-RPC 请求体识别 A2A，与 Channel 所在路由无关。从未绑定过的 Context（例如由更早的 Gateway 转发的）按路由权重转发，与未绑定的 Session 续接相同。
 - **回调路径透传**：反向代理必须同时转发 `/eve/*` 与 `/.well-known/workflow/*`，确保工作流回调能够正常投递。
 
 ---
