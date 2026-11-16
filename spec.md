@@ -63,438 +63,262 @@ to support multiple Teams later.
 
 ## 4. Product contract
 
-### Login (/login)
+Each domain below states only the invariants that bound it. Page layout,
+columns, interactions, and limits live in `docs/en/reference/dashboard.md`; every
+other behavioral detail lives in the reference page named at the end of each
+domain.
 
-The platform signs in with email and password; users, password accounts, and
-sessions use Better Auth, and team members and invitations use the Organization
-plugin. First startup idempotently creates a default admin; there is no built-in
-production default password — the initial password and `BETTER_AUTH_SECRET` must be
-configured explicitly. Except for health checks, invitation acceptance, and the
-CLI device-authorization endpoints below, every platform API requires either a
-valid member session or a scoped CLI access token; public Agent Gateway traffic
-uses an independent authentication boundary. Better Auth's HTTP surface is
-exposed by allowlist: only sign-in, sign-out, get-session, and the device
-authorization family (device code request, verification, approve, deny, and the
-OAuth token endpoint) are publicly routable, every other endpoint (including
-anything future versions add) is a 404, and password changes and member
-management go through Eveland-owned endpoints.
+### Platform authentication
 
-The `eveland` CLI authenticates with the standard device authorization flow: it
-requests a device code as a platform-seeded public OAuth client, a signed-in
-member explicitly approves or denies the request on the Dashboard's device
-approval page, and the CLI redeems the approved code for an opaque, expiring,
-database-revocable access token. Token-authenticated requests carry the token's
-scopes and are confined to a deny-by-default scope map — deployment delivery
-and read-only observation only. A CLI token never grants member administration
-or the operator surface, whatever the approving member's role; unauthenticated
-device-code creation is admission-controlled so it cannot grow storage without
-bound. One deliberate exception exists to the interactive approval step:
-during `eveland-ctl` first boot, the bootstrap — which itself just seeded the
-admin account and holds its credentials — signs in as that admin over the
-loopback API and approves its own device request headlessly, so the machine's
-CLI is authenticated without a login wall. This changes who clicks approve,
-not the trust model: the actor already holds the admin credentials, every
-protocol step (claim before approve, scope confinement, revocability) is the
-standard flow, and the resulting token is an ordinary scoped device-flow token
-visible and revocable like any other.
+- Sign-in is email and password. Better Auth owns users, password accounts, and
+  sessions; its Organization plugin backs the single Team's members and
+  invitations. First startup idempotently creates the admin, and there is no
+  built-in default password: the initial password and `BETTER_AUTH_SECRET` are
+  configured explicitly.
+- Except for health checks, invitation acceptance, and the CLI device-authorization
+  endpoints, every platform API requires a valid member session or a scoped CLI
+  access token. Public Agent traffic uses its own, independent boundary.
+- Better Auth's HTTP surface is exposed by allowlist (sign-in, sign-out,
+  get-session, and the device-authorization family); every other endpoint,
+  including any a future version adds, is a 404. Password changes, member
+  management, and password resets go through Eveland-owned endpoints.
+- The `eveland` CLI authenticates with the standard device-authorization flow: a
+  signed-in member explicitly approves or denies the request, and the CLI redeems
+  an opaque, expiring, revocable token confined to a deny-by-default scope map
+  (deployment delivery and read-only observation). A CLI token never reaches
+  member administration or the operator surface, whatever the approving member's
+  role, and unauthenticated device-code creation is admission-controlled. The one
+  exception to interactive approval is `eveland-ctl` first boot: the bootstrap,
+  which just seeded the admin and holds its credentials, approves its own device
+  request over the loopback API. That changes who approves, not the trust model;
+  the token is an ordinary scoped, revocable device-flow token.
+- The CLI and the platform are compatible when they share a major version. The
+  CLI names its version on every request, and the platform refuses a CLI of
+  another major version before running anything, with an error that names the
+  version to install.
+- Team roles are only `admin` and `member`; the last admin can be neither removed
+  nor demoted; invitation links are single-use and expire on acceptance; removing
+  a member revokes their sessions immediately.
+- The public `/health` of the API and Agent Gateway reports the Eveland product
+  `version`, Git `revision`, release `channel`, and `component`. All components
+  share `service = eveland`: the API, Dashboard, Agent Gateway, and Worker are
+  never independently versioned products, and the product version is independent
+  of any project's Releases and Deployments.
 
-The CLI and the platform are compatible when they share a major version. The
-CLI names its version on every request, and the platform refuses a CLI of
-another major version before running anything, with an error that names the
-version to install (`docs/{en,zh}/reference/cli.md`).
+Reference: `docs/en/reference/dashboard.md`, `docs/en/reference/cli.md`.
 
-The public `/health` of the API and Agent Gateway returns, beyond liveness, the
-Eveland product `version`, Git `revision`, release `channel`, and current
-`component`; all components share `service = eveland`, and the API, Dashboard,
-Agent Gateway, and Worker must never be modeled as independently versioned
-products.
+### Agent user identity
 
-### Agent user identity (/settings/identity)
+- Agent user identity, platform Better Auth, and Playground credentials are three
+  independent trust boundaries; none substitutes for or silently falls back to
+  another. Better Auth cookies and tokens, member roles, and provider credentials
+  never enter Caller Tokens, browser chat storage, the Agent Gateway, or Agents.
+- Exactly one instance-level Identity Provider is active: `Open` (the default;
+  authenticates nobody), `Internal` (a Better Auth member), or `OIDC` (an external
+  OpenID Connect provider, PKCE and nonce forced on). Switching it makes existing
+  Identity Sessions authenticate no one.
+- Eveland issues only its own short-lived, per-project Caller Tokens and never
+  passes a provider credential through. A Caller Token proves who is calling;
+  deciding who may use which Agent belongs to the Agent and is never Eveland
+  configuration. The platform holds only the instance-level Realm allowlist.
+- Eveland contains no provider-specific branch: provider differences are generic
+  protocol configuration, and provider verifiers ship as external packages.
+- The Agent Gateway forwards `WWW-Authenticate` challenges, credentials, and
+  responses untouched. Its single exception: under `Open`, it injects a Caller
+  Token into a request that carries no `Authorization` at all, and never replaces
+  one that does.
+- The public `GET /api/agent-catalog` is a read-only projection: no Identity
+  Session, no authorization filtering, no probing of Agents. `projectId` with the
+  Eveland issuer is a managed Agent's stable identity; an endpoint change never
+  mints a new one.
 
-Agent user identity, platform Better Auth, and Playground authentication
-credentials are three independent trust boundaries; none may substitute for or
-silently fall back to another. Better Auth cookies/tokens, member roles, and
-provider credentials must never enter Caller Tokens, browser chat storage, the
-Agent Gateway, or Agents.
-
-The Identity Provider is instance-level and exactly one can be active at any time,
-chosen from three: `Open` (the default for new instances; authenticates nobody and
-issues no Identity Session), `Internal` (server-side verification of a Better Auth
-member), and `OIDC` (delegation to an external OpenID Connect provider, with PKCE
-and nonce forced on). The System Admin selects the single active provider, the
-allowed Identity Realms, and the exact web-chat return origins; switching the
-provider makes existing Identity Sessions authenticate no one.
-
-Eveland issues only its own short-lived Caller Tokens (per-project audience) and
-never passes through any provider credential. A Caller Token proves caller identity
-only — access authorization belongs entirely to the Agent: "who may use which
-Agent" is never Eveland configuration. Eveland holds only the instance-level
-identity trust boundary via the Realm allowlist; there is no Realm → Project
-access. Eveland itself must contain no provider-specific branch: provider verifiers
-ship as external packages, and provider differences are expressed only through
-generic protocol configuration.
-
-`evelandIdentity()` works through the standard `WWW-Authenticate` Bearer challenge
-protocol; the Agent Gateway must forward challenges, credentials, and responses
-transparently, neither interpreting nor rewriting the protocol. The single
-deliberate exception: when the Identity Provider is `Open`, the Agent Gateway
-injects an open-mode Caller Token for requests carrying no `Authorization` at all,
-and never overwrites an existing credential.
-
-The standalone, public `GET /api/agent-catalog` serves the read-only Agent Catalog
-projection: it requires no Identity Session, performs no authorization filtering,
-probes no Agents, and is not a marketplace; `projectId` combined with the Eveland
-issuer is the stable managed Agent identity, and an endpoint change must not mint a
-new Agent identity.
-
-Provider-mode behavior, Realm resolution, the Caller/App Token contracts, the
-open-injection constraints, and the Catalog membership rules live in
-`docs/en/reference/identity.md`; the decision rationale in
+Reference: `docs/en/reference/identity.md`; rationale in
 `docs/en/reference/design/identity.md`.
 
-### Workspace and Settings pages
+### Workspace and settings
 
-The Projects list is the workspace home; Settings is a separate settings area
-grouped into Personal and System. Per-page columns, interactions, and limits live
-in `docs/en/reference/dashboard.md`. The cross-page product invariants:
+- Every absolute date and time in the Dashboard renders in the viewer's display
+  timezone, never the server's; a schedule's cron keeps its own timezone.
+- Project deletion is permanent and asynchronous, confirmed by typing the full
+  name; a failed deletion keeps the record and can be retried idempotently. The
+  platform never deletes source paths outside `EVELAND_DATA_DIR`.
+- Personal Git credentials are isolated per `(userId, host)`, are never reused by
+  another member, and no surface returns, copies, or hints at a PAT.
+- About's runtime-configuration diagnostic uses an explicit allowlist, never
+  enumerates `process.env`, and shows secrets only as configured or not. The Worker
+  adds no public HTTP service; an unreachable component shows as unavailable and
+  is never diagnosed by reading raw environment files.
+- Instance Health is admin-only, separates "available now" from "approaching
+  capacity risk", and offers no host write operation. The Worker is the only
+  component that collects host metrics, as OTLP metrics that Built-in projects; a
+  `stopped` RuntimeInstance is normal scale-to-zero, not a failure; total server
+  loss still needs external monitoring of the public `/health`.
 
-- Every absolute date and time in the Dashboard renders in the current user's
-  display timezone, never decided by the server's runtime default timezone; a
-  schedule's raw cron keeps its source-level semantics in its own timezone.
-- Project deletion is permanent and asynchronous: the full name is typed to
-  confirm, the API atomically marks `deleting` and creates a unique
-  `delete_project` job; on failure the record survives and supports idempotent
-  retry. The platform must never delete external source paths outside
-  `EVELAND_DATA_DIR`.
-- Personal Git credentials are isolated per `(userId, host)` and cannot be reused
-  by other members of the same team; no surface returns, copies, or hints at the
-  PAT value.
-- Team roles are only `admin` and `member`; the last admin can be neither removed
-  nor demoted; invitation links are single-use and expire immediately on
-  acceptance.
-- About's runtime-configuration diagnostic uses an explicit allowlist and can never
-  enumerate `process.env`; secrets show only configured/not-configured. The Worker
-  adds no public HTTP service — its diagnostics reach the API through a masked
-  snapshot file; an unreachable component shows unavailable, never falling back to
-  reading raw environment files.
-- The Eveland product version and a project's Release/Deployment are two
-  independent concepts.
+Reference: `docs/en/reference/dashboard.md`.
 
-### Observability (/settings/observability)
+### Source import
 
-Eveland's monitoring uses OpenTelemetry/OTLP as its only transport standard.
-Built-in is the platform's always-on internal destination: it only projects
-Eveland's existing operational data into the read models Sessions, Usage, and
-Instance Health require — storing no raw spans/LogRecords/metric points, offering
-no statistics views, and introducing no monitoring that did not already exist.
-Span-level observation and drill-down belong to external destinations, and
-observation of the platform's own telemetry likewise belongs entirely to external
-destinations — Eveland provides no local fallback; Built-in retention is not
-configurable.
+- A project is created only from a completed Source Preflight: the worker
+  validates the real file tree and Eve project structure first, and the project,
+  its initial import job, and the immutable Source Revision come from that one
+  snapshot in one transaction. A failed import never proceeds to deployment.
+- The name confirmed at creation claims the project's immutable,
+  instance-unique slug; a conflict is a 409, never a silent rename. Display name
+  and description never change the slug, endpoint, project ID, routes, or existing
+  relations.
+- Variables and Secrets entered at creation commit atomically with the project. A
+  private-repository PAT is temporary, host-scoped authentication that never
+  enters URLs, `.git/config`, logs, or errors, and is saved only after the import
+  succeeds.
+- Import and build are read-only toward the source: they never run `eve add` or
+  `eve registry`, never reach the registry, and never modify the source. Builds
+  honor the committed lockfile with a frozen install, identically on every runtime.
+  `agent/skills/` is Eve's to discover and compile; skill scripts gain no host
+  privileges or secrets through the platform.
+- Background jobs use leases and fencing: at most one running job per project, a
+  late attempt never overwrites a newer one, and a fenced-off execution aborts its
+  own host side effects. Transient errors retry within bounds; deterministic ones
+  never retry.
+- Eveland hosts one Eve major, from its first stable release up to the newest
+  minor it has verified. The floor never moves within the major, and raising the
+  ceiling is an explicit product change. A project's declared `eve` must be able to
+  resolve inside the window, and the build gates on the version it actually
+  installed; every Release is inside the window by construction.
 
-Langfuse export groups a root conversation with its descendant sessions while
-retaining each executing session's identity for attribution.
+Reference: `docs/en/reference/source-import.md`,
+`docs/en/reference/eve-compatibility.md`, `docs/en/reference/known-limitations.md`.
 
-The trust boundary is a product promise: the platform and Agents use OTLP receivers
-that share no trust; deployment attribution is never taken from an Agent's
-self-reported id but from Worker-issued credentials, whose verified identity
-overrides the payload with the Store's ownership — resources with failed or missing
-verification are neither projected nor sent externally. An Agent therefore cannot
-forge platform state or write telemetry into another Deployment or Project; it can
-still fabricate data under its own Deployment — resisting that requires provenance
-granted by a trusted out-of-process boundary, which the current implementation does
-not provide.
+### Deployments and routing
 
-Instrumentation in Agent source is an independent boundary: Eveland does not modify
-user monitoring code, register or replace global providers, or intercept user
-exporters; the platform only injects the Eveland hook and instrumentation file, with
-their private providers, into Eve's reserved slots. Telemetry failures produce only rate-limited
-degradation warnings and must never fail an Eve event hook or an Agent turn; a
-missing Collector must not block Agent startup or cold activation; observability
-settings changes restart only the Collector, never Agent Deployments. External
-delivery goes only through the service-authenticated API egress proxy under a
-fail-closed SSRF policy; credentials are stored encrypted and never returned to the
-browser. Collector-to-API delivery must not require the platform API to bind a public
-interface: containerized forms use their private Compose network, while supported Linux
-native development uses a path-restricted listener bound only to Docker's private bridge.
+- Build and deploy create a concurrent preview and never stop or reuse the
+  production target. Promote targets the exact Deployment a job created.
+- Creating a deployment states its source (current revision or a fresh Git sync)
+  and its outcome (preview, or promote after health) explicitly; nothing uses an
+  ambiguous "latest".
 
-The collection-pipeline topology, destination behavior, projection and
-out-of-order rules, and the retention table live in
-`docs/en/reference/observability.md`.
+Reference: `docs/en/reference/routing.md`, `docs/en/reference/dashboard.md`.
 
-### Instance Health (/settings/health)
+### Playground
 
-Admin-only; presents "is it currently available" separately from "is it approaching
-capacity risk". The Worker is the only privileged component collecting host
-metrics: heartbeats and metric samples are sent as standard OTLP metrics in the
-capacity domain, Built-in projects them, the API only reads and aggregates, and the
-Dashboard displays read-only. A `stopped` RuntimeInstance is normal scale-to-zero
-and must not alone be treated as a failure; the Worker heartbeat publishes
-independently of long-running jobs. The page offers no shell, systemd restarts, or
-any other host write operation; total server loss still requires external
-monitoring polling the public `/health`. Display items and judgment rules live in
-`docs/en/reference/dashboard.md`.
+- The Playground speaks Eve's canonical session protocol to a Deployment through
+  the API and the Agent Gateway's internal, service-authenticated path, streaming
+  NDJSON. The Agent Gateway never substitutes for the Agent's authentication and
+  never stores, decrypts, or refreshes provider credentials; the API resolves them
+  per request into a strictly validated, versioned envelope.
+- Each project has at most one Playground authentication configuration: the
+  client configuration the Playground uses to call the Agent, chosen explicitly
+  and never guessed from verifier names, imports, 401s, or `WWW-Authenticate`.
+  Credentials are stored encrypted and only their configured state is returned.
+- Eveland adds no Connections configuration and does not take over Eve's
+  Connection definitions; they build with the Source Revision and deploy with the
+  Release.
+- Every open or refresh starts a fresh Eve session; New conversation completes a
+  canonical reset first; Stop requests cooperative server-side cancellation. The
+  Playground transport is never the authoritative observation path, and it
+  persists no attachments or raw reasoning.
 
----
+Reference: `docs/en/reference/playground.md`.
 
-### New project (/new)
+### Sessions and usage
 
-Creating a project uses a full-screen stepped flow supporting a Git repo URL and a
-zip upload. The API first creates a user-isolated, expiring Source Preflight whose
-real file tree and Eve project structure the worker validates — no project is
-created yet; only a successful preflight reaches the naming screen. The project and
-the initial import job consume the completed preflight in one database transaction,
-and the same snapshot becomes the immutable Source Revision directly — no second
-clone or re-upload; a failed import must not proceed to deployment.
+- Sessions lists only actual Eve sessions, never ScheduleRun envelopes as peer
+  rows. Its detail shows Eve's event timeline and per-agent usage, never a span
+  tree or LogRecords.
+- Missing usage and cost stay missing, never estimated from price lists; a step
+  whose model cannot be resolved stays `Unknown model`.
+- Usage aggregates server-side over the full range, never presenting one page of
+  a list as a total; usage coverage and cost coverage are separate.
 
-The name confirmed at creation claims the immutable slug in the public Agent
-address (instance-unique); a concurrent conflict returns 409 — silent renaming is
-not allowed. The project also has a mutable display name and description whose
-changes must never alter the slug, the public Agent endpoint, the project ID,
-routes, or existing session/deployment relations.
+Reference: `docs/en/reference/dashboard.md`, `docs/en/reference/observability.md`.
 
-The naming screen can record runtime Variables/Secrets before the first deploy;
-the initial entries commit atomically with the project and the initial import job,
-and values are stored encrypted and never returned to the browser. A private-repo
-PAT serves only as temporary, normalized-host-scoped authentication — never
-entering URLs, the source `.git/config`, logs, or errors — and is saved only after
-the whole import succeeds.
+### Schedules
 
-Import and build are read-only toward the source: Source Revisions are immutable,
-and Eveland's import, build, and deploy must not run `eve add`/`eve registry`,
-reach the registry, or modify the source. Release builds must honor the project's
-committed package-manager lockfile (frozen install), and the Docker and systemd
-runtimes must make the same choice. `agent/skills/` is discovered and compiled
-natively by Eve; the platform does not interpret `defineSkill` itself, and skill
-scripts gain no extra host privileges or secrets through it.
+- Eveland is the only scheduler. eve's own schedule runner is off in every
+  Deployment, so no schedule runs twice across previews, older Deployments, and
+  the stable target; authored schedules, left as written, run only through the
+  authenticated private Scheduler Channel. A namespaced key conflict fails the
+  build, and `.eveland/scheduler/definitions.json` is a required, validated build
+  artifact.
+- Every Source Revision keeps an immutable ScheduleVersion. Cron and manual runs
+  pin to the Deployment, Release, and ScheduleVersion fixed when they are created;
+  promote, rollback, weight changes, and target changes never re-select them.
+- Postgres is the authoritative state. An outage spanning several ticks creates
+  one run and records the missed ticks; there is no burst replay. Execution is
+  at least once, but a redeemed dispatch credential is never replayed. A
+  ScheduleRun settles on its sessions' root turn boundary, fails closed at its hard
+  deadline when the boundary never comes, and protects its pinned Deployment from
+  reclamation while queued or running.
+- Schedule delivery runs in the platform-owned `scheduled` workflow class, which
+  authored options cannot loosen.
 
-Background jobs such as imports use leases and fencing: at most one running job per
-project at a time, a late old attempt must never overwrite a newer attempt's state,
-and an execution fenced off must abort its own host side effects; transient errors
-retry within bounds, deterministic errors never retry. The Source Revision persists
-the `package.json` and lockfile metadata needed to start an existing Release: cold
-activation and schedule activation can recover the original deployment from that
-metadata after the source directory is reclaimed, while restart stays
-live-source-only.
+Reference: `docs/en/reference/scheduling.md`.
 
-Eveland hosts one Eve major, from its first stable release up to the newest
-minor that has completed full compatibility verification. The floor never moves
-within the major, so a Release that was inside the window when it was built stays
-inside it; verifying a newer minor only raises the ceiling, and doing so is an
-explicit product change. The current window, accepted dependency declarations,
-and protocol baseline live in `docs/en/reference/eve-compatibility.md`.
+### Agent environment
 
-A project's declared `eve` dependency must be able to resolve inside the window,
-or import fails closed with a clear diagnostic. The build gates on the version it
-actually installed: a build whose installed Eve is outside the window, or cannot
-be read, fails and records no Release. Because every Release is inside the window
-by construction, nothing downstream of the build re-checks the Eve version.
+- An Agent's environment has three layers with deterministic precedence: Shared
+  Agent Environment < project Variables and Secrets < Eveland reserved variables.
+  Values are stored encrypted, decrypted only at process start, delivered through
+  a root-owned `0600` file, and never returned to the browser.
+- Changing an entry restarts the project's live Deployments onto their existing
+  Releases. `variable` entries also take part in builds and reach compiled output
+  only on the next deploy; `secret` entries never enter a build, because build
+  scripts are untrusted project code. Reserved names are dropped from builds with
+  a logged warning, and the reserved layer always wins at run time.
+- The Shared Agent Environment is a single admin-owned set applied to every
+  Deployment. It is never a Playground credential, and a missing or undecryptable
+  secret reference fails closed instead of falling back to an old value.
 
-The wizard interaction, PAT details, name format, `.env` import, preflight expiry,
-and job execution semantics live in `docs/en/reference/source-import.md`.
+Reference: `docs/en/reference/agent-environment.md`.
 
----
+### Model Gateway
 
-### Project home and Deployments
+- At most one admin-configured Model Gateway (LiteLLM, OpenRouter, Vercel AI
+  Gateway, or a generic OpenAI-compatible endpoint), distinct from the Agent
+  Gateway. When one is configured and a project has not opted out, the platform
+  supplies the default AI SDK provider for string model IDs, so an Agent written
+  with plain `provider/model` slugs runs unchanged on Vercel and on Eveland.
+- The platform never overrides a provider the Agent installed, never affects
+  model objects, never rewrites model IDs, and holds no gateway credential: each
+  project brings its own key in `AI_GATEWAY_API_KEY`.
+- A deploy fails when the gateway rejects the project's key or does not offer one
+  of its string models. Gateway-reported cost is recorded; a gateway that reports
+  none leaves cost missing.
 
-Overview is the observation entry point: it defaults to the last seven days of
-execution, and its primary action is Open Playground; full build, preview, traffic,
-and rollback operations live in Project Deployments. The project sidebar orders
-daily observation first, and Logs keeps an independent first-level entry.
-
-The Deployments page offers exactly one `Create deployment` entry point; the dialog
-composes two dimensions — Source (current revision, or sync Git first) and outcome
-(keep as preview, or promote after health) — and the submit label must name the
-combination explicitly, never using an ambiguous `latest` to mean both the current
-revision and remote Git. Page details and the operation list live in
-`docs/en/reference/dashboard.md`.
-
----
-
-### Playground (/projects/proj_xxxxxxxxxx/playground)
-
-Tests the current deployment directly. The Dashboard speaks the Eve canonical
-session protocol to the current deployment through the API and the internal-only,
-service-credentialed Agent Gateway Playground path; conversation, reasoning, tool
-calls, and human input stream incrementally as NDJSON. The Agent Gateway never
-substitutes for the Agent's own authentication and never stores, decrypts, or
-refreshes provider credentials — credentials are resolved per request by the API
-and delivered through a strictly validated versioned envelope.
-
-Each managed project has at most one Playground authentication configuration. It is
-the client configuration the Playground uses to call the Agent — not the project,
-the deployment, an Eve Connection, or the platform login session; the user must
-explicitly choose the client method, and the platform must never guess credential
-acquisition from Eve verifier names, source imports, 401s, or `WWW-Authenticate`.
-Credentials are stored encrypted and only their configured state is returned,
-never the values.
-
-Eveland adds no standalone Connections configuration page and does not take over
-Eve's Connection definitions; official Eve Connections build with the Source
-Revision and deploy with the Release, and project secrets inject at runtime only —
-never readable at build time.
-
-Every open or refresh of the Playground creates a fresh Eve session from a blank
-state (`trigger = playground`); New conversation must complete a canonical session
-reset before clearing the local conversation. Stopping generation must request
-cooperative server-side cancellation through the canonical cancel route and keep
-the stream open until settlement. The Playground transport does not replace
-Eveland's private OTLP signals as the authoritative observation path; attachments
-and raw reasoning are not persisted by the Playground.
-
-The authentication method matrix, the OIDC client flow, credential storage and the
-envelope, attachment limits, cancel/reconnect and catch-up-read stream semantics,
-and the managed Connection validation matrix live in
-`docs/en/reference/playground.md`.
-
----
-
-### Sessions and Usage
-
-Sessions is the core run history: the list shows only actual Eve sessions and never
-mixes ScheduleRun execution envelopes in as peer rows; the detail shows Eve's event
-timeline and per-agent/subagent usage, with no span tree or LogRecord detail —
-Built-in stores no raw detail, and span-level drill-down belongs to external
-destinations. Usage completeness is presented explicitly: missing usage and cost
-stay missing, never estimated from public price lists, and steps whose model cannot
-be resolved stay `Unknown model` — never dropped or guessed.
-
-The Usage pages (workspace aggregate and single project) must aggregate server-side
-over the full time range, never presenting page one of a paginated list as the
-total; usage coverage and cost coverage are computed separately. Column
-definitions, filters, and model-attribution rules live in
-`docs/en/reference/dashboard.md`.
-
----
-
-### Schedules (/projects/proj_xxxxxxxxxx/schedules)
-
-Eveland is the sole scheduler for production schedules. Every Deployment runs with
-eve's own schedule runner turned off — warm previews, older versions, and the stable
-target never each execute the same cron; the authored schedules, left as written,
-are invoked only through the authenticated private Scheduler Channel. Both root and
-Extension sources accept five-field, minute-granularity cron read in UTC or in the
-schedule's IANA `timezone`, and a namespaced key conflict must fail the build; `.eveland/scheduler/definitions.json` is a required, validated build
-artifact.
-
-Every Source Revision keeps an immutable ScheduleVersion; each project has an
-explicit scheduler target, and cron/manual runs pin to the deployment, Release, and
-ScheduleVersion fixed at creation — promote, rollback, or route-weight changes
-never re-select them, and switching the target affects only runs created
-afterwards.
-
-The Worker treats Postgres as the authoritative state. An outage spanning multiple
-ticks creates one run for the earliest due time and records the coalesced missed
-ticks — no burst replay. Schedule execution is at-least-once: once a dispatch
-credential is redeemed, authored side effects must never be replayed automatically
-because a response was lost. A ScheduleRun settles on each returned session's root
-turn boundary and releases its ActivationLease; when the boundary is permanently
-missing it fails closed at the hard deadline, never showing `running` forever.
-Queued/running ScheduleRuns give their pinned deployment hard reclamation
-protection.
-
-Schedule delivery must execute inside the platform-owned `scheduled` workflow run
-context; authored options cannot loosen a schedule to `persistent`, and when a
-delivery lands on an existing session, its stored root class wins.
-
-Every cron or manual execution persists an independent ScheduleRun; success with no
-created session is a legitimate result. Discovery and the build artifact, the
-planner and prewarm, dispatch and settlement details, the Extension integrator, and
-the page display rules live in `docs/en/reference/scheduling.md`.
-
----
-
-### Source (/projects/proj_xxxxxxxxxx/source)
-
-A read-only code browser: the file tree, file contents, current Source Revision
-info, and the Eve project-structure summary. No online editing, no Git write-back;
-Connections appear only as part of the structure summary, with no separate
-Connections navigation or configuration UI. A Release's built summary comes from
-the documented `eve info --json` output on the installed dependency tree; output
-the platform does not recognize fails closed and records no built summary.
-
----
-
-### Project Settings (/projects/proj_xxxxxxxxxx/settings)
-
-Project Settings uses in-page secondary navigation (General and Environment)
-rather than a third sidebar level; General holds display name/description editing
-and project deletion in its danger zone. Page details live in
-`docs/en/reference/dashboard.md`.
-
-### Variables and Secrets (/projects/proj_xxxxxxxxxx/settings/environment)
-
-The Agent runtime environment has three layers with deterministic precedence:
-Shared Agent Environment < project Secret/Variable < Eveland reserved variables.
-Type distinguishes `variable` from `secret`; both value kinds are stored encrypted,
-returning only the configured state after saving — values never return to the
-browser.
-
-Runtime entries are runtime configuration: after an add, change, or delete, the API
-enqueues a restart task for each of the project's `running`/`draining` deployments;
-the restart keeps the original Release and re-decrypts and injects the full set
-when the new process starts. With no live deployment, entries take effect from the
-next deploy. Project secrets inject at runtime only and never enter the Git repo,
-the zip, the build log, the Source page, or session logs; variables are equally
-absent from those places but additionally participate in Release builds.
-
-### Shared Agent Environment (/settings/shared-agent-environment)
-
-The system has exactly one operator-owned Shared Agent Environment (not a profile
-collection), admin-maintained, applied automatically to every Agent deployment of
-every project. A shared `secret` decrypts only at the process-start boundary and
-reaches the runtime through a root-owned 0600 environment file — never appearing on
-process argv or in any persisted artifact; the full value set participates in
-diagnostic masking. The Shared Agent Environment belongs to the Agent runtime only
-and must not serve as a Playground authentication credential; a missing, deleted,
-or undecryptable secret reference must fail closed, never falling back to an old
-value.
-
-### Model Gateway (/settings/model-gateway)
-
-The system has at most one admin-configured Model Gateway: the gateway Agents'
-string model IDs go through (LiteLLM, OpenRouter, Vercel AI Gateway, or a
-generic OpenAI-compatible endpoint), distinct from the Agent Gateway. When a
-gateway is configured and a project has not opted out, the platform supplies the
-default AI SDK provider for string model IDs in that project's deployments, so
-an Agent written with plain `provider/model` slugs runs unchanged on Vercel and
-on Eveland. The platform never overrides a provider the Agent installed itself,
-never affects model objects, and never rewrites model IDs; aliases live on the
-gateway. The platform holds no gateway credential and supplies no key: each
-project brings its own key in `AI_GATEWAY_API_KEY`, the variable Eve's built-in
-gateway provider already reads, and a project without one has no fallback. A
-deploy of a Release carrying the injected provider fails when the gateway
-rejects the project's key or does not offer one of its string models, naming the
-gateway's address. A configuration change restarts only deployments whose
-Release carries the provider; the others are reported as needing a redeploy. Gateway-reported cost is
-recorded where Eve reads it; a gateway that reports none leaves cost missing,
-never estimated. The behavioral contract lives in
-`docs/en/reference/model-gateway.md`, the rationale in
+Reference: `docs/en/reference/model-gateway.md`; rationale in
 `docs/en/reference/design/model-gateway.md`.
 
-### Build-visible variables
+### Observability
 
-`variable` entries participate in Release builds — values the agent config reads
-from `process.env` at module-load time are frozen into the Release; `secret` never
-enters a build, because install/build lifecycle scripts are untrusted project code.
-Platform-reserved names are dropped from builds with a `WARNING` in the build log
-(never silently), and the runtime reserved layer overrides same-named entries last;
-the reserved list stays in sync with the runtime reserved layer, locked by a test.
-Releases are immutable: changing a `variable` refreshes the compiled output only on
-the next deploy, and a plain environment change only enqueues restarts for live
-deployments.
+- OpenTelemetry/OTLP is the only telemetry transport. Built-in is always on and
+  only projects the read models Sessions, Usage, and Instance Health need; it
+  stores no raw spans, LogRecords, or metric points, and its retention is not
+  configurable. Span-level drill-down and observation of the platform's own
+  telemetry belong to external destinations.
+- Deployment attribution never comes from what an Agent reports: Worker-issued
+  credentials are verified and the Store's ownership overrides the payload, and
+  unverified resources are neither projected nor exported. An Agent cannot write
+  telemetry into another Deployment or Project; it can still fabricate data under
+  its own Deployment, which only an out-of-process provenance boundary could
+  prevent.
+- User instrumentation is untouched: Eveland registers or replaces no global
+  provider and intercepts no user exporter; it only injects its hook and
+  instrumentation, with private providers, into Eve's reserved slots.
+- Telemetry failures degrade with rate-limited warnings and never fail an Eve
+  hook, an Agent turn, startup, or cold activation. Observability settings restart
+  only the Collector. External delivery goes through the service-authenticated API
+  egress proxy under a fail-closed SSRF policy, with credentials stored encrypted
+  and never returned to the browser. Collector-to-API delivery never needs the API
+  on a public interface.
 
-Page interaction, bulk import, restart semantics, Shared Agent Environment details,
-and the reserved list live in `docs/en/reference/agent-environment.md`.
+Reference: `docs/en/reference/observability.md`.
 
----
+### Logs
 
-### Logs (/projects/proj_xxxxxxxxxx/logs)
+Logs holds build, deploy, and runtime output (stdout/stderr and ScheduleRun
+lifecycle diagnostics). An Agent's execution belongs in its session timeline, not
+in Logs.
 
-Logs offers three log kinds — build, deploy, and runtime (stdout/stderr plus
-ScheduleRun lifecycle diagnostics); an Agent's concrete execution belongs in the
-session timeline, not in Logs. Page interaction lives in
-`docs/en/reference/dashboard.md`.
+Reference: `docs/en/reference/dashboard.md`.
 
 ---
 
@@ -558,14 +382,6 @@ decision change — discuss first, then act:
 
 ## 6. Runtime architecture
 
-`apps/docs` is a public website independent of the self-hosted platform. The
-production site is published at `https://eveland.ai`, a Next.js/Fumadocs app on
-Cloudflare Workers; it shares no runtime privileges with the API, Agent Gateway,
-worker, or Agent deployments. Merges to `main` touching `apps/docs/**` trigger CI
-to build and publish the public site. This repository's own docs-publishing flow
-does not change the product boundary that "imported Eve projects do not support
-Git-push auto-deploy".
-
 ```text
 Browser
   ↓
@@ -583,130 +399,93 @@ Public Agent Gateway (stable/preview Host routing)
 Eve Deployment (127.0.0.1 private upstream)
 ```
 
-Every deployment owns an immutable Release, a preview host, and a runtime adapter,
-but is not itself a permanently running process: a RuntimeInstance records one
-generation of a container/unit, and a deployment may be `stopped` while remaining
-addressable, continuable, and retention-protected. A project's stable host is a
-mutable route; raw dynamic ports are not product URLs and are never exposed
-publicly.
+The platform owns build and startup, health checks, secret injection, the
+durable workflow world, log collection, cron triggering, session attribution,
+Eveland's private OpenTelemetry signals, and restarts. The Agent's code is the
+imported Eve project, unchanged.
 
-Build/deploy creates a concurrently running preview by default, never stopping
-production; promote must explicitly target the exact deployment that job created.
-The stable route can atomically point at one or at most two weighted targets;
-session bindings beat route weights — while a SessionBinding/OperationBinding is
-unexpired, continuation, cancel, stream, reset, and durable routes always return to
-the original deployment, and an expired binding returns the stable `410`
-`session_expired`, never re-running weights or landing on another deployment. A
-binding never moves (see the routing reference). When
-one of two targets is unavailable, new sessions degrade to the sole healthy target;
-only when both are unavailable does it return 503.
+### Deployments, routing, and activation
 
-The Gateway never reclassifies an Agent's session-creation failure. When an initial
-Eve response is a JSON 500 carrying an `errorId`, the Gateway may inspect only a
-bounded clone for correlation, export that id with the platform request, Project,
-Deployment, RuntimeInstance, and HMAC operation key, and add its reserved request-id
-response header; the Agent's status and response bytes remain unchanged.
+- A Deployment owns an immutable Release, a preview host, and the runtime adapter
+  recorded as its `runtimeKind`. It is not a permanently running process: a
+  RuntimeInstance records one generation of a unit or container, and a `stopped`
+  Deployment stays addressable, continuable, and retention-protected. Raw ports
+  are private upstreams, never product URLs.
+- The stable route points at one target or at most two weighted targets.
+  Unexpired SessionBindings and OperationBindings always return continuation,
+  cancel, stream, reset, and durable routes to their original Deployment; an
+  expired binding answers `410 session_expired` and never re-runs the weights. A
+  binding never moves. When one of two targets is unavailable, new sessions go to
+  the healthy one; only when both are unavailable does the Agent Gateway answer
+  `503`.
+- The Agent Gateway never reclassifies an Agent's failure: it may inspect a
+  bounded clone of an initial JSON `500` for its `errorId` and correlate it, but
+  the Agent's status and bytes pass through unchanged.
+- The API only persists and waits on state; the Worker is the only host
+  controller and starts the exact Release with the adapter its `runtimeKind`
+  names. Every path that touches a process holds a bounded ActivationLease, a
+  dormant Deployment has exactly one starter, and a process stops after an idle
+  period only after a transactional re-check for new leases. Readiness proves port
+  ownership; at most one live RuntimeInstance holds a port.
+- Archive and the orphan sweep are idempotent; a process the platform decided to
+  stop is only ever reaped, never revived, and the platform's own infrastructure
+  containers are never in scope. A failed health check captures masked
+  diagnostics before cleanup, and later failures never overwrite the original
+  error.
 
-Activation is privilege-separated: the API only persists/waits on state and gains
-no Docker or systemd privilege; the Worker is the only host controller, starting
-the exact Release per the deployment's recorded `runtimeKind`. Every path touching
-the process first acquires a bounded ActivationLease, with exactly one starter per
-dormant deployment; after the last lease releases or expires the process stops
-after an idle period, with a mandatory transactional re-check for new leases before
-stopping. Readiness must prove port ownership: activation fails immediately when a
-foreign process holds the port — never marking ready based on another process's
-HTTP response; the listening port is a RuntimeInstance property, with a database
-uniqueness constraint guaranteeing at most one live instance per port.
+Reference: `docs/en/reference/routing.md`.
 
-The Worker periodically runs archive and the orphan sweep: unprotected old
-deployments archive idempotently through a claim state; unmanaged processes are
-adopted or reaped per platform state — processes the platform has decided to stop
-may only be reaped, never revived; the platform's own infrastructure containers are
-never in scope. A failed health check must capture masked diagnostics before
-cleanup, and diagnostics or cleanup failures may only append independent errors,
-never overwriting the original one.
+### Durable workflows
 
-Host shapes, weight and binding rules, durable routes, activation and port
-reservation, the orphan sweep, and diagnostics capture live in
-`docs/en/reference/routing.md`.
+- The durable workflow world is a platform runtime contract, not an Agent source
+  contract: every Release is built against the shared `@evelandhq/workflow-world`
+  at the version the platform pins, without the Agent declaring a world and without
+  touching the imported snapshot, manifest, or lockfile.
+- Runs are dispatched only by the one external Workflow Dispatcher per
+  installation, which holds a lifetime advisory lock. Every Release persists an
+  immutable workflow attestation, and every start path decides from it alone; a
+  Release without one fails closed. In production, builds and `workflow_step`
+  activation also fail closed on a stale dispatcher registration.
+- `tenant_id` is the mandatory query boundary in the one shared database. Only the
+  dispatcher claims queues, cold-start recovery filters by tenant, and project
+  deletion drops only its own partitions. The world is a build-time property of
+  the Release, never swapped by changing runtime environment variables. Each new
+  run's retention class comes from one policy chain that fails closed when lineage
+  cannot be resolved; `persistent` rows are never rewritten.
 
-Containers run the Eve project; the platform owns:
+Reference: `docs/en/operations/runtime.md`; rationale in
+`docs/en/reference/design/workflow.md`.
 
-- Build and startup
-- Health checks
-- Secret injection
-- Durable workflow world configuration, dependencies, and database schema
-- Log collection
-- Cron triggering
-- Session source attribution
-- Eveland's private OpenTelemetry signals
-- Container restarts
+### Sandbox and resources
 
-The durable workflow world is a platform runtime contract, not an Agent source
-contract: every new Release builds unconditionally against the shared
-`@evelandhq/workflow-world`, with the worker force-injecting the platform-pinned,
-Eve-compatibility-verified version — never requiring the Agent to declare a world,
-and never modifying the imported snapshot, manifest, or lockfile. The world must
-pass the World contract gate against each supported line's verified patch in the
-current window (versions in `docs/en/reference/eve-compatibility.md`).
+- An Eve Deployment's built-in execution tools always connect to a real isolated
+  sandbox. The platform injects `@evelandhq/sandbox-bwrap` and runs every sandbox
+  the Agent builds on it, preserving the authored sandbox preparation, selector,
+  and `agent/sandbox/workspace/**` seeds; a Release in which a sandbox escapes the
+  injection is refused at build time.
+- A session's `/workspace` lives outside the Release directory and survives
+  redeploys and restarts; workspace templates are isolated per Release. After a
+  build, the sandbox and the platform command baseline are self-checked under the
+  real runtime privileges.
+- Every Deployment carries consistent memory, CPU, and process-count limits, and
+  every sandboxed command, a long-running `spawn()` included, has a hard
+  wall-clock and output limit.
 
-The runner mode supports only `external`; an explicit `embedded` is a configuration
-error and must fail closed. Exactly one external dispatcher guarantees
-single-instance operation via a lifetime advisory lock. Every Release persists an
-immutable workflow attestation, and every start path decides solely on the
-persisted attestation: legacy or `unknown` objects return managed errors with
-stable prefixes and fail closed, never guessing from the current environment. In
-production, both shared builds and `workflow_step` activation fail closed on the
-freshness of the dispatcher's machine-readable registration.
+Reference: `docs/en/operations/runtime.md`, `docs/en/agents/sandbox.md`; rationale
+in `docs/en/reference/design/sandbox.md`.
 
-The shared workflow uses `tenant_id` within one database as the mandatory query
-boundary, with events and stream chunks partitioned per project; queues are claimed
-only by the platform's external dispatcher, cold-start recovery must filter by
-tenant, and project deletion drops only its own partitions — never scanning or
-deleting another tenant's. The world is a build-time property of the Release and
-cannot be swapped under a still-executing World by changing runtime environment
-variables. The shared World assigns each new run's class through a single complete
-retention policy chain, failing closed when lineage cannot be resolved;
-`persistent` rows are never rewritten.
+### Code boundaries
 
-Attestation, bootstrap, dispatcher registration, storage boundaries, and retention
-class details live in `docs/en/operations/runtime.md`.
+`packages/core` holds shared contracts and the Eve wire protocol behind explicit
+subpaths, with no root barrel; `packages/db` holds the schema, migrations, and the
+single Postgres Store, which ordinary tests run through PGlite. Apps depend only on
+packages and never on each other. The full dependency matrix lives in
+`AGENTS.md` and is enforced by `packages/architecture-tests`.
 
-An Eve deployment's built-in execution tools must connect to an executable isolated
-sandbox — never silently degrading under production-style `eve start` to a
-`just-bash` missing its optional peer. The platform injects
-`@evelandhq/sandbox-bwrap` and puts every sandbox the Agent builds on it, whatever
-backend or provider the project authored, while preserving the authored sandbox setup
-(its lifecycle callbacks, or its environment preparation and selector, depending on
-the Eve line's sandbox API) and the `agent/sandbox/workspace/**` seeds. A Release in
-which a sandbox escapes that injection is refused at build time. The durable session
-workspace lives outside the Release directory — a redeploy/restart must not lose a
-session's `/workspace` — and workspace templates are isolated per immutable
-Release. After a Release build completes, the sandbox and the platform command
-baseline must be self-checked under the actual runtime privileges — never just
-checking file existence or trusting the health endpoint. Every deployment must
-carry consistent memory, CPU, and process-count limits; a single `run()` has a hard
-deadline, and long-lived authored processes must use `spawn()` under session
-lifecycle management. Injection mechanics and workspace details live in
-`docs/en/operations/runtime.md`; the rationale in
-`docs/en/reference/design/sandbox.md`.
-
-The code dependency boundary is fixed:
-
-```text
-apps -> packages
-packages/db -> packages/core
-packages/core -> depends on no other Eveland package
-apps -X-> apps
-```
-
-`packages/core` separates contracts, the Eve wire protocol, and Node-only server
-utilities through explicit subpaths, with no root barrel; the Drizzle schema,
-migrations, and the single Postgres repository are held by `packages/db`.
-Production uses real Postgres; ordinary tests run the same repository through
-PGlite, while multi-connection locking, driver compatibility, and migration
-integration tests still use real Postgres. The API and worker depend only on
-packages and never import each other.
+`apps/docs` is the public website at `https://eveland.ai`, published from `main`
+to Cloudflare Workers. It shares no runtime privileges with the platform, and
+publishing it does not change the product boundary that imported Eve projects do
+not deploy on Git push.
 
 ---
 
