@@ -7,7 +7,7 @@ description: Why the Catalog is a derived read-only projection, and how a unifie
 
 The `GET /api/agent-catalog` endpoint answers one question: _Which agents on this installation can an authorized client chat with right now?_
 
-- **Derived from operational facts**: A project qualifies only when its active release default-exports a standard `eveChannel(...)` and its stable route is addressable.
+- **Derived from operational facts**: A project qualifies only when its active release serves eve's chat channel, as eve itself reports after the build, and its stable route is addressable.
 - **Zero state drift**: There are no manual catalog approval workflows or separate databases. The catalog automatically reflects production deployment realities. Deployments that are scaled to zero (`stopped`) remain listed because they wake on demand.
 - **Stable managed identity**: Agents are identified by `issuer + projectId` rather than volatile URLs, ensuring client conversation histories remain valid across domain reconfigurations and restarts.
 

@@ -14,6 +14,7 @@ Projects can be imported via two sources: **Git Repository URLs** or **Zip Archi
 - **Phase 1: Source input and Preflight verification**
   - The caller provides a Git URL or uploads an archive. The API generates an ephemeral, expiring `Source Preflight` token (default: 1 hour).
   - The Worker performs a shallow clone or safe extraction, inspecting project layout and verifying that the Eve dependency declared in `package.json` can resolve inside the supported version window (the build later checks the version it actually installed).
+  - **One agent per repository, in `agent/`**: the agent's files live in `agent/` at the repository root (`agent/instructions.md`, `agent/agent.ts`, `agent/tools/`, ...). Preflight refuses eve's other layouts with an error that names them: agent files directly in the repository root (the flat layout), and eve workspaces with agents under `agents/<name>/`.
   - Advancing to the next step requires a passing preflight. Failures remain on the source step with actionable diagnostic reasons.
 - **Phase 2: Project naming and environment configuration**
   - **Name inference**: Derived from the final segment of the Git URL (stripping `.git`) or archive filename, editable by the user.

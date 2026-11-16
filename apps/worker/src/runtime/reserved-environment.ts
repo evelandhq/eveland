@@ -97,10 +97,6 @@ export const RESERVED_RUNTIME_ENVIRONMENT_SOURCES: Readonly<Record<string, reado
   // carrying it would strip the project's own build toolchain out of the
   // install that `npx eve build` then runs against.
   NODE_ENV: ["NODE_ENV"],
-  // The drain budget a platform-initiated stop honours. A project that could
-  // set it could make every restart an instant kill, or claim more grace than
-  // `eve start` will ever wait for. See ./shutdown-budget.ts.
-  SERVER_SHUTDOWN_TIMEOUT: ["EVELAND_DEPLOYMENT_SHUTDOWN_TIMEOUT_SECONDS"],
   // A platform constant on the shared world: the hook-wake bypass in
   // workflow-world 0.26.1 is safe only while optimistic inline start stays off.
   WORKFLOW_OPTIMISTIC_INLINE_START: [],

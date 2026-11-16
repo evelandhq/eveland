@@ -114,8 +114,23 @@ describe("deploy preflight", () => {
     const bare = await mkdtemp(path.join(os.tmpdir(), "eveland-bare-"));
     await writeFile(path.join(bare, "package.json"), JSON.stringify({ dependencies: {} }));
     const result = await collectProjectFiles(bare);
-    expect(result.problems.join("\n")).toContain("Missing instructions");
+    expect(result.problems.join("\n")).toContain("Missing agent/instructions");
     expect(result.problems.join("\n")).toContain('no "eve" dependency');
+  });
+
+  // The server refuses eve's flat layout; the CLI says so before uploading.
+  test("flags agent files at the project root", async () => {
+    const flat = await mkdtemp(path.join(os.tmpdir(), "eveland-flat-"));
+    await writeFile(
+      path.join(flat, "package.json"),
+      JSON.stringify({ dependencies: { eve: "^1" } }),
+    );
+    await writeFile(path.join(flat, "instructions.md"), "Hi.");
+    const result = await collectProjectFiles(flat);
+    expect(result.problems).toEqual([
+      expect.stringContaining("Eveland deploys one agent per repository, with its files in agent/"),
+    ]);
+    expect(result.problems[0]).toContain("flat layout");
   });
 
   test("skips symlinks the extractor would reject", async () => {
