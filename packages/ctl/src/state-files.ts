@@ -182,9 +182,12 @@ export async function acquireMutex(
     nonce: process.hrtime.bigint().toString(),
   };
   const token = JSON.stringify(owner);
+  // An empty owner reads as "not written yet", exactly like a missing one: it
+  // is a holder between creating the file and its bytes landing, never a
+  // dead participant.
   const readOwner = async (dir: string): Promise<string | null> => {
     try {
-      return (await readFile(path.join(dir, "owner"), "utf8")).trim();
+      return (await readFile(path.join(dir, "owner"), "utf8")).trim() || null;
     } catch {
       return null;
     }
@@ -208,7 +211,15 @@ export async function acquireMutex(
   for (;;) {
     try {
       await mkdir(mutexPath, { recursive: false });
-      await writeFile(ownerPath, `${token}\n`, "utf8");
+      // The owner is written beside the mutex and renamed into it, so a
+      // contender sees it either absent or complete — never truncated.
+      const stagedOwner = `${mutexPath}.owner-${pid}-${owner.nonce}`;
+      try {
+        await writeFile(stagedOwner, `${token}\n`, "utf8");
+        await rename(stagedOwner, ownerPath);
+      } finally {
+        await rm(stagedOwner, { force: true });
+      }
       return {
         stillHeld: async () => (await readOwner(mutexPath)) === token,
         release: async () => {
