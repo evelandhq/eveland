@@ -23,7 +23,7 @@ import {
   resolveAgentTelemetryNetworkName,
 } from "./runtime/docker/agent-network.js";
 import { injectSandboxModules } from "./runtime/sandbox-inject.js";
-import { resolveDeploymentShutdownTimeoutSeconds } from "./runtime/shutdown-budget.js";
+import { resolveDockerStopGraceSeconds } from "./runtime/shutdown-budget.js";
 import { processSafeName } from "./runtime/types.js";
 
 // Module-scoped: every test in this file runs against the mocked execa. This is safe
@@ -922,7 +922,7 @@ describe("createDockerAdapter", () => {
       // drained.
       [
         "docker",
-        ["stop", "--time", String(resolveDeploymentShutdownTimeoutSeconds({})), "eveland-proj_123"],
+        ["stop", "--time", String(resolveDockerStopGraceSeconds({})), "eveland-proj_123"],
         { reject: false },
       ],
       ["docker", ["rm", "--force", "eveland-proj_123"], { reject: false }],

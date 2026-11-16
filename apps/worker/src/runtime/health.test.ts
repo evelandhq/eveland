@@ -69,6 +69,27 @@ describe("waitForHttpHealth", () => {
     );
   });
 
+  // The last probe can start just before the deadline; its attempt window is
+  // cut to what remains, so it is aborted by the deadline rather than by a slow
+  // process. That abort says nothing about the process and must not replace
+  // what the process last answered.
+  test("keeps the last answer when the deadline aborts the final probe", async () => {
+    let calls = 0;
+    await withServer(
+      (_req, res) => {
+        calls += 1;
+        if (calls === 1) res.end("ok");
+        // Later probes hang until the deadline cuts them off.
+      },
+      async (port) => {
+        await expect(
+          waitForHttpHealth({ host: "127.0.0.1", port, timeoutMs: 700 }),
+        ).rejects.toThrow(/without \{ ok: true \}/);
+      },
+    );
+    expect(calls).toBeGreaterThan(1);
+  });
+
   test("keeps polling past a not-yet-ready answer and resolves once eve reports ok", async () => {
     let calls = 0;
     await withServer(
