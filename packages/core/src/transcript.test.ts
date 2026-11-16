@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   buildSessionTranscript,
   buildTranscriptTurns,
+  groupTranscriptItems,
   turnToolCalls,
   type TranscriptSourceEvent,
   type TranscriptSourceNode,
@@ -213,6 +214,115 @@ describe("buildTranscriptTurns", () => {
     expect(turns[1]!.items).toEqual([
       expect.objectContaining({ label: "Step failed", text: "model down" }),
       expect.objectContaining({ label: "Turn failed", text: "turn down" }),
+    ]);
+  });
+});
+
+describe("groupTranscriptItems", () => {
+  const delivery = (text: string, second = 0) =>
+    event("delivery.consumed", { turnId: "turn_0", parts: [{ kind: "text", text }] }, { second });
+  const reply = (value: string, second: number) =>
+    event(
+      "content.completed",
+      { turnId: "turn_0", kind: "text", phase: "reply", value },
+      { second },
+    );
+  const call = (callId: string, name: string, second: number) =>
+    event(
+      "call.requested",
+      { turnId: "turn_0", callId, capability: { kind: "tool", name }, input: {} },
+      { second },
+    );
+  const settled = (callId: string, outcome: string, second: number, error?: string) =>
+    event(
+      "call.settled",
+      {
+        turnId: "turn_0",
+        callId,
+        outcome,
+        ...(error ? { error: { code: "E", message: error } } : { output: "Found it" }),
+      },
+      { second },
+    );
+
+  test("collapses consecutive reasoning and tool items into one activity group", () => {
+    const [turn] = buildTranscriptTurns([
+      delivery("Investigate it"),
+      event(
+        "content.completed",
+        { turnId: "turn_0", kind: "reasoning", value: "I should inspect the repository." },
+        { second: 1 },
+      ),
+      call("call_1", "search", 2),
+      settled("call_1", "completed", 3),
+      reply("Here is what I found.", 4),
+      event("turn.settled", { turnId: "turn_0", outcome: "completed" }, { second: 5 }),
+    ]);
+
+    expect(groupTranscriptItems(turn!)).toEqual([
+      expect.objectContaining({ kind: "user", text: "Investigate it" }),
+      {
+        kind: "activity",
+        status: "completed",
+        items: [
+          expect.objectContaining({ kind: "reasoning" }),
+          expect.objectContaining({
+            kind: "tool",
+            call: expect.objectContaining({ name: "search", status: "completed" }),
+          }),
+        ],
+      },
+      expect.objectContaining({ kind: "assistant", text: "Here is what I found." }),
+    ]);
+  });
+
+  test("keeps separate activity groups on either side of an assistant message", () => {
+    const [turn] = buildTranscriptTurns([
+      delivery("Start"),
+      call("call_1", "first", 1),
+      reply("Intermediate update", 2),
+      call("call_2", "second", 3),
+    ]);
+
+    expect(groupTranscriptItems(turn!).map((item) => item.kind)).toEqual([
+      "user",
+      "activity",
+      "assistant",
+      "activity",
+    ]);
+    expect(groupTranscriptItems(turn!)).toMatchObject([
+      {},
+      { status: "running", items: [{ call: { name: "first" } }] },
+      {},
+      { status: "running", items: [{ call: { name: "second" } }] },
+    ]);
+  });
+
+  test("marks an activity group failed when one of its tools fails", () => {
+    const [turn] = buildTranscriptTurns([
+      delivery("Try it"),
+      call("call_1", "deploy", 0),
+      settled("call_1", "failed", 1, "boom"),
+      event(
+        "turn.settled",
+        { turnId: "turn_0", outcome: "failed", error: { code: "E", message: "boom" } },
+        { second: 2 },
+      ),
+    ]);
+
+    expect(groupTranscriptItems(turn!)).toMatchObject([{}, { kind: "activity", status: "failed" }]);
+  });
+
+  test("keeps trailing activity running until the turn settles", () => {
+    const [turn] = buildTranscriptTurns([
+      delivery("Keep going"),
+      call("call_1", "search", 0),
+      settled("call_1", "completed", 1),
+    ]);
+
+    expect(groupTranscriptItems(turn!)).toMatchObject([
+      {},
+      { kind: "activity", status: "running" },
     ]);
   });
 });

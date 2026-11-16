@@ -1,6 +1,7 @@
 import { readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { OBSERVER_RUNTIME_CONTRACT } from "@evelandhq/agent-observer";
 import { createTestStore } from "@evelandhq/db/vitest";
 import { afterEach, describe, expect, test } from "vitest";
 import { DEFAULT_TEAM_ID } from "@evelandhq/db";
@@ -130,7 +131,7 @@ describe("Deployment observability policy", () => {
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "fixture:stale-observer",
-      observerContract: 2,
+      observerContract: OBSERVER_RUNTIME_CONTRACT - 1,
       containerName: "fixture-stale-observer",
       internalPort: 3000,
       hostPort: 41996,
@@ -147,21 +148,23 @@ describe("Deployment observability policy", () => {
     const runtimeLogs = await store.listLogs(project.id, "runtime");
     expect(runtimeLogs).toHaveLength(1);
     expect(runtimeLogs[0]!.line).toContain(staleRelease!.id);
-    expect(runtimeLogs[0]!.line).toContain("contract 2 < 3");
+    expect(runtimeLogs[0]!.line).toContain(
+      `contract ${String(OBSERVER_RUNTIME_CONTRACT - 1)} < ${String(OBSERVER_RUNTIME_CONTRACT)}`,
+    );
     expect(runtimeLogs[0]!.line).toContain("Rebuild the release");
 
     const currentDeployment = await store.recordDeployment({
       projectId: project.id,
       sourceRevisionId: revision.id,
       imageTag: "fixture:current-observer",
-      observerContract: 3,
+      observerContract: OBSERVER_RUNTIME_CONTRACT,
       containerName: "fixture-current-observer",
       internalPort: 3000,
       hostPort: 41997,
       runtimeKind: "docker",
     });
     const currentRelease = await store.getRelease(currentDeployment.releaseId);
-    expect(currentRelease!.observerContract).toBe(3);
+    expect(currentRelease!.observerContract).toBe(OBSERVER_RUNTIME_CONTRACT);
 
     await warnStaleObserverRelease(store, {
       projectId: project.id,

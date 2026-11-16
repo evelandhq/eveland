@@ -15,7 +15,7 @@ Eveland 的遥测全链路统一采用 **OpenTelemetry (OTel) API、标准语义
 
 - **单纯网关代理的局限**：如果仅在网关层抓取流量，会静默遗漏直连通信、定时任务调度（Cron）、渠道消息（如 Slack/Webhook）以及子 Agent（Subagent）之间的内部协同流量。
 - **为何不拉取事件流**：Agent 若自定义了业务鉴权，外部拉取必须持有最终用户凭证，且定时任务等非 HTTP 流量缺乏对应的拉取凭证。
-- **在发布准备期注入**：Eveland 在 Release 准备阶段向 Agent 运行环境中自动注入 Observer Hook，从进程内部主动通过 OTLP 推送结构化事件。注入过程自包含且绝不修改用户的源代码快照。
+- **在发布准备期注入**：Eveland 在 Release 准备阶段向 Agent 运行环境中自动注入 Observer Hook 与 instrumentation 文件，从进程内部主动通过 OTLP 推送结构化事件。注入过程自包含且绝不修改用户的源代码快照。
 
 ---
 

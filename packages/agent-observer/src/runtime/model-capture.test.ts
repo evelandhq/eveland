@@ -1,147 +1,110 @@
 import { describe, expect, test } from "vitest";
-import { createModelCallCapture, type ModelCallCapture } from "./model-capture.js";
+import { createModelCallCapture } from "./model-capture.js";
 
-type Target = { AI_SDK_TELEMETRY_INTEGRATIONS?: Array<Record<string, unknown>> };
-
-function installedCapture(target: Target = {}): {
-  capture: ModelCallCapture;
-  onStepEnd: (event: unknown) => void;
-} {
-  const capture = createModelCallCapture(target);
-  capture.install();
-  const integration = target.AI_SDK_TELEMETRY_INTEGRATIONS?.[0];
-  if (!integration) throw new Error("Capture did not register an integration.");
-  return { capture, onStepEnd: integration.onStepEnd as (event: unknown) => void };
+/** The fields eve 1.0 puts on every `model.call.*` instrumentation event. */
+function scope(sessionId: string, runId: string): Record<string, unknown> {
+  return {
+    sessionId,
+    rootSessionId: "wrun_root",
+    runId,
+    attempt: 0,
+    turnId: "turn_0",
+  };
 }
 
-function stepEnd(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function callStarted(sessionId: string, runId: string, modelId: string): Record<string, unknown> {
   return {
-    model: { provider: "gateway", modelId: "openai/gpt-6" },
-    response: { modelId: "gpt-6-2026-01-01" },
-    usage: { inputTokens: 120, outputTokens: 30 },
-    finishReason: "tool-calls",
-    ...overrides,
+    type: "model.call.started",
+    idempotencyKey: `model:${sessionId}:${runId}:0:0:0`,
+    model: { modelId, provider: "gateway" },
+    scope: scope(sessionId, runId),
+  };
+}
+
+function callSettled(
+  sessionId: string,
+  runId: string,
+  responseModelId?: string,
+): Record<string, unknown> {
+  return {
+    type: "model.call.settled",
+    outcome: "completed",
+    finishReason: "stop",
+    idempotencyKey: `model:${sessionId}:${runId}:0:0:0`,
+    ...(responseModelId ? { responseModelId } : {}),
+    usage: { inputTokens: 10, outputTokens: 5 },
+    scope: scope(sessionId, runId),
   };
 }
 
 describe("model call capture", () => {
-  test("registers exactly one integration in the AI SDK global array", () => {
-    const target: Target = {};
-    const capture = createModelCallCapture(target);
-    capture.install();
-    capture.install();
-    expect(target.AI_SDK_TELEMETRY_INTEGRATIONS).toHaveLength(1);
-  });
+  test("names the model a run's provider call ran, keyed by session and run", () => {
+    const capture = createModelCallCapture();
+    capture.observe(callStarted("wrun_a", "run_0", "served/model-a"));
+    capture.observe(callSettled("wrun_a", "run_0", "model-a-2026-11-01"));
+    capture.observe(callStarted("wrun_b", "run_0", "served/model-b"));
 
-  test("appends alongside integrations registered by others", () => {
-    const target: Target = { AI_SDK_TELEMETRY_INTEGRATIONS: [{ onStart: () => {} }] };
-    installedCapture(target);
-    expect(target.AI_SDK_TELEMETRY_INTEGRATIONS).toHaveLength(2);
-  });
-
-  test("takes the call whose usage matches the step event, once", () => {
-    const { capture, onStepEnd } = installedCapture();
-    onStepEnd(stepEnd({ usage: { inputTokens: 999, outputTokens: 1 }, finishReason: "stop" }));
-    onStepEnd(stepEnd());
-
-    const observed = capture.take({
-      inputTokens: 120,
-      outputTokens: 30,
-      finishReason: "tool-calls",
+    expect(capture.take({ sessionId: "wrun_a", runId: "run_0" })).toEqual({
+      modelId: "served/model-a",
+      responseModelId: "model-a-2026-11-01",
     });
-
-    expect(observed).toEqual({
-      modelId: "openai/gpt-6",
-      responseModelId: "gpt-6-2026-01-01",
-      inputTokens: 120,
-      outputTokens: 30,
-      finishReason: "tool-calls",
+    // Run ids repeat across sessions (every session starts at run_0), so a
+    // child session's call never names its parent's model.
+    expect(capture.take({ sessionId: "wrun_b", runId: "run_0" })).toEqual({
+      modelId: "served/model-b",
     });
-    expect(
-      capture.take({ inputTokens: 120, outputTokens: 30, finishReason: "tool-calls" }),
-    ).toBeUndefined();
+    expect(capture.take({ sessionId: "wrun_a", runId: "run_1" })).toBeUndefined();
   });
 
-  test("normalizes AI SDK finish reasons the way Eve does before comparing", () => {
-    const { capture, onStepEnd } = installedCapture();
-    onStepEnd(stepEnd({ finishReason: "unknown" }));
+  test("keeps the run's model for every usage record the run reports", () => {
+    // A run whose discarded attempt records usage reports twice under one run id.
+    const capture = createModelCallCapture();
+    capture.observe(callStarted("wrun_a", "run_0", "served/model-a"));
 
-    expect(capture.take({ inputTokens: 120, outputTokens: 30, finishReason: "other" })).toEqual(
-      expect.objectContaining({ modelId: "openai/gpt-6" }),
-    );
+    expect(capture.take({ sessionId: "wrun_a", runId: "run_0" })?.modelId).toBe("served/model-a");
+    expect(capture.take({ sessionId: "wrun_a", runId: "run_0" })?.modelId).toBe("served/model-a");
   });
 
-  test("a usage-bearing step never takes a call with different usage", () => {
-    const { capture, onStepEnd } = installedCapture();
-    // A compaction call: real, but not this step's.
-    onStepEnd(stepEnd({ usage: { inputTokens: 50_000, outputTokens: 800 } }));
+  test("names the latest provider call when a run makes several", () => {
+    const capture = createModelCallCapture();
+    capture.observe(callStarted("wrun_a", "run_0", "served/first"));
+    capture.observe(callSettled("wrun_a", "run_0", "first-2026"));
+    capture.observe(callStarted("wrun_a", "run_0", "served/fallback"));
 
-    expect(
-      capture.take({ inputTokens: 12, outputTokens: 3, finishReason: "stop" }),
-    ).toBeUndefined();
-    // The unmatched call is still there for its own step.
-    expect(
-      capture.take({ inputTokens: 50_000, outputTokens: 800, finishReason: "tool-calls" }),
-    ).toEqual(expect.objectContaining({ modelId: "openai/gpt-6" }));
+    expect(capture.take({ sessionId: "wrun_a", runId: "run_0" })).toEqual({
+      modelId: "served/fallback",
+    });
   });
 
-  test("a step without usage falls back to the newest call", () => {
-    const { capture, onStepEnd } = installedCapture();
-    onStepEnd(stepEnd({ model: { modelId: "openai/gpt-5" }, usage: undefined }));
-    onStepEnd(stepEnd({ usage: undefined }));
+  test("forgets the oldest runs past its bound", () => {
+    const capture = createModelCallCapture({ maxRuns: 2 });
+    capture.observe(callStarted("wrun_a", "run_0", "m0"));
+    capture.observe(callStarted("wrun_a", "run_1", "m1"));
+    capture.observe(callStarted("wrun_a", "run_2", "m2"));
 
-    expect(
-      capture.take({ inputTokens: undefined, outputTokens: undefined, finishReason: undefined }),
-    ).toEqual(expect.objectContaining({ modelId: "openai/gpt-6" }));
+    expect(capture.take({ sessionId: "wrun_a", runId: "run_0" })).toBeUndefined();
+    expect(capture.take({ sessionId: "wrun_a", runId: "run_2" })?.modelId).toBe("m2");
   });
 
-  test("evicts the oldest calls beyond the buffer bound", () => {
-    const { capture, onStepEnd } = installedCapture();
-    for (let index = 0; index <= 16; index += 1) {
-      onStepEnd(stepEnd({ usage: { inputTokens: index, outputTokens: index } }));
+  test("ignores malformed events and never throws into eve's instrumentation bus", () => {
+    const capture = createModelCallCapture();
+    for (const event of [
+      null,
+      "model.call.started",
+      { type: "model.call.started" },
+      { type: "model.call.started", model: { modelId: 7 }, scope: scope("wrun_a", "run_0") },
+      { type: "model.call.started", model: { modelId: "m" }, scope: { sessionId: "wrun_a" } },
+      { type: "model.call.settled", outcome: "failed", scope: scope("wrun_a", "run_0") },
+      { type: "call.requested", scope: scope("wrun_a", "run_0") },
+    ]) {
+      expect(() => capture.observe(event)).not.toThrow();
     }
-
-    expect(
-      capture.take({ inputTokens: 0, outputTokens: 0, finishReason: "tool-calls" }),
-    ).toBeUndefined();
-    expect(capture.take({ inputTokens: 16, outputTokens: 16, finishReason: "tool-calls" })).toEqual(
-      expect.objectContaining({ inputTokens: 16 }),
-    );
+    expect(capture.take({ sessionId: "wrun_a", runId: "run_0" })).toBeUndefined();
   });
 
-  test("ignores events that name no model", () => {
-    const { capture, onStepEnd } = installedCapture();
-    onStepEnd(stepEnd({ model: {} }));
-
-    expect(
-      capture.take({ inputTokens: 120, outputTokens: 30, finishReason: "tool-calls" }),
-    ).toBeUndefined();
-  });
-
-  test("swallows anything the AI SDK throws at it", () => {
-    const { onStepEnd } = installedCapture();
-    const hostile = new Proxy(
-      {},
-      {
-        get(): never {
-          throw new Error("hostile event");
-        },
-      },
-    );
-
-    expect(() => onStepEnd(null)).not.toThrow();
-    expect(() => onStepEnd("text")).not.toThrow();
-    expect(() => onStepEnd(hostile)).not.toThrow();
-  });
-
-  test("install survives a frozen registry target", () => {
-    const target: Target = {};
-    Object.freeze(target);
-    const capture = createModelCallCapture(target);
-
-    expect(() => capture.install()).not.toThrow();
-    expect(
-      capture.take({ inputTokens: 120, outputTokens: 30, finishReason: "tool-calls" }),
-    ).toBeUndefined();
+  test("leaves the response model unset when a settle arrives for a run it never saw start", () => {
+    const capture = createModelCallCapture();
+    capture.observe(callSettled("wrun_a", "run_0", "orphan-2026"));
+    expect(capture.take({ sessionId: "wrun_a", runId: "run_0" })).toBeUndefined();
   });
 });

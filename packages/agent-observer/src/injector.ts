@@ -1,12 +1,12 @@
 import { realpathSync } from "node:fs";
-import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { AGENT_RUNTIME_POLICY_PATH } from "@evelandhq/core/observability";
 
-const observerFileName = "eveland-observer.js";
-const extensionRuntimeFileName = "eveland-observer-runtime.mjs";
+const observerStem = "eveland-observer";
+const observerFileName = `${observerStem}.js`;
 const runtimeRelativePath = ".eveland/observability/runtime.mjs";
 
 export const OBSERVER_RUNTIME_FILE_NAME = "runtime.mjs";
@@ -17,10 +17,16 @@ export const OBSERVER_RUNTIME_FILE_NAME = "runtime.mjs";
  * deployment receives. Shims baked into releases import this path first, so
  * the observer logic always matches the running Eveland instead of being
  * frozen at release build time. The file's default export is a plain Eve hook
- * configuration; that contract must hold for every shim ever shipped, so an
- * incompatible runtime change requires a NEW file name (leaving this one
- * absent so old shims fall back to their baked bundle), never a changed
+ * configuration and its `instrumentation` export a plain instrumentation
+ * configuration; a release's shims consume exactly that shape, so an
+ * incompatible runtime change requires a NEW file name, never a changed
  * export shape.
+ *
+ * The hook shims and the instrumentation shim share state (the model each
+ * provider call ran) only because they import this one URL at run time. The
+ * path therefore exists only inside a deployment, never during `eve build`:
+ * eve's bundler inlines a file URL it can resolve, which would give every
+ * shim its own copy of the runtime.
  */
 export const PLATFORM_OBSERVER_RUNTIME_PATH = path.posix.join(
   path.posix.dirname(AGENT_RUNTIME_POLICY_PATH),
@@ -30,11 +36,10 @@ export const PLATFORM_OBSERVER_RUNTIME_PATH = path.posix.join(
 /**
  * Version of the observer delivery contract embedded in a release. Bump only
  * when a release must be REBUILT to keep observability working (i.e. the shim
- * contract itself changes). Version 1 is implicit: releases built before this
- * constant existed embed a fully self-contained observer that ignores the
- * platform-delivered runtime and goes stale as the platform moves.
+ * contract itself changes). A release on this contract carries the hook shims
+ * and the instrumentation shim that reports the model each provider call ran.
  */
-export const OBSERVER_RUNTIME_CONTRACT = 3;
+export const OBSERVER_RUNTIME_CONTRACT = 4;
 
 export type ObserverCoverageGap = {
   kind: "file-form-subagent";
@@ -77,8 +82,20 @@ let bundledRuntime: Promise<string> | undefined;
  * into every deployment's observability mount by the Worker.
  */
 export function bundleObserverRuntime(): Promise<string> {
-  bundledRuntime ??= build({
-    entryPoints: [fileURLToPath(new URL("./hook-runtime.ts", import.meta.url))],
+  bundledRuntime ??= bundleObserverRuntimeEntry(
+    fileURLToPath(new URL("./hook-runtime.ts", import.meta.url)),
+  );
+  bundledRuntime.catch(() => {
+    // Do not cache a failed build; the next caller retries.
+    bundledRuntime = undefined;
+  });
+  return bundledRuntime;
+}
+
+/** Bundles a runtime entry module the way the delivered observer runtime is bundled. */
+export function bundleObserverRuntimeEntry(entryPoint: string): Promise<string> {
+  return build({
+    entryPoints: [entryPoint],
     bundle: true,
     write: false,
     platform: "node",
@@ -97,11 +114,6 @@ export function bundleObserverRuntime(): Promise<string> {
     if (!file) throw new Error("Observer runtime bundle produced no output.");
     return file.text;
   });
-  bundledRuntime.catch(() => {
-    // Do not cache a failed build; the next caller retries.
-    bundledRuntime = undefined;
-  });
-  return bundledRuntime;
 }
 
 export async function injectObserverHooks(input: {
@@ -135,6 +147,16 @@ export async function injectObserverHooks(input: {
       );
     }
   }
+  // eve names an instrumentation file by its stem, so any extension collides.
+  const instrumentationDir = path.join(rootAgentRoot, "instrumentation");
+  const reservedInstrumentation = (await readdir(instrumentationDir).catch(() => [])).find(
+    (name) => path.parse(name).name === observerStem,
+  );
+  if (reservedInstrumentation !== undefined) {
+    throw new Error(
+      `Reserved instrumentation file ${releaseRelativePath(releaseDir, path.join(instrumentationDir, reservedInstrumentation))} already exists. Rename the authored file; Eveland will not overwrite it.`,
+    );
+  }
 
   const runtimePath = path.join(releaseDir, runtimeRelativePath);
   await mkdir(path.dirname(runtimePath), { recursive: true });
@@ -144,8 +166,18 @@ export async function injectObserverHooks(input: {
   for (const observerPath of observerPaths) {
     await mkdir(path.dirname(observerPath), { recursive: true });
     await writeFile(observerPath, createObserverShim(observerPath, runtimePath), "utf8");
-    injectedFiles.push(path.relative(releaseDir, observerPath));
+    injectedFiles.push(releaseRelativePath(releaseDir, observerPath));
   }
+  // Instrumentation is root-only in eve and receives every session the
+  // process runs, subagents included, so one file serves the whole tree.
+  const instrumentationPath = path.join(instrumentationDir, observerFileName);
+  await mkdir(instrumentationDir, { recursive: true });
+  await writeFile(
+    instrumentationPath,
+    createObserverInstrumentationShim(instrumentationPath, runtimePath),
+    "utf8",
+  );
+  injectedFiles.push(releaseRelativePath(releaseDir, instrumentationPath));
 
   return {
     injectedFiles,
@@ -161,13 +193,10 @@ export async function injectExtensionSubagentHooks(input: {
 }): Promise<{ injectedFiles: string[]; coverageGaps: ObserverCoverageGap[] }> {
   const releaseDir = path.resolve(input.releaseDir);
   const manifest = readExtensionSubagentManifest(input.manifest);
-  const agentRoots: Array<{ agentRoot: string; fallbackRuntimePath: string }> = [];
+  const agentRoots: string[] = [];
   const coverageGaps: ObserverCoverageGap[] = [];
 
-  const collectExtensionSubagent = (
-    source: ExtensionSubagentSource,
-    ownerManifest: ExtensionSubagentManifest,
-  ): void => {
+  const collectExtensionSubagent = (source: ExtensionSubagentSource): void => {
     const entryPath = resolveReleasePath(releaseDir, source.entryPath);
     if (isModulePath(entryPath)) {
       coverageGaps.push({
@@ -178,16 +207,8 @@ export async function injectExtensionSubagentHooks(input: {
       });
       return;
     }
-    agentRoots.push({
-      agentRoot: entryPath,
-      fallbackRuntimePath: resolveReleasePath(
-        releaseDir,
-        path.join(ownerManifest.agentRoot, "lib", extensionRuntimeFileName),
-      ),
-    });
-    for (const nested of source.manifest.subagents) {
-      collectExtensionSubagent(nested, ownerManifest);
-    }
+    agentRoots.push(entryPath);
+    for (const nested of source.manifest.subagents) collectExtensionSubagent(nested);
     collectMountedSubagents(source.manifest, collectExtensionSubagent);
   };
 
@@ -197,31 +218,10 @@ export async function injectExtensionSubagentHooks(input: {
   };
   scanConsumerManifest(manifest);
 
-  const runtimePath = path.join(releaseDir, runtimeRelativePath);
-  if (!(await exists(runtimePath))) {
-    throw new Error(
-      `Extension observer injection requires the platform runtime at ${runtimeRelativePath}.`,
-    );
-  }
-  const observerTargets = [
-    ...new Map(agentRoots.map((entry) => [entry.agentRoot, entry] as const)).values(),
-  ]
-    .sort((left, right) => left.agentRoot.localeCompare(right.agentRoot))
-    .map((entry) => ({
-      observerPath: path.join(entry.agentRoot, "hooks", observerFileName),
-      fallbackRuntimePath: entry.fallbackRuntimePath,
-    }));
-  const fallbackRuntimePaths = [
-    ...new Set(observerTargets.map((target) => target.fallbackRuntimePath)),
-  ];
-  for (const fallbackRuntimePath of fallbackRuntimePaths) {
-    if (await exists(fallbackRuntimePath)) {
-      throw new Error(
-        `Reserved Extension observer runtime already exists at ${releaseRelativePath(releaseDir, fallbackRuntimePath)}. Rename the authored file; Eveland will not overwrite it.`,
-      );
-    }
-  }
-  for (const { observerPath } of observerTargets) {
+  const observerPaths = [...new Set(agentRoots)]
+    .sort((left, right) => left.localeCompare(right))
+    .map((agentRoot) => path.join(agentRoot, "hooks", observerFileName));
+  for (const observerPath of observerPaths) {
     if (await exists(observerPath)) {
       throw new Error(
         `Reserved observer hook already exists at ${releaseRelativePath(releaseDir, observerPath)}. Rename the Extension-authored file; Eveland will not overwrite it.`,
@@ -229,80 +229,83 @@ export async function injectExtensionSubagentHooks(input: {
     }
   }
 
-  const runtime = await readFile(runtimePath, "utf8");
-  for (const fallbackRuntimePath of fallbackRuntimePaths) {
-    await mkdir(path.dirname(fallbackRuntimePath), { recursive: true });
-    await writeFile(fallbackRuntimePath, createFallbackRuntimeLoader(runtime), "utf8");
-  }
+  // The hook shim is the only file written into an installed Extension
+  // package. It carries no runtime copy: it loads the runtime from the
+  // platform mount, which also holds the policy, so without the mount there
+  // is no telemetry to capture and the hook stays inert.
   const injectedFiles: string[] = [];
-  for (const { observerPath, fallbackRuntimePath } of observerTargets) {
+  for (const observerPath of observerPaths) {
     await mkdir(path.dirname(observerPath), { recursive: true });
-    await writeFile(
-      observerPath,
-      createObserverShim(observerPath, fallbackRuntimePath, true),
-      "utf8",
-    );
+    await writeFile(observerPath, createObserverShim(observerPath, undefined), "utf8");
     injectedFiles.push(releaseRelativePath(releaseDir, observerPath));
   }
   return { injectedFiles, coverageGaps };
 }
 
+/**
+ * The hook shim baked into a release. It prefers the observer runtime the
+ * Eveland Worker delivers into the observability mount, so captured telemetry
+ * always matches the running platform. With a `fallbackRuntimePath` it falls
+ * back to the bundle baked into the release; without one (an installed
+ * Extension package) it is inert when the mount is absent.
+ */
 export function createObserverShim(
   observerPath: string,
-  runtimePath: string,
-  staticFallback = false,
+  fallbackRuntimePath: string | undefined,
   platformRuntimeUrl = `file://${PLATFORM_OBSERVER_RUNTIME_PATH}`,
 ): string {
-  let relativeRuntimePath = path
-    .relative(path.dirname(observerPath), runtimePath)
-    .split(path.sep)
-    .join("/");
-  if (!relativeRuntimePath.startsWith(".")) {
-    relativeRuntimePath = `./${relativeRuntimePath}`;
-  }
-  const fallback = staticFallback
-    ? [
-        `import { loadFallbackRuntime } from ${JSON.stringify(relativeRuntimePath)};`,
-        ``,
-        `let runtime;`,
-        `try {`,
-        `  runtime = await import(${JSON.stringify(platformRuntimeUrl)});`,
-        `} catch {`,
-        `  runtime = await loadFallbackRuntime();`,
-        `}`,
-      ]
-    : [
-        `let runtime;`,
-        `try {`,
-        `  runtime = await import(${JSON.stringify(platformRuntimeUrl)});`,
-        `} catch {`,
-        `  runtime = await import(${JSON.stringify(relativeRuntimePath)});`,
-        `}`,
-      ];
   return [
     `import { defineHook } from "eve/hooks";`,
     ``,
-    `// Prefer the observer runtime the Eveland Worker delivers into the`,
-    `// observability mount, so captured telemetry always matches the running`,
-    `// platform; fall back to the bundle baked into this release when the Agent`,
-    `// runs outside an Eveland deployment.`,
-    ...fallback,
+    ...runtimeImport(observerPath, fallbackRuntimePath, platformRuntimeUrl),
     ``,
-    `export default defineHook(runtime.default);`,
+    `export default defineHook(runtime?.default ?? { events: { "*"() {} } });`,
     ``,
   ].join("\n");
 }
 
-function createFallbackRuntimeLoader(runtime: string): string {
-  const runtimeUrl = `data:text/javascript;base64,${Buffer.from(runtime).toString("base64")}`;
+/**
+ * The root instrumentation shim. It wraps the runtime's `instrumentation`
+ * export, from the same module the hook shims import, so the model each
+ * provider call ran reaches the hook that exports the run's usage.
+ */
+export function createObserverInstrumentationShim(
+  shimPath: string,
+  fallbackRuntimePath: string,
+  platformRuntimeUrl = `file://${PLATFORM_OBSERVER_RUNTIME_PATH}`,
+): string {
   return [
-    `let fallbackRuntime;`,
-    `export function loadFallbackRuntime() {`,
-    `  fallbackRuntime ??= import(${JSON.stringify(runtimeUrl)});`,
-    `  return fallbackRuntime;`,
-    `}`,
+    `import { defineInstrumentation } from "eve/instrumentation";`,
+    ``,
+    ...runtimeImport(shimPath, fallbackRuntimePath, platformRuntimeUrl),
+    ``,
+    `export default defineInstrumentation(runtime?.instrumentation ?? { events: {} });`,
     ``,
   ].join("\n");
+}
+
+function runtimeImport(
+  shimPath: string,
+  fallbackRuntimePath: string | undefined,
+  platformRuntimeUrl: string,
+): string[] {
+  const fallback =
+    fallbackRuntimePath === undefined
+      ? `  runtime = undefined;`
+      : `  runtime = await import(${JSON.stringify(relativeSpecifier(shimPath, fallbackRuntimePath))});`;
+  return [
+    `let runtime;`,
+    `try {`,
+    `  runtime = await import(${JSON.stringify(platformRuntimeUrl)});`,
+    `} catch {`,
+    fallback,
+    `}`,
+  ];
+}
+
+function relativeSpecifier(from: string, target: string): string {
+  const relative = path.relative(path.dirname(from), target).split(path.sep).join("/");
+  return relative.startsWith(".") ? relative : `./${relative}`;
 }
 
 async function discoverSubagentRoots(
@@ -365,29 +368,17 @@ async function exists(target: string): Promise<boolean> {
 
 function collectMountedSubagents(
   manifest: ExtensionSubagentManifest,
-  collect: (source: ExtensionSubagentSource, ownerManifest: ExtensionSubagentManifest) => void,
+  collect: (source: ExtensionSubagentSource) => void,
 ): void {
   for (const mount of [...manifest.resolvedExtensions].sort((left, right) =>
     left.namespace.localeCompare(right.namespace),
   )) {
+    // A consumer override replaces the Extension's subagent of the same id.
     const ids = new Set<string>();
-    const sources: Array<{
-      source: ExtensionSubagentSource;
-      ownerManifest: ExtensionSubagentManifest;
-    }> = [
-      ...(mount.overrides?.subagents.map((source) => ({
-        source,
-        ownerManifest: mount.overrides!,
-      })) ?? []),
-      ...mount.manifest.subagents.map((source) => ({
-        source,
-        ownerManifest: mount.manifest,
-      })),
-    ];
-    for (const { source, ownerManifest } of sources) {
+    for (const source of [...(mount.overrides?.subagents ?? []), ...mount.manifest.subagents]) {
       if (ids.has(source.subagentId)) continue;
       ids.add(source.subagentId);
-      collect(source, ownerManifest);
+      collect(source);
     }
   }
 }

@@ -31,6 +31,7 @@ test("copies source into a prepared release and injects observers without modify
   expect(result.injectedFiles).toEqual([
     "agent/hooks/eveland-observer.js",
     "agent/subagents/child/hooks/eveland-observer.js",
+    "agent/instrumentation/eveland-observer.js",
   ]);
   expect(result.runtimeFile).toBe(".eveland/observability/runtime.mjs");
   expect(result.extensionIntegratorFile).toBeUndefined();

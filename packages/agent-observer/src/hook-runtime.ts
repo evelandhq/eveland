@@ -1,53 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { AGENT_RUNTIME_POLICY_PATH } from "@evelandhq/core/observability";
-import { createPolicyManagedAgentTelemetry } from "./policy-runtime.js";
-import { modelCallCapture } from "./runtime/model-capture.js";
-import type { AgentTelemetryEvent, AgentTelemetryHookContext } from "./runtime.js";
-
-let lastWarningAt = 0;
-
-// Hooks load at Agent startup, before any model call, so the capture sees
-// every call the AI SDK dispatches in this process.
-modelCallCapture.install();
-
-const telemetry = createPolicyManagedAgentTelemetry({
-  loadPolicy: async () => JSON.parse(await readFile(AGENT_RUNTIME_POLICY_PATH, "utf8")) as unknown,
-  warn: warnRateLimited,
-});
+import { createObserverRuntime } from "./observer-runtime.js";
 
 /**
- * A plain Eve hook configuration, deliberately NOT wrapped in `defineHook`:
- * this module is bundled fully self-contained so the Worker can deliver the
- * current build into the observability mount of every deployment, where the
- * Agent's `eve/hooks` is not resolvable. The shim baked into each release
- * imports `defineHook` from the Agent's own Eve installation and wraps this
- * default export. Every shim ever shipped consumes this shape, so the default
- * export must remain a plain hook configuration; an incompatible change needs
- * a new mounted file name, not a new export shape.
+ * Entry of the observer runtime bundle the Worker delivers into every
+ * deployment's observability mount (and bakes into each release as the
+ * fallback). The hook shim wraps the default export with `defineHook`; the
+ * instrumentation shim wraps `instrumentation` with `defineInstrumentation`.
+ * Both import the same module URL, so they share one process-wide runtime.
  */
-export default {
-  events: {
-    // An unhandled hook error fails the running turn, so this handler must
-    // never throw: telemetry failure may never fail an Agent
-    // turn. `capture` and `forceFlush` already swallow their own errors; the
-    // outer guard keeps that true for anything they might miss.
-    async "*"(event: AgentTelemetryEvent, context: AgentTelemetryHookContext): Promise<void> {
-      try {
-        await telemetry.capture(event, context);
-        if (event.type === "session.ended") await telemetry.forceFlush();
-      } catch (error) {
-        warnRateLimited(error);
-      }
-    },
-  },
-};
+const runtime = createObserverRuntime({
+  loadPolicy: async () => JSON.parse(await readFile(AGENT_RUNTIME_POLICY_PATH, "utf8")) as unknown,
+});
 
-function warnRateLimited(error: unknown): void {
-  const now = Date.now();
-  if (now - lastWarningAt < 60_000) return;
-  lastWarningAt = now;
-  console.warn(
-    "[eveland-observer] telemetry degraded:",
-    error instanceof Error ? error.message : String(error),
-  );
-}
+export default runtime.hook;
+export const instrumentation = runtime.instrumentation;

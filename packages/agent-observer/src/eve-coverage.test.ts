@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -16,37 +16,6 @@ describe("Eve observer hook compatibility", () => {
     const { stdout } = await execFileAsync(process.execPath, [EVE_BIN, "--version"]);
 
     expect(stdout.trim()).toBe(VERIFIED_EVE_VERSION);
-  });
-
-  test("Eve leaves global AI SDK telemetry integrations reachable for model capture", async () => {
-    // model-capture.ts registers on globalThis.AI_SDK_TELEMETRY_INTEGRATIONS,
-    // which the AI SDK consults only when a call passes no per-call
-    // `integrations`: a per-call list REPLACES the global registrations
-    // rather than adding to them. Eve spreads the global registrations into
-    // the per-call list itself, and the no-authored-integration arm forks:
-    // when Eve must sanitize its own integration's error content it passes
-    // the spread global list explicitly, and otherwise falls back to
-    // `void 0` -- the AI SDK global path. Every arm keeps third-party global
-    // registrations reachable, and the sanitize path substitutes only Eve's
-    // own integration by identity, so model-capture's integration is never
-    // wrapped. If the pinned expression in instrumentation/runtime.js
-    // changes shape, re-verify model-capture.ts against it before raising
-    // the window's ceiling. The minifier is free to rename the locals, so
-    // the pin captures identifiers instead of spelling them.
-    const evePackageDir = await realpath(EVE_PACKAGE);
-    const integrationsSource = await readFile(
-      path.join(evePackageDir, "dist/src/instrumentation/runtime.js"),
-      "utf8",
-    );
-    expect(integrationsSource).toMatch(
-      /integrations:(\w+)\.(\w+)===void 0\?\w+\?\[\.\.\.(\w+)\(\)\]:void 0:\[\1\.\2,\.\.\.\3\(\)\]/,
-    );
-
-    const aiDist = await readFile(path.join(evePackageDir, "../ai/dist/index.js"), "utf8");
-    expect(aiDist).toContain("globalThis.AI_SDK_TELEMETRY_INTEGRATIONS");
-    expect(aiDist).toMatch(
-      /localIntegrations != null \? asArray\d*\(localIntegrations\) : getGlobalTelemetryIntegrations\(\)/,
-    );
   });
 
   test("Eve discovers packaged skills and exposes directory-form hook slots", async () => {
