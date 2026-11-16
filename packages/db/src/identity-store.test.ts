@@ -41,9 +41,9 @@ describe("Identity provider seed and exclusivity", () => {
       enabled: true,
     });
 
-    // An enabled OIDC Provider alongside an enabled internal one used to be
-    // reachable: the old index only constrained internal rows, which left
-    // `/identity/login` answering 503 with no way to tell why.
+    // An enabled OIDC Provider alongside an enabled internal one would leave
+    // `/identity/login` answering 503 with no way to tell why, so the index
+    // constrains every type, not only internal rows.
     await expect(
       store.createIdentityProviderConnection({
         type: "oidc",

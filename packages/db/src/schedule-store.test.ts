@@ -3,7 +3,7 @@ import { createTestStore } from "./vitest-store.js";
 import { calculateScheduleAdvance } from "./postgres-schedule-store.js";
 
 describe("schedule persistence", () => {
-  test("isolates a corrupt legacy cron row from the rest of the planner batch", () => {
+  test("isolates a corrupt cron row from the rest of the planner batch", () => {
     expect(
       calculateScheduleAdvance(
         "not cron",

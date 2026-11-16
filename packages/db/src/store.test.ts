@@ -414,7 +414,7 @@ describe("SQL Store jobs", () => {
     await expect(store.claimNextJob("worker-c")).resolves.toBeNull();
   });
 
-  test("keeps a legacy trigger_schedule without a denormalized target project-exclusive", async () => {
+  test("keeps a trigger_schedule without a denormalized target project-exclusive", async () => {
     const store = createTestStore();
     const project = await store.createProject({ name: "Legacy Trigger Agent", importKind: "zip" });
     const importJob = await store.claimNextJob("worker-a");
@@ -423,8 +423,8 @@ describe("SQL Store jobs", () => {
     const build = await store.claimNextJob("worker-a");
     expect(build).toMatchObject({ type: "build_deploy" });
 
-    // Enqueued before deploymentId was denormalized into the payload: the
-    // claim SQL cannot see its target, so it conservatively waits.
+    // No deploymentId denormalized into the payload: the claim SQL cannot see
+    // its target, so it conservatively waits.
     await store.enqueueJob(project.id, "trigger_schedule", { scheduleRunId: "srun_legacy" });
     await expect(store.claimNextJob("worker-b")).resolves.toBeNull();
     await store.completeJob(build!.id);
