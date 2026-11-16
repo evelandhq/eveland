@@ -1,7 +1,6 @@
 "use client";
 
-// The Playground, bound to the eve 1.0 client, which reads stream version 27
-// (the v27 session protocol every supported line speaks). Its protocol with
+// The Playground, bound to the eve client and its session stream. Its protocol with
 // the platform is route-auth redirects, the create operation identity (#407),
 // and the leave reset; it uses eve 1.0's store: `status` is `idle`/`busy`/`resuming`, the
 // session view answers whether a turn is open, interactions are answered with
