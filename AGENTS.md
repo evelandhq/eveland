@@ -8,11 +8,11 @@ agents; product behavior still belongs in the product and deployment docs.
 Before changing code:
 
 1. Read `spec.md` for the product boundaries and architecture principles.
-   It is deliberately principle-level: the per-domain
-   behavioral contracts live in `docs/{zh,en}/reference/` (identity,
-   source-import, playground, scheduling, agent-environment, model-gateway,
-   dashboard, routing, observability, eve-compatibility) — read the domain page for the
-   area you touch.
+   It is deliberately principle-level: the per-domain behavioral contracts
+   live in `docs/{zh,en}/reference/` (identity, source-import, playground,
+   scheduling, agent-environment, model-gateway, dashboard, routing,
+   observability, eve-compatibility, known-limitations) — read the domain page
+   for the area you touch.
 2. Read `README.md` for the current repository shape and local workflow.
 3. For Linux, systemd, sandbox, or host-worker work, also read
    `docs/en/production/`.
@@ -27,9 +27,7 @@ Before changing code:
 The `docs/en` and `docs/zh` trees are the published documentation-site content
 (single source, rendered at `eveland.ai`); edit both languages together.
 Design rationale — why the platform is shaped the way it is — lives in
-`docs/{en,zh}/reference/design/`. The old `.plans/` handoff archive was
-retired at open-sourcing; its durable content was distilled into those pages,
-and the full documents remain available in git history.
+`docs/{en,zh}/reference/design/`.
 
 `spec.md` is the truth source for product boundaries and architecture
 principles; the per-domain reference pages under `docs/{zh,en}/reference/` are
@@ -80,8 +78,10 @@ message and PR title in Conventional Commits format:
 - `fix: ...` for bug fixes (patch bump).
 - `feat!: ...`, `feat(scope)!: ...`, or a `BREAKING CHANGE:` footer for
   breaking changes. The `!` goes **after** the scope — `feat!(scope):` is a
-  syntax error, not a variant. While the platform is `0.x` a breaking change
-  bumps the minor, not the major.
+  syntax error, not a variant. The platform follows semantic versioning on
+  its 1.x line, so a breaking change bumps the major. The `eveland` npm
+  package has its own version line; while it is `0.x`, a breaking change
+  there bumps its minor.
 - `chore: ...`, `docs: ...`, `refactor: ...`, `test: ...`, `ci: ...` for
   everything else; these do not affect the version.
 
@@ -171,8 +171,8 @@ session-collector -> core + db
 agent-auth, identity-broker -> core + db
 agent-observer, agent-scheduler -> core
 ctl -> core
-platform-observability, architecture-tests, cli -> no Eveland package
-sdk -> no Eveland package at all
+platform-observability, architecture-tests -> no Eveland package
+eveland (SDK and CLI faces) -> no Eveland package at all
 worker -> eveland (bundles src/model-gateway.ts into Releases, by path only)
 db -> core
 core -> no other Eveland package
@@ -424,8 +424,7 @@ healthy. When a Compose worker controls the host Docker daemon,
   it for these fixes; correct call sites or higher-level wrappers instead.
 - Behavior, topology, environment, public URL, or operational-limit changes
   must update the relevant `spec.md`, `README.md`, `docs/en` and `docs/zh`
-  site pages, Compose/env examples, and current handoff notes in the same
-  change.
+  site pages, and Compose/env examples in the same change.
 
 ## Verification
 
