@@ -132,9 +132,13 @@ against the newest Eve in the hosted window.
 
 ## Versioning
 
-`eveland` versions independently of the Eveland platform: its compatibility
-contract is the `eve` peer range plus the exports documented above, not a
-platform release number.
+`eveland`'s major version is the Eveland platform's major version. The platform
+refuses a CLI whose major differs from its own with HTTP 426
+`cli_version_unsupported`, so every platform major ships with the matching
+`eveland` major, even when nothing in this package changed; install
+`eveland@<platform major>`. Minor and patch versions are independent of the
+platform's. The SDK's compatibility contract is the `eve` peer range plus the
+exports documented above.
 
 The peer range is `eve >=1.0.0 <2.0.0`. Its floor is the floor of the Eve
 versions Eveland hosts; its ceiling is Eve's next major, because the
