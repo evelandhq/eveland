@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/evelandhq/eveland/compare/v1.0.0...v2.0.0) (2026-11-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* Releases built with World 1.x attest dispatch protocol 1, which the 2.0 dispatcher's window refuses, so their workflow deliveries are dead-lettered until the project is rebuilt; rebuild every project after upgrading and resolve the dead letters left in between. World 2.0 applies its 0002_hook_resume_dedup migration on first start. WORKFLOW_WORLD_STREAM_COMPACTION, WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS, WORKFLOW_DISPATCHER_TIMER_SWEEP_INTERVAL_MS and WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK are no longer read. Migration 0001 drops releases.workflow_enqueue_capability, and the Release workflow attestation no longer has enqueueCapability.
+
+### Features
+
+* adopt workflow-world 2.0 ([#702](https://github.com/evelandhq/eveland/issues/702)) ([7e2aa0d](https://github.com/evelandhq/eveland/commit/7e2aa0d05f0aa8981e4e090d2ffd29e90d81ffa9))
+
 ## [1.0.0](https://github.com/evelandhq/eveland/compare/v0.72.0...v1.0.0) (2026-11-16)
 
 
