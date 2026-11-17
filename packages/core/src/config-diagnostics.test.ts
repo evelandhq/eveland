@@ -100,22 +100,10 @@ describe("configuration diagnostics", () => {
   });
 
   test("reports workflow-world bounded-storage controls", () => {
-    const worker = createConfigurationSnapshot("worker", {});
     const dispatcher = createConfigurationSnapshot("workflow-dispatcher", {});
 
-    expect(worker.entries).toContainEqual(
-      expect.objectContaining({ name: "WORKFLOW_WORLD_STREAM_COMPACTION", value: "on" }),
-    );
     expect(dispatcher.entries).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          name: "WORKFLOW_WORLD_STREAM_COMPACTION",
-          value: "on",
-        }),
-        expect.objectContaining({
-          name: "WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS",
-          value: "300000",
-        }),
         expect.objectContaining({
           name: "WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS",
           value: "60000",
@@ -127,10 +115,6 @@ describe("configuration diagnostics", () => {
         expect.objectContaining({
           name: "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_BATCHES",
           value: "20",
-        }),
-        expect.objectContaining({
-          name: "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK",
-          value: "100",
         }),
         expect.objectContaining({
           name: "WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE",

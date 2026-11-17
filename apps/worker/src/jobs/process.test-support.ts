@@ -12,10 +12,9 @@ import path from "node:path";
 export const sharedWorkflowWorldAttestation: ReleaseWorkflowAttestation = {
   worldKind: "shared",
   worldPackage: "@evelandhq/workflow-world",
-  worldVersion: "1.0.0",
+  worldVersion: "2.0.0",
   storageSpec: 9,
-  dispatchProtocol: 1,
-  enqueueCapability: "per_run_queue_v1",
+  dispatchProtocol: 2,
 };
 
 /**
@@ -50,8 +49,8 @@ export async function recordReadyDispatcherFixture(
     reenqueuedRuns: 0,
     worldDatabaseIdentity,
     schemaGeneration: null,
-    protocolMin: 1,
-    protocolMax: 1,
+    protocolMin: 2,
+    protocolMax: 2,
     startedAt: new Date().toISOString(),
     readyAt: new Date().toISOString(),
   });

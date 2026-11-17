@@ -39,7 +39,6 @@ describe("release workflow attestation", () => {
         worldVersion: "0.11.0",
         storageSpec: 6,
         dispatchProtocol: 1,
-        enqueueCapability: "per_run_queue_v1",
       },
     });
 
@@ -50,7 +49,6 @@ describe("release workflow attestation", () => {
       worldVersion: "0.11.0",
       storageSpec: 6,
       dispatchProtocol: 1,
-      enqueueCapability: "per_run_queue_v1",
     });
   });
 
@@ -76,7 +74,6 @@ describe("release workflow attestation", () => {
       worldVersion: null,
       storageSpec: null,
       dispatchProtocol: null,
-      enqueueCapability: "unknown",
     });
   });
 });

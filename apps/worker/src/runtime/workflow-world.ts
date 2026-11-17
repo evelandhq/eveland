@@ -19,7 +19,7 @@ import {
  */
 export const EVELAND_WORKFLOW_WORLD = {
   packageName: "@evelandhq/workflow-world",
-  packageVersion: "1.0.0",
+  packageVersion: "2.0.0",
 } as const;
 
 export type WorkflowWorldBuildConfig = {
@@ -35,7 +35,7 @@ export type WorkflowWorldBuildConfig = {
  * declares.
  */
 const EVELAND_WORKFLOW_WORLD_STORAGE_SPEC = 9;
-const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = 1;
+const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = 2;
 
 /**
  * Maps the injected world package onto the Release's immutable workflow
@@ -51,7 +51,6 @@ export function deriveWorkflowWorldAttestation(
       worldVersion: config.packageVersion,
       storageSpec: EVELAND_WORKFLOW_WORLD_STORAGE_SPEC,
       dispatchProtocol: EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL,
-      enqueueCapability: "per_run_queue_v1",
     };
   }
   return {
@@ -60,7 +59,6 @@ export function deriveWorkflowWorldAttestation(
     worldVersion: config.packageVersion,
     storageSpec: null,
     dispatchProtocol: null,
-    enqueueCapability: "unknown",
   };
 }
 

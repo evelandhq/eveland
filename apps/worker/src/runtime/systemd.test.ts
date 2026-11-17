@@ -323,12 +323,12 @@ describe("buildReleaseBuildCommand", () => {
         hasLockfile: true,
         packageManager: "pnpm",
       },
-      { packageName: "@evelandhq/workflow-world", packageVersion: "1.0.0" },
+      { packageName: "@evelandhq/workflow-world", packageVersion: "2.0.0" },
     );
 
     expect(command).toContain("pnpm install --frozen-lockfile --config.minimum-release-age=0");
     expect(command).toContain(
-      "pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 @evelandhq/workflow-world@1.0.0",
+      "pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 @evelandhq/workflow-world@2.0.0",
     );
     expect(command).toContain("trap");
     expect(command).not.toMatch(/(^|&& )npm install/);
@@ -341,7 +341,7 @@ describe("buildReleaseBuildCommand", () => {
     };
     const command = buildReleaseBuildCommand(
       { hasLockfile: true, packageManager: "pnpm" },
-      { packageName: "@evelandhq/workflow-world", packageVersion: "1.0.0" },
+      { packageName: "@evelandhq/workflow-world", packageVersion: "2.0.0" },
       true,
       pnpmStore,
     );
@@ -354,14 +354,14 @@ describe("buildReleaseBuildCommand", () => {
       `pnpm install --frozen-lockfile --config.minimum-release-age=0 ${storeArgs} && `,
     );
     expect(command).toContain(
-      `pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 ${storeArgs} @evelandhq/workflow-world@1.0.0`,
+      `pnpm add --lockfile=false --ignore-scripts --config.minimum-release-age=0 ${storeArgs} @evelandhq/workflow-world@2.0.0`,
     );
   });
 
   test("the shared pnpm store never leaks into an npm build", () => {
     const command = buildReleaseBuildCommand(
       { hasLockfile: true },
-      { packageName: "@evelandhq/workflow-world", packageVersion: "1.0.0" },
+      { packageName: "@evelandhq/workflow-world", packageVersion: "2.0.0" },
       true,
       { storeDir: "/data/npm-cache/_pnpm-store", cacheDir: "/data/npm-cache/_pnpm-cache" },
     );
@@ -373,10 +373,10 @@ describe("buildReleaseBuildCommand", () => {
     expect(
       buildReleaseBuildCommand(
         { hasLockfile: true },
-        { packageName: "@evelandhq/workflow-world", packageVersion: "1.0.0" },
+        { packageName: "@evelandhq/workflow-world", packageVersion: "2.0.0" },
       ),
     ).toBe(
-      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @evelandhq/workflow-world@1.0.0 && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json > .eveland/eve-info.json",
+      "npm ci && npm install --no-save --package-lock=false --ignore-scripts @evelandhq/workflow-world@2.0.0 && npx eve info --json >/dev/null && node .eveland/extensions/integrate.mjs && npx eve build && npx eve info --json > .eveland/eve-info.json",
     );
   });
 

@@ -223,7 +223,6 @@ function sharedWorldEnvironment(input: {
 }): Record<string, string> {
   return {
     WORKFLOW_WORLD_URL: input.worldUrl,
-    WORKFLOW_WORLD_STREAM_COMPACTION: input.workerEnv.WORKFLOW_WORLD_STREAM_COMPACTION ?? "on",
     WORKFLOW_WORLD_TENANT_ID: input.projectId,
     ...(input.schedulerRuntimeSecret
       ? { WORKFLOW_WORLD_RUNTIME_SECRET: input.schedulerRuntimeSecret }
@@ -232,6 +231,10 @@ function sharedWorldEnvironment(input: {
     // it was built for, the one the World serves. A project value would ask
     // the World for a generation it refuses, failing every run.
     WORKFLOW_SPEC_VERSION: "",
+    // Empty, which the World reads as unset: it then caps live event feeds at
+    // its own default. The dispatcher's grants are the real bound on lingering
+    // deliveries; a project must not lift the World's backstop under them.
+    WORKFLOW_WORLD_MAX_LIVE_EVENT_FEEDS: "",
     // Connection capacity on the shared instance is platform-planned
     // (max_connections ~ pool size x running Deployments), so a project must
     // not raise its own share.

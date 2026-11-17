@@ -1,0 +1,1 @@
+ALTER TABLE "releases" DROP COLUMN "workflow_enqueue_capability";

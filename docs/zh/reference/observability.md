@@ -164,7 +164,10 @@ HMAC operation key 关联；原始 operation id 永不导出。错误读取只�
 clone，不改写 Agent 的 status 或 response bytes。Workflow Dispatcher 的 registration
 heartbeat 同时发出 `workflow_dispatcher.capacity`，并为每个达到 in-flight 上限的
 Project 发出 `workflow_dispatcher.tenant_saturated`，从而可把同一故障窗口与全局、
-租户并发饱和对齐。任一遥测发出失败都必须与 request 和 dispatch 行为隔离。
+租户并发饱和对齐。capacity 事件还统计 Orchestrator 投递正在进行的 Run 数
+（`dispatcher.run_gate.held`，以及合并在其后等待的 `dispatcher.run_gate.pending_wakes`），
+和获准 Live Event Feed 的投递数（`dispatcher.live_feed.granted`，上限
+`dispatcher.live_feed.limit`）——这类投递在工作完成后仍会保持打开一段时间。任一遥测发出失败都必须与 request 和 dispatch 行为隔离。
 
 ## Agent runtime policy
 

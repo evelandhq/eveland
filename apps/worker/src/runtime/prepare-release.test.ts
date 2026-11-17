@@ -127,7 +127,7 @@ export default {
     buildDir,
     workflowWorld: {
       packageName: "@evelandhq/workflow-world",
-      packageVersion: "1.0.0",
+      packageVersion: "2.0.0",
     },
   });
 
@@ -171,7 +171,7 @@ test("creates a complete root config when the agent relied on Eve defaults", asy
     buildDir,
     workflowWorld: {
       packageName: "@evelandhq/workflow-world",
-      packageVersion: "1.0.0",
+      packageVersion: "2.0.0",
     },
   });
 
@@ -206,7 +206,7 @@ test("wraps every Eve-supported authored agent module extension", async () => {
       buildDir,
       workflowWorld: {
         packageName: "@evelandhq/workflow-world",
-        packageVersion: "1.0.0",
+        packageVersion: "2.0.0",
       },
     });
 

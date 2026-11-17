@@ -105,7 +105,7 @@ describe("api app", () => {
       envVars: [],
       files: [],
     });
-    // Protocol 1 and per_run_queue_v1, but an event log written under a
+    // A current dispatch protocol, but an event log written under a
     // storage generation this platform cannot read: independent axes.
     const deployment = await store.recordDeployment({
       projectId: project.id,
@@ -121,8 +121,7 @@ describe("api app", () => {
         worldPackage: "@evelandhq/workflow-world",
         worldVersion: "0.4.0",
         storageSpec: 4,
-        dispatchProtocol: 1,
-        enqueueCapability: "per_run_queue_v1",
+        dispatchProtocol: 2,
       },
     });
     await store.updateDeploymentStatus(deployment.id, "stopped");
@@ -135,8 +134,8 @@ describe("api app", () => {
       reenqueuedRuns: 0,
       worldDatabaseIdentity: "cluster:7234567890123456789/eveland_workflow",
       schemaGeneration: null,
-      protocolMin: 1,
-      protocolMax: 1,
+      protocolMin: 2,
+      protocolMax: 2,
       startedAt: new Date().toISOString(),
       readyAt: new Date().toISOString(),
     });

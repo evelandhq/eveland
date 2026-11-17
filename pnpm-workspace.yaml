@@ -52,7 +52,7 @@ peerDependencyRules:
 # decisions.
 #
 # The @workflow/* entries are the Workflow 5.5 set (world 5.2.0, errors 5.1.1,
-# world-local 5.3.0, utils 5.1.0) that `@evelandhq/workflow-world` 1.x pins --
+# world-local 5.3.0, utils 5.1.0) that `@evelandhq/workflow-world` 2.x pins --
 # the set eve 1.0.0 bundles.
 minimumReleaseAgeExclude:
   - eve

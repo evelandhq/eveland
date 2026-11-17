@@ -182,7 +182,11 @@ operation id is never exported. Reading the error uses a bounded response clone 
 never rewrites the Agent's status or response bytes. The workflow dispatcher's
 registration heartbeat also emits `workflow_dispatcher.capacity`, plus
 `workflow_dispatcher.tenant_saturated` for each Project at its in-flight cap, so the
-same failure window can be compared with global and per-tenant saturation. Failure of
+same failure window can be compared with global and per-tenant saturation. The
+capacity event also counts the runs whose orchestrator delivery is in flight
+(`dispatcher.run_gate.held`, with `dispatcher.run_gate.pending_wakes` coalesced behind
+them) and the deliveries granted a live event feed (`dispatcher.live_feed.granted` of
+`dispatcher.live_feed.limit`), which stay open after their work is done. Failure of
 either telemetry emission remains isolated from request and dispatch behavior.
 
 ## Agent runtime policy

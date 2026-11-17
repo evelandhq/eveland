@@ -40,10 +40,7 @@ async function composeOnEvelandWorld() {
       // to the worker-visible default derived from EVELAND_DATA_DIR.
       memoryRootDir: "/var/lib/eveland-memory",
     },
-    {
-      WORKFLOW_WORLD_URL: evelandWorldUrl,
-      WORKFLOW_WORLD_STREAM_COMPACTION: "off",
-    },
+    { WORKFLOW_WORLD_URL: evelandWorldUrl },
   );
   return { ...composed, project };
 }
@@ -77,8 +74,8 @@ describe("reserved runtime environment names", () => {
     expect(undeclared).toEqual([]);
     // EVELAND_PROJECT_ID and WORKFLOW_WORLD_TENANT_ID are derived per project; the EVELAND_MODEL_GATEWAY_KIND
     // and _URL names come from the database at every launch; EVE_SCHEDULES_DISABLED,
-    // EVE_TELEMETRY_DISABLED and WORKFLOW_SPEC_VERSION are platform constants. None
-    // has a worker-environment input.
+    // EVE_TELEMETRY_DISABLED, WORKFLOW_SPEC_VERSION and WORKFLOW_WORLD_MAX_LIVE_EVENT_FEEDS
+    // are platform constants. None has a worker-environment input.
     expect(
       RESERVED_RUNTIME_ENVIRONMENT_KEYS.filter(
         (key) => RESERVED_RUNTIME_ENVIRONMENT_SOURCES[key]?.length === 0,
@@ -88,6 +85,7 @@ describe("reserved runtime environment names", () => {
       "EVELAND_MODEL_GATEWAY_URL",
       "EVELAND_PROJECT_ID",
       "WORKFLOW_SPEC_VERSION",
+      "WORKFLOW_WORLD_MAX_LIVE_EVENT_FEEDS",
       "WORKFLOW_WORLD_TENANT_ID",
       "EVE_TELEMETRY_DISABLED",
       "EVE_SCHEDULES_DISABLED",
@@ -138,7 +136,7 @@ describe("reserved runtime environment names", () => {
       { key: "WORKFLOW_WORLD_URL", value: encrypt("postgres://x@evil/db"), kind: "secret" },
       { key: "WORKFLOW_WORLD_RUNTIME_SECRET", value: encrypt("chosen"), kind: "secret" },
       { key: "WORKFLOW_SPEC_VERSION", value: encrypt("8"), kind: "variable" },
-      { key: "WORKFLOW_WORLD_STREAM_COMPACTION", value: encrypt("off"), kind: "variable" },
+      { key: "WORKFLOW_WORLD_MAX_LIVE_EVENT_FEEDS", value: encrypt("10000"), kind: "variable" },
       { key: "WORKFLOW_POSTGRES_MAX_POOL_SIZE", value: encrypt("500"), kind: "variable" },
     ]);
 
@@ -159,7 +157,8 @@ describe("reserved runtime environment names", () => {
     expect(env.WORKFLOW_LOCAL_BASE_URL).toBe(`http://${project.slug}.agent.localhost:17300`);
     expect(env.WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
     expect(env.WORKFLOW_WORLD_RUNTIME_SECRET).toBe(baseOptions.schedulerRuntimeSecret);
-    expect(env.WORKFLOW_WORLD_STREAM_COMPACTION).toBe("on");
+    // Empty is unset to the World, which then holds its own default cap.
+    expect(env.WORKFLOW_WORLD_MAX_LIVE_EVENT_FEEDS).toBe("");
     // Empty is unset to eve, which then asks for the spec the World serves.
     expect(env.WORKFLOW_SPEC_VERSION).toBe("");
     // Connection capacity on the shared instance is platform-planned.
@@ -171,7 +170,6 @@ describe("reserved runtime environment names", () => {
 
     expect(env.WORKFLOW_WORLD_URL).toBe(evelandWorldUrl);
     expect(env.WORKFLOW_WORLD_TENANT_ID).toBe(project.id);
-    expect(env.WORKFLOW_WORLD_STREAM_COMPACTION).toBe("off");
     expect(env.WORKFLOW_WORLD_RUNTIME_SECRET).toBe(baseOptions.schedulerRuntimeSecret);
     expect(env.WORKFLOW_POSTGRES_MAX_POOL_SIZE).toBe("10");
     expect(env.EVELAND_SANDBOX_RUN_TIMEOUT_MS).toBe("600000");

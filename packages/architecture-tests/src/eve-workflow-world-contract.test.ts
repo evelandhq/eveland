@@ -160,7 +160,7 @@ function declaredWorldSpecVersion(): number {
 
 describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("pins the platform world and the spec version it declares", () => {
-    expect(worldManifest.version).toBe("1.0.0");
+    expect(worldManifest.version).toBe("2.0.0");
 
     // The reviewed @workflow graph the shared World bundles stays recorded;
     // see the comment above the list.
@@ -250,13 +250,9 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
   test("exposes the bounded-storage controls in the operator reference", () => {
     const operatorReference = readSource("docs/en/reference/environment-variables.md");
     for (const name of [
-      "WORKFLOW_WORLD_STREAM_COMPACTION",
-      "WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS",
-      "WORKFLOW_DISPATCHER_TIMER_SWEEP_INTERVAL_MS",
       "WORKFLOW_DISPATCHER_MAINTENANCE_INTERVAL_MS",
       "WORKFLOW_DISPATCHER_MAINTENANCE_STREAM_BATCH_SIZE",
       "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_BATCHES",
-      "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK",
       "WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE",
     ]) {
       expect(operatorReference, `the operator reference must document ${name}`).toContain(
@@ -293,6 +289,23 @@ describe("eve ↔ @evelandhq/workflow-world contract", () => {
       "could not find EVELAND_WORKFLOW_WORLD_STORAGE_SPEC in workflow-world.ts",
     ).not.toBeNull();
     expect(Number(attestedSpec![1])).toBe(declaredWorldSpecVersion());
+
+    // Likewise the dispatch protocol: the installed World refuses a delivery
+    // outside MIN_DISPATCH_VERSION..DISPATCH_VERSION, so a Release attesting
+    // any other number would be activated only to have every delivery
+    // dead-lettered.
+    const { DISPATCH_VERSION, MIN_DISPATCH_VERSION } = require(
+      resolveInstalled("@evelandhq/workflow-world"),
+    ) as { DISPATCH_VERSION: number; MIN_DISPATCH_VERSION: number };
+    const attestedProtocol = /const EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL = (\d+);/.exec(
+      injectionSource,
+    );
+    expect(
+      attestedProtocol,
+      "could not find EVELAND_WORKFLOW_WORLD_DISPATCH_PROTOCOL in workflow-world.ts",
+    ).not.toBeNull();
+    expect(Number(attestedProtocol![1])).toBe(DISPATCH_VERSION);
+    expect(Number(attestedProtocol![1])).toBeGreaterThanOrEqual(MIN_DISPATCH_VERSION);
 
     // spec.md deliberately carries no version pins (see the spec.md guard in
     // eve-compatibility-consistency.test.ts); the pinned world versions are

@@ -9,7 +9,7 @@ import type {
 } from "@evelandhq/workflow-world/dispatcher";
 import { clusterWorldIdentity, WORLD_IDENTITY_SQL } from "@evelandhq/core/workflow-dispatch";
 import { createActivationClient } from "@evelandhq/workflow-world/dispatcher";
-import { DISPATCH_VERSION } from "@evelandhq/workflow-world";
+import { DISPATCH_VERSION, MIN_DISPATCH_VERSION } from "@evelandhq/workflow-world";
 
 /** The pg pool type as workflow-world exposes it; this app has no pg dependency. */
 type WorldPool = Parameters<NonNullable<DispatcherServiceOptions["beforeBootRecovery"]>>[0]["pool"];
@@ -236,7 +236,7 @@ export async function startEvelandWorkflowDispatcher(
             reenqueuedRuns: snapshot.reenqueuedRuns,
             worldDatabaseIdentity: snapshot.worldIdentity,
             schemaGeneration: snapshot.schemaGeneration,
-            protocolMin: DISPATCH_VERSION,
+            protocolMin: MIN_DISPATCH_VERSION,
             protocolMax: DISPATCH_VERSION,
             startedAt: snapshot.startedAt,
             readyAt: snapshot.readyAt,
@@ -282,6 +282,11 @@ export async function startEvelandWorkflowDispatcher(
 
 function emitCapacitySnapshot(service: DispatcherService, telemetry: DispatcherTelemetry): void {
   const byTenant = service.runtime?.fairness.snapshot() ?? {};
+  // Runs with an orchestrator delivery in flight (and those with a wake
+  // coalesced behind it), and deliveries held open for a live event feed:
+  // a granted delivery lingers after its work is done, holding its slot.
+  const runGate = service.runtime?.runGate.snapshot() ?? { held: 0, pendingWakes: 0 };
+  const liveFeed = service.runtime?.liveFeedGrants.snapshot() ?? { total: 0, limit: 0 };
   const inFlight = Object.values(byTenant).reduce((total, count) => total + count, 0);
   const saturated = Object.entries(byTenant).filter(
     ([, count]) => count >= service.config.maxInFlightPerTenant,
@@ -297,6 +302,10 @@ function emitCapacitySnapshot(service: DispatcherService, telemetry: DispatcherT
         "dispatcher.available": Math.max(0, service.config.concurrency - inFlight),
         "dispatcher.max_in_flight_per_tenant": service.config.maxInFlightPerTenant,
         "dispatcher.saturated_tenants": saturated.length,
+        "dispatcher.run_gate.held": runGate.held,
+        "dispatcher.run_gate.pending_wakes": runGate.pendingWakes,
+        "dispatcher.live_feed.granted": liveFeed.total,
+        "dispatcher.live_feed.limit": liveFeed.limit,
       },
     });
     for (const [tenantId, tenantInFlight] of saturated) {

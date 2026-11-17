@@ -287,12 +287,12 @@ describe("writeGeneratedDockerfile", () => {
     const buildDir = await mkdtemp(path.join(os.tmpdir(), "eveland-build-"));
     const dockerfilePath = await writeGeneratedDockerfile(buildDir, {
       packageName: "@evelandhq/workflow-world",
-      packageVersion: "1.0.0",
+      packageVersion: "2.0.0",
     });
     const contents = await readFile(dockerfilePath, "utf8");
 
     expect(contents).toContain(
-      "npm install --no-save --package-lock=false --ignore-scripts @evelandhq/workflow-world@1.0.0",
+      "npm install --no-save --package-lock=false --ignore-scripts @evelandhq/workflow-world@2.0.0",
     );
     expect(contents.indexOf("npm install --no-save")).toBeLessThan(
       contents.indexOf("npx eve build"),

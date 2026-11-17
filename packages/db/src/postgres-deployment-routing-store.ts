@@ -229,7 +229,6 @@ export function createPostgresDeploymentRoutingStore({
             workflowWorldVersion: attestation?.worldVersion ?? null,
             workflowStorageSpec: attestation?.storageSpec ?? null,
             workflowDispatchProtocol: attestation?.dispatchProtocol ?? null,
-            workflowEnqueueCapability: attestation?.enqueueCapability ?? "unknown",
             modelGatewayProvider: input.modelGatewayProvider ?? false,
           })
           .returning();
