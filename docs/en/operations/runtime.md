@@ -75,10 +75,10 @@ Durable workflows ensure timers and asynchronous callbacks resume accurately eve
 
 - **Singleton external dispatcher**: Driven by a single Workflow Dispatcher holding a PostgreSQL advisory lock across the cluster.
 - **Tenant isolation**: All agents share a single workflow database (`WORKFLOW_WORLD_URL`), partitioned logically by `tenant_id` (project ID).
-- **Engine injection**: During release compilation, Eveland automatically injects `@evelandhq/workflow-world@1.0.0`, delegating execution states strictly to the external dispatcher.
+- **Engine injection**: During release compilation, Eveland automatically injects `@evelandhq/workflow-world@2.0.0`, delegating execution states strictly to the external dispatcher.
 - **Automated migrations**: Worker startup and project provisioning automatically apply schema migrations safely.
 
-The World is bundled into each immutable Release, so a World upgrade reaches a project only when it builds and deploys a new Release; restarting an existing deployment keeps its original version. Every Release attests storage spec 9 and dispatch protocol 1.
+The World is bundled into each immutable Release, so a World upgrade reaches a project only when it builds and deploys a new Release; restarting an existing deployment keeps its original version. Every Release attests storage spec 9 and dispatch protocol 2.
 
 ### Workflow retention classes
 
@@ -87,6 +87,8 @@ The World is bundled into each immutable Release, so a World upgrade reaches a p
 | **Schedules**                           | `scheduled`   | Compactable 1 min post-terminal; success kept 24h, failure kept 7 days.       |
 | **Interactive (Playground / HTTP API)** | `interactive` | Default class. Success kept 24h, failure kept 7 days, graph kept 30 days.     |
 | **Durable Operations**                  | `persistent`  | Critical workflows explicitly designated by the platform; never auto-deleted. |
+
+Eve starts a session run with zero retention unless the agent sets its own workflow retention or its tracing records both inputs and outputs. When such a run ends, the World deletes its inputs, outputs, event payloads, and stream content at once; the run's ids and statuses stay until its class removes them. Eveland's Sessions and usage come from OTLP, not from the World, so they are unaffected.
 
 ---
 

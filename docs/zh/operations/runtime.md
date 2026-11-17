@@ -74,10 +74,10 @@ Eve 项目内置的代码执行与文件操作工具（`bash`、`read_file`、`w
 
 - **单例外置调度**：全集群必须且仅运行一个 Workflow Dispatcher，通过 PostgreSQL Advisory Lock 保证互斥。
 - **租户强隔离**：全平台 Agent 共享同一个持久化工作流数据库（由 `WORKFLOW_WORLD_URL` 指定），底层数据模型按 `tenant_id`（即项目 ID）逻辑分区。
-- **引擎注入**：平台在发布准备阶段自动注入 `@evelandhq/workflow-world@1.0.0`，确保执行状态统一由外置调度器接管。
+- **引擎注入**：平台在发布准备阶段自动注入 `@evelandhq/workflow-world@2.0.0`，确保执行状态统一由外置调度器接管。
 - **自动迁移**：Worker 启动及新项目创建时，会自动应用待执行的工作流架构迁移。
 
-World 已打包进每个不可变 Release，因此 World 升级只有在项目构建并部署新的 Release 后才会生效；重启已有 Deployment 仍使用原来的版本。每个 Release 都声明存储 Spec 9 与 Dispatch Protocol 1。
+World 已打包进每个不可变 Release，因此 World 升级只有在项目构建并部署新的 Release 后才会生效；重启已有 Deployment 仍使用原来的版本。每个 Release 都声明存储 Spec 9 与 Dispatch Protocol 2。
 
 ### 工作流保留策略 (Retention Classes)
 
@@ -86,6 +86,8 @@ World 已打包进每个不可变 Release，因此 World 升级只有在项目�
 | **定时调度 (Schedules)**              | `scheduled`   | 执行完成后 1 分钟压缩；成功保留 24 小时，失败保留 7 天后自动归档。  |
 | **交互请求 (Playground / HTTP API)**  | `interactive` | 默认交互类。成功保留 24 小时，失败保留 7 天，执行历史图保留 30 天。 |
 | **关键持久任务 (Durable Operations)** | `persistent`  | 业务标记的关键任务，系统永不自动清理。                              |
+
+除非 Agent 自己设置了 Workflow Retention，或其 Tracing 同时记录输入与输出，Eve 会以零保留启动 Session 的运行。这类运行一结束，World 立即删除它的输入、输出、事件 Payload 与 Stream 内容；运行的 ID 与状态则保留到所属保留级别将其清理为止。Eveland 的 Session 与用量来自 OTLP 而非 World，不受影响。
 
 ---
 

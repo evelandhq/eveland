@@ -115,10 +115,10 @@ export function registerInternalRoutes(input: {
     const release = await store.getRelease(deployment.releaseId);
     // A workflow-step activation is only meaningful while the external
     // dispatcher can actually be proven ready — and only against a Release
-    // whose attestation falls inside the dispatcher's protocol window with a
-    // per-run-queue-capable enqueue path. Everything else fails fast with a
-    // stable managed code instead of activating and timing out.
-    let negotiated: { selectedProtocol: number; enqueueCapability: string } | undefined;
+    // whose attestation falls inside the dispatcher's protocol window.
+    // Everything else fails fast with a stable managed code instead of
+    // activating and timing out.
+    let negotiated: { selectedProtocol: number } | undefined;
     if (parsed.data.kind === "workflow_step") {
       const registration = await store.getWorkflowDispatcherRegistration();
       // The dispatcher must be claiming from the same World this control
@@ -158,7 +158,7 @@ export function registerInternalRoutes(input: {
       // A Release this platform cannot dispatch to is terminal (409): no
       // retry makes it activatable, so the dispatcher dead-letters the run.
       const refusal =
-        workflow.worldKind !== "shared" || workflow.enqueueCapability !== "per_run_queue_v1"
+        workflow.worldKind !== "shared"
           ? "was not built with the shared World"
           : !isSupportedWorkflowStorageSpec(workflow.storageSpec)
             ? `attests storage spec ${String(workflow.storageSpec)}, which this platform does not serve`
@@ -175,7 +175,6 @@ export function registerInternalRoutes(input: {
       }
       negotiated = {
         selectedProtocol: Math.min(workflow.dispatchProtocol, registration!.protocolMax),
-        enqueueCapability: workflow.enqueueCapability,
       };
     }
     const now = new Date();

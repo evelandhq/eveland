@@ -928,7 +928,6 @@ export const releases = pgTable(
     workflowWorldVersion: text("workflow_world_version"),
     workflowStorageSpec: integer("workflow_storage_spec"),
     workflowDispatchProtocol: integer("workflow_dispatch_protocol"),
-    workflowEnqueueCapability: text("workflow_enqueue_capability").notNull(),
     // Whether release preparation injected the Model Gateway provider. Only
     // such a Release routes string models through the instance gateway, so
     // only it picks up a gateway change on restart. False for every Release

@@ -8,11 +8,9 @@ function release(worldKind: "shared" | "unknown") {
     workflow: {
       worldKind,
       worldPackage: worldKind === "shared" ? "@evelandhq/workflow-world" : null,
-      worldVersion: worldKind === "shared" ? "1.0.0" : null,
+      worldVersion: worldKind === "shared" ? "2.0.0" : null,
       storageSpec: worldKind === "shared" ? 9 : null,
-      dispatchProtocol: worldKind === "shared" ? 1 : null,
-      enqueueCapability:
-        worldKind === "shared" ? ("per_run_queue_v1" as const) : ("unknown" as const),
+      dispatchProtocol: worldKind === "shared" ? 2 : null,
     },
   };
 }

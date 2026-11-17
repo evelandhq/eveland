@@ -558,12 +558,6 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     "15000",
   ),
   entry(
-    "WORKFLOW_WORLD_STREAM_COMPACTION",
-    ["worker", "workflow-dispatcher"],
-    "Enables snapshot stripping for new stream writes and terminal block rewrites; off is an emergency switch.",
-    "on",
-  ),
-  entry(
     "WORKFLOW_DISPATCHER_ACTIVATION_API_URL",
     ["workflow-dispatcher"],
     "Control API base URL the dispatcher activates deployments through, exactly as the Agent Gateway's cold start does.",
@@ -580,12 +574,6 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     ["workflow-dispatcher"],
     "Maximum workflow jobs the dispatcher claims at once across all projects; it must remain below the pool size.",
     "9",
-  ),
-  entry(
-    "WORKFLOW_DISPATCHER_QUEUE_GC_INTERVAL_MS",
-    ["workflow-dispatcher"],
-    "Interval for reclaiming empty per-run Graphile queue rows.",
-    "300000",
   ),
   entry(
     "WORKFLOW_DISPATCHER_OWNERSHIP_LIVENESS_MS",
@@ -646,12 +634,6 @@ export const configurationDefinitions: ConfigurationDefinition[] = [
     ["workflow-dispatcher"],
     "Maximum stream and workflow-run deletion batches in one shared-world maintenance pass.",
     "20",
-  ),
-  entry(
-    "WORKFLOW_DISPATCHER_MAINTENANCE_MAX_STREAMS_TO_PACK",
-    ["workflow-dispatcher"],
-    "Maximum terminal streams rewritten into bounded physical blocks in one maintenance pass.",
-    "100",
   ),
   entry(
     "WORKFLOW_DISPATCHER_MAINTENANCE_RUN_BATCH_SIZE",

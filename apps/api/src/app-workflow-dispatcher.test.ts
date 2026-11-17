@@ -20,8 +20,8 @@ function heartbeatBody(overrides: Record<string, unknown> = {}) {
     reenqueuedRuns: 2,
     worldDatabaseIdentity: WORLD_IDENTITY,
     schemaGeneration: "0001_baseline.sql",
-    protocolMin: 1,
-    protocolMax: 1,
+    protocolMin: 2,
+    protocolMax: 2,
     startedAt: new Date().toISOString(),
     readyAt: null,
     ...overrides,
@@ -36,7 +36,6 @@ async function createDeployableFixture(
     worldVersion: string | null;
     storageSpec: number | null;
     dispatchProtocol: number | null;
-    enqueueCapability: "per_run_queue_v1" | "unknown";
   },
 ) {
   const project = await store.createProject({ name: "Dispatcher Gate Agent", importKind: "zip" });
@@ -68,10 +67,9 @@ async function createDeployableFixture(
 const sharedAttestation = {
   worldKind: "shared" as const,
   worldPackage: "@evelandhq/workflow-world",
-  worldVersion: "1.0.0",
+  worldVersion: "2.0.0",
   storageSpec: 9,
-  dispatchProtocol: 1,
-  enqueueCapability: "per_run_queue_v1" as const,
+  dispatchProtocol: 2,
 };
 
 describe("workflow dispatcher registration API", () => {
@@ -202,12 +200,9 @@ describe("workflow_step activation gating", () => {
     const response = await activate(app, deployment.id);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      workflow?: { selectedProtocol: number; enqueueCapability: string };
+      workflow?: { selectedProtocol: number };
     };
-    expect(body.workflow).toEqual({
-      selectedProtocol: 1,
-      enqueueCapability: "per_run_queue_v1",
-    });
+    expect(body.workflow).toEqual({ selectedProtocol: 2 });
 
     // Exact activation is bound to the validated registration: a stale
     // process sharing the service token cannot activate under it. The refusal
@@ -231,6 +226,12 @@ describe("workflow_step activation gating", () => {
       ...sharedAttestation,
       dispatchProtocol: 99,
     });
+    // Built with World 1.x, which a 2.x dispatcher cannot deliver to.
+    const belowWindow = await createDeployableFixture(store, {
+      ...sharedAttestation,
+      worldVersion: "1.0.0",
+      dispatchProtocol: 1,
+    });
     const app = createApp(store, {
       gatewayServiceToken: "gateway-service-token",
       worldClusterIdentity: WORLD_IDENTITY,
@@ -241,7 +242,7 @@ describe("workflow_step activation gating", () => {
       body: heartbeatBody({ state: "ready", readyAt: new Date().toISOString() }),
     });
 
-    for (const deployment of [unattested, otherSpec, outsideWindow]) {
+    for (const deployment of [unattested, otherSpec, outsideWindow, belowWindow]) {
       const response = await activate(app, deployment.id);
       expect(response.status).toBe(409);
       const body = (await response.json()) as { error: string };

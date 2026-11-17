@@ -138,6 +138,10 @@ describe("eveland workflow dispatcher runner", () => {
           fairness: {
             snapshot: () => ({ p_saturated: 2, p_active: 1 }),
           },
+          runGate: { snapshot: () => ({ held: 2, pendingWakes: 1 }) },
+          liveFeedGrants: {
+            snapshot: () => ({ total: 1, limit: 4, perTenantLimit: 1, tenants: { p_active: 1 } }),
+          },
         },
       } as unknown as DispatcherService;
     });
@@ -159,6 +163,10 @@ describe("eveland workflow dispatcher runner", () => {
         "dispatcher.available": 5,
         "dispatcher.max_in_flight_per_tenant": 2,
         "dispatcher.saturated_tenants": 1,
+        "dispatcher.run_gate.held": 2,
+        "dispatcher.run_gate.pending_wakes": 1,
+        "dispatcher.live_feed.granted": 1,
+        "dispatcher.live_feed.limit": 4,
       },
     });
     expect(capacityTelemetry.emit).toHaveBeenCalledWith({
@@ -199,8 +207,8 @@ describe("eveland workflow dispatcher runner", () => {
       bootRecoveryCompleted: true,
       reenqueuedRuns: 3,
       schemaGeneration: "0001_baseline.sql",
-      protocolMin: 1,
-      protocolMax: 1,
+      protocolMin: 2,
+      protocolMax: 2,
       worldDatabaseIdentity: "cluster:7234567890123456789/eveland_workflow",
     });
     // The identity never carries the URL or its credentials.

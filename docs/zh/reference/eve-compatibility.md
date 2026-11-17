@@ -24,7 +24,7 @@ Eveland 托管 Eve `>=1.0.0 <1.1.0`，已验证版本为 `1.0.0`。整个 1.x �
 | ------------------------------------ | ----------------------------------- |
 | Agent 项目中的 Eve                   | `>=1.0.0 <1.1.0`，已验证 `1.0.0`    |
 | Agent 项目中的 `eveland` SDK         | peer 依赖 `eve >=1.0.0 <2.0.0`      |
-| 注入每个新 Release 的 Workflow World | `@evelandhq/workflow-world@1.0.0`   |
+| 注入每个新 Release 的 Workflow World | `@evelandhq/workflow-world@2.0.0`   |
 | Worker 运行的沙箱                    | `@evelandhq/sandbox-bwrap` `^1.0.0` |
 
 ## 协议基线

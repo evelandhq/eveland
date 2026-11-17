@@ -381,13 +381,6 @@ export type PublicSourceRevision = Omit<SourceRevision, "sourcePath">;
 export type WorkflowWorldKind = "shared" | "unknown";
 
 /**
- * Whether the Release's deployment-side enqueue path scopes every Graphile job
- * to the per-run `wfrun:<tenant>:<run>` queue. Only `per_run_queue_v1` owners
- * may be activated or recovered by the external dispatcher.
- */
-export type WorkflowEnqueueCapability = "per_run_queue_v1" | "unknown";
-
-/**
  * Immutable build-time attestation of the workflow topology baked into a
  * Release. Derived from what release preparation actually injected — never
  * from the worker's environment at some later restart. The runner mode is a
@@ -401,7 +394,6 @@ export type ReleaseWorkflowAttestation = {
   storageSpec: number | null;
   /** External dispatch protocol generation the baked world speaks. */
   dispatchProtocol: number | null;
-  enqueueCapability: WorkflowEnqueueCapability;
 };
 
 /**
