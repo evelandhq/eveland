@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/evelandhq/eveland/compare/v2.0.0...v2.0.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* **eveland:** release eveland 2.0.0 to match the 2.0 platform ([#704](https://github.com/evelandhq/eveland/issues/704)) ([dbbf2ff](https://github.com/evelandhq/eveland/commit/dbbf2ff38f3e107feb3cc55a19e86d9ebc486115))
+
 ## [2.0.0](https://github.com/evelandhq/eveland/compare/v1.0.0...v2.0.0) (2026-11-17)
 
 
