@@ -7,7 +7,7 @@ Before following this guide, ensure your platform administrator has completed [p
 
 ## 1. Verify framework compatibility
 
-Eveland requires your project to declare an Eve dependency that can resolve inside its supported version window; the `"^1.0.0"` that `eve init` writes works. The build then checks the Eve version it actually installed. For details on supported versions, see the [Eve compatibility window](/docs/reference/eve-compatibility).
+Eveland requires your project to declare an Eve dependency that can resolve inside its supported version window; the `"^1.3.0"` that `eve init` writes works. The build then checks the Eve version it actually installed. For details on supported versions, see the [Eve compatibility window](/docs/reference/eve-compatibility).
 
 ## 2. Import project source
 
