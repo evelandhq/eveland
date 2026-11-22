@@ -3,13 +3,13 @@ title: Eve compatibility
 description: Which Eve versions Eveland hosts, how a project declares Eve, and how the window is enforced.
 ---
 
-Eveland hosts Eve `>=1.0.0 <1.1.0`, verified at `1.0.0`. The floor stays at `1.0.0` for the whole 1.x line; verifying a newer minor raises the ceiling, so a Release that was inside the window when it was built stays inside it. A new Eve minor is not hosted until Eveland has reviewed it and rerun its compatibility suites against it, even though Eve keeps its stable APIs compatible across 1.x.
+Eveland hosts Eve `>=1.0.0 <1.4.0`, verified at `1.3.0`. The floor stays at `1.0.0` for the whole 1.x line; verifying a newer minor raises the ceiling, so a Release that was inside the window when it was built stays inside it. A new Eve minor is not hosted until Eveland has reviewed it and rerun its compatibility suites against it, even though Eve keeps its stable APIs compatible across 1.x.
 
 ## Declaring Eve
 
-Declare `eve` in the project's `package.json` `dependencies` (or `devDependencies`) with any npm range that can resolve inside the window. The caret range `eve init` writes, `"^1.0.0"`, is accepted, as are `"~1.0.0"`, `"1.0.0"`, and `"1.x"`. A range that cannot resolve inside the window (`"0.83.3"`, `"1.0.0-rc.2"`, `"^2.0.0"`) and a specifier that is not a version range (`"latest"`, a git URL, `workspace:`) are refused.
+Declare `eve` in the project's `package.json` `dependencies` (or `devDependencies`) with any npm range that can resolve inside the window. The caret range `eve init` writes, `"^1.3.0"`, is accepted, as are `"~1.3.0"`, `"1.3.0"`, `"1.0.0"`, and `"1.x"`. A range that cannot resolve inside the window (`"0.83.3"`, `"1.0.0-rc.2"`, `"^2.0.0"`) and a specifier that is not a version range (`"latest"`, a git URL, `workspace:`) are refused.
 
-Commit a lockfile. A range such as `^1.0.0` resolves to the newest matching Eve at build time, and once Eve publishes a minor that Eveland has not verified yet, a build without a lockfile installs it and fails. Pin `~1.0.0` instead if you want builds without a lockfile to stay on the verified minor.
+Commit a lockfile. A range such as `^1.3.0` resolves to the newest matching Eve at build time, and once Eve publishes a minor that Eveland has not verified yet, a build without a lockfile installs it and fails. Pin `~1.3.0` instead if you want builds without a lockfile to stay on the verified minor.
 
 ## Enforcement
 
@@ -22,7 +22,7 @@ Nothing after the build re-checks the version: every Release is inside the windo
 
 | Component                                       | Version                              |
 | ----------------------------------------------- | ------------------------------------ |
-| Eve, in Agent projects                          | `>=1.0.0 <1.1.0`, verified `1.0.0`   |
+| Eve, in Agent projects                          | `>=1.0.0 <1.4.0`, verified `1.3.0`   |
 | `eveland` SDK, in Agent projects                | peer dependency `eve >=1.0.0 <2.0.0` |
 | Workflow World, injected into every new Release | `@evelandhq/workflow-world@2.0.0`    |
 | Sandbox, run by the worker                      | `@evelandhq/sandbox-bwrap` `^1.0.0`  |
@@ -42,7 +42,7 @@ These are the Eve surfaces Eveland reads. The architecture tests assert them aga
 Notes for Agent authors:
 
 - `localDev()` admits nothing under `eve start`; authenticate deployed Agents with `evelandIdentity()`, `httpBasic()`, or OIDC.
-- Eveland injects its bwrap sandbox into every Release. An authored sandbox module keeps its `prepare` and selector, but every built-in provider builds the bwrap environment, so provider-specific options such as images and Dockerfiles are ignored.
+- Eveland injects its bwrap sandbox into every Release. An authored sandbox module keeps its `prepare` and selector, but every built-in provider builds the bwrap environment, so provider-specific options such as images and Dockerfiles are ignored. Eve 1.1 added the standard sandbox option `idleTimeoutMs`; when Eveland substitutes its bwrap sandbox it keeps only `prepare`, and the bwrap provider does not stop idle sandboxes, so `idleTimeoutMs` has no effect on Eveland.
 - `chatgpt()` models are local-only: there is no Codex sign-in inside a deployment. Use an AI Gateway or a server-authenticated model.
 - A prebuilt Extension must be built against Eve 1.x.
 - Eveland sets `EVE_TELEMETRY_DISABLED` for every build and Deployment it runs.

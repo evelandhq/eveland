@@ -142,11 +142,17 @@ describe("Eve compatibility repository contract", () => {
       [...coveredStableWorkflowConstants].sort(),
     );
 
-    const lineageContract = repositoryFile(
-      `${INSTALLED_EVE}/dist/src/compiled/@workflow/world/attributes-validation.d.ts`,
-    );
-    expect(lineageContract).toContain('ROOT_RUN_ID_ATTRIBUTE = "$rootRunId"');
-    expect(lineageContract).toContain('PARENT_RUN_ID_ATTRIBUTE = "$parentRunId"');
+    // eve stopped publishing the `.d.ts` that declared these constants in 1.0.1,
+    // so the attribute names are read from the bundled JS it ships instead. The
+    // minifier renames the constants but keeps the string values, which are the
+    // contract; a missing name fails here rather than silently.
+    const compiledEve = globSync(`${INSTALLED_EVE}/dist/src/compiled/**/*.js`, {
+      cwd: repositoryRoot,
+    });
+    const compiledSource = compiledEve.map((file) => repositoryFile(file)).join("\n");
+    expect(compiledEve.length).toBeGreaterThan(0);
+    expect(compiledSource).toContain("`$rootRunId`");
+    expect(compiledSource).toContain("`$parentRunId`");
   });
 
   test("publishes a browser-safe compatibility policy subpath", () => {

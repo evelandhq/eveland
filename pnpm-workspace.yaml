@@ -2,7 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 catalog:
-  eve: 1.0.0
+  eve: 1.3.0
 allowBuilds:
   cbor-extract: true
   esbuild: true

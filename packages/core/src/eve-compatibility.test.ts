@@ -11,6 +11,7 @@ describe("isSupportedEveSpecifier", () => {
       "^1.0.0",
       "^1",
       "~1.0.0",
+      "~1.3.0",
       "1.0.0",
       "1.0.4",
       "1.0.x",
@@ -28,6 +29,7 @@ describe("isSupportedEveSpecifier", () => {
       "0.83.3",
       "^0.83.0",
       "1.0.0-rc.2",
+      "^1.4.0",
       "2.0.0",
       "^2.0.0",
       "latest",
@@ -48,7 +50,8 @@ describe("isSupportedEveVersion", () => {
     expect(isSupportedEveVersion("1.0.7")).toBe(true);
     // The ceiling is the next unverified minor; the floor is 1.0.0, so a
     // release candidate sits below it.
-    expect(isSupportedEveVersion("1.1.0")).toBe(false);
+    expect(isSupportedEveVersion("1.3.2")).toBe(true);
+    expect(isSupportedEveVersion("1.4.0")).toBe(false);
     expect(isSupportedEveVersion("1.0.0-rc.2")).toBe(false);
     expect(isSupportedEveVersion("0.83.3")).toBe(false);
     expect(isSupportedEveVersion(null)).toBe(false);
