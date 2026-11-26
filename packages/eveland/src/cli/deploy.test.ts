@@ -105,7 +105,7 @@ function fakePlatform(options: {
 
     if (pathname === "/api/instance") {
       return json(200, {
-        eve: { supportedRange: ">=1.0.0 <1.4.0", verifiedVersion: "1.3.0" },
+        eve: { supportedRange: ">=1.0.0 <1.6.0", verifiedVersion: "1.5.0" },
       });
     }
     if (pathname === "/api/projects" && method === "GET") {

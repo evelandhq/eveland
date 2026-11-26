@@ -122,6 +122,12 @@ describe("Eve compatibility repository contract", () => {
       // child it opens through `ctx.agent()` ends with that run. It needs an
       // unstamped id only so a version-stamped Deployment can resolve it.
       "AGENT_TOOL_SERVE_WORKFLOW_NAME",
+      // The body behind an agent call made from a model-written program
+      // (`workflow({ mode: "execute", tools: true })`, eve 1.5). Registered
+      // beside the `serve` body above and run the same way: inline in the
+      // tool run, with no run of its own, and unstamped only so a
+      // version-stamped Deployment can resolve it.
+      "PROGRAM_AGENT_CALL_WORKFLOW_NAME",
       // The owner run behind a Connect-managed event subscription
       // (`experimental_events` on an MCP connection). Started from inside an
       // active root-agent session's step, so it carries lineage and inherits

@@ -16,6 +16,7 @@ Eveland 托管标准的单 Agent Eve 项目。本页列出它不支持的内容�
 | 单文件子 Agent（`subagents/<name>.ts`），无论属于项目还是 Extension                  | 构建失败：eve 给每个单文件子 Agent 分配自己的默认沙箱，平台没有可以替换的槽位。请改为目录式子 Agent（`subagents/<name>/agent.ts`）。                            |
 | 域名级或改写请求头的沙箱网络策略                                                     | 被拒绝。沙箱网络只有 `"allow-all"`（默认）和 `"deny-all"` 两种。因此设置了 `github` 的 eve git 扩展也不可用，它需要改写请求头的网络策略。                       |
 | 工具需要沙箱的 keyed `invokeTool` 调用（`toolSessions`）                             | 不支持：eve 从不结束这些沙箱，平台的 provider 也没有为它们设保留上限。                                                                                          |
+| Workflow 限流（`eve/experimental/workflow` 的 `rateLimit`，Eve 1.5）                 | 调用在运行时抛错：它需要 spec 10 的 Workflow 运行，而共享 Workflow World 创建的是 spec 9 的运行。                                                               |
 | eve evals                                                                            | Eveland 没有 evals 集成。请在本地运行 `eve eval`，或用 `eve eval --url` 指向某个 Deployment 的预览 URL。                                                        |
 | 平台签发的机器或服务凭据                                                             | Eveland 只为人签发 Caller Token（见[身份](/zh/docs/reference/identity)）。Agent 调用其它服务所用的凭据由你作为项目 Secret 提供。                                |
 | 平台提供的文件或对象存储                                                             | 不提供。平台给 Agent 的唯一持久存储是文件记忆（`EVELAND_MEMORY_ROOT`，见 [Agent 环境](/zh/docs/reference/agent-environment)）；其它数据请使用你自己的存储服务。 |
