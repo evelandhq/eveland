@@ -11,10 +11,10 @@ import { intersects, satisfies, validRange } from "semver";
  * names -- are asserted against the installed `eve` by the architecture
  * ratchets, so raising the ceiling is a reviewed change that reruns them.
  */
-export const SUPPORTED_EVE_RANGE = ">=1.0.0 <1.4.0";
+export const SUPPORTED_EVE_RANGE = ">=1.0.0 <1.6.0";
 
 /** The newest eve release the compatibility suites ran against. */
-export const VERIFIED_EVE_VERSION = "1.3.0";
+export const VERIFIED_EVE_VERSION = "1.5.0";
 
 /** What the platform reports about one project's or Deployment's Eve. */
 export type EveVersionInfo = {

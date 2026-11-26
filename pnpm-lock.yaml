@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     eve:
-      specifier: 1.3.0
-      version: 1.3.0
+      specifier: 1.5.0
+      version: 1.5.0
 
 overrides:
   miniflare>sharp: ^0.35.4
@@ -221,7 +221,7 @@ importers:
         version: 1.1.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       eve:
         specifier: 'catalog:'
-        version: 1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
+        version: 1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
       lucide-react:
         specifier: ^1.49.0
         version: 1.49.0(@types/react@19.3.0)(react@19.3.0)
@@ -306,7 +306,7 @@ importers:
         version: link:../../packages/platform-observability
       '@evelandhq/sandbox-bwrap':
         specifier: ^1.0.0
-        version: 1.0.0(eve@1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)))
+        version: 1.0.0(eve@1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)))
       '@evelandhq/workflow-world':
         specifier: ^2.0.0
         version: 2.0.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)
@@ -371,7 +371,7 @@ importers:
         version: link:../core
       eve:
         specifier: 'catalog:'
-        version: 1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
+        version: 1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
       openid-client:
         specifier: ^6.8.8
         version: 6.8.8
@@ -424,7 +424,7 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
+        version: 1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
@@ -440,7 +440,7 @@ importers:
     devDependencies:
       eve:
         specifier: 'catalog:'
-        version: 1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
+        version: 1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
@@ -536,8 +536,8 @@ importers:
         specifier: ^7.7.1
         version: 7.7.1
       eve:
-        specifier: 1.3.0
-        version: 1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
+        specifier: 1.5.0
+        version: 1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.3)(jsdom@30.1.1(@noble/hashes@2.4.0))(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
@@ -4578,8 +4578,8 @@ packages:
   estree-walker@3.0.3:
     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
 
-  eve@1.3.0:
-    resolution: {integrity: sha512-cL1aaSwPLiUYPIp5ksivpd7GJpnl3H7xptT8/31utYC6HLWHJkf9gut++p46LaI2DhmVY1AdrrJ254BZGtlD6Q==}
+  eve@1.5.0:
+    resolution: {integrity: sha512-LXy9WDAtGR82qQC5X+NmyHBTh8fuYWlsna5Aj6aHYpVYB+DCAWJ/9DdNYyQYYr2fLOqOKWhwIQLTZYGkMQ1/NQ==}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
@@ -7644,9 +7644,9 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@evelandhq/sandbox-bwrap@1.0.0(eve@1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)))':
+  '@evelandhq/sandbox-bwrap@1.0.0(eve@1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)))':
     dependencies:
-      eve: 1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
+      eve: 1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1))
 
   '@evelandhq/workflow-world@2.0.0(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(kysely@0.29.6)(postgres@3.4.9)(typescript@6.0.3)':
     dependencies:
@@ -10282,7 +10282,7 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.10
 
-  eve@1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)):
+  eve@1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
       ai: 7.0.172(zod@4.6.7)
       nitro: 3.0.261103-rc
@@ -10294,7 +10294,7 @@ snapshots:
       react: 19.3.0
       vite: 7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)
 
-  eve@1.3.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)):
+  eve@1.5.0(@opentelemetry/api@1.9.1)(ai@7.0.172(zod@4.6.7))(next@16.4.6(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.16.9)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:
       ai: 7.0.172(zod@4.6.7)
       nitro: 3.0.261103-rc

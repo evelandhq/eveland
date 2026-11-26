@@ -3,13 +3,13 @@ title: Eve 兼容性
 description: Eveland 托管哪些 Eve 版本、项目如何声明 Eve，以及版本窗口如何执行。
 ---
 
-Eveland 托管 Eve `>=1.0.0 <1.4.0`，已验证版本为 `1.3.0`。整个 1.x 期间下限固定为 `1.0.0`；验证新的 Minor 只会提高上限，所以构建时在窗口内的 Release 会一直留在窗口内。即使 Eve 在 1.x 内保持稳定 API 兼容，新的 Eve Minor 也要等 Eveland 审阅并对它重跑兼容性测试之后才会被托管。
+Eveland 托管 Eve `>=1.0.0 <1.6.0`，已验证版本为 `1.5.0`。整个 1.x 期间下限固定为 `1.0.0`；验证新的 Minor 只会提高上限，所以构建时在窗口内的 Release 会一直留在窗口内。即使 Eve 在 1.x 内保持稳定 API 兼容，新的 Eve Minor 也要等 Eveland 审阅并对它重跑兼容性测试之后才会被托管。
 
 ## 声明 Eve
 
-在项目 `package.json` 的 `dependencies`（或 `devDependencies`）中声明 `eve`，可以使用任何能解析到窗口内的 npm 范围。`eve init` 生成的 `"^1.3.0"` 可以直接使用，`"~1.3.0"`、`"1.3.0"`、`"1.0.0"`、`"1.x"` 也都可以。无法解析到窗口内的范围（`"0.83.3"`、`"1.0.0-rc.2"`、`"^2.0.0"`）以及不是版本范围的写法（`"latest"`、git URL、`workspace:`）会被拒绝。
+在项目 `package.json` 的 `dependencies`（或 `devDependencies`）中声明 `eve`，可以使用任何能解析到窗口内的 npm 范围。`eve init` 生成的 `"^1.5.0"` 可以直接使用，`"~1.5.0"`、`"1.5.0"`、`"1.0.0"`、`"1.x"` 也都可以。无法解析到窗口内的范围（`"0.83.3"`、`"1.0.0-rc.2"`、`"^2.0.0"`）以及不是版本范围的写法（`"latest"`、git URL、`workspace:`）会被拒绝。
 
-请提交 lockfile。`^1.3.0` 这样的范围会在构建时解析到最新的匹配版本；一旦 Eve 发布了 Eveland 尚未验证的 Minor，没有 lockfile 的构建就会安装它并失败。如果希望没有 lockfile 的构建也停留在已验证的 Minor，请改用 `~1.3.0`。
+请提交 lockfile。`^1.5.0` 这样的范围会在构建时解析到最新的匹配版本；一旦 Eve 发布了 Eveland 尚未验证的 Minor，没有 lockfile 的构建就会安装它并失败。如果希望没有 lockfile 的构建也停留在已验证的 Minor，请改用 `~1.5.0`。
 
 ## 执行
 
@@ -22,7 +22,7 @@ Eveland 托管 Eve `>=1.0.0 <1.4.0`，已验证版本为 `1.3.0`。整个 1.x �
 
 | 组件                                 | 版本                                |
 | ------------------------------------ | ----------------------------------- |
-| Agent 项目中的 Eve                   | `>=1.0.0 <1.4.0`，已验证 `1.3.0`    |
+| Agent 项目中的 Eve                   | `>=1.0.0 <1.6.0`，已验证 `1.5.0`    |
 | Agent 项目中的 `eveland` SDK         | peer 依赖 `eve >=1.0.0 <2.0.0`      |
 | 注入每个新 Release 的 Workflow World | `@evelandhq/workflow-world@2.0.0`   |
 | Worker 运行的沙箱                    | `@evelandhq/sandbox-bwrap` `^1.0.0` |
@@ -35,7 +35,7 @@ Eveland 托管 Eve `>=1.0.0 <1.4.0`，已验证版本为 `1.3.0`。整个 1.x �
 | -------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Session 流                       | v27（`x-eve-stream-version: 27`）；Playground 打包读取它的 `eve/client`，Agent Gateway 原样转发该流 |
 | Discovery Manifest               | 16，只在构建前为 Extension 挂载读取；构建摘要读 `eve info --json`                                   |
-| Workflow 存储                    | 默认 spec 9（单 Orchestrator）；Deployment 设置 `WORKFLOW_SEALED_LOG=0` 时为 6                      |
+| Workflow 存储                    | spec 9（单 Orchestrator），共享 World 只创建这一代                                                  |
 | Eve 依赖的 Workflow World 能力   | `atomicStartHook`、`deploymentAffinity`、`hookForceClaim` 加上处于 active 的 `hookRetention`        |
 | OpenTelemetry Agent Trace Schema | 4                                                                                                   |
 

@@ -59,8 +59,8 @@ test("absent or unparseable eve info records no summary but still reports the in
 test("refuses a build whose installed eve is outside the hosted window, or unreadable", async () => {
   // `^1.0.0` is a valid declaration, but it may install a minor nobody verified.
   const newer = await makeRelease();
-  await installEve(newer, "1.4.0");
-  await expect(readReleaseDiscovery(newer)).rejects.toThrow(unsupportedEveVersionMessage("1.4.0"));
+  await installEve(newer, "1.6.0");
+  await expect(readReleaseDiscovery(newer)).rejects.toThrow(unsupportedEveVersionMessage("1.6.0"));
 
   const candidate = await makeRelease();
   await installEve(candidate, "1.0.0-rc.2");

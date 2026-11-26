@@ -13,7 +13,7 @@ import { createZipArchive } from "./zip.ts";
 
 const execFileAsync = promisify(execFile);
 // The range an instance reports as `eve.supportedRange`.
-const WINDOW = ">=1.0.0 <1.4.0";
+const WINDOW = ">=1.0.0 <1.6.0";
 
 async function makeProject(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "eveland-preflight-"));
@@ -143,10 +143,10 @@ describe("deploy preflight", () => {
   test("judges eve specifiers against the range the instance hosts", () => {
     // Anything that can resolve inside the range passes, including the caret
     // range `eve init` writes; the build gates on what it actually installs.
-    for (const specifier of ["^1.0.0", "^1", "~1.0.0", "~1.3.0", "1.0.0", "1.0.x", "1.x", "*"]) {
+    for (const specifier of ["^1.0.0", "^1", "~1.0.0", "~1.5.0", "1.0.0", "1.0.x", "1.x", "*"]) {
       expect(eveSpecifierProblem(specifier, WINDOW), specifier).toBeNull();
     }
-    for (const specifier of ["0.83.3", "^0.83.0", "1.0.0-rc.2", "1.4.0", "^1.4.0", "2.0.0"]) {
+    for (const specifier of ["0.83.3", "^0.83.0", "1.0.0-rc.2", "1.6.0", "^1.6.0", "2.0.0"]) {
       expect(eveSpecifierProblem(specifier, WINDOW), specifier).toContain("cannot resolve");
     }
     expect(eveSpecifierProblem("catalog:", WINDOW)).toContain("Unsupported");

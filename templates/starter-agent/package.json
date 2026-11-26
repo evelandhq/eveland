@@ -9,7 +9,7 @@
     "start": "eve start"
   },
   "dependencies": {
-    "eve": "1.3.0",
+    "eve": "1.5.0",
     "eveland": "2.1.0"
   },
   "engines": {
