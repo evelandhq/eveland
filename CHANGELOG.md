@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/evelandhq/eveland/compare/v2.1.0...v2.2.0) (2026-11-27)
+
+
+### Features
+
+* host eve 1.4 and 1.5 ([#711](https://github.com/evelandhq/eveland/issues/711)) ([dbaebb2](https://github.com/evelandhq/eveland/commit/dbaebb26685eddd7dc2f0a69dbae706d1d82e1d8))
+
 ## [2.1.0](https://github.com/evelandhq/eveland/compare/v2.0.1...v2.1.0) (2026-11-22)
 
 
